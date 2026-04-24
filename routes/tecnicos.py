@@ -24,27 +24,34 @@ def listar_tecnicos():
 
 @tecnicos_bp.route("/tecnicos", methods=["POST"])
 def criar_tecnico():
-    data = request.json
-    nome = data.get("nome", "").strip()
+    try:
+        # get_json(silent=True) evita que o Flask quebre se o cabeçalho estiver errado
+        data = request.get_json(silent=True) or {}
+        nome = data.get("nome", "").strip()
 
-    if not nome:
-        return jsonify({"erro": "Nome é obrigatório"}), 400
+        if not nome:
+            return jsonify({"erro": "Nome é obrigatório"}), 400
 
-    conn = get_db()
+        conn = get_db()
 
-    # Escolhe cor automática baseada na quantidade de técnicos
-    total = conn.execute("SELECT COUNT(*) as c FROM tecnicos").fetchone()["c"]
-    cor = data.get("cor", CORES_PADRAO[total % len(CORES_PADRAO)])
+        # Escolhe cor automática baseada na quantidade de técnicos
+        total = conn.execute("SELECT COUNT(*) as c FROM tecnicos").fetchone()["c"]
+        cor = data.get("cor", CORES_PADRAO[total % len(CORES_PADRAO)])
 
-    cur = conn.execute(
-        "INSERT INTO tecnicos (nome, cor) VALUES (?, ?)",
-        (nome, cor)
-    )
-    tecnico_id = cur.lastrowid
-    conn.commit()
-    conn.close()
+        cur = conn.execute(
+            "INSERT INTO tecnicos (nome, cor) VALUES (?, ?)",
+            (nome, cor)
+        )
+        tecnico_id = cur.lastrowid
+        conn.commit()
+        conn.close()
 
-    return jsonify({"id": tecnico_id, "nome": nome, "cor": cor})
+        # Retorna 201 (Created) que é a boa prática para POST
+        return jsonify({"id": tecnico_id, "nome": nome, "cor": cor}), 201
+
+    except Exception as e:
+        # Se QUALQUER coisa der errado, o front-end vai receber um JSON amigável
+        return jsonify({"erro": f"Erro interno no servidor: {str(e)}"}), 500
 
 
 @tecnicos_bp.route("/tecnicos/<int:tecnico_id>", methods=["DELETE"])
