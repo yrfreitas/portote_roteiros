@@ -15,8 +15,10 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ─── API ─────────────────────────────────────────────────────────────
+const BASE = "https://sua-url.railway.app";
+
 async function api(path, options = {}) {
-  const res = await fetch('/api' + path, {
+  const res = await fetch(BASE + '/api' + path, {
     headers: { 'Content-Type': 'application/json' },
     ...options
   });
