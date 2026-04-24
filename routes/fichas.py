@@ -9,13 +9,23 @@ fichas_bp = Blueprint("fichas", __name__)
 @fichas_bp.route("/fichas", methods=["GET"])
 def listar_fichas():
     conn = get_db()
-    fichas = conn.execute("""
-        SELECT f.*, COUNT(s.id) as total_servicos
+    tecnico_id = request.args.get("tecnico_id")
+
+    query = """
+        SELECT f.*, COUNT(s.id) as total_servicos,
+               t.nome as tecnico_nome, t.cor as tecnico_cor
         FROM fichas f
         LEFT JOIN servicos s ON s.ficha_id = f.id
-        GROUP BY f.id
-        ORDER BY f.updated_at DESC
-    """).fetchall()
+        LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+    """
+    params = []
+    if tecnico_id:
+        query += " WHERE f.tecnico_id = ?"
+        params.append(tecnico_id)
+
+    query += " GROUP BY f.id ORDER BY f.updated_at DESC"
+
+    fichas = conn.execute(query, params).fetchall()
     conn.close()
     return jsonify([dict(f) for f in fichas])
 
@@ -24,9 +34,12 @@ def listar_fichas():
 def criar_ficha():
     data = request.json
     dia = data.get("dia_semana")
+    tecnico_id = data.get("tecnico_id")
 
     if not dia:
         return jsonify({"erro": "dia_semana é obrigatório"}), 400
+    if not tecnico_id:
+        return jsonify({"erro": "tecnico_id é obrigatório"}), 400
 
     partida = data.get("ponto_partida", "")
     partida_cep = data.get("ponto_partida_cep", "")
@@ -43,9 +56,11 @@ def criar_ficha():
     conn = get_db()
     cur = conn.execute(
         """INSERT INTO fichas
-           (dia_semana, data_referencia, ponto_partida, ponto_partida_cep, ponto_partida_lat, ponto_partida_lng)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (dia, data.get("data_referencia", ""), partida, partida_cep, lat_p, lng_p)
+           (tecnico_id, dia_semana, data_referencia, ponto_partida,
+            ponto_partida_cep, ponto_partida_lat, ponto_partida_lng)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (tecnico_id, dia, data.get("data_referencia", ""),
+         partida, partida_cep, lat_p, lng_p)
     )
     ficha_id = cur.lastrowid
     conn.commit()
@@ -104,7 +119,6 @@ def otimizar_ficha(ficha_id):
 
 
 def recalcular_rota(conn, ficha_id, ficha):
-    """Recalcula e salva a ordem otimizada dos serviços"""
     servicos = conn.execute(
         "SELECT * FROM servicos WHERE ficha_id = ?", (ficha_id,)
     ).fetchall()

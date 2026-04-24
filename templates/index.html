@@ -24,9 +24,24 @@
 
   <!-- SIDEBAR -->
   <aside class="sidebar">
+
+    <!-- VERIFICADOR DE CEP -->
+    <div class="verificador-box">
+      <div class="verificador-title">🔍 Verificar CEP</div>
+      <div class="verificador-row">
+        <input type="text" class="form-input" id="verificar-cep-input"
+               placeholder="00000-000" maxlength="9"
+               oninput="formatarCEP(this)"
+               onkeydown="if(event.key==='Enter') verificarCEP()">
+        <button class="btn btn-primary" onclick="verificarCEP()" id="btn-verificar">Verificar</button>
+      </div>
+      <div id="verificar-resultado"></div>
+    </div>
+
+    <!-- TÉCNICOS -->
     <div class="sidebar-header">
-      <span class="sidebar-title">Fichas de Dia</span>
-      <button class="btn-nova-ficha" onclick="abrirModalNovaFicha()">+</button>
+      <span class="sidebar-title">Técnicos</span>
+      <button class="btn-nova-ficha" onclick="abrirModalNovoTecnico()" title="Novo técnico">+</button>
     </div>
     <div class="sidebar-list" id="sidebar-list">
       <div class="loading-row">Carregando...</div>
@@ -39,8 +54,8 @@
     <div class="empty-state" id="empty-state">
       <div class="empty-icon">🗺️</div>
       <h2>Nenhuma ficha selecionada</h2>
-      <p>Crie uma nova ficha ou selecione uma existente na barra lateral.</p>
-      <button class="btn btn-primary" onclick="abrirModalNovaFicha()">+ Nova Ficha</button>
+      <p>Selecione um técnico e crie uma ficha de dia.</p>
+      <button class="btn btn-primary" onclick="abrirModalNovoTecnico()">+ Novo Técnico</button>
     </div>
 
     <div id="ficha-detail" style="display:none;"></div>
@@ -48,10 +63,26 @@
   </main>
 </div>
 
+<!-- MODAL NOVO TÉCNICO -->
+<div class="modal-overlay" id="modal-novo-tecnico">
+  <div class="modal">
+    <div class="modal-title">👤 Novo Técnico</div>
+    <div class="form-group">
+      <label class="form-label">Nome do Técnico</label>
+      <input type="text" class="form-input" id="novo-tecnico-nome" placeholder="Ex: Pedro, Cristian...">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button class="btn btn-primary" onclick="criarTecnico()">Criar Técnico</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL NOVA FICHA -->
 <div class="modal-overlay" id="modal-nova-ficha">
   <div class="modal">
     <div class="modal-title">📋 Nova Ficha de Dia</div>
+    <input type="hidden" id="nova-ficha-tecnico-id">
 
     <div class="form-group">
       <label class="form-label">Dia da Semana</label>
@@ -61,6 +92,7 @@
         <button class="dia-pill" onclick="selecionarDia(this, 'Quarta-feira')">QUA</button>
         <button class="dia-pill" onclick="selecionarDia(this, 'Quinta-feira')">QUI</button>
         <button class="dia-pill" onclick="selecionarDia(this, 'Sexta-feira')">SEX</button>
+        <button class="dia-pill" onclick="selecionarDia(this, 'Sábado')">SAB</button>
       </div>
       <input type="hidden" id="nova-dia">
     </div>
@@ -91,7 +123,6 @@
   </div>
 </div>
 
-<!-- MODAL ADD SERVIÇO -->
 <!-- MODAL ADD SERVIÇO -->
 <div class="modal-overlay" id="modal-add-servico">
   <div class="modal">

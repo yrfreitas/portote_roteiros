@@ -822,3 +822,250 @@ header {
     font-size: 20px;
   }
 }
+
+/* ─── TÉCNICOS ──────────────────────────────────────────────────── */
+.tecnico-section {
+  margin-bottom: 8px;
+}
+
+.tecnico-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  margin-bottom: 2px;
+}
+
+.tecnico-nome {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.tecnico-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-add-ficha {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-add-ficha:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.btn-del-tecnico {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.btn-del-tecnico:hover {
+  color: var(--danger-text);
+  background: var(--danger);
+}
+
+.fichas-do-tecnico {
+  padding-left: 8px;
+}
+
+/* ─── VERIFICADOR DE CEP ─────────────────────────────────────────── */
+.verificador-box {
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-input);
+}
+
+.verificador-title {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.verificador-row {
+  display: flex;
+  gap: 6px;
+}
+
+.verificador-row .form-input {
+  flex: 1;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+
+.verificador-row .btn {
+  padding: 7px 12px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.verificar-resultado-box {
+  margin-top: 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.verificar-resultado-box.erro {
+  border-color: #ffcccc;
+  background: var(--danger);
+  padding: 10px;
+}
+
+.verificar-endereco {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-family: var(--font-mono);
+}
+
+.verificar-sugestoes-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  padding: 8px 10px 4px;
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.sugestao-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sugestao-item:hover { background: var(--bg-elevated); }
+
+.sugestao-item.melhor {
+  background: #f0fff6;
+  border-left: 3px solid #1a8040;
+}
+
+.sugestao-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sugestao-info { flex: 1; min-width: 0; }
+
+.sugestao-tecnico {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-display);
+}
+
+.sugestao-dia {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.sugestao-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #1a8040;
+  background: #d0f0e0;
+  border-radius: 10px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  font-family: var(--font-display);
+}
+
+/* ─── RESPONSIVO MOBILE ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 56px auto 1fr;
+    height: 100dvh;
+  }
+
+  header { padding: 0 16px; }
+  .logo-text { font-size: 16px; }
+  .header-date { font-size: 10px; }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .main { padding: 16px; }
+
+  .ficha-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .ficha-header .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .ficha-titulo { font-size: 22px; }
+  .stats-strip { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .panel-grid { grid-template-columns: 1fr; }
+
+  .roteiro-item {
+    grid-template-columns: 36px 1fr auto;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .roteiro-endereco {
+    white-space: normal;
+    font-size: 11px;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 24px 20px;
+    max-height: 90dvh;
+    overflow-y: auto;
+  }
+
+  .modal-overlay { align-items: flex-end; }
+  .form-row { grid-template-columns: 1fr; }
+
+  .toast-container { bottom: 16px; right: 16px; left: 16px; }
+  .toast { max-width: 100%; }
+}

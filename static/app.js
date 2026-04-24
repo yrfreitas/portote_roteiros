@@ -1,6 +1,7 @@
 // ─── STATE ───────────────────────────────────────────────────────────
 let fichaAtiva = null;
-let diasMap = {};
+let tecnicoAtivo = null;
+let tecnicos = [];
 
 // ─── INIT ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
       weekday: 'short', day: '2-digit', month: 'short'
     }).toUpperCase();
 
-  carregarFichas();
+  carregarTecnicos();
 });
 
 // ─── API ─────────────────────────────────────────────────────────────
@@ -24,48 +25,112 @@ async function api(path, options = {}) {
   return data;
 }
 
-// ─── FICHAS ──────────────────────────────────────────────────────────
-async function carregarFichas() {
-  const fichas = await api('/fichas');
-  const list = document.getElementById('sidebar-list');
-  diasMap = {};
-  fichas.forEach(f => diasMap[f.id] = f);
+// ─── TÉCNICOS ────────────────────────────────────────────────────────
+async function carregarTecnicos() {
+  try {
+    tecnicos = await api('/tecnicos');
+    const list = document.getElementById('sidebar-list');
 
-  if (fichas.length === 0) {
-    list.innerHTML = `
-      <div style="padding:20px 14px; color:var(--text-muted); font-size:12px; text-align:center;">
-        Nenhuma ficha criada.<br>Clique em + para começar.
-      </div>`;
-    return;
-  }
+    if (tecnicos.length === 0) {
+      list.innerHTML = `
+        <div style="padding:20px 14px; color:var(--text-muted); font-size:12px; text-align:center;">
+          Nenhum técnico cadastrado.<br>Clique em + para adicionar.
+        </div>`;
+      return;
+    }
 
-  list.innerHTML = fichas.map(f => `
-    <div class="ficha-item ${fichaAtiva?.id === f.id ? 'active' : ''}"
-         onclick="selecionarFicha(${f.id})"
-         id="sidebar-item-${f.id}">
-      <button class="btn-del-ficha" onclick="deletarFicha(event, ${f.id})">✕</button>
-      <div class="ficha-item-dia">${f.dia_semana}</div>
-      <div class="ficha-item-meta">
-        ${f.data_referencia ? `<span>${formatarData(f.data_referencia)}</span>` : ''}
-        <span class="badge ${f.total_servicos > 0 ? 'accent' : ''}">
-          ${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''}
-        </span>
-        ${f.distancia_total > 0 ? `<span class="badge">${f.distancia_total} km</span>` : ''}
+    list.innerHTML = tecnicos.map(t => `
+      <div class="tecnico-section" id="tecnico-section-${t.id}">
+        <div class="tecnico-header" style="border-left: 3px solid ${t.cor}">
+          <div class="tecnico-nome" style="color:${t.cor}">${t.nome}</div>
+          <div class="tecnico-actions">
+            <button class="btn-add-ficha" onclick="abrirModalNovaFicha(${t.id})" title="Nova ficha">+ Ficha</button>
+            <button class="btn-del-tecnico" onclick="deletarTecnico(event, ${t.id})" title="Remover técnico">✕</button>
+          </div>
+        </div>
+        <div class="fichas-do-tecnico" id="fichas-tecnico-${t.id}">
+          <div class="loading-row" style="padding:8px 14px; font-size:11px;">Carregando...</div>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `).join('');
+
+    // Carrega fichas de cada técnico
+    for (const t of tecnicos) {
+      await carregarFichasTecnico(t.id);
+    }
+
+  } catch (e) {
+    toast('Erro ao carregar técnicos', 'error');
+  }
 }
 
+async function carregarFichasTecnico(tecnicoId) {
+  try {
+    const fichas = await api(`/fichas?tecnico_id=${tecnicoId}`);
+    const container = document.getElementById(`fichas-tecnico-${tecnicoId}`);
+    if (!container) return;
+
+    if (fichas.length === 0) {
+      container.innerHTML = `
+        <div style="padding:8px 14px; color:var(--text-muted); font-size:11px;">
+          Nenhuma ficha ainda.
+        </div>`;
+      return;
+    }
+
+    const tecnico = tecnicos.find(t => t.id === tecnicoId);
+    container.innerHTML = fichas.map(f => `
+      <div class="ficha-item ${fichaAtiva?.id === f.id ? 'active' : ''}"
+           onclick="selecionarFicha(${f.id})"
+           id="sidebar-item-${f.id}"
+           style="${fichaAtiva?.id === f.id ? `border-color:${tecnico?.cor}` : ''}">
+        <button class="btn-del-ficha" onclick="deletarFicha(event, ${f.id})">✕</button>
+        <div class="ficha-item-dia">${f.dia_semana}</div>
+        <div class="ficha-item-meta">
+          ${f.data_referencia ? `<span>${formatarData(f.data_referencia)}</span>` : ''}
+          <span class="badge ${f.total_servicos > 0 ? 'accent' : ''}">
+            ${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''}
+          </span>
+          ${f.distancia_total > 0 ? `<span class="badge">${f.distancia_total} km</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.error('Erro ao carregar fichas do técnico', tecnicoId, e);
+  }
+}
+
+async function criarTecnico() {
+  const nome = document.getElementById('novo-tecnico-nome').value.trim();
+  if (!nome) { toast('Informe o nome do técnico', 'error'); return; }
+
+  try {
+    await api('/tecnicos', { method: 'POST', body: JSON.stringify({ nome }) });
+    fecharModais();
+    toast(`Técnico "${nome}" criado!`, 'success');
+    await carregarTecnicos();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function deletarTecnico(evt, id) {
+  evt.stopPropagation();
+  if (!confirm('Remover este técnico e todas as suas fichas?')) return;
+  await api(`/tecnicos/${id}`, { method: 'DELETE' });
+  if (fichaAtiva?.tecnico_id === id) {
+    fichaAtiva = null;
+    document.getElementById('empty-state').style.display = 'flex';
+    document.getElementById('ficha-detail').style.display = 'none';
+  }
+  await carregarTecnicos();
+  toast('Técnico removido', 'info');
+}
+
+// ─── FICHAS ──────────────────────────────────────────────────────────
 async function selecionarFicha(id) {
-  fichaAtiva = diasMap[id] || { id };
-
-  document.querySelectorAll('.ficha-item').forEach(el => el.classList.remove('active'));
-  const item = document.getElementById('sidebar-item-' + id);
-  if (item) item.classList.add('active');
-
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('ficha-detail').style.display = 'block';
-
   await renderFichaDetalhe(id);
 }
 
@@ -80,12 +145,17 @@ async function renderFichaDetalhe(id) {
   const { ficha, servicos } = await api(`/fichas/${id}`);
   fichaAtiva = ficha;
 
+  const tecnico = tecnicos.find(t => t.id === ficha.tecnico_id);
+  const corTecnico = tecnico?.cor || 'var(--accent)';
   const temPartida = ficha.ponto_partida_lat != null;
   const distTotal = ficha.distancia_total || 0;
 
   detail.innerHTML = `
     <div class="ficha-header">
       <div>
+        <div style="font-size:11px; font-weight:600; color:${corTecnico}; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">
+          👤 ${tecnico?.nome || '—'}
+        </div>
         <div class="ficha-titulo">${ficha.dia_semana}</div>
         <div class="ficha-sub">
           ${ficha.data_referencia ? `📅 ${formatarData(ficha.data_referencia)} · ` : ''}
@@ -100,17 +170,17 @@ async function renderFichaDetalhe(id) {
     <div class="stats-strip">
       <div class="stat-card">
         <div class="stat-label">Pontos de Serviço</div>
-        <div class="stat-value">${servicos.length}<span class="stat-unit">pts</span></div>
+        <div class="stat-value" style="color:${corTecnico}">${servicos.length}<span class="stat-unit">pts</span></div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Distância Total</div>
-        <div class="stat-value">
+        <div class="stat-value" style="color:${corTecnico}">
           ${distTotal > 0 ? distTotal.toFixed(1) : '—'}<span class="stat-unit">km</span>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Tempo Estimado</div>
-        <div class="stat-value">
+        <div class="stat-value" style="color:${corTecnico}">
           ${distTotal > 0 ? Math.round(distTotal / 30 * 60) : '—'}<span class="stat-unit">min</span>
         </div>
       </div>
@@ -124,7 +194,7 @@ async function renderFichaDetalhe(id) {
         </div>
         <div class="panel-body">
           ${temPartida ? `
-            <div style="font-family:var(--font-mono); font-size:13px; color:var(--gold); margin-bottom:4px;">
+            <div style="font-family:var(--font-mono); font-size:13px; color:${corTecnico}; margin-bottom:4px;">
               ${ficha.ponto_partida_cep || '—'}
             </div>
             <div style="font-size:12px; color:var(--text-secondary);">
@@ -133,7 +203,7 @@ async function renderFichaDetalhe(id) {
             <div style="margin-top:12px;">
               <a href="https://www.openstreetmap.org/?mlat=${ficha.ponto_partida_lat}&mlon=${ficha.ponto_partida_lng}&zoom=15"
                  target="_blank"
-                 style="font-size:11px; color:var(--accent-text); text-decoration:none;">
+                 style="font-size:11px; color:${corTecnico}; text-decoration:none;">
                 ↗ Ver no mapa
               </a>
             </div>
@@ -173,12 +243,12 @@ async function renderFichaDetalhe(id) {
         <span class="roteiro-title">🗺️ Roteiro Ordenado</span>
         ${servicos.length > 0 ? `<span class="badge accent">${servicos.length} parada${servicos.length !== 1 ? 's' : ''}</span>` : ''}
       </div>
-      ${renderRoteiro(ficha, servicos)}
+      ${renderRoteiro(ficha, servicos, corTecnico)}
     </div>
   `;
 }
 
-function renderRoteiro(ficha, servicos) {
+function renderRoteiro(ficha, servicos, corTecnico = 'var(--accent)') {
   if (servicos.length === 0) {
     return `
       <div class="loading-row" style="padding:40px;">
@@ -203,9 +273,9 @@ function renderRoteiro(ficha, servicos) {
     .sort((a, b) => a.ordem - b.ordem)
     .map((s, i) => `
       <div class="roteiro-item" id="svc-${s.id}">
-        <div class="step-num">${i + 1}</div>
+        <div class="step-num" style="background:${corTecnico}20; border-color:${corTecnico}60; color:${corTecnico}">${i + 1}</div>
         <div class="roteiro-info">
-          <div class="roteiro-cep">${formatCEP(s.cep)}</div>
+          <div class="roteiro-cep" style="color:${corTecnico}">${formatCEP(s.cep)}</div>
           <div class="roteiro-endereco">
             ${s.numero ? `<strong>Nº ${s.numero}</strong> · ` : ''}${s.endereco_completo || '—'}
           </div>
@@ -214,7 +284,7 @@ function renderRoteiro(ficha, servicos) {
         <div class="roteiro-actions">
           <a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16"
              target="_blank"
-             style="color:var(--accent-text); font-size:11px; text-decoration:none; padding:4px 8px;">
+             style="color:${corTecnico}; font-size:11px; text-decoration:none; padding:4px 8px;">
             🗺
           </a>
           <button class="btn-remove" onclick="removerServico(${s.id}, ${ficha.id})">✕</button>
@@ -225,12 +295,77 @@ function renderRoteiro(ficha, servicos) {
   return partida + items;
 }
 
+// ─── VERIFICADOR DE CEP ──────────────────────────────────────────────
+async function verificarCEP() {
+  const cep = document.getElementById('verificar-cep-input').value;
+  if (!cep || cep.replace('-', '').length < 8) {
+    toast('Informe um CEP válido', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-verificar');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div>';
+
+  const resultado = document.getElementById('verificar-resultado');
+  resultado.innerHTML = `<div style="font-size:11px; color:var(--text-muted); padding:8px 0;">Buscando...</div>`;
+
+  try {
+    const r = await api('/verificar-cep', {
+      method: 'POST',
+      body: JSON.stringify({ cep: cep.replace('-', '') })
+    });
+
+    if (!r.sugestoes || r.sugestoes.length === 0) {
+      resultado.innerHTML = `
+        <div class="verificar-resultado-box">
+          <div style="font-size:12px; color:var(--text-muted);">
+            Nenhuma rota cadastrada para comparar ainda.
+          </div>
+        </div>`;
+      return;
+    }
+
+    resultado.innerHTML = `
+      <div class="verificar-resultado-box">
+        <div class="verificar-endereco">${r.endereco.split(',').slice(0,2).join(',')}</div>
+        <div class="verificar-sugestoes-title">Melhor encaixe:</div>
+        ${r.sugestoes.map((s, i) => `
+          <div class="sugestao-item ${i === 0 ? 'melhor' : ''}" onclick="selecionarFichaVerificador(${s.ficha_id})">
+            <div class="sugestao-dot" style="background:${s.tecnico_cor}"></div>
+            <div class="sugestao-info">
+              <div class="sugestao-tecnico" style="color:${s.tecnico_cor}">${s.tecnico_nome}</div>
+              <div class="sugestao-dia">${s.dia_semana} · ${s.dist_minima} km do ponto mais próximo</div>
+            </div>
+            ${i === 0 ? '<div class="sugestao-badge">✓ Ideal</div>' : ''}
+          </div>
+        `).join('')}
+      </div>`;
+  } catch (e) {
+    resultado.innerHTML = `
+      <div class="verificar-resultado-box erro">
+        <div style="font-size:12px; color:var(--danger-text);">${e.message}</div>
+      </div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Verificar';
+  }
+}
+
+function selecionarFichaVerificador(fichaId) {
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('ficha-detail').style.display = 'block';
+  renderFichaDetalhe(fichaId);
+}
+
 // ─── AÇÕES ───────────────────────────────────────────────────────────
 async function criarFicha() {
   const dia = document.getElementById('nova-dia').value;
+  const tecnicoId = document.getElementById('nova-ficha-tecnico-id').value;
   if (!dia) { toast('Selecione um dia da semana', 'error'); return; }
 
   const body = {
+    tecnico_id: parseInt(tecnicoId),
     dia_semana: dia,
     data_referencia: document.getElementById('nova-data').value,
     ponto_partida: document.getElementById('nova-partida-nome').value,
@@ -241,7 +376,7 @@ async function criarFicha() {
     const r = await api('/fichas', { method: 'POST', body: JSON.stringify(body) });
     fecharModais();
     toast(`Ficha "${dia}" criada!`, 'success');
-    await carregarFichas();
+    await carregarTecnicos();
     selecionarFicha(r.id);
   } catch (e) {
     toast(e.message, 'error');
@@ -257,7 +392,7 @@ async function deletarFicha(evt, id) {
     document.getElementById('empty-state').style.display = 'flex';
     document.getElementById('ficha-detail').style.display = 'none';
   }
-  await carregarFichas();
+  await carregarTecnicos();
   toast('Ficha removida', 'info');
 }
 
@@ -287,7 +422,7 @@ async function adicionarServico() {
     fecharModais();
     toast(`Ponto adicionado! Distância total: ${r.distancia_total} km`, 'success');
     await renderFichaDetalhe(fichaId);
-    await carregarFichas();
+    await carregarTecnicos();
   } catch (e) {
     toast(e.message, 'error');
   } finally {
@@ -305,7 +440,7 @@ async function removerServico(servicoId, fichaId) {
     const r = await api(`/servicos/${servicoId}`, { method: 'DELETE' });
     toast(`Ponto removido. Rota recalculada: ${r.distancia_total} km`, 'success');
     await renderFichaDetalhe(fichaId);
-    await carregarFichas();
+    await carregarTecnicos();
   } catch (e) {
     toast(e.message, 'error');
     if (row) row.style.opacity = '1';
@@ -317,14 +452,21 @@ async function forcarOtimizacao(fichaId) {
     const r = await api(`/fichas/${fichaId}/otimizar`, { method: 'POST' });
     toast(`Rota otimizada! Distância: ${r.distancia_total} km`, 'success');
     await renderFichaDetalhe(fichaId);
-    await carregarFichas();
+    await carregarTecnicos();
   } catch (e) {
     toast(e.message, 'error');
   }
 }
 
 // ─── MODAIS ──────────────────────────────────────────────────────────
-function abrirModalNovaFicha() {
+function abrirModalNovoTecnico() {
+  document.getElementById('novo-tecnico-nome').value = '';
+  document.getElementById('modal-novo-tecnico').classList.add('open');
+  setTimeout(() => document.getElementById('novo-tecnico-nome').focus(), 100);
+}
+
+function abrirModalNovaFicha(tecnicoId) {
+  document.getElementById('nova-ficha-tecnico-id').value = tecnicoId;
   document.getElementById('nova-dia').value = '';
   document.querySelectorAll('.dia-pill').forEach(p => p.classList.remove('selected'));
   document.getElementById('nova-data').value = '';

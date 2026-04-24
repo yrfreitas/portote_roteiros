@@ -10,8 +10,16 @@ def get_db():
 def init_db():
     conn = get_db()
     conn.executescript("""
+        CREATE TABLE IF NOT EXISTS tecnicos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            cor TEXT DEFAULT '#1a6fd4',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS fichas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tecnico_id INTEGER,
             dia_semana TEXT NOT NULL,
             data_referencia TEXT,
             ponto_partida TEXT,
@@ -20,13 +28,15 @@ def init_db():
             ponto_partida_lng REAL,
             distancia_total REAL DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS servicos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ficha_id INTEGER NOT NULL,
             cep TEXT NOT NULL,
+            numero TEXT DEFAULT '',
             endereco_completo TEXT,
             lat REAL,
             lng REAL,
@@ -44,5 +54,16 @@ def init_db():
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
     """)
+
+    # Migrações seguras para banco já existente
+    try:
+        conn.execute("ALTER TABLE fichas ADD COLUMN tecnico_id INTEGER")
+    except:
+        pass
+    try:
+        conn.execute("ALTER TABLE servicos ADD COLUMN numero TEXT DEFAULT ''")
+    except:
+        pass
+
     conn.commit()
     conn.close()
