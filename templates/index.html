@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portotec — Roteiros</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo-mark">PT</div>
+    <div class="logo-text">Portotec<span> Roteiros</span></div>
+    <div class="header-meta">
+      <span class="header-date" id="current-date"></span>
+      <div class="status-dot"></div>
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Fichas de Dia</span>
+      <button class="btn-nova-ficha" onclick="abrirModalNovaFicha()">+</button>
+    </div>
+    <div class="sidebar-list" id="sidebar-list">
+      <div class="loading-row">Carregando...</div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main" id="main-content">
+
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">🗺️</div>
+      <h2>Nenhuma ficha selecionada</h2>
+      <p>Crie uma nova ficha ou selecione uma existente na barra lateral.</p>
+      <button class="btn btn-primary" onclick="abrirModalNovaFicha()">+ Nova Ficha</button>
+    </div>
+
+    <div id="ficha-detail" style="display:none;"></div>
+
+  </main>
+</div>
+
+<!-- MODAL NOVA FICHA -->
+<div class="modal-overlay" id="modal-nova-ficha">
+  <div class="modal">
+    <div class="modal-title">📋 Nova Ficha de Dia</div>
+
+    <div class="form-group">
+      <label class="form-label">Dia da Semana</label>
+      <div class="dias-grid">
+        <button class="dia-pill" onclick="selecionarDia(this, 'Segunda-feira')">SEG</button>
+        <button class="dia-pill" onclick="selecionarDia(this, 'Terça-feira')">TER</button>
+        <button class="dia-pill" onclick="selecionarDia(this, 'Quarta-feira')">QUA</button>
+        <button class="dia-pill" onclick="selecionarDia(this, 'Quinta-feira')">QUI</button>
+        <button class="dia-pill" onclick="selecionarDia(this, 'Sexta-feira')">SEX</button>
+      </div>
+      <input type="hidden" id="nova-dia">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Data (opcional)</label>
+        <input type="date" class="form-input" id="nova-data">
+      </div>
+      <div class="form-group">
+        <label class="form-label">CEP de Partida</label>
+        <input type="text" class="form-input" id="nova-partida-cep"
+               placeholder="01310-100" maxlength="9"
+               oninput="formatarCEP(this)">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Nome do Ponto de Partida</label>
+      <input type="text" class="form-input" id="nova-partida-nome"
+             placeholder="Ex: Portotec — Sede Central">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button class="btn btn-primary" onclick="criarFicha()">Criar Ficha</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ADD SERVIÇO -->
+<!-- MODAL ADD SERVIÇO -->
+<div class="modal-overlay" id="modal-add-servico">
+  <div class="modal">
+    <div class="modal-title">📍 Adicionar Ponto de Serviço</div>
+    <input type="hidden" id="add-ficha-id">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">CEP *</label>
+        <input type="text" class="form-input" id="add-cep"
+               placeholder="01310-100" maxlength="9"
+               oninput="formatarCEP(this)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Número</label>
+        <input type="text" class="form-input" id="add-numero"
+               placeholder="Ex: 42 ou Apto 3">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Cliente</label>
+      <input type="text" class="form-input" id="add-cliente"
+             placeholder="Nome do cliente">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Descrição do Serviço</label>
+      <input type="text" class="form-input" id="add-descricao"
+             placeholder="Ex: Troca de peça, instalação...">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-add-servico" onclick="adicionarServico()">
+        Adicionar + Otimizar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- TOASTS -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
