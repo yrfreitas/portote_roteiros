@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ─── API ─────────────────────────────────────────────────────────────
-const BASE = "https://sua-url.railway.app";
+const BASE = "web-production-e50f4.up.railway.app";
 
 async function api(path, options = {}) {
   const res = await fetch(BASE + '/api' + path, {
