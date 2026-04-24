@@ -3,11 +3,13 @@ from flask import Flask, render_template
 from database import init_db
 from routes.fichas import fichas_bp
 from routes.servicos import servicos_bp
+from routes.cep_checker import cep_checker_bp
 
 app = Flask(__name__)
 
 app.register_blueprint(fichas_bp, url_prefix="/api")
 app.register_blueprint(servicos_bp, url_prefix="/api")
+app.register_blueprint(cep_checker_bp, url_prefix="/api")
 
 
 @app.route("/")
