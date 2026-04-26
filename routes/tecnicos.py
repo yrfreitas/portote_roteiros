@@ -16,8 +16,7 @@ PH = "%s" if PG else "?"
 def _fetchall(cur):
     rows = cur.fetchall()
     if PG:
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in rows]
+        return [dict(r) for r in rows]
     return [dict(r) for r in rows]
 
 
@@ -25,9 +24,6 @@ def _fetchone(cur):
     row = cur.fetchone()
     if row is None:
         return None
-    if PG:
-        cols = [d[0] for d in cur.description]
-        return dict(zip(cols, row))
     return dict(row)
 
 
@@ -58,8 +54,9 @@ def criar_tecnico():
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM tecnicos")
-    total = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) as total FROM tecnicos")
+    row = cur.fetchone()
+    total = row["total"] if PG else row[0]
     cor = data.get("cor", CORES_PADRAO[total % len(CORES_PADRAO)])
 
     if PG:
@@ -67,7 +64,7 @@ def criar_tecnico():
             "INSERT INTO tecnicos (nome, cor) VALUES (%s, %s) RETURNING id",
             (nome, cor)
         )
-        tecnico_id = cur.fetchone()[0]
+        tecnico_id = cur.fetchone()["id"]
     else:
         cur.execute("INSERT INTO tecnicos (nome, cor) VALUES (?, ?)", (nome, cor))
         tecnico_id = cur.lastrowid
