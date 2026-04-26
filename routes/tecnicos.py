@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from database import get_db
+import os
 
 tecnicos_bp = Blueprint("tecnicos", __name__)
 
@@ -8,16 +9,23 @@ CORES_PADRAO = [
     "#d4a01a", "#2aaab8", "#d41a5c", "#5c7ad4"
 ]
 
+PG = bool(os.environ.get("DATABASE_URL"))
+PH = "%s" if PG else "?"
+
+
 @tecnicos_bp.route("/tecnicos", methods=["GET"])
 def listar_tecnicos():
     conn = get_db()
-    tecnicos = conn.execute("""
+    cur = conn.cursor()
+    cur.execute("""
         SELECT t.*, COUNT(f.id) as total_fichas
         FROM tecnicos t
         LEFT JOIN fichas f ON f.tecnico_id = t.id
         GROUP BY t.id
         ORDER BY t.nome
-    """).fetchall()
+    """)
+    tecnicos = cur.fetchall()
+    cur.close()
     conn.close()
     return jsonify([dict(t) for t in tecnicos])
 
@@ -31,27 +39,35 @@ def criar_tecnico():
         return jsonify({"erro": "Nome é obrigatório"}), 400
 
     conn = get_db()
-
-    # Escolhe cor automática baseada na quantidade de técnicos
-    total = conn.execute("SELECT COUNT(*) as c FROM tecnicos").fetchone()["c"]
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) as c FROM tecnicos")
+    row = cur.fetchone()
+    total = row["c"] if not PG else row[0]
     cor = data.get("cor", CORES_PADRAO[total % len(CORES_PADRAO)])
 
-    cur = conn.execute(
-        "INSERT INTO tecnicos (nome, cor) VALUES (?, ?)",
-        (nome, cor)
-    )
-    tecnico_id = cur.lastrowid
-    conn.commit()
-    conn.close()
+    if PG:
+        cur.execute(
+            "INSERT INTO tecnicos (nome, cor) VALUES (%s, %s) RETURNING id",
+            (nome, cor)
+        )
+        tecnico_id = cur.fetchone()[0]
+    else:
+        cur.execute("INSERT INTO tecnicos (nome, cor) VALUES (?, ?)", (nome, cor))
+        tecnico_id = cur.lastrowid
 
+    conn.commit()
+    cur.close()
+    conn.close()
     return jsonify({"id": tecnico_id, "nome": nome, "cor": cor})
 
 
 @tecnicos_bp.route("/tecnicos/<int:tecnico_id>", methods=["DELETE"])
 def deletar_tecnico(tecnico_id):
     conn = get_db()
-    conn.execute("DELETE FROM tecnicos WHERE id = ?", (tecnico_id,))
+    cur = conn.cursor()
+    cur.execute(f"DELETE FROM tecnicos WHERE id = {PH}", (tecnico_id,))
     conn.commit()
+    cur.close()
     conn.close()
     return jsonify({"mensagem": "Técnico removido"})
 
@@ -64,41 +80,49 @@ def verificar_cep():
     if not cep:
         return jsonify({"erro": "CEP é obrigatório"}), 400
 
-    # Busca o CEP no cache
     conn = get_db()
-    geo = conn.execute(
-        "SELECT * FROM cache_geo WHERE cep = ?", (cep,)
-    ).fetchone()
+    cur = conn.cursor()
+    cur.execute(f"SELECT * FROM cache_geo WHERE cep = {PH}", (cep,))
+    geo = cur.fetchone()
 
     if not geo:
+        cur.close()
         conn.close()
         from services.geo import geocode_cep
         geo_data = geocode_cep(cep)
         if not geo_data:
             return jsonify({"erro": "CEP não encontrado"}), 404
         conn = get_db()
-        geo = conn.execute(
-            "SELECT * FROM cache_geo WHERE cep = ?", (cep,)
-        ).fetchone()
+        cur = conn.cursor()
+        cur.execute(f"SELECT * FROM cache_geo WHERE cep = {PH}", (cep,))
+        geo = cur.fetchone()
 
     if not geo:
+        cur.close()
         conn.close()
         return jsonify({"erro": "CEP não encontrado"}), 404
 
+    if PG:
+        geo = dict(zip([d[0] for d in cur.description], geo))
+
     lat_alvo = geo["lat"]
-    lng_alvo = geo["lon"] if "lon" in geo.keys() else geo["lng"]
+    lng_alvo = geo["lng"]
     endereco_alvo = geo["endereco"]
 
-    # Busca todos os serviços com coordenadas
-    servicos = conn.execute("""
+    cur.execute("""
         SELECT s.*, f.dia_semana, f.tecnico_id, f.id as ficha_id,
                t.nome as tecnico_nome, t.cor as tecnico_cor
         FROM servicos s
         JOIN fichas f ON f.id = s.ficha_id
         JOIN tecnicos t ON t.id = f.tecnico_id
         WHERE s.lat IS NOT NULL
-    """).fetchall()
+    """)
+    servicos = cur.fetchall()
+    cur.close()
     conn.close()
+
+    if PG:
+        cols = [d[0] for d in cur.description] if hasattr(cur, 'description') else []
 
     if not servicos:
         return jsonify({
@@ -108,11 +132,11 @@ def verificar_cep():
             "mensagem": "Nenhuma rota cadastrada ainda."
         })
 
-    # Calcula distância para cada serviço e agrupa por ficha
     from services.otimizador import haversine
 
     fichas_dist = {}
     for s in servicos:
+        s = dict(s) if not PG else dict(zip(cols, s))
         dist = haversine(lat_alvo, lng_alvo, s["lat"], s["lng"])
         fid = s["ficha_id"]
         if fid not in fichas_dist:
@@ -130,9 +154,7 @@ def verificar_cep():
                 fichas_dist[fid]["dist_minima"] = dist
         fichas_dist[fid]["total_pontos"] += 1
 
-    # Ordena por distância mínima e pega top 3
     sugestoes = sorted(fichas_dist.values(), key=lambda x: x["dist_minima"])[:3]
-
     for s in sugestoes:
         s["dist_minima"] = round(s["dist_minima"], 1)
 

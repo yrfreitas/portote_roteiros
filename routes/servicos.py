@@ -1,9 +1,13 @@
 from flask import Blueprint, request, jsonify
 from database import get_db
 from services.geo import geocode_cep
-from routes.fichas import recalcular_rota
+from routes.fichas import recalcular_rota, _fetchone
+import os
 
 servicos_bp = Blueprint("servicos", __name__)
+
+PG = bool(os.environ.get("DATABASE_URL"))
+PH = "%s" if PG else "?"
 
 
 @servicos_bp.route("/fichas/<int:ficha_id>/servicos", methods=["POST"])
@@ -19,29 +23,27 @@ def adicionar_servico(ficha_id):
     if not geo:
         return jsonify({"erro": f"CEP {cep} não encontrado. Verifique e tente novamente."}), 400
 
+    lat = geo.lat if PG else geo["lat"]
+    lng = geo.lng if PG else geo["lng"]
+    endereco = geo.endereco if PG else geo["endereco"]
+
     conn = get_db()
-    ficha = conn.execute(
-        "SELECT * FROM fichas WHERE id = ?", (ficha_id,)
-    ).fetchone()
+    cur = conn.cursor()
+    cur.execute(f"SELECT * FROM fichas WHERE id = {PH}", (ficha_id,))
+    ficha = _fetchone(cur)
 
     if not ficha:
+        cur.close()
         conn.close()
         return jsonify({"erro": "Ficha não encontrada"}), 404
 
-    conn.execute(
-        """INSERT INTO servicos (ficha_id, cep, endereco_completo, lat, lng, cliente, descricao, numero)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            ficha_id,
-            cep,
-            geo["endereco"],
-            geo["lat"],
-            geo["lng"],
-            data.get("cliente", ""),
-            data.get("descricao", ""),
-            numero
-        )
+    cur.execute(
+        f"""INSERT INTO servicos (ficha_id, cep, endereco_completo, lat, lng, cliente, descricao, numero)
+           VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
+        (ficha_id, cep, endereco, lat, lng,
+         data.get("cliente", ""), data.get("descricao", ""), numero)
     )
+    cur.close()
 
     resultado = recalcular_rota(conn, ficha_id, ficha)
     conn.commit()
@@ -49,7 +51,7 @@ def adicionar_servico(ficha_id):
 
     return jsonify({
         "mensagem": "Serviço adicionado e rota otimizada",
-        "endereco": geo["endereco"],
+        "endereco": endereco,
         "numero": numero,
         "distancia_total": resultado["distancia_total"]
     })
@@ -58,20 +60,21 @@ def adicionar_servico(ficha_id):
 @servicos_bp.route("/servicos/<int:servico_id>", methods=["DELETE"])
 def remover_servico(servico_id):
     conn = get_db()
-    servico = conn.execute(
-        "SELECT * FROM servicos WHERE id = ?", (servico_id,)
-    ).fetchone()
+    cur = conn.cursor()
+    cur.execute(f"SELECT * FROM servicos WHERE id = {PH}", (servico_id,))
+    servico = _fetchone(cur)
 
     if not servico:
+        cur.close()
         conn.close()
         return jsonify({"erro": "Serviço não encontrado"}), 404
 
     ficha_id = servico["ficha_id"]
-    conn.execute("DELETE FROM servicos WHERE id = ?", (servico_id,))
+    cur.execute(f"DELETE FROM servicos WHERE id = {PH}", (servico_id,))
 
-    ficha = conn.execute(
-        "SELECT * FROM fichas WHERE id = ?", (ficha_id,)
-    ).fetchone()
+    cur.execute(f"SELECT * FROM fichas WHERE id = {PH}", (ficha_id,))
+    ficha = _fetchone(cur)
+    cur.close()
 
     resultado = recalcular_rota(conn, ficha_id, ficha)
     conn.commit()
