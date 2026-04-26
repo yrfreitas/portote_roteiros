@@ -27,6 +27,31 @@ async function api(path, options = {}) {
   return data;
 }
 
+// ─── DISTÂNCIA E TEMPO ───────────────────────────────────────────────
+// Fator de correção: distância em linha reta * 1.4 ≈ distância real por ruas
+const FATOR_ROTA = 1.4;
+// Velocidade média urbana realista (km/h)
+const VELOCIDADE_MEDIA = 40;
+// Tempo médio por parada (minutos)
+const TEMPO_POR_PARADA = 20;
+
+function distanciaReal(kmLinhaReta) {
+  return kmLinhaReta * FATOR_ROTA;
+}
+
+function tempoEstimado(distTotalKm, numParadas) {
+  const tempoDeslocamento = (distanciaReal(distTotalKm) / VELOCIDADE_MEDIA) * 60;
+  const tempoServico = numParadas * TEMPO_POR_PARADA;
+  return Math.round(tempoDeslocamento + tempoServico);
+}
+
+function formatarTempo(minutos) {
+  if (minutos < 60) return `${minutos}min`;
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+}
+
 // ─── TÉCNICOS ────────────────────────────────────────────────────────
 async function carregarTecnicos() {
   try {
@@ -56,7 +81,6 @@ async function carregarTecnicos() {
       </div>
     `).join('');
 
-    // Carrega fichas de cada técnico
     for (const t of tecnicos) {
       await carregarFichasTecnico(t.id);
     }
@@ -93,7 +117,7 @@ async function carregarFichasTecnico(tecnicoId) {
           <span class="badge ${f.total_servicos > 0 ? 'accent' : ''}">
             ${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''}
           </span>
-          ${f.distancia_total > 0 ? `<span class="badge">${f.distancia_total} km</span>` : ''}
+          ${f.distancia_total > 0 ? `<span class="badge">${distanciaReal(f.distancia_total).toFixed(1)} km</span>` : ''}
         </div>
       </div>
     `).join('');
@@ -150,7 +174,9 @@ async function renderFichaDetalhe(id) {
   const tecnico = tecnicos.find(t => t.id === ficha.tecnico_id);
   const corTecnico = tecnico?.cor || 'var(--accent)';
   const temPartida = ficha.ponto_partida_lat != null;
-  const distTotal = ficha.distancia_total || 0;
+  const distBruta = ficha.distancia_total || 0;
+  const distReal = distanciaReal(distBruta);
+  const tempo = tempoEstimado(distBruta, servicos.length);
 
   detail.innerHTML = `
     <div class="ficha-header">
@@ -175,15 +201,15 @@ async function renderFichaDetalhe(id) {
         <div class="stat-value" style="color:${corTecnico}">${servicos.length}<span class="stat-unit">pts</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Distância Total</div>
+        <div class="stat-label">Distância Estimada</div>
         <div class="stat-value" style="color:${corTecnico}">
-          ${distTotal > 0 ? distTotal.toFixed(1) : '—'}<span class="stat-unit">km</span>
+          ${distReal > 0 ? distReal.toFixed(1) : '—'}<span class="stat-unit">km</span>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Tempo Estimado</div>
+        <div class="stat-label">Tempo Total (c/ serviços)</div>
         <div class="stat-value" style="color:${corTecnico}">
-          ${distTotal > 0 ? Math.round(distTotal / 30 * 60) : '—'}<span class="stat-unit">min</span>
+          ${distReal > 0 ? formatarTempo(tempo) : '—'}<span class="stat-unit"></span>
         </div>
       </div>
     </div>
@@ -226,7 +252,10 @@ async function renderFichaDetalhe(id) {
           ${temPartida ? `
             <div style="font-size:12px; color:var(--text-secondary); margin-bottom:14px;">
               Algoritmo <strong>Nearest Neighbor</strong> recalcula automaticamente
-              ao adicionar ou remover pontos.
+              ao adicionar ou remover pontos.<br><br>
+              <span style="color:var(--text-muted); font-size:11px;">
+                ℹ️ Distância estimada por ruas (linha reta × 1.4) · Velocidade média: ${VELOCIDADE_MEDIA} km/h · ${TEMPO_POR_PARADA} min por parada
+              </span>
             </div>
             <button class="btn btn-ghost btn-full" onclick="forcarOtimizacao(${ficha.id})">
               🔄 Recalcular Rota Agora
@@ -337,7 +366,7 @@ async function verificarCEP() {
             <div class="sugestao-dot" style="background:${s.tecnico_cor}"></div>
             <div class="sugestao-info">
               <div class="sugestao-tecnico" style="color:${s.tecnico_cor}">${s.tecnico_nome}</div>
-              <div class="sugestao-dia">${s.dia_semana} · ${s.dist_minima} km do ponto mais próximo</div>
+              <div class="sugestao-dia">${s.dia_semana} · ${distanciaReal(s.dist_minima).toFixed(1)} km do ponto mais próximo</div>
             </div>
             ${i === 0 ? '<div class="sugestao-badge">✓ Ideal</div>' : ''}
           </div>
@@ -403,8 +432,7 @@ async function adicionarServico() {
   const cep = document.getElementById('add-cep').value;
 
   if (!cep || cep.replace('-', '').length < 8) {
-    toast('Informe um CEP válido', 'error');
-    return;
+    toast('Informe um CEP válido', 'error'); return;
   }
 
   const btn = document.getElementById('btn-add-servico');
@@ -422,7 +450,7 @@ async function adicionarServico() {
       })
     });
     fecharModais();
-    toast(`Ponto adicionado! Distância total: ${r.distancia_total} km`, 'success');
+    toast(`Ponto adicionado! Distância estimada: ${distanciaReal(r.distancia_total).toFixed(1)} km`, 'success');
     await renderFichaDetalhe(fichaId);
     await carregarTecnicos();
   } catch (e) {
@@ -440,7 +468,7 @@ async function removerServico(servicoId, fichaId) {
 
   try {
     const r = await api(`/servicos/${servicoId}`, { method: 'DELETE' });
-    toast(`Ponto removido. Rota recalculada: ${r.distancia_total} km`, 'success');
+    toast(`Ponto removido. Distância estimada: ${distanciaReal(r.distancia_total).toFixed(1)} km`, 'success');
     await renderFichaDetalhe(fichaId);
     await carregarTecnicos();
   } catch (e) {
@@ -452,7 +480,7 @@ async function removerServico(servicoId, fichaId) {
 async function forcarOtimizacao(fichaId) {
   try {
     const r = await api(`/fichas/${fichaId}/otimizar`, { method: 'POST' });
-    toast(`Rota otimizada! Distância: ${r.distancia_total} km`, 'success');
+    toast(`Rota otimizada! Distância estimada: ${distanciaReal(r.distancia_total).toFixed(1)} km`, 'success');
     await renderFichaDetalhe(fichaId);
     await carregarTecnicos();
   } catch (e) {
