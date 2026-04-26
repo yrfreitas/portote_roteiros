@@ -1,0 +1,17 @@
+[33m27c3494[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m refactor: moderniza geocode_cep com retry, logs e validação de CEP
+[33mf594586[m init db fix
+[33m881dba5[m responsivo mobile
+[33m60b1a27[m responsivo mobile
+[33m98f610b[m cors e url railway
+[33mad348a9[m responsivo mobile
+[33mb7d58b2[m responsivo mobile
+[33mc1722fb[m técnicos, verificador de CEP e responsivo mobile
+[33mddba439[m técnicos, verificador de CEP e responsivo mobile
+[33md0950d3[m técnicos, verificador de CEP e responsivo mobile
+[33me47789a[m técnicos, verificador de CEP e responsivo mobile
+[33m8336f8d[m responsivo mobile
+[33m676d52f[m responsivo mobile
+[33m35193ac[m responsivo mobile
+[33m22b9452[m responsivo mobile
+[33m464e2dd[m fix requirements.txt
+[33me2ef8b9[m primeiro commit

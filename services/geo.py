@@ -1,157 +1,138 @@
-import urllib.request
-import urllib.parse
-import urllib.error
-import json
-import time
-import re
-import logging
-from dataclasses import dataclass
-from contextlib import contextmanager
-from typing import Optional
-import os
-
+from flask import Blueprint, request, jsonify
 from database import get_db
 
-log = logging.getLogger("geo")
+tecnicos_bp = Blueprint("tecnicos", __name__)
 
-VIACEP_URL      = "https://viacep.com.br/ws/{cep}/json/"
-NOMINATIM_URL   = "https://nominatim.openstreetmap.org/search"
-USER_AGENT      = "PortotecRoteiros/2.0 (contato@portotec.com)"
-NOMINATIM_DELAY = 1.1
-HTTP_TIMEOUT    = 8
-PG = bool(os.environ.get("DATABASE_URL"))
+CORES_PADRAO = [
+    "#1a6fd4", "#e05c2a", "#2aa05c", "#9b3db8",
+    "#d4a01a", "#2aaab8", "#d41a5c", "#5c7ad4"
+]
 
-
-@dataclass(frozen=True)
-class GeoResult:
-    cep:      str
-    endereco: str
-    lat:      float
-    lng:      float
-
-    def to_dict(self):
-        return {"cep": self.cep, "endereco": self.endereco, "lat": self.lat, "lng": self.lng}
-
-    def __getitem__(self, key):
-        return self.to_dict()[key]
-
-
-def _validate_cep(cep):
-    clean = re.sub(r"\D", "", cep)
-    if len(clean) != 8:
-        raise ValueError(f"CEP inválido: '{cep}'")
-    return clean
-
-
-@contextmanager
-def _db():
+@tecnicos_bp.route("/tecnicos", methods=["GET"])
+def listar_tecnicos():
     conn = get_db()
-    try:
-        yield conn
-    finally:
-        conn.close()
+    tecnicos = conn.execute("""
+        SELECT t.*, COUNT(f.id) as total_fichas
+        FROM tecnicos t
+        LEFT JOIN fichas f ON f.tecnico_id = t.id
+        GROUP BY t.id
+        ORDER BY t.nome
+    """).fetchall()
+    conn.close()
+    return jsonify([dict(t) for t in tecnicos])
 
 
-def _get_json(url):
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    for attempt in range(1, 4):
-        try:
-            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-                return json.loads(resp.read().decode())
-        except Exception as e:
-            log.warning("Erro em %s (tentativa %d/3): %s", url, attempt, e)
-        if attempt < 3:
-            time.sleep(2 ** attempt)
-    return None
+@tecnicos_bp.route("/tecnicos", methods=["POST"])
+def criar_tecnico():
+    data = request.json
+    nome = data.get("nome", "").strip()
+
+    if not nome:
+        return jsonify({"erro": "Nome é obrigatório"}), 400
+
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) as c FROM tecnicos").fetchone()["c"]
+    cor = data.get("cor", CORES_PADRAO[total % len(CORES_PADRAO)])
+
+    cur = conn.execute(
+        "INSERT INTO tecnicos (nome, cor) VALUES (?, ?)",
+        (nome, cor)
+    )
+    tecnico_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    return jsonify({"id": tecnico_id, "nome": nome, "cor": cor})
 
 
-def _cache_get(cep_clean):
-    with _db() as conn:
-        cur = conn.cursor()
-        if PG:
-            cur.execute("SELECT endereco, lat, lng FROM cache_geo WHERE cep = %s", (cep_clean,))
+@tecnicos_bp.route("/tecnicos/<int:tecnico_id>", methods=["DELETE"])
+def deletar_tecnico(tecnico_id):
+    conn = get_db()
+    conn.execute("DELETE FROM tecnicos WHERE id = ?", (tecnico_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"mensagem": "Técnico removido"})
+
+
+@tecnicos_bp.route("/verificar-cep", methods=["POST"])
+def verificar_cep():
+    data = request.json
+    cep = data.get("cep", "").replace("-", "").strip()
+
+    if not cep:
+        return jsonify({"erro": "CEP é obrigatório"}), 400
+
+    # Busca no cache primeiro
+    conn = get_db()
+    geo = conn.execute(
+        "SELECT endereco, lat, lng FROM cache_geo WHERE cep = ?", (cep,)
+    ).fetchone()
+    conn.close()
+
+    if not geo:
+        # Geocodifica se não estiver no cache
+        from services.geo import geocode_cep
+        geo_data = geocode_cep(cep)
+        if not geo_data:
+            return jsonify({"erro": "CEP não encontrado"}), 404
+        lat_alvo = geo_data["lat"]
+        lng_alvo = geo_data["lng"]
+        endereco_alvo = geo_data["endereco"]
+    else:
+        lat_alvo = geo["lat"]
+        lng_alvo = geo["lng"]
+        endereco_alvo = geo["endereco"]
+
+    # Busca todos os serviços cadastrados
+    conn = get_db()
+    servicos = conn.execute("""
+        SELECT s.lat, s.lng, s.ficha_id,
+               f.dia_semana, f.tecnico_id,
+               t.nome as tecnico_nome, t.cor as tecnico_cor
+        FROM servicos s
+        JOIN fichas f ON f.id = s.ficha_id
+        JOIN tecnicos t ON t.id = f.tecnico_id
+        WHERE s.lat IS NOT NULL AND s.lng IS NOT NULL
+    """).fetchall()
+    conn.close()
+
+    if not servicos:
+        return jsonify({
+            "cep": cep,
+            "endereco": endereco_alvo,
+            "sugestoes": [],
+            "mensagem": "Nenhuma rota cadastrada ainda."
+        })
+
+    from services.otimizador import haversine
+
+    # Agrupa por ficha e pega a distância mínima de cada uma
+    fichas_dist = {}
+    for s in servicos:
+        dist = haversine(lat_alvo, lng_alvo, s["lat"], s["lng"])
+        fid = s["ficha_id"]
+        if fid not in fichas_dist:
+            fichas_dist[fid] = {
+                "ficha_id": fid,
+                "dia_semana": s["dia_semana"],
+                "tecnico_id": s["tecnico_id"],
+                "tecnico_nome": s["tecnico_nome"],
+                "tecnico_cor": s["tecnico_cor"],
+                "dist_minima": dist,
+                "total_pontos": 1
+            }
         else:
-            cur.execute("SELECT endereco, lat, lng FROM cache_geo WHERE cep = ?", (cep_clean,))
-        row = cur.fetchone()
-        cur.close()
+            if dist < fichas_dist[fid]["dist_minima"]:
+                fichas_dist[fid]["dist_minima"] = dist
+            fichas_dist[fid]["total_pontos"] += 1
 
-    if row:
-        if PG:
-            return GeoResult(cep=cep_clean, endereco=row["endereco"], lat=row["lat"], lng=row["lng"])
-        return GeoResult(cep=cep_clean, endereco=row[0], lat=row[1], lng=row[2])
-    return None
+    # Top 3 mais próximas
+    sugestoes = sorted(fichas_dist.values(), key=lambda x: x["dist_minima"])[:3]
+    for s in sugestoes:
+        s["dist_minima"] = round(s["dist_minima"], 1)
 
-
-def _cache_set(result):
-    with _db() as conn:
-        cur = conn.cursor()
-        if PG:
-            cur.execute(
-                "INSERT INTO cache_geo (cep, endereco, lat, lng) VALUES (%s, %s, %s, %s) ON CONFLICT (cep) DO UPDATE SET endereco=%s, lat=%s, lng=%s",
-                (result.cep, result.endereco, result.lat, result.lng, result.endereco, result.lat, result.lng)
-            )
-        else:
-            cur.execute(
-                "INSERT OR REPLACE INTO cache_geo (cep, endereco, lat, lng) VALUES (?, ?, ?, ?)",
-                (result.cep, result.endereco, result.lat, result.lng)
-            )
-        conn.commit()
-        cur.close()
-
-
-def _fetch_viacep(cep_clean):
-    data = _get_json(VIACEP_URL.format(cep=cep_clean))
-    if not data or "erro" in data:
-        return None
-    return data
-
-
-def _build_queries(via):
-    logr = via.get("logradouro", "").strip()
-    bai  = via.get("bairro", "").strip()
-    cid  = via.get("localidade", "").strip()
-    uf   = via.get("uf", "").strip()
-    candidates = []
-    if logr:
-        candidates.append(f"{logr}, {bai}, {cid}, {uf}, Brasil")
-        candidates.append(f"{logr}, {cid}, {uf}, Brasil")
-    if bai:
-        candidates.append(f"{bai}, {cid}, {uf}, Brasil")
-    candidates.append(f"{cid}, {uf}, Brasil")
-    return list(dict.fromkeys(candidates))
-
-
-def _geocode_nominatim(queries):
-    for i, q in enumerate(queries, 1):
-        params = urllib.parse.urlencode({"q": q, "format": "json", "limit": 1, "countrycodes": "br"})
-        data = _get_json(f"{NOMINATIM_URL}?{params}")
-        if i < len(queries):
-            time.sleep(NOMINATIM_DELAY)
-        if data:
-            return float(data[0]["lat"]), float(data[0]["lon"]), data[0].get("display_name", q)
-    return None
-
-
-def geocode_cep(cep: str) -> Optional[GeoResult]:
-    try:
-        cep_clean = _validate_cep(cep)
-    except ValueError as e:
-        log.error("%s", e)
-        return None
-
-    cached = _cache_get(cep_clean)
-    if cached:
-        return cached
-
-    via = _fetch_viacep(cep_clean)
-    if via is None:
-        return None
-
-    coords = _geocode_nominatim(_build_queries(via))
-    if coords is None:
-        return None
-
-    lat, lng, endereco = coords
-    result = GeoResult(cep=cep_clean, endereco=endereco, lat=lat, lng=lng)
-    _cache_set(result)
-    return result
+    return jsonify({
+        "cep": cep,
+        "endereco": endereco_alvo,
+        "sugestoes": sugestoes
+    })
