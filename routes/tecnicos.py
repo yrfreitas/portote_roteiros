@@ -59,8 +59,7 @@ def criar_tecnico():
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM tecnicos")
-    row = cur.fetchone()
-    total = row[0] if PG else row[0]
+    total = cur.fetchone()[0]
     cor = data.get("cor", CORES_PADRAO[total % len(CORES_PADRAO)])
 
     if PG:
