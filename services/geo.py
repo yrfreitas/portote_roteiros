@@ -20,7 +20,7 @@ NOMINATIM_URL   = "https://nominatim.openstreetmap.org/search"
 USER_AGENT      = "PortotecRoteiros/2.0 (contato@portotec.com)"
 NOMINATIM_DELAY = 1.1
 HTTP_TIMEOUT    = 5
-MAX_TOTAL_TIME  = 20  # segundos máximos no total antes de desistir
+MAX_TOTAL_TIME  = 20
 PG = bool(os.environ.get("DATABASE_URL"))
 
 
@@ -75,10 +75,13 @@ def _get_json(url: str, timeout: int = HTTP_TIMEOUT) -> Optional[dict]:
 def _cache_get(cep_clean: str) -> Optional[GeoResult]:
     with _db() as conn:
         if PG:
-            row = conn.execute(
+            cur = conn.cursor()
+            cur.execute(
                 "SELECT endereco, lat, lng FROM cache_geo WHERE cep = %s",
                 (cep_clean,)
-            ).fetchone()
+            )
+            row = cur.fetchone()
+            cur.close()
         else:
             row = conn.execute(
                 "SELECT endereco, lat, lng FROM cache_geo WHERE cep = ?",
@@ -90,23 +93,26 @@ def _cache_get(cep_clean: str) -> Optional[GeoResult]:
 
     return GeoResult(
         cep=cep_clean,
-        endereco=row["endereco"] if PG else row[0],
-        lat=row["lat"] if PG else row[1],
-        lng=row["lng"] if PG else row[2]
+        endereco=row[0],
+        lat=row[1],
+        lng=row[2]
     )
 
 
 def _cache_set(result: GeoResult) -> None:
     with _db() as conn:
         if PG:
-            conn.execute(
+            cur = conn.cursor()
+            cur.execute(
                 """INSERT INTO cache_geo (cep, endereco, lat, lng)
                    VALUES (%s, %s, %s, %s)
                    ON CONFLICT (cep) DO UPDATE
-                   SET endereco=%s, lat=%s, lng=%s""",
-                (result.cep, result.endereco, result.lat, result.lng,
-                 result.endereco, result.lat, result.lng)
+                   SET endereco=EXCLUDED.endereco,
+                       lat=EXCLUDED.lat,
+                       lng=EXCLUDED.lng""",
+                (result.cep, result.endereco, result.lat, result.lng)
             )
+            cur.close()
         else:
             conn.execute(
                 "INSERT OR REPLACE INTO cache_geo (cep, endereco, lat, lng) VALUES (?, ?, ?, ?)",
@@ -141,7 +147,6 @@ def _build_queries(via: dict) -> list:
     if cid:
         candidates.append(f"{cid}, {uf}, Brasil")
 
-    # Remove duplicatas mantendo ordem
     return list(dict.fromkeys(candidates))
 
 
@@ -166,7 +171,6 @@ def _geocode_nominatim(queries: list) -> Optional[tuple]:
 
         log.info("Nominatim tentativa %d sem resultado: %s", i + 1, q)
 
-        # Só dorme entre tentativas, não após a última
         if i < len(queries) - 1:
             time.sleep(NOMINATIM_DELAY)
 
@@ -190,25 +194,21 @@ def _geocode_completo(cep_clean: str, via: dict) -> Optional[GeoResult]:
 
 
 def geocode_cep(cep: str) -> Optional[GeoResult]:
-    # 1. Valida
     try:
         cep_clean = _validate_cep(cep)
     except ValueError as e:
         log.error("%s", e)
         return None
 
-    # 2. Cache
     cached = _cache_get(cep_clean)
     if cached:
         log.info("CEP %s retornado do cache", cep_clean)
         return cached
 
-    # 3. ViaCEP
     via = _fetch_viacep(cep_clean)
     if via is None:
         return None
 
-    # 4. Geocodifica com timeout total para não travar o servidor
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(_geocode_completo, cep_clean, via)
