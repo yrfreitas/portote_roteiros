@@ -28,11 +28,8 @@ async function api(path, options = {}) {
 }
 
 // ─── DISTÂNCIA E TEMPO ───────────────────────────────────────────────
-// Fator de correção: distância em linha reta * 1.4 ≈ distância real por ruas
 const FATOR_ROTA = 1.4;
-// Velocidade média urbana realista (km/h)
 const VELOCIDADE_MEDIA = 40;
-// Tempo médio por parada (minutos)
 const TEMPO_POR_PARADA = 20;
 
 function distanciaReal(kmLinhaReta) {
@@ -350,23 +347,40 @@ async function verificarCEP() {
     if (!r.sugestoes || r.sugestoes.length === 0) {
       resultado.innerHTML = `
         <div class="verificar-resultado-box">
-          <div style="font-size:12px; color:var(--text-muted);">
+          <div style="font-size:12px; color:var(--text-muted); padding:10px;">
             Nenhuma rota cadastrada para comparar ainda.
           </div>
         </div>`;
       return;
     }
 
+    const zonaLabel = {
+      centro: '🏙️ Centro',
+      norte:  '⬆️ Zona Norte',
+      sul:    '⬇️ Zona Sul',
+      leste:  '➡️ Zona Leste',
+      oeste:  '⬅️ Zona Oeste',
+      outros: '📍 Região'
+    };
+
     resultado.innerHTML = `
       <div class="verificar-resultado-box">
         <div class="verificar-endereco">${r.endereco.split(',').slice(0,2).join(',')}</div>
+        <div class="verificar-zona">${zonaLabel[r.zona] || r.zona}</div>
         <div class="verificar-sugestoes-title">Melhor encaixe:</div>
         ${r.sugestoes.map((s, i) => `
           <div class="sugestao-item ${i === 0 ? 'melhor' : ''}" onclick="selecionarFichaVerificador(${s.ficha_id})">
             <div class="sugestao-dot" style="background:${s.tecnico_cor}"></div>
             <div class="sugestao-info">
               <div class="sugestao-tecnico" style="color:${s.tecnico_cor}">${s.tecnico_nome}</div>
-              <div class="sugestao-dia">${s.dia_semana} · ${distanciaReal(s.dist_minima).toFixed(1)} km do ponto mais próximo</div>
+              <div class="sugestao-dia">
+                ${s.dia_semana} · ${distanciaReal(s.dist_minima).toFixed(1)} km
+                ${s.mesma_zona ? `<span class="tag-zona">✓ Mesma zona</span>` : ''}
+              </div>
+              ${s.pontos_mesma_zona > 0 ? `
+                <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">
+                  ${s.pontos_mesma_zona} ponto${s.pontos_mesma_zona > 1 ? 's' : ''} já na mesma região
+                </div>` : ''}
             </div>
             ${i === 0 ? '<div class="sugestao-badge">✓ Ideal</div>' : ''}
           </div>
