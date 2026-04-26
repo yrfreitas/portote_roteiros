@@ -13,8 +13,7 @@ PH = "%s" if PG else "?"
 def _fetchall(cur):
     rows = cur.fetchall()
     if PG:
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in rows]
+        return [dict(r) for r in rows]
     return [dict(r) for r in rows]
 
 
@@ -22,9 +21,6 @@ def _fetchone(cur):
     row = cur.fetchone()
     if row is None:
         return None
-    if PG:
-        cols = [d[0] for d in cur.description]
-        return dict(zip(cols, row))
     return dict(row)
 
 
@@ -34,19 +30,35 @@ def listar_fichas():
     cur = conn.cursor()
     tecnico_id = request.args.get("tecnico_id")
 
-    query = """
-        SELECT f.*, COUNT(s.id) as total_servicos,
-               t.nome as tecnico_nome, t.cor as tecnico_cor
-        FROM fichas f
-        LEFT JOIN servicos s ON s.ficha_id = f.id
-        LEFT JOIN tecnicos t ON t.id = f.tecnico_id
-    """
+    if PG:
+        query = """
+            SELECT f.id, f.tecnico_id, f.dia_semana, f.data_referencia,
+                   f.ponto_partida, f.ponto_partida_cep, f.ponto_partida_lat,
+                   f.ponto_partida_lng, f.distancia_total, f.created_at, f.updated_at,
+                   COUNT(s.id) as total_servicos,
+                   t.nome as tecnico_nome, t.cor as tecnico_cor
+            FROM fichas f
+            LEFT JOIN servicos s ON s.ficha_id = f.id
+            LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+        """
+    else:
+        query = """
+            SELECT f.*, COUNT(s.id) as total_servicos,
+                   t.nome as tecnico_nome, t.cor as tecnico_cor
+            FROM fichas f
+            LEFT JOIN servicos s ON s.ficha_id = f.id
+            LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+        """
+
     params = []
     if tecnico_id:
         query += f" WHERE f.tecnico_id = {PH}"
         params.append(tecnico_id)
 
-    query += " GROUP BY f.id ORDER BY f.updated_at DESC"
+    if PG:
+        query += " GROUP BY f.id, f.tecnico_id, f.dia_semana, f.data_referencia, f.ponto_partida, f.ponto_partida_cep, f.ponto_partida_lat, f.ponto_partida_lng, f.distancia_total, f.created_at, f.updated_at, t.nome, t.cor ORDER BY f.updated_at DESC"
+    else:
+        query += " GROUP BY f.id ORDER BY f.updated_at DESC"
 
     cur.execute(query, params)
     fichas = _fetchall(cur)
@@ -73,10 +85,10 @@ def criar_ficha():
     if partida_cep:
         geo = geocode_cep(partida_cep)
         if geo:
-            lat_p = geo.lat if PG else geo["lat"]
-            lng_p = geo.lng if PG else geo["lng"]
+            lat_p = geo.lat
+            lng_p = geo.lng
             if not partida:
-                partida = geo.endereco if PG else geo["endereco"]
+                partida = geo.endereco
 
     conn = get_db()
     cur = conn.cursor()
@@ -90,7 +102,7 @@ def criar_ficha():
             (tecnico_id, dia, data.get("data_referencia", ""),
              partida, partida_cep, lat_p, lng_p)
         )
-        ficha_id = cur.fetchone()[0]
+        ficha_id = cur.fetchone()["id"]
     else:
         cur.execute(
             """INSERT INTO fichas
