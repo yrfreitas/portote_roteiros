@@ -13,6 +13,24 @@ PG = bool(os.environ.get("DATABASE_URL"))
 PH = "%s" if PG else "?"
 
 
+def _fetchall(cur):
+    rows = cur.fetchall()
+    if PG:
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in rows]
+    return [dict(r) for r in rows]
+
+
+def _fetchone(cur):
+    row = cur.fetchone()
+    if row is None:
+        return None
+    if PG:
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
+    return dict(row)
+
+
 @tecnicos_bp.route("/tecnicos", methods=["GET"])
 def listar_tecnicos():
     conn = get_db()
@@ -24,10 +42,10 @@ def listar_tecnicos():
         GROUP BY t.id
         ORDER BY t.nome
     """)
-    tecnicos = cur.fetchall()
+    tecnicos = _fetchall(cur)
     cur.close()
     conn.close()
-    return jsonify([dict(t) for t in tecnicos])
+    return jsonify(tecnicos)
 
 
 @tecnicos_bp.route("/tecnicos", methods=["POST"])
@@ -40,9 +58,9 @@ def criar_tecnico():
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) as c FROM tecnicos")
+    cur.execute("SELECT COUNT(*) FROM tecnicos")
     row = cur.fetchone()
-    total = row["c"] if not PG else row[0]
+    total = row[0] if PG else row[0]
     cor = data.get("cor", CORES_PADRAO[total % len(CORES_PADRAO)])
 
     if PG:
@@ -83,7 +101,7 @@ def verificar_cep():
     conn = get_db()
     cur = conn.cursor()
     cur.execute(f"SELECT * FROM cache_geo WHERE cep = {PH}", (cep,))
-    geo = cur.fetchone()
+    geo = _fetchone(cur)
 
     if not geo:
         cur.close()
@@ -95,15 +113,12 @@ def verificar_cep():
         conn = get_db()
         cur = conn.cursor()
         cur.execute(f"SELECT * FROM cache_geo WHERE cep = {PH}", (cep,))
-        geo = cur.fetchone()
+        geo = _fetchone(cur)
 
     if not geo:
         cur.close()
         conn.close()
         return jsonify({"erro": "CEP não encontrado"}), 404
-
-    if PG:
-        geo = dict(zip([d[0] for d in cur.description], geo))
 
     lat_alvo = geo["lat"]
     lng_alvo = geo["lng"]
@@ -117,12 +132,9 @@ def verificar_cep():
         JOIN tecnicos t ON t.id = f.tecnico_id
         WHERE s.lat IS NOT NULL
     """)
-    servicos = cur.fetchall()
+    servicos = _fetchall(cur)
     cur.close()
     conn.close()
-
-    if PG:
-        cols = [d[0] for d in cur.description] if hasattr(cur, 'description') else []
 
     if not servicos:
         return jsonify({
@@ -136,7 +148,6 @@ def verificar_cep():
 
     fichas_dist = {}
     for s in servicos:
-        s = dict(s) if not PG else dict(zip(cols, s))
         dist = haversine(lat_alvo, lng_alvo, s["lat"], s["lng"])
         fid = s["ficha_id"]
         if fid not in fichas_dist:
