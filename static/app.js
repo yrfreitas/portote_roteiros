@@ -3,6 +3,149 @@ let fichaAtiva = null;
 let tecnicoAtivo = null;
 let tecnicos = [];
 
+// ─── MAPA ────────────────────────────────────────────────────────────
+let mapaLeaflet = null;
+let mapaMarkers = [];
+let mapaPolyline = null;
+
+function inicializarMapa(containerId) {
+  if (mapaLeaflet) {
+    mapaLeaflet.remove();
+    mapaLeaflet = null;
+  }
+  mapaMarkers = [];
+  mapaPolyline = null;
+
+  // Aguarda o container estar no DOM
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  mapaLeaflet = L.map(containerId, {
+    zoomControl: true,
+    attributionControl: false,
+  }).setView([-23.55, -46.63], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+  }).addTo(mapaLeaflet);
+
+  // Pequeno atributo discreto
+  L.control.attribution({ prefix: '© OSM' }).addTo(mapaLeaflet);
+}
+
+function renderizarMapaPontos(ficha, servicos, corTecnico = '#1a6fd4') {
+  if (!mapaLeaflet) return;
+
+  // Limpa camadas anteriores
+  mapaMarkers.forEach(m => m.remove());
+  mapaMarkers = [];
+  if (mapaPolyline) { mapaPolyline.remove(); mapaPolyline = null; }
+
+  const pontos = []; // [[lat, lng], ...]
+
+  // ── Ponto de partida ──────────────────────────────────────────────
+  const temPartida = ficha.ponto_partida_lat != null && ficha.ponto_partida_lat !== 0;
+  if (temPartida) {
+    const lat = ficha.ponto_partida_lat;
+    const lng = ficha.ponto_partida_lng;
+    pontos.push([lat, lng]);
+
+    const icon = L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width:36px; height:36px; border-radius:50%;
+          background:#fff8e0; border:2px solid #b87800;
+          display:flex; align-items:center; justify-content:center;
+          font-size:16px; box-shadow:0 2px 8px rgba(0,0,0,0.25);
+          cursor:default;">⭐</div>`,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+    });
+
+    const marker = L.marker([lat, lng], { icon })
+      .addTo(mapaLeaflet)
+      .bindPopup(`
+        <b style="color:#b87800;">🏠 Partida</b><br>
+        <span style="font-size:12px;">${ficha.ponto_partida || ''}</span>
+      `);
+    mapaMarkers.push(marker);
+  }
+
+  // ── Serviços na ordem do roteiro ──────────────────────────────────
+  const ordenados = [...servicos].sort((a, b) => a.ordem - b.ordem);
+
+  ordenados.forEach((s, i) => {
+    if (!s.lat || !s.lng || (s.lat === 0 && s.lng === 0)) return;
+
+    pontos.push([s.lat, s.lng]);
+
+    const num = i + 1;
+    const cor = corTecnico || '#1a6fd4';
+
+    const icon = L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width:34px; height:34px; border-radius:50%;
+          background:${cor}; border:2px solid white;
+          display:flex; align-items:center; justify-content:center;
+          color:white; font-weight:700; font-size:13px;
+          box-shadow:0 2px 8px rgba(0,0,0,0.3);
+          font-family:'JetBrains Mono',monospace;">
+          ${num}
+        </div>`,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+    });
+
+    const endLabel = s.numero
+      ? `Nº ${s.numero} · ${s.endereco_completo || ''}`
+      : (s.endereco_completo || '—');
+
+    const marker = L.marker([s.lat, s.lng], { icon })
+      .addTo(mapaLeaflet)
+      .bindPopup(`
+        <div style="min-width:180px;">
+          <div style="font-weight:700; color:${cor}; font-size:13px; margin-bottom:4px;">
+            📍 Parada ${num}
+          </div>
+          <div style="font-family:monospace; font-size:12px; color:#555; margin-bottom:2px;">
+            ${formatCEP(s.cep)}
+          </div>
+          <div style="font-size:12px; color:#333;">${endLabel}</div>
+          ${s.cliente ? `<div style="font-size:11px; color:#777; margin-top:4px;">👤 ${s.cliente}</div>` : ''}
+          ${s.descricao ? `<div style="font-size:11px; color:#777;">${s.descricao}</div>` : ''}
+        </div>
+      `);
+    mapaMarkers.push(marker);
+  });
+
+  // ── Linha de rota ─────────────────────────────────────────────────
+  if (pontos.length >= 2) {
+    mapaPolyline = L.polyline(pontos, {
+      color: corTecnico || '#1a6fd4',
+      weight: 3,
+      opacity: 0.7,
+      dashArray: '6, 6',
+    }).addTo(mapaLeaflet);
+  }
+
+  // ── Ajusta zoom para caber todos os pontos ────────────────────────
+  if (pontos.length === 1) {
+    mapaLeaflet.setView(pontos[0], 15);
+  } else if (pontos.length >= 2) {
+    mapaLeaflet.fitBounds(pontos, { padding: [32, 32] });
+  }
+}
+
+// Chama resize do Leaflet quando o container aparece
+function invalidarMapa() {
+  if (mapaLeaflet) {
+    setTimeout(() => mapaLeaflet.invalidateSize(), 100);
+  }
+}
+
 // ─── INIT ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   const now = new Date();
@@ -165,15 +308,22 @@ async function renderFichaDetalhe(id) {
       <span style="color:var(--text-muted);">Carregando roteiro...</span>
     </div>`;
 
+  // Destrói mapa anterior para evitar conflito de IDs
+  if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
+
   const { ficha, servicos } = await api(`/fichas/${id}`);
   fichaAtiva = ficha;
 
   const tecnico = tecnicos.find(t => t.id === ficha.tecnico_id);
   const corTecnico = tecnico?.cor || 'var(--accent)';
-  const temPartida = ficha.ponto_partida_lat != null;
+  const temPartida = ficha.ponto_partida_lat != null && ficha.ponto_partida_lat !== 0;
   const distBruta = ficha.distancia_total || 0;
   const distReal = distanciaReal(distBruta);
   const tempo = tempoEstimado(distBruta, servicos.length);
+
+  // Verifica se há pontos com coordenadas para mostrar o mapa
+  const temCoordenadas = temPartida ||
+    servicos.some(s => s.lat && s.lng && (s.lat !== 0 || s.lng !== 0));
 
   detail.innerHTML = `
     <div class="ficha-header">
@@ -211,69 +361,105 @@ async function renderFichaDetalhe(id) {
       </div>
     </div>
 
-    <div class="panel-grid">
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-icon">🏠</div>
-          <span class="panel-title">Ponto de Partida</span>
-        </div>
-        <div class="panel-body">
-          ${temPartida ? `
-            <div style="font-family:var(--font-mono); font-size:13px; color:${corTecnico}; margin-bottom:4px;">
-              ${ficha.ponto_partida_cep || '—'}
-            </div>
-            <div style="font-size:12px; color:var(--text-secondary);">
-              ${ficha.ponto_partida || 'Endereço não informado'}
-            </div>
-            <div style="margin-top:12px;">
-              <a href="https://www.openstreetmap.org/?mlat=${ficha.ponto_partida_lat}&mlon=${ficha.ponto_partida_lng}&zoom=15"
-                 target="_blank"
-                 style="font-size:11px; color:${corTecnico}; text-decoration:none;">
-                ↗ Ver no mapa
-              </a>
-            </div>
-          ` : `
-            <div style="color:var(--text-muted); font-size:12px;">
-              Nenhum ponto de partida configurado.
-            </div>
-          `}
-        </div>
-      </div>
+    <!-- GRADE: info + mapa lado a lado -->
+    <div class="content-map-grid">
 
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-icon">⚡</div>
-          <span class="panel-title">Otimização de Rota</span>
-        </div>
-        <div class="panel-body">
-          ${temPartida ? `
-            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:14px;">
-              Algoritmo <strong>Nearest Neighbor</strong> recalcula automaticamente
-              ao adicionar ou remover pontos.<br><br>
-              <span style="color:var(--text-muted); font-size:11px;">
-                ℹ️ Distância estimada por ruas (linha reta × 1.4) · Velocidade média: ${VELOCIDADE_MEDIA} km/h · ${TEMPO_POR_PARADA} min por parada
-              </span>
-            </div>
-            <button class="btn btn-ghost btn-full" onclick="forcarOtimizacao(${ficha.id})">
-              🔄 Recalcular Rota Agora
-            </button>
-          ` : `
-            <div style="font-size:12px; color:var(--text-muted);">
-              Adicione um CEP de partida para ativar a otimização.
-            </div>
-          `}
-        </div>
-      </div>
-    </div>
+      <!-- COLUNA ESQUERDA: painéis + roteiro -->
+      <div class="content-col">
 
-    <div class="roteiro-container">
-      <div class="roteiro-header">
-        <span class="roteiro-title">🗺️ Roteiro Ordenado</span>
-        ${servicos.length > 0 ? `<span class="badge accent">${servicos.length} parada${servicos.length !== 1 ? 's' : ''}</span>` : ''}
-      </div>
-      ${renderRoteiro(ficha, servicos, corTecnico)}
-    </div>
+        <div class="panel-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-icon">🏠</div>
+              <span class="panel-title">Ponto de Partida</span>
+            </div>
+            <div class="panel-body">
+              ${temPartida ? `
+                <div style="font-family:var(--font-mono); font-size:13px; color:${corTecnico}; margin-bottom:4px;">
+                  ${ficha.ponto_partida_cep || '—'}
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary);">
+                  ${ficha.ponto_partida || 'Endereço não informado'}
+                </div>
+                <div style="margin-top:12px;">
+                  <a href="https://www.openstreetmap.org/?mlat=${ficha.ponto_partida_lat}&mlon=${ficha.ponto_partida_lng}&zoom=15"
+                     target="_blank"
+                     style="font-size:11px; color:${corTecnico}; text-decoration:none;">
+                    ↗ Ver no mapa
+                  </a>
+                </div>
+              ` : `
+                <div style="color:var(--text-muted); font-size:12px;">
+                  Nenhum ponto de partida configurado.
+                </div>
+              `}
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-icon">⚡</div>
+              <span class="panel-title">Otimização de Rota</span>
+            </div>
+            <div class="panel-body">
+              ${temPartida ? `
+                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:14px;">
+                  Algoritmo <strong>Nearest Neighbor</strong> recalcula automaticamente
+                  ao adicionar ou remover pontos.<br><br>
+                  <span style="color:var(--text-muted); font-size:11px;">
+                    ℹ️ Distância estimada por ruas (linha reta × 1.4) · Velocidade média: ${VELOCIDADE_MEDIA} km/h · ${TEMPO_POR_PARADA} min por parada
+                  </span>
+                </div>
+                <button class="btn btn-ghost btn-full" onclick="forcarOtimizacao(${ficha.id})">
+                  🔄 Recalcular Rota Agora
+                </button>
+              ` : `
+                <div style="font-size:12px; color:var(--text-muted);">
+                  Adicione um CEP de partida para ativar a otimização.
+                </div>
+              `}
+            </div>
+          </div>
+        </div>
+
+        <div class="roteiro-container">
+          <div class="roteiro-header">
+            <span class="roteiro-title">🗺️ Roteiro Ordenado</span>
+            ${servicos.length > 0 ? `<span class="badge accent">${servicos.length} parada${servicos.length !== 1 ? 's' : ''}</span>` : ''}
+          </div>
+          ${renderRoteiro(ficha, servicos, corTecnico)}
+        </div>
+
+      </div><!-- /content-col -->
+
+      <!-- COLUNA DIREITA: MAPA -->
+      <div class="mapa-col">
+        <div class="mapa-wrapper">
+          <div class="mapa-header">
+            <div class="panel-icon">🗺</div>
+            <span class="panel-title">Mapa do Roteiro</span>
+            ${temCoordenadas ? `<span class="badge accent" style="margin-left:auto;">${servicos.length} ponto${servicos.length !== 1 ? 's' : ''}</span>` : ''}
+          </div>
+          <div id="mapa-roteiro" class="mapa-container">
+            ${!temCoordenadas ? `
+              <div class="mapa-empty">
+                <div style="font-size:28px; margin-bottom:8px;">📍</div>
+                <div style="font-size:12px; color:var(--text-muted);">
+                  Adicione pontos com<br>coordenadas para ver o mapa
+                </div>
+              </div>` : ''}
+          </div>
+        </div>
+      </div><!-- /mapa-col -->
+
+    </div><!-- /content-map-grid -->
   `;
+
+  // Inicializa e popula o mapa após o HTML estar no DOM
+  if (temCoordenadas) {
+    inicializarMapa('mapa-roteiro');
+    renderizarMapaPontos(ficha, servicos, corTecnico);
+  }
 }
 
 function renderRoteiro(ficha, servicos, corTecnico = 'var(--accent)') {
