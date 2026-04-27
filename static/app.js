@@ -590,5 +590,4 @@ function toast(msg, type = 'info') {
     el.style.opacity = '0';
     el.style.transition = 'opacity 0.3s';
     setTimeout(() => el.remove(), 300);
-  }, 4000);
-}
+  }, 4000);} 
