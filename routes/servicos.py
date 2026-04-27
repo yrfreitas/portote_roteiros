@@ -23,9 +23,9 @@ def adicionar_servico(ficha_id):
     if not geo:
         return jsonify({"erro": f"CEP {cep} não encontrado. Verifique e tente novamente."}), 400
 
-    lat = geo.lat if PG else geo["lat"]
-    lng = geo.lng if PG else geo["lng"]
-    endereco = geo.endereco if PG else geo["endereco"]
+    lat = geo.lat
+    lng = geo.lng
+    endereco = geo.endereco
 
     conn = get_db()
     cur = conn.cursor()
