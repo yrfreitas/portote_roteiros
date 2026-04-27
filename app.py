@@ -7,6 +7,7 @@ from routes.servicos import servicos_bp
 from routes.tecnicos import tecnicos_bp
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')  # 👈 ADICIONE ESSA LINHA
 CORS(app)
 
 init_db()
