@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ─── API ─────────────────────────────────────────────────────────────
-const BASE = "https://web-production-e50f4.up.railway.app";
+const BASE = "";
 
 async function api(path, options = {}) {
   const res = await fetch(BASE + '/api' + path, {
@@ -590,4 +590,5 @@ function toast(msg, type = 'info') {
     el.style.opacity = '0';
     el.style.transition = 'opacity 0.3s';
     setTimeout(() => el.remove(), 300);
-  }, 4000);} 
+  }, 4000);
+}
