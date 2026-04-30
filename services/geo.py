@@ -74,7 +74,6 @@ def _cache_get(cep_clean: str) -> Optional[GeoResult]:
         lat      = row[1] if PG else row["lat"]
         lng      = row[2] if PG else row["lng"]
 
-        # Se estava no cache mas sem coordenadas, ignora e busca de novo
         if not lat or not lng or (lat == 0.0 and lng == 0.0):
             return None
 
@@ -153,19 +152,15 @@ def _fetch_viacep(cep_clean: str, tentativas: int = 3) -> Optional[dict]:
 
 
 def _fetch_nominatim(endereco: str, cidade: str, uf: str) -> tuple[float, float]:
-    """
-    Chama o Nominatim para transformar endereço em lat/lng.
-    Retorna (lat, lng) ou (0.0, 0.0) se não encontrar.
-    """
-    # Monta query: "Rua X, Bairro Y, Cidade - UF, Brasil"
-    query = f"{endereco}, {cidade} - {uf}, Brasil"
+    # Pega só o logradouro (primeira parte antes da vírgula)
+    logradouro = endereco.split(',')[0].strip()
+    query = f"{logradouro}, {cidade}, {uf}, Brasil"
 
     params = urllib.parse.urlencode({
-        "q":              query,
-        "format":         "json",
-        "limit":          1,
-        "countrycodes":   "br",
-        "addressdetails": 0,
+        "q":            query,
+        "format":       "json",
+        "limit":        1,
+        "countrycodes": "br",
     })
 
     url = f"{NOMINATIM_URL}?{params}"
@@ -173,10 +168,7 @@ def _fetch_nominatim(endereco: str, cidade: str, uf: str) -> tuple[float, float]
     try:
         req = urllib.request.Request(
             url,
-            headers={
-                # Nominatim exige User-Agent identificando seu app
-                "User-Agent": "PortotecRoteiros/2.0 (contato@portotec.com)"
-            }
+            headers={"User-Agent": "PortotecRoteiros/2.0 (contato@portotec.com)"}
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             results = json.loads(resp.read().decode())
@@ -213,13 +205,6 @@ def _formatar_endereco(data: dict) -> str:
 
 
 def geocode_cep(cep: str) -> Optional[GeoResult]:
-    """
-    1. Valida o CEP
-    2. Checa cache (com lat/lng válidos)
-    3. Busca endereço no ViaCEP
-    4. Geocodifica com Nominatim → lat/lng reais
-    5. Salva no cache e retorna
-    """
     try:
         cep_clean = _validate_cep(cep)
     except ValueError as e:
@@ -231,7 +216,6 @@ def geocode_cep(cep: str) -> Optional[GeoResult]:
         log.info("CEP %s retornado do cache", cep_clean)
         return cached
 
-    # Passo 1: pega endereço
     data = _fetch_viacep(cep_clean)
     if data is None:
         return None
@@ -241,7 +225,6 @@ def geocode_cep(cep: str) -> Optional[GeoResult]:
     cidade   = data.get("localidade", "").strip()
     uf       = data.get("uf",         "").strip()
 
-    # Passo 2: geocodifica — espera 1s para respeitar o limite do Nominatim
     time.sleep(1)
     lat, lng = _fetch_nominatim(endereco, cidade, uf)
 
