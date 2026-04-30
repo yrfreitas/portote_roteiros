@@ -16,7 +16,6 @@ function inicializarMapa(containerId) {
   mapaMarkers = [];
   mapaPolyline = null;
 
-  // Aguarda o container estar no DOM
   const el = document.getElementById(containerId);
   if (!el) return;
 
@@ -29,21 +28,18 @@ function inicializarMapa(containerId) {
     maxZoom: 19,
   }).addTo(mapaLeaflet);
 
-  // Pequeno atributo discreto
   L.control.attribution({ prefix: '© OSM' }).addTo(mapaLeaflet);
 }
 
 function renderizarMapaPontos(ficha, servicos, corTecnico = '#1a6fd4') {
   if (!mapaLeaflet) return;
 
-  // Limpa camadas anteriores
   mapaMarkers.forEach(m => m.remove());
   mapaMarkers = [];
   if (mapaPolyline) { mapaPolyline.remove(); mapaPolyline = null; }
 
-  const pontos = []; // [[lat, lng], ...]
+  const pontos = [];
 
-  // ── Ponto de partida ──────────────────────────────────────────────
   const temPartida = ficha.ponto_partida_lat != null && ficha.ponto_partida_lat !== 0;
   if (temPartida) {
     const lat = ficha.ponto_partida_lat;
@@ -72,7 +68,6 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#1a6fd4') {
     mapaMarkers.push(marker);
   }
 
-  // ── Serviços na ordem do roteiro ──────────────────────────────────
   const ordenados = [...servicos].sort((a, b) => a.ordem - b.ordem);
 
   ordenados.forEach((s, i) => {
@@ -121,7 +116,6 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#1a6fd4') {
     mapaMarkers.push(marker);
   });
 
-  // ── Linha de rota ─────────────────────────────────────────────────
   if (pontos.length >= 2) {
     mapaPolyline = L.polyline(pontos, {
       color: corTecnico || '#1a6fd4',
@@ -131,7 +125,6 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#1a6fd4') {
     }).addTo(mapaLeaflet);
   }
 
-  // ── Ajusta zoom para caber todos os pontos ────────────────────────
   if (pontos.length === 1) {
     mapaLeaflet.setView(pontos[0], 15);
   } else if (pontos.length >= 2) {
@@ -139,7 +132,6 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#1a6fd4') {
   }
 }
 
-// Chama resize do Leaflet quando o container aparece
 function invalidarMapa() {
   if (mapaLeaflet) {
     setTimeout(() => mapaLeaflet.invalidateSize(), 100);
@@ -308,7 +300,6 @@ async function renderFichaDetalhe(id) {
       <span style="color:var(--text-muted);">Carregando roteiro...</span>
     </div>`;
 
-  // Destrói mapa anterior para evitar conflito de IDs
   if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
 
   const { ficha, servicos } = await api(`/fichas/${id}`);
@@ -321,9 +312,12 @@ async function renderFichaDetalhe(id) {
   const distReal = distanciaReal(distBruta);
   const tempo = tempoEstimado(distBruta, servicos.length);
 
-  // Verifica se há pontos com coordenadas para mostrar o mapa
   const temCoordenadas = temPartida ||
     servicos.some(s => s.lat && s.lng && (s.lat !== 0 || s.lng !== 0));
+
+  // Serializa servicos para passar ao botão Google Maps
+  const servicosJson = JSON.stringify(servicos).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  const fichaJson = JSON.stringify(ficha).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
   detail.innerHTML = `
     <div class="ficha-header">
@@ -337,9 +331,19 @@ async function renderFichaDetalhe(id) {
           Criado em ${formatarDataHora(ficha.created_at)}
         </div>
       </div>
-      <button class="btn btn-primary" onclick="abrirModalAddServico(${ficha.id})">
-        + Adicionar Ponto
-      </button>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="abrirModalAddServico(${ficha.id})">
+          + Adicionar Ponto
+        </button>
+        <button class="btn btn-ghost" onclick="abrirRotaGoogleMaps('${fichaJson}', '${servicosJson}')"
+          style="display:flex; align-items:center; gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+          Abrir no Google Maps
+        </button>
+      </div>
     </div>
 
     <div class="stats-strip">
@@ -455,7 +459,6 @@ async function renderFichaDetalhe(id) {
     </div><!-- /content-map-grid -->
   `;
 
-  // Inicializa e popula o mapa após o HTML estar no DOM
   if (temCoordenadas) {
     inicializarMapa('mapa-roteiro');
     renderizarMapaPontos(ficha, servicos, corTecnico);
@@ -507,6 +510,43 @@ function renderRoteiro(ficha, servicos, corTecnico = 'var(--accent)') {
     `).join('');
 
   return partida + items;
+}
+
+// ─── ABRIR ROTA NO GOOGLE MAPS ───────────────────────────────────────
+function abrirRotaGoogleMaps(fichaRaw, servicosRaw) {
+  // Recebe como string (vindo do onclick no HTML), faz parse
+  const ficha    = typeof fichaRaw    === 'string' ? JSON.parse(fichaRaw.replace(/&quot;/g, '"'))    : fichaRaw;
+  const servicos = typeof servicosRaw === 'string' ? JSON.parse(servicosRaw.replace(/&quot;/g, '"')) : servicosRaw;
+
+  const ordenados = [...servicos].sort((a, b) => a.ordem - b.ordem);
+  const pontos = ordenados.filter(s => s.lat && s.lng && !(s.lat === 0 && s.lng === 0));
+
+  if (pontos.length === 0) {
+    toast('Nenhum ponto com coordenadas para abrir no Maps', 'error');
+    return;
+  }
+
+  const temPartida = ficha.ponto_partida_lat != null && ficha.ponto_partida_lat !== 0;
+
+  let origin, destination, waypoints;
+
+  if (temPartida) {
+    origin      = `${ficha.ponto_partida_lat},${ficha.ponto_partida_lng}`;
+    destination = `${pontos[pontos.length - 1].lat},${pontos[pontos.length - 1].lng}`;
+    waypoints   = pontos.slice(0, -1).map(s => `${s.lat},${s.lng}`).join('|');
+  } else {
+    origin      = `${pontos[0].lat},${pontos[0].lng}`;
+    destination = `${pontos[pontos.length - 1].lat},${pontos[pontos.length - 1].lng}`;
+    waypoints   = pontos.slice(1, -1).map(s => `${s.lat},${s.lng}`).join('|');
+  }
+
+  let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+
+  if (waypoints) {
+    url += `&waypoints=${encodeURIComponent(waypoints)}`;
+  }
+
+  window.open(url, '_blank');
 }
 
 // ─── VERIFICADOR DE CEP ──────────────────────────────────────────────
