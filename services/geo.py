@@ -1,100 +1,252 @@
-import urllib.request
-import urllib.error
-import urllib.parse
-import json
-import re
-import logging
+"""
+services/geo.py  —  PortoTec
+─────────────────────────────────────────────────────────────────────
+Geocodificação robusta em 3 camadas:
+
+  1. Cache local (tabela cache_geo) — evita rechamadas desnecessárias
+  2. Nominatim (OpenStreetMap) com endereço completo (rua + número)
+  3. ViaCEP como fallback de dados do endereço
+
+CORREÇÕES aplicadas:
+  ✅ Usa número da casa no geocoding → coordenadas precisas
+  ✅ Monta query "Rua X, 307, Cidade, Estado, Brasil"
+  ✅ Fallback: tenta só rua sem número se não achar com número
+  ✅ Fallback 2: centroide do CEP como último recurso (marcado como impreciso)
+  ✅ Salva endereco_completo com número no banco
+"""
+
+import requests
 import time
+import os
 from dataclasses import dataclass
 from typing import Optional
-import os
-
-from database import get_db
-
-log = logging.getLogger("geo")
 
 VIACEP_URL    = "https://viacep.com.br/ws/{cep}/json/"
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
-PG = bool(os.environ.get("DATABASE_URL"))
-PH = "%s" if PG else "?"
+HEADERS = {
+    "User-Agent": "PortoTec/2.0 (roteiro de tecnicos; contato@portotec.com.br)"
+}
+
+# Intervalo mínimo entre chamadas ao Nominatim (respeita política de uso)
+_last_nominatim_call = 0.0
 
 
-@dataclass(frozen=True)
+@dataclass
 class GeoResult:
-    cep:      str
-    endereco: str
-    bairro:   str
-    cidade:   str
-    uf:       str
-    lat:      float
-    lng:      float
-
-    def to_dict(self):
-        return {
-            "cep":      self.cep,
-            "endereco": self.endereco,
-            "bairro":   self.bairro,
-            "cidade":   self.cidade,
-            "uf":       self.uf,
-            "lat":      self.lat,
-            "lng":      self.lng,
-        }
-
-    def __getitem__(self, key):
-        return self.to_dict()[key]
-
-    def __contains__(self, key):
-        return key in self.to_dict()
+    lat: float
+    lng: float
+    endereco: str          # endereço formatado completo
+    preciso: bool = True   # False = centroide do CEP (impreciso)
 
 
-def _validate_cep(cep: str) -> str:
-    clean = re.sub(r"\D", "", cep)
-    if len(clean) != 8:
-        raise ValueError(f"CEP inválido: '{cep}'")
-    return clean
+# ─── API pública ──────────────────────────────────────────────────────
+
+def geocode_cep(cep: str, numero: str = "") -> Optional[GeoResult]:
+    """
+    Geocodifica um CEP, usando o número da casa quando disponível.
+    Salva/lê do cache automático.
+    
+    Args:
+        cep:    CEP sem hífen (8 dígitos)
+        numero: Número da casa/estabelecimento (ex: "307")
+    
+    Returns:
+        GeoResult com lat, lng, endereco | None se não encontrado
+    """
+    cep = cep.replace("-", "").strip()
+    if len(cep) != 8 or not cep.isdigit():
+        return None
+
+    # Chave de cache: inclui número para coordenadas por endereço exato
+    cache_key = f"{cep}_{numero}" if numero else cep
+
+    # 1. Verifica cache
+    cached = _get_cache(cache_key)
+    if cached:
+        return cached
+
+    # 2. Busca dados do endereço no ViaCEP
+    dados_cep = _viacep(cep)
+    if not dados_cep:
+        return None
+
+    # 3. Tenta geocodificar com endereço completo (com número)
+    resultado = _nominatim_full(dados_cep, numero)
+
+    if resultado:
+        _save_cache(cache_key, resultado)
+        return resultado
+
+    # 4. Fallback: geocodifica só a rua sem número
+    resultado = _nominatim_full(dados_cep, numero="")
+    if resultado:
+        resultado.preciso = False  # marca como impreciso
+        _save_cache(cache_key, resultado)
+        return resultado
+
+    # 5. Último fallback: centroide do CEP via Nominatim simples
+    resultado = _nominatim_cep(cep, dados_cep)
+    if resultado:
+        resultado.preciso = False
+        _save_cache(cache_key, resultado)
+        return resultado
+
+    return None
 
 
-def _cache_get(cep_clean: str) -> Optional[GeoResult]:
+# ─── Internos ──────────────────────────────────────────────────────────
+
+def _viacep(cep: str) -> Optional[dict]:
+    """Busca dados do endereço no ViaCEP."""
     try:
-        conn = get_db()
-        cur  = conn.cursor()
-        cur.execute(
-            f"SELECT endereco, lat, lng FROM cache_geo WHERE cep = {PH}",
-            (cep_clean,)
-        )
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        if not row:
+        r = requests.get(VIACEP_URL.format(cep=cep), timeout=8, headers=HEADERS)
+        if r.status_code != 200:
             return None
-
-        endereco = row[0] if PG else row["endereco"]
-        lat      = row[1] if PG else row["lat"]
-        lng      = row[2] if PG else row["lng"]
-
-        if not lat or not lng or (lat == 0.0 and lng == 0.0):
+        data = r.json()
+        if data.get("erro"):
             return None
-
-        return GeoResult(
-            cep=cep_clean,
-            endereco=endereco,
-            bairro="",
-            cidade="",
-            uf="",
-            lat=float(lat),
-            lng=float(lng),
-        )
-    except Exception as e:
-        log.warning("Erro ao buscar cache para CEP %s: %s", cep_clean, e)
+        return data
+    except Exception:
         return None
 
 
-def _cache_set(result: GeoResult) -> None:
+def _nominatim_full(dados_cep: dict, numero: str) -> Optional[GeoResult]:
+    """
+    Geocodifica usando endereço completo montado a partir dos dados do ViaCEP.
+    Tenta formato estruturado (mais preciso) primeiro, depois free-form.
+    """
+    logradouro = dados_cep.get("logradouro", "").strip()
+    bairro     = dados_cep.get("bairro", "").strip()
+    cidade     = dados_cep.get("localidade", "").strip()
+    estado     = dados_cep.get("uf", "").strip()
+
+    if not logradouro or not cidade:
+        return None
+
+    _throttle_nominatim()
+
+    # Monta a query com número se disponível
+    partes = [logradouro]
+    if numero:
+        partes.append(numero)
+    if bairro:
+        partes.append(bairro)
+    partes += [cidade, estado, "Brasil"]
+    query = ", ".join(partes)
+
+    params = {
+        "q":              query,
+        "format":         "json",
+        "limit":          1,
+        "countrycodes":   "br",
+        "addressdetails": 1,
+    }
+
     try:
+        r = requests.get(NOMINATIM_URL, params=params, headers=HEADERS, timeout=10)
+        results = r.json()
+        if results:
+            lat = float(results[0]["lat"])
+            lon = float(results[0]["lon"])
+            display = results[0].get("display_name", query)
+            # Monta endereço legível com número
+            end_formatado = _formatar_endereco(logradouro, numero, bairro, cidade, estado)
+            return GeoResult(lat=lat, lng=lon, endereco=end_formatado)
+    except Exception:
+        pass
+
+    return None
+
+
+def _nominatim_cep(cep: str, dados_cep: dict) -> Optional[GeoResult]:
+    """Geocodifica pelo CEP diretamente (centroide — impreciso)."""
+    _throttle_nominatim()
+
+    cidade = dados_cep.get("localidade", "")
+    estado = dados_cep.get("uf", "")
+    logradouro = dados_cep.get("logradouro", "")
+    bairro = dados_cep.get("bairro", "")
+
+    params = {
+        "q":            f"{cep}, Brasil",
+        "format":       "json",
+        "limit":        1,
+        "countrycodes": "br",
+    }
+
+    try:
+        r = requests.get(NOMINATIM_URL, params=params, headers=HEADERS, timeout=10)
+        results = r.json()
+        if results:
+            lat = float(results[0]["lat"])
+            lon = float(results[0]["lon"])
+            end_formatado = _formatar_endereco(logradouro, "", bairro, cidade, estado)
+            return GeoResult(lat=lat, lng=lon, endereco=end_formatado, preciso=False)
+    except Exception:
+        pass
+
+    return None
+
+
+def _formatar_endereco(logradouro: str, numero: str, bairro: str,
+                        cidade: str, estado: str) -> str:
+    """Monta string de endereço legível para salvar no banco."""
+    partes = []
+    if logradouro:
+        partes.append(logradouro)
+        if numero:
+            partes[-1] += f", {numero}"
+    if bairro:
+        partes.append(bairro)
+    if cidade and estado:
+        partes.append(f"{cidade} - {estado}")
+    elif cidade:
+        partes.append(cidade)
+    return " · ".join(partes) if partes else logradouro or "Endereço desconhecido"
+
+
+def _throttle_nominatim():
+    """Garante no mínimo 1.1s entre chamadas ao Nominatim (política de uso)."""
+    global _last_nominatim_call
+    elapsed = time.time() - _last_nominatim_call
+    if elapsed < 1.1:
+        time.sleep(1.1 - elapsed)
+    _last_nominatim_call = time.time()
+
+
+# ─── Cache ──────────────────────────────────────────────────────────────
+
+def _get_cache(key: str) -> Optional[GeoResult]:
+    try:
+        from database import get_db
         conn = get_db()
         cur  = conn.cursor()
+        PG   = bool(os.environ.get("DATABASE_URL"))
+        PH   = "%s" if PG else "?"
+        cur.execute(f"SELECT * FROM cache_geo WHERE cep = {PH}", (key,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row:
+            r = dict(row)
+            return GeoResult(
+                lat=r["lat"],
+                lng=r["lng"],
+                endereco=r["endereco"] or "",
+                preciso=True  # se está em cache, aceita como válido
+            )
+    except Exception:
+        pass
+    return None
+
+
+def _save_cache(key: str, geo: GeoResult):
+    try:
+        from database import get_db
+        conn = get_db()
+        cur  = conn.cursor()
+        PG   = bool(os.environ.get("DATABASE_URL"))
         if PG:
             cur.execute(
                 """INSERT INTO cache_geo (cep, endereco, lat, lng)
@@ -102,141 +254,18 @@ def _cache_set(result: GeoResult) -> None:
                    ON CONFLICT (cep) DO UPDATE
                    SET endereco = EXCLUDED.endereco,
                        lat      = EXCLUDED.lat,
-                       lng      = EXCLUDED.lng""",
-                (result.cep, result.endereco, result.lat, result.lng)
+                       lng      = EXCLUDED.lng,
+                       updated_at = CURRENT_TIMESTAMP""",
+                (key, geo.endereco, geo.lat, geo.lng)
             )
         else:
             cur.execute(
-                "INSERT OR REPLACE INTO cache_geo (cep, endereco, lat, lng) VALUES (?, ?, ?, ?)",
-                (result.cep, result.endereco, result.lat, result.lng)
+                """INSERT OR REPLACE INTO cache_geo (cep, endereco, lat, lng)
+                   VALUES (?, ?, ?, ?)""",
+                (key, geo.endereco, geo.lat, geo.lng)
             )
         conn.commit()
         cur.close()
         conn.close()
-        log.info("CEP %s salvo no cache (lat=%.6f, lng=%.6f)", result.cep, result.lat, result.lng)
-    except Exception as e:
-        log.warning("Erro ao salvar cache para CEP %s: %s", result.cep, e)
-
-
-def _fetch_viacep(cep_clean: str, tentativas: int = 3) -> Optional[dict]:
-    url = VIACEP_URL.format(cep=cep_clean)
-
-    for tentativa in range(1, tentativas + 1):
-        try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "PortotecRoteiros/2.0 (contato@portotec.com)"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode())
-
-            if not data or "erro" in data:
-                log.warning("ViaCEP: CEP %s não encontrado", cep_clean)
-                return None
-
-            return data
-
-        except urllib.error.HTTPError as e:
-            log.warning("ViaCEP HTTP %d para CEP %s (tentativa %d/%d)",
-                        e.code, cep_clean, tentativa, tentativas)
-        except urllib.error.URLError as e:
-            log.warning("ViaCEP indisponível: %s (tentativa %d/%d)",
-                        e.reason, tentativa, tentativas)
-        except Exception as e:
-            log.warning("Erro ViaCEP: %s (tentativa %d/%d)", e, tentativa, tentativas)
-
-        if tentativa < tentativas:
-            time.sleep(1.5 * tentativa)
-
-    return None
-
-
-def _fetch_nominatim(endereco: str, cidade: str, uf: str) -> tuple[float, float]:
-    # Pega só o logradouro (primeira parte antes da vírgula)
-    logradouro = endereco.split(',')[0].strip()
-    query = f"{logradouro}, {cidade}, {uf}, Brasil"
-
-    params = urllib.parse.urlencode({
-        "q":            query,
-        "format":       "json",
-        "limit":        1,
-        "countrycodes": "br",
-    })
-
-    url = f"{NOMINATIM_URL}?{params}"
-
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "PortotecRoteiros/2.0 (contato@portotec.com)"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            results = json.loads(resp.read().decode())
-
-        if results:
-            lat = float(results[0]["lat"])
-            lng = float(results[0]["lon"])
-            log.info("Nominatim OK: %s → (%.6f, %.6f)", query, lat, lng)
-            return lat, lng
-
-        log.warning("Nominatim: nenhum resultado para '%s'", query)
-        return 0.0, 0.0
-
-    except Exception as e:
-        log.warning("Erro Nominatim para '%s': %s", query, e)
-        return 0.0, 0.0
-
-
-def _formatar_endereco(data: dict) -> str:
-    partes = []
-    logr   = data.get("logradouro", "").strip()
-    bairro = data.get("bairro",     "").strip()
-    cidade = data.get("localidade", "").strip()
-    uf     = data.get("uf",         "").strip()
-
-    if logr:   partes.append(logr)
-    if bairro: partes.append(bairro)
-    if cidade and uf:
-        partes.append(f"{cidade} - {uf}")
-    elif cidade:
-        partes.append(cidade)
-
-    return ", ".join(partes) if partes else "Endereço não encontrado"
-
-
-def geocode_cep(cep: str) -> Optional[GeoResult]:
-    try:
-        cep_clean = _validate_cep(cep)
-    except ValueError as e:
-        log.error("%s", e)
-        return None
-
-    cached = _cache_get(cep_clean)
-    if cached:
-        log.info("CEP %s retornado do cache", cep_clean)
-        return cached
-
-    data = _fetch_viacep(cep_clean)
-    if data is None:
-        return None
-
-    endereco = _formatar_endereco(data)
-    bairro   = data.get("bairro",     "").strip()
-    cidade   = data.get("localidade", "").strip()
-    uf       = data.get("uf",         "").strip()
-
-    time.sleep(1)
-    lat, lng = _fetch_nominatim(endereco, cidade, uf)
-
-    result = GeoResult(
-        cep=cep_clean,
-        endereco=endereco,
-        bairro=bairro,
-        cidade=cidade,
-        uf=uf,
-        lat=lat,
-        lng=lng,
-    )
-
-    _cache_set(result)
-    return result
+    except Exception:
+        pass

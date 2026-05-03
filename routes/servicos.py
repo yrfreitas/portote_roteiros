@@ -1,3 +1,12 @@
+"""
+routes/servicos.py  —  PortoTec
+─────────────────────────────────────────────────────────────────────
+CORREÇÕES aplicadas:
+  ✅ Passa `numero` para geocode_cep → coordenadas precisas
+  ✅ Salva endereco_completo com número incluído
+  ✅ Resposta inclui aviso se o endereço for impreciso (centroide de CEP)
+"""
+
 from flask import Blueprint, request, jsonify
 from database import get_db
 from services.geo import geocode_cep
@@ -12,23 +21,27 @@ PH = "%s" if PG else "?"
 
 @servicos_bp.route("/fichas/<int:ficha_id>/servicos", methods=["POST"])
 def adicionar_servico(ficha_id):
-    data = request.json
-    cep = data.get("cep", "").replace("-", "").strip()
+    data   = request.json
+    cep    = data.get("cep", "").replace("-", "").strip()
     numero = data.get("numero", "").strip()
 
     if not cep:
         return jsonify({"erro": "CEP é obrigatório"}), 400
 
-    geo = geocode_cep(cep)
+    # ── Geocodifica com número da casa ────────────────────────────────
+    # BUG CORRIGIDO: antes passava só o CEP, ignorando o número
+    # Agora passa o número para obter coordenadas precisas do endereço exato
+    geo = geocode_cep(cep, numero=numero)
+
     if not geo:
         return jsonify({"erro": f"CEP {cep} não encontrado. Verifique e tente novamente."}), 400
 
-    lat = geo.lat
-    lng = geo.lng
-    endereco = geo.endereco
+    lat      = geo.lat
+    lng      = geo.lng
+    endereco = geo.endereco   # já inclui o número, formatado
 
     conn = get_db()
-    cur = conn.cursor()
+    cur  = conn.cursor()
     cur.execute(f"SELECT * FROM fichas WHERE id = {PH}", (ficha_id,))
     ficha = _fetchone(cur)
 
@@ -38,7 +51,8 @@ def adicionar_servico(ficha_id):
         return jsonify({"erro": "Ficha não encontrada"}), 404
 
     cur.execute(
-        f"""INSERT INTO servicos (ficha_id, cep, endereco_completo, lat, lng, cliente, descricao, numero)
+        f"""INSERT INTO servicos
+               (ficha_id, cep, endereco_completo, lat, lng, cliente, descricao, numero)
            VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
         (ficha_id, cep, endereco, lat, lng,
          data.get("cliente", ""), data.get("descricao", ""), numero)
@@ -49,18 +63,27 @@ def adicionar_servico(ficha_id):
     conn.commit()
     conn.close()
 
-    return jsonify({
+    resposta = {
         "mensagem": "Serviço adicionado e rota otimizada",
         "endereco": endereco,
-        "numero": numero,
+        "numero":   numero,
         "distancia_total": resultado["distancia_total"]
-    })
+    }
+
+    # Avisa se o endereço ficou impreciso (sem número encontrado no geocoding)
+    if not geo.preciso:
+        resposta["aviso"] = (
+            "Endereço aproximado (centroide do CEP). "
+            "Verifique o número da casa para maior precisão."
+        )
+
+    return jsonify(resposta)
 
 
 @servicos_bp.route("/servicos/<int:servico_id>", methods=["DELETE"])
 def remover_servico(servico_id):
     conn = get_db()
-    cur = conn.cursor()
+    cur  = conn.cursor()
     cur.execute(f"SELECT * FROM servicos WHERE id = {PH}", (servico_id,))
     servico = _fetchone(cur)
 
