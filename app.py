@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # ← DEVE SER A PRIMEIRA COISA, antes de tudo
+
 import os
 from flask import Flask, render_template
 from flask_cors import CORS
@@ -7,7 +10,7 @@ from routes.servicos import servicos_bp
 from routes.tecnicos import tecnicos_bp
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')  # 👈 ADICIONE ESSA LINHA
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 CORS(app)
 
 init_db()
