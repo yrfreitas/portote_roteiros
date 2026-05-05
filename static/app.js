@@ -163,13 +163,10 @@ async function api(path, options = {}) {
 }
 
 // ─── DISTÂNCIA E TEMPO ───────────────────────────────────────────────
-// CORREÇÃO: backend agora salva distancia_total já com fator de rua (×1.4).
-// Frontend não multiplica mais — evita dupla-aplicação que causava 7924 km / 200h.
 const VELOCIDADE_MEDIA = 40;
 const TEMPO_POR_PARADA = 20;
 
 function distanciaReal(distBruta) {
-  // ✅ CORRIGIDO: valor já vem em km reais do backend, não multiplica mais
   return distBruta;
 }
 
@@ -312,15 +309,10 @@ async function renderFichaDetalhe(id) {
   const temPartida = ficha.ponto_partida_lat != null && ficha.ponto_partida_lat !== 0;
   const distBruta = ficha.distancia_total || 0;
   const distReal = distanciaReal(distBruta);
-  // CORREÇÃO: tempoEstimado agora recebe distReal (já em km reais), não distBruta
   const tempo = tempoEstimado(distReal, servicos.length);
 
   const temCoordenadas = temPartida ||
     servicos.some(s => s.lat && s.lng && (s.lat !== 0 || s.lng !== 0));
-
-  // CORREÇÃO: botão Google Maps não usa mais JSON inline (causa bugs de escaping).
-  // Passa só o ID da ficha — os dados ficam em memória (fichaAtiva / servicos).
-  // O evento é adicionado com addEventListener após setar o innerHTML.
 
   detail.innerHTML = `
     <div class="ficha-header">
@@ -462,8 +454,6 @@ async function renderFichaDetalhe(id) {
     </div><!-- /content-map-grid -->
   `;
 
-  // ✅ CORREÇÃO: evento do botão Maps adicionado aqui,
-  // com referência direta aos objetos JS (sem serialização JSON no onclick)
   const btnMaps = document.getElementById('btn-abrir-maps');
   if (btnMaps) {
     btnMaps.addEventListener('click', () => abrirRotaGoogleMaps(ficha, servicos));
@@ -523,56 +513,65 @@ function renderRoteiro(ficha, servicos, corTecnico = 'var(--accent)') {
 }
 
 // ─── ABRIR ROTA NO GOOGLE MAPS ───────────────────────────────────────
-// CORREÇÕES:
-//   ✅ Recebe objetos JS diretamente (sem parse de JSON/&quot; — elimina bugs de escaping)
-//   ✅ URL no formato oficial: google.com/maps/dir/?api=1&origin=LAT,LNG&...
-//   ✅ Usa sempre coordenadas (lat,lng), nunca texto de endereço
-//   ✅ Waypoints com pipe | sem encodeURIComponent (evita %7C que confunde o Maps)
-//   ✅ origin = partida (ou ponto[0]), destination = último ponto
+// ✅ CORRIGIDO: usa endereço em TEXTO em vez de coordenadas lat,lng
+// Isso faz o Google Maps exibir o endereço legível na lista de paradas
+// em vez de mostrar apenas um alfinete sem nome.
 function abrirRotaGoogleMaps(ficha, servicos) {
   const ordenados = [...servicos]
     .sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999))
-    .filter(s => s.lat && s.lng && !(s.lat === 0 && s.lng === 0));
+    .filter(s => s.endereco_completo);
 
   if (ordenados.length === 0) {
-    toast('Nenhum ponto com coordenadas válidas para abrir no Maps', 'error');
+    toast('Nenhum ponto com endereço válido para abrir no Maps', 'error');
     return;
   }
 
-  const temPartida = (
-    ficha.ponto_partida_lat != null &&
-    ficha.ponto_partida_lat !== 0 &&
-    ficha.ponto_partida_lng != null &&
-    ficha.ponto_partida_lng !== 0
-  );
+  // Monta texto legível do endereço para cada serviço
+  function endTexto(s) {
+    let end = s.endereco_completo || '';
+    // Insere o número logo após o nome da rua (antes da primeira vírgula)
+    if (s.numero) {
+      const idx = end.indexOf(',');
+      if (idx !== -1) {
+        end = end.slice(0, idx) + ', ' + s.numero + end.slice(idx);
+      } else {
+        end = end + ', ' + s.numero;
+      }
+    }
+    // Adiciona o CEP no final para aumentar precisão
+    if (s.cep) end += `, ${formatCEP(s.cep)}`;
+    return end;
+  }
+
+  const temPartida = ficha.ponto_partida && ficha.ponto_partida.trim();
 
   let origin, destination, waypointList;
 
   if (temPartida) {
-    origin        = `${ficha.ponto_partida_lat},${ficha.ponto_partida_lng}`;
-    destination   = `${ordenados[ordenados.length - 1].lat},${ordenados[ordenados.length - 1].lng}`;
-    // Waypoints = todos os serviços exceto o último (que é o destino)
-    waypointList  = ordenados.slice(0, -1).map(s => `${s.lat},${s.lng}`);
+    // Usa o nome/endereço do ponto de partida + CEP se disponível
+    const partidaEnd = ficha.ponto_partida_cep
+      ? `${ficha.ponto_partida}, ${formatCEP(ficha.ponto_partida_cep)}`
+      : ficha.ponto_partida;
+    origin       = partidaEnd;
+    destination  = endTexto(ordenados[ordenados.length - 1]);
+    waypointList = ordenados.slice(0, -1).map(endTexto);
   } else {
-    origin        = `${ordenados[0].lat},${ordenados[0].lng}`;
-    destination   = `${ordenados[ordenados.length - 1].lat},${ordenados[ordenados.length - 1].lng}`;
-    // Waypoints = serviços do meio (sem o primeiro e o último)
-    waypointList  = ordenados.slice(1, -1).map(s => `${s.lat},${s.lng}`);
+    origin       = endTexto(ordenados[0]);
+    destination  = endTexto(ordenados[ordenados.length - 1]);
+    waypointList = ordenados.slice(1, -1).map(endTexto);
   }
 
-  // Monta URL com URLSearchParams para garantir encoding correto de origin/destination
   const params = new URLSearchParams({
-    api:         '1',
-    origin:      origin,
+    api:        '1',
+    origin:     origin,
     destination: destination,
-    travelmode:  'driving'
+    travelmode: 'driving'
   });
 
-  // Waypoints: pipe NÃO deve ser encoded (%7C quebra o Maps)
-  // por isso concatenamos manualmente fora do URLSearchParams
+  // Waypoints: cada item encodado individualmente, separados por pipe (não encodado)
   let url = `https://www.google.com/maps/dir/?${params.toString()}`;
   if (waypointList.length > 0) {
-    url += `&waypoints=${waypointList.join('|')}`;
+    url += `&waypoints=${waypointList.map(encodeURIComponent).join('|')}`;
   }
 
   window.open(url, '_blank', 'noopener,noreferrer');
@@ -719,7 +718,6 @@ async function adicionarServico() {
       })
     });
     fecharModais();
-    // CORREÇÃO: distanciaReal já não multiplica mais, exibe valor direto
     toast(`Ponto adicionado! Distância estimada: ${distanciaReal(r.distancia_total).toFixed(1)} km`, 'success');
     if (r.aviso) toast(r.aviso, 'info');
     await renderFichaDetalhe(fichaId);
