@@ -701,128 +701,6 @@ header {
   font-size: 13px;
 }
 
-/* ─── RESPONSIVO MOBILE ─────────────────────────────────────────── */
-@media (max-width: 768px) {
-
-  /* Layout vira coluna */
-  .layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: 56px auto 1fr;
-    height: 100dvh;
-  }
-
-  /* Header menor */
-  header {
-    padding: 0 16px;
-  }
-
-  .logo-text { font-size: 16px; }
-  .header-date { font-size: 10px; }
-
-  /* Sidebar vira barra horizontal no topo */
-  .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    max-height: 180px;
-  }
-
-  .sidebar-list {
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 8px;
-    gap: 8px;
-  }
-
-  .sidebar-list::-webkit-scrollbar { height: 3px; }
-
-  .ficha-item {
-    min-width: 160px;
-    margin-bottom: 0;
-    flex-shrink: 0;
-  }
-
-  /* Main ocupa o resto */
-  .main {
-    padding: 16px;
-    overflow-y: auto;
-    height: 100%;
-  }
-
-  /* Ficha header empilha */
-  .ficha-header {
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .ficha-header .btn {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .ficha-titulo { font-size: 22px; }
-
-  /* Stats em coluna */
-  .stats-strip {
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-
-  /* Panels em coluna */
-  .panel-grid {
-    grid-template-columns: 1fr;
-  }
-
-  /* Roteiro item ajustado */
-  .roteiro-item {
-    grid-template-columns: 36px 1fr auto;
-    gap: 10px;
-    padding: 12px 14px;
-  }
-
-  .roteiro-endereco {
-    white-space: normal;
-    font-size: 11px;
-  }
-
-  /* Modal ocupa tela toda no mobile */
-  .modal {
-    width: 100%;
-    max-width: 100%;
-    margin: 0;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    padding: 24px 20px;
-    max-height: 90dvh;
-    overflow-y: auto;
-  }
-
-  .modal-overlay {
-    align-items: flex-end;
-  }
-
-  /* Form row vira coluna */
-  .form-row {
-    grid-template-columns: 1fr;
-  }
-
-  /* Toast menor */
-  .toast-container {
-    bottom: 16px;
-    right: 16px;
-    left: 16px;
-  }
-
-  .toast { max-width: 100%; }
-
-  /* Botão add ficha fixo */
-  .btn-nova-ficha {
-    width: 32px;
-    height: 32px;
-    font-size: 20px;
-  }
-}
-
 /* ─── TÉCNICOS ──────────────────────────────────────────────────── */
 .tecnico-section {
   margin-bottom: 8px;
@@ -1007,26 +885,72 @@ header {
   font-family: var(--font-display);
 }
 
-/* ─── RESPONSIVO MOBILE ──────────────────────────────────────────── */
+.verificar-zona {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--accent-dim);
+}
+
+.tag-zona {
+  background: #d0f0e0;
+  color: #1a8040;
+  border-radius: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+/* ─── RESPONSIVO MOBILE ─────────────────────────────────────────── */
 @media (max-width: 768px) {
+
   .layout {
     grid-template-columns: 1fr;
     grid-template-rows: 56px auto 1fr;
     height: 100dvh;
+    overflow: hidden;
   }
 
   header { padding: 0 16px; }
   .logo-text { font-size: 16px; }
   .header-date { font-size: 10px; }
 
+  /* Sidebar: altura limitada, com scroll interno */
   .sidebar {
     border-right: none;
     border-bottom: 1px solid var(--border);
     max-height: 260px;
     overflow-y: auto;
+    overflow-x: hidden;
   }
 
-  .main { padding: 16px; }
+  .sidebar-list {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .sidebar-list::-webkit-scrollbar { height: 3px; }
+
+  .ficha-item {
+    min-width: 160px;
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+
+  /* Main: ocupa espaço restante e rola */
+  .main {
+    padding: 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
+  }
 
   .ficha-header {
     flex-direction: column;
@@ -1053,6 +977,7 @@ header {
     font-size: 11px;
   }
 
+  /* Modal sobe do fundo da tela */
   .modal {
     width: 100%;
     max-width: 100%;
@@ -1068,23 +993,10 @@ header {
 
   .toast-container { bottom: 16px; right: 16px; left: 16px; }
   .toast { max-width: 100%; }
-}
 
-.verificar-zona {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent);
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--accent-dim);
-}
-
-.tag-zona {
-  background: #d0f0e0;
-  color: #1a8040;
-  border-radius: 8px;
-  padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 600;
-  margin-left: 4px;
+  .btn-nova-ficha {
+    width: 32px;
+    height: 32px;
+    font-size: 20px;
+  }
 }
