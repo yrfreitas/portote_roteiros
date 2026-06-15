@@ -578,6 +578,19 @@ function abrirRotaGoogleMaps(ficha, servicos) {
 }
 
 // ─── VERIFICADOR DE CEP ──────────────────────────────────────────────
+let verificacaoAtual = null;
+
+const ZONA_LABEL = {
+  centro: '🏙️ Centro',
+  norte:  '⬆️ Zona Norte',
+  sul:    '⬇️ Zona Sul',
+  leste:  '➡️ Zona Leste',
+  oeste:  '⬅️ Zona Oeste',
+  outros: '📍 Região'
+};
+
+const DIAS_SEMANA = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+
 async function verificarCEP() {
   const cep = document.getElementById('verificar-cep-input').value;
   if (!cep || cep.replace('-', '').length < 8) {
@@ -590,7 +603,7 @@ async function verificarCEP() {
   btn.innerHTML = '<div class="spinner"></div>';
 
   const resultado = document.getElementById('verificar-resultado');
-  resultado.innerHTML = `<div style="font-size:11px; color:var(--text-muted); padding:8px 0;">Buscando...</div>`;
+  resultado.innerHTML = `<div style="font-size:11px; color:var(--text-muted); padding:10px 0; display:flex; align-items:center; gap:8px;"><div class="spinner"></div> Buscando...</div>`;
 
   try {
     const r = await api('/verificar-cep', {
@@ -598,48 +611,53 @@ async function verificarCEP() {
       body: JSON.stringify({ cep: cep.replace('-', '') })
     });
 
+    verificacaoAtual = r;
+
     if (!r.sugestoes || r.sugestoes.length === 0) {
       resultado.innerHTML = `
         <div class="verificar-resultado-box">
-          <div style="font-size:12px; color:var(--text-muted); padding:10px;">
-            Nenhuma rota cadastrada para comparar ainda.
-          </div>
+          <div class="verificar-endereco">${r.endereco.split(',').slice(0,2).join(',')}</div>
+          <div class="verificar-zona">${ZONA_LABEL[r.zona] || r.zona}</div>
+          ${renderCriarNovoDia(r, 'Ainda não há nenhuma rota cadastrada para comparar.')}
         </div>`;
+      ativarSeletorDiaMini();
       return;
     }
 
-    const zonaLabel = {
-      centro: '🏙️ Centro',
-      norte:  '⬆️ Zona Norte',
-      sul:    '⬇️ Zona Sul',
-      leste:  '➡️ Zona Leste',
-      oeste:  '⬅️ Zona Oeste',
-      outros: '📍 Região'
-    };
-
-    resultado.innerHTML = `
+    let html = `
       <div class="verificar-resultado-box">
         <div class="verificar-endereco">${r.endereco.split(',').slice(0,2).join(',')}</div>
-        <div class="verificar-zona">${zonaLabel[r.zona] || r.zona}</div>
+        <div class="verificar-zona">${ZONA_LABEL[r.zona] || r.zona}</div>
         <div class="verificar-sugestoes-title">Melhor encaixe:</div>
-        ${r.sugestoes.map((s, i) => `
-          <div class="sugestao-item ${i === 0 ? 'melhor' : ''}" onclick="selecionarFichaVerificador(${s.ficha_id})">
-            <div class="sugestao-dot" style="background:${s.tecnico_cor}"></div>
-            <div class="sugestao-info">
-              <div class="sugestao-tecnico" style="color:${s.tecnico_cor}">${s.tecnico_nome}</div>
-              <div class="sugestao-dia">
-                ${s.dia_semana} · ${distanciaReal(s.dist_minima).toFixed(1)} km
-                ${s.mesma_zona ? `<span class="tag-zona">✓ Mesma zona</span>` : ''}
+        <div class="sugestoes-lista">
+          ${r.sugestoes.map((s, i) => `
+            <div class="sugestao-item ${i === 0 && r.tem_boa_opcao ? 'melhor' : ''}" onclick="selecionarFichaVerificador(${s.ficha_id})">
+              <div class="sugestao-dot" style="background:${s.tecnico_cor}; color:${s.tecnico_cor}"></div>
+              <div class="sugestao-info">
+                <div class="sugestao-tecnico" style="color:${s.tecnico_cor}">${s.tecnico_nome}</div>
+                <div class="sugestao-dia">
+                  ${s.dia_semana} · ${distanciaReal(s.dist_minima).toFixed(1)} km
+                  ${s.mesma_zona ? `<span class="tag-zona">✓ Mesma zona</span>` : ''}
+                </div>
+                ${s.pontos_mesma_zona > 0 ? `
+                  <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">
+                    ${s.pontos_mesma_zona} ponto${s.pontos_mesma_zona > 1 ? 's' : ''} já na mesma região
+                  </div>` : ''}
               </div>
-              ${s.pontos_mesma_zona > 0 ? `
-                <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">
-                  ${s.pontos_mesma_zona} ponto${s.pontos_mesma_zona > 1 ? 's' : ''} já na mesma região
-                </div>` : ''}
+              ${i === 0 && r.tem_boa_opcao ? '<div class="sugestao-badge">✓ Ideal</div>' : ''}
             </div>
-            ${i === 0 ? '<div class="sugestao-badge">✓ Ideal</div>' : ''}
-          </div>
-        `).join('')}
-      </div>`;
+          `).join('')}
+        </div>`;
+
+    if (!r.tem_boa_opcao) {
+      html += renderCriarNovoDia(r, 'Nenhuma rota existente tem um bom encaixe para esse CEP.');
+    }
+
+    html += `</div>`;
+
+    resultado.innerHTML = html;
+    if (!r.tem_boa_opcao) ativarSeletorDiaMini();
+
   } catch (e) {
     resultado.innerHTML = `
       <div class="verificar-resultado-box erro">
@@ -648,6 +666,100 @@ async function verificarCEP() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = 'Verificar';
+  }
+}
+
+function renderCriarNovoDia(r, mensagem) {
+  const tecnicosOptions = (r.tecnicos || []).map(t =>
+    `<option value="${t.id}">${t.nome}</option>`
+  ).join('');
+
+  if (!r.tecnicos || r.tecnicos.length === 0) {
+    return `
+      <div class="criar-novo-dia-box">
+        <div class="criar-novo-dia-aviso">
+          <span class="icone">💡</span>
+          <span>${mensagem} Cadastre um técnico primeiro para criar um novo dia de rota.</span>
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="criar-novo-dia-box">
+      <div class="criar-novo-dia-aviso">
+        <span class="icone">💡</span>
+        <span>${mensagem} Que tal criar um novo dia de rota para essa região?</span>
+      </div>
+      <div class="criar-novo-dia-form">
+        <div class="criar-novo-dia-row">
+          <select class="form-input" id="novo-dia-tecnico">
+            ${tecnicosOptions}
+          </select>
+        </div>
+        <div class="dias-grid-mini" id="novo-dia-dias-mini">
+          ${DIAS_SEMANA.map(d => `<button type="button" class="dia-pill-mini" data-dia="${d}">${d.split('-')[0].slice(0,3).toUpperCase()}</button>`).join('')}
+        </div>
+        <button class="btn btn-primary btn-criar-novo-dia" onclick="criarNovoDiaDoVerificador()">
+          + Criar Novo Dia para essa Região
+        </button>
+      </div>
+    </div>`;
+}
+
+function ativarSeletorDiaMini() {
+  const container = document.getElementById('novo-dia-dias-mini');
+  if (!container) return;
+  container.querySelectorAll('.dia-pill-mini').forEach(p => {
+    p.addEventListener('click', () => {
+      container.querySelectorAll('.dia-pill-mini').forEach(x => x.classList.remove('selected'));
+      p.classList.add('selected');
+    });
+  });
+}
+
+async function criarNovoDiaDoVerificador() {
+  if (!verificacaoAtual) return;
+
+  const tecnicoSelect = document.getElementById('novo-dia-tecnico');
+  const diaSelecionado = document.querySelector('#novo-dia-dias-mini .dia-pill-mini.selected');
+
+  if (!tecnicoSelect || !tecnicoSelect.value) {
+    toast('Selecione um técnico', 'error');
+    return;
+  }
+  if (!diaSelecionado) {
+    toast('Selecione um dia da semana', 'error');
+    return;
+  }
+
+  const body = {
+    tecnico_id: parseInt(tecnicoSelect.value),
+    dia_semana: diaSelecionado.dataset.dia,
+    data_referencia: '',
+    ponto_partida: '',
+    ponto_partida_cep: ''
+  };
+
+  try {
+    const r = await api('/fichas', { method: 'POST', body: JSON.stringify(body) });
+    toast(`Ficha "${body.dia_semana}" criada!`, 'success');
+    await carregarTecnicos();
+
+    // Abre a ficha recém-criada e adiciona o CEP verificado automaticamente
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('ficha-detail').style.display = 'block';
+    await renderFichaDetalhe(r.id);
+
+    document.getElementById('add-ficha-id').value = r.id;
+    document.getElementById('add-cep').value = formatCEP(verificacaoAtual.cep);
+    document.getElementById('add-numero').value = '';
+    document.getElementById('add-cliente').value = '';
+    document.getElementById('add-descricao').value = '';
+    document.getElementById('modal-add-servico').classList.add('open');
+    setTimeout(() => document.getElementById('add-numero').focus(), 150);
+
+  } catch (e) {
+    toast(e.message, 'error');
   }
 }
 
