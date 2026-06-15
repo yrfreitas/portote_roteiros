@@ -12,6 +12,10 @@ CORES_PADRAO = [
 PG = bool(os.environ.get("DATABASE_URL"))
 PH = "%s" if PG else "?"
 
+# Score mínimo para considerar uma sugestão um "bom encaixe".
+# Abaixo disso, o front sugere criar um novo dia.
+SCORE_MINIMO_BOM = 30
+
 
 def _fetchall(cur):
     rows = cur.fetchall()
@@ -181,13 +185,23 @@ def verificar_cep():
     cur.close()
     conn.close()
 
+    # Lista de técnicos para sugestão de "criar novo dia"
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, nome, cor FROM tecnicos ORDER BY nome")
+    lista_tecnicos = _fetchall(cur)
+    cur.close()
+    conn.close()
+
     if not servicos:
         return jsonify({
-            "cep":      cep,
-            "endereco": endereco_alvo,
-            "zona":     zona_alvo,
-            "sugestoes": [],
-            "mensagem": "Nenhuma rota cadastrada ainda."
+            "cep":          cep,
+            "endereco":     endereco_alvo,
+            "zona":         zona_alvo,
+            "sugestoes":    [],
+            "tem_boa_opcao": False,
+            "tecnicos":     lista_tecnicos,
+            "mensagem":     "Nenhuma rota cadastrada ainda."
         })
 
     from services.otimizador import haversine
@@ -229,14 +243,20 @@ def verificar_cep():
     sugestoes = lista[:3]
 
     for s in sugestoes:
+        s["score"]             = round(score(s), 1)
         s["dist_minima"]       = round(s["dist_minima"], 1)
         s["mesma_zona"]        = s["pontos_mesma_zona"] > 0
         s["zona_alvo"]         = zona_alvo
         s["pontos_mesma_zona"] = s["pontos_mesma_zona"]
 
+    # Considera "boa opção" se a melhor sugestão atingir o score mínimo
+    tem_boa_opcao = len(sugestoes) > 0 and sugestoes[0]["score"] >= SCORE_MINIMO_BOM
+
     return jsonify({
-        "cep":      cep,
-        "endereco": endereco_alvo,
-        "zona":     zona_alvo,
-        "sugestoes": sugestoes
+        "cep":           cep,
+        "endereco":      endereco_alvo,
+        "zona":          zona_alvo,
+        "sugestoes":     sugestoes,
+        "tem_boa_opcao": tem_boa_opcao,
+        "tecnicos":      lista_tecnicos
     })
