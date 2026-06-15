@@ -6,12 +6,10 @@
   <title>Portotec — Roteiros</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
-  <!-- FAVICONS -->
   <link rel="icon" type="image/x-icon" href="/static/assets/favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/assets/favicon-16x16.png">
   <link rel="apple-touch-icon" href="/static/assets/apple-touch-icon.png">
-  <!-- LEAFLET CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -21,7 +19,7 @@
 
   <!-- HEADER -->
   <header>
-    <img src="/static/logo.png" alt="Porto Tec" style="height: 48px; width: auto; object-fit: contain;">
+    <img src="/static/logo.png" alt="Porto Tec" style="height:42px;width:auto;object-fit:contain;">
     <div class="header-meta">
       <span class="header-date" id="current-date"></span>
       <div class="status-dot"></div>
@@ -33,7 +31,7 @@
 
     <!-- VERIFICADOR DE CEP -->
     <div class="verificador-box">
-      <div class="verificador-title">🔍 Verificar CEP</div>
+      <div class="verificador-title">Verificar CEP</div>
       <div class="verificador-row">
         <input type="text" class="form-input" id="verificar-cep-input"
                placeholder="00000-000" maxlength="9"
@@ -60,7 +58,7 @@
     <div class="empty-state" id="empty-state">
       <div class="empty-icon">🗺️</div>
       <h2>Nenhuma ficha selecionada</h2>
-      <p>Selecione um técnico e crie uma ficha de dia.</p>
+      <p>Selecione um técnico e abra uma ficha de dia para ver o roteiro.</p>
       <button class="btn btn-primary" onclick="abrirModalNovoTecnico()">+ Novo Técnico</button>
     </div>
 
@@ -72,7 +70,7 @@
 <!-- MODAL NOVO TÉCNICO -->
 <div class="modal-overlay" id="modal-novo-tecnico">
   <div class="modal">
-    <div class="modal-title">👤 Novo Técnico</div>
+    <div class="modal-title">Novo Técnico</div>
     <div class="form-group">
       <label class="form-label">Nome do Técnico</label>
       <input type="text" class="form-input" id="novo-tecnico-nome" placeholder="Ex: Pedro, Cristian...">
@@ -87,7 +85,7 @@
 <!-- MODAL NOVA FICHA -->
 <div class="modal-overlay" id="modal-nova-ficha">
   <div class="modal">
-    <div class="modal-title">📋 Nova Ficha de Dia</div>
+    <div class="modal-title">Nova Ficha de Dia</div>
     <input type="hidden" id="nova-ficha-tecnico-id">
 
     <div class="form-group">
@@ -132,7 +130,7 @@
 <!-- MODAL ADD SERVIÇO -->
 <div class="modal-overlay" id="modal-add-servico">
   <div class="modal">
-    <div class="modal-title">📍 Adicionar Ponto de Serviço</div>
+    <div class="modal-title">Adicionar Ponto de Serviço</div>
     <input type="hidden" id="add-ficha-id">
 
     <div class="form-row">
@@ -158,7 +156,7 @@
     <div class="form-group">
       <label class="form-label">Descrição do Serviço</label>
       <input type="text" class="form-input" id="add-descricao"
-             placeholder="Ex: Troca de peça, instalação...">
+             placeholder="Ex: Máquina não centrifuga, não gela...">
     </div>
 
     <div class="modal-actions">
@@ -173,7 +171,6 @@
 <!-- TOASTS -->
 <div class="toast-container" id="toast-container"></div>
 
-<!-- LEAFLET JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/static/app.js"></script>
 </body>
