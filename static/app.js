@@ -457,7 +457,7 @@ function _vcepAnalise(r) {
           </div>
           <div class="vcep-rota-info">
             <div class="vcep-rota-nome">${s.tecnico_nome}</div>
-            <div class="vcep-rota-dia">${s.dia_semana} · ${s.total_pontos || 0} pts</div>
+           <div class="vcep-rota-dia">${s.dia_semana}${s.data_referencia ? ' · ' + formatarData(s.data_referencia) : ''} · ${s.total_pontos || 0} pts</div>
           </div>
           <div class="vcep-rota-score">
             <div class="vcep-score-num" style="color:${cor}">${sc}</div>
