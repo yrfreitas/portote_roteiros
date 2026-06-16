@@ -457,7 +457,7 @@ function _vcepAnalise(r) {
           </div>
           <div class="vcep-rota-info">
             <div class="vcep-rota-nome">${s.tecnico_nome}</div>
-           <div class="vcep-rota-dia">${s.dia_semana}${s.data_referencia ? ' · ' + formatarData(s.data_referencia) : ''} · ${s.total_pontos || 0} pts</div>
+           <div class="vcep-rota-dia">${s.dia_semana} · ${s.total_pontos || 0} pts${(() => { const t = tecnicos.find(t => t.id === s.tecnico_id); const fichasEl = document.getElementById('fichas-tecnico-' + (t?.id || '')); const items = fichasEl?.querySelectorAll('.ficha-item'); let data = ''; items?.forEach(el => { const metaEl = el.querySelector('.ficha-item-meta span'); if(metaEl && el.querySelector('.ficha-item-dia')?.textContent === s.dia_semana) data = metaEl.textContent; }); return data ? ' · ' + data : ''; })()}</div>
           </div>
           <div class="vcep-rota-score">
             <div class="vcep-score-num" style="color:${cor}">${sc}</div>
