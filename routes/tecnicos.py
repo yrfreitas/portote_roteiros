@@ -223,7 +223,7 @@ def verificar_cep():
         return zona_bonus + dist_score + regiao_bonus - penal_lotacao
 
     lista = sorted(fichas.values(), key=score, reverse=True)
-    sugestoes = lista[:3]
+    sugestoes = lista[:10]
 
     for s in sugestoes:
         s["score"]             = max(0, round(score(s), 1))   # nunca mostra score negativo
