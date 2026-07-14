@@ -16,6 +16,9 @@ PH = "%s" if PG else "?"
 # Abaixo disso, o front sugere criar um novo dia.
 SCORE_MINIMO_BOM = 30
 
+# Nº de paradas que uma rota "comporta bem" num dia antes de começar a penalizar
+CAPACIDADE_IDEAL = 8
+
 
 def _fetchall(cur):
     rows = cur.fetchall()
@@ -30,47 +33,21 @@ def _fetchone(cur):
 
 
 def zona_sp(cep_num):
+    """
+    Zonas da cidade de São Paulo com base no prefixo real do CEP (5 primeiros dígitos).
+    Cobre a capital (01000-09999). CEPs fora desse intervalo (interior/outros estados)
+    caem em "outros".
+    """
     n = int(cep_num[:5])
-    if   1000  <= n <= 9999:   return "centro"
-    elif 10000 <= n <= 19999:  return "centro"
-    elif 20000 <= n <= 23999:  return "oeste"
-    elif 24000 <= n <= 24999:  return "norte"
-    elif 25000 <= n <= 29999:  return "norte"
-    elif 30000 <= n <= 37999:  return "norte"
-    elif 38000 <= n <= 38999:  return "leste"
-    elif 39000 <= n <= 39999:  return "leste"
-    elif 40000 <= n <= 44999:  return "sul"
-    elif 45000 <= n <= 45999:  return "sul"
-    elif 46000 <= n <= 47999:  return "oeste"
-    elif 48000 <= n <= 49999:  return "leste"
-    elif 50000 <= n <= 52999:  return "leste"
-    elif 53000 <= n <= 54999:  return "norte"
-    elif 55000 <= n <= 55999:  return "norte"
-    elif 56000 <= n <= 57999:  return "oeste"
-    elif 58000 <= n <= 58999:  return "norte"
-    elif 59000 <= n <= 59999:  return "norte"
-    elif 60000 <= n <= 60999:  return "leste"
-    elif 61000 <= n <= 61999:  return "leste"
-    elif 62000 <= n <= 62999:  return "norte"
-    elif 63000 <= n <= 63999:  return "leste"
-    elif 64000 <= n <= 64999:  return "leste"
-    elif 65000 <= n <= 65999:  return "sul"
-    elif 66000 <= n <= 67999:  return "leste"
-    elif 68000 <= n <= 68999:  return "sul"
-    elif 69000 <= n <= 69999:  return "sul"
-    elif 70000 <= n <= 72999:  return "sul"
-    elif 73000 <= n <= 73999:  return "sul"
-    elif 74000 <= n <= 74999:  return "oeste"
-    elif 75000 <= n <= 75999:  return "oeste"
-    elif 76000 <= n <= 76999:  return "oeste"
-    elif 77000 <= n <= 77999:  return "norte"
-    elif 78000 <= n <= 79999:  return "sul"
-    elif 80000 <= n <= 82999:  return "sul"
-    elif 83000 <= n <= 83999:  return "leste"
-    elif 84000 <= n <= 84999:  return "leste"
-    elif 85000 <= n <= 87999:  return "sul"
-    elif 88000 <= n <= 88999:  return "sul"
-    elif 89000 <= n <= 89999:  return "norte"
+    if   1000  <= n <= 1999:   return "centro"
+    elif 2000  <= n <= 2999:   return "norte"
+    elif 7000  <= n <= 7999:   return "norte"   # Guarulhos (extensão zona norte)
+    elif 3000  <= n <= 3999:   return "leste"
+    elif 8000  <= n <= 8499:   return "leste"   # Itaquera / São Miguel etc.
+    elif 4000  <= n <= 4999:   return "sul"
+    elif 9000  <= n <= 9999:   return "sul"     # ABC (extensão zona sul)
+    elif 5000  <= n <= 5999:   return "oeste"
+    elif 6000  <= n <= 6999:   return "oeste"   # Osasco (extensão zona oeste)
     else: return "outros"
 
 
@@ -234,16 +211,22 @@ def verificar_cep():
 
     # ── 4. Score final ────────────────────────────────────────────
     def score(f):
-        zona_bonus   = 100 if f["pontos_mesma_zona"] > 0 else 0
-        dist_score   = max(0, 50 - f["dist_minima"])
-        regiao_bonus = f["pontos_mesma_zona"] * 5
-        return zona_bonus + dist_score + regiao_bonus
+        total = f["total_pontos"]
+        pct_mesma_zona = f["pontos_mesma_zona"] / total if total else 0
+
+        zona_bonus    = 100 * pct_mesma_zona        # proporcional, não all-or-nothing
+        dist_score    = max(0, 50 - f["dist_minima"])
+        regiao_bonus  = f["pontos_mesma_zona"] * 3
+        excesso       = max(0, total - CAPACIDADE_IDEAL)
+        penal_lotacao = excesso * 15                # cada ponto acima do ideal derruba o score
+
+        return zona_bonus + dist_score + regiao_bonus - penal_lotacao
 
     lista = sorted(fichas.values(), key=score, reverse=True)
     sugestoes = lista[:3]
 
     for s in sugestoes:
-        s["score"]             = round(score(s), 1)
+        s["score"]             = max(0, round(score(s), 1))   # nunca mostra score negativo
         s["dist_minima"]       = round(s["dist_minima"], 1)
         s["mesma_zona"]        = s["pontos_mesma_zona"] > 0
         s["zona_alvo"]         = zona_alvo
