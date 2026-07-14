@@ -2,29 +2,6 @@
 let fichaAtiva = null;
 let tecnicoAtivo = null;
 let tecnicos = [];
-let abaAtiva = 'rotas';
-
-// ─── ABAS ────────────────────────────────────────────────────────────
-function switchTab(tab) {
-  if (abaAtiva === tab) return;
-  abaAtiva = tab;
-
-  document.querySelectorAll('.tab-nav-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
-  });
-  document.querySelectorAll('.tab-panel').forEach(panel => {
-    panel.classList.toggle('active', panel.id === 'panel-' + tab);
-  });
-
-  // O mapa Leaflet precisa recalcular o tamanho quando volta a ficar visível
-  if (tab === 'rotas' && fichaAtiva) {
-    invalidarMapa();
-  }
-  // Ao entrar na aba de configurações, garante que a lista de técnicos está atualizada
-  if (tab === 'config') {
-    renderConfigTecnicos();
-  }
-}
 
 // ─── MAPA ────────────────────────────────────────────────────────────
 let mapaLeaflet = null;
@@ -42,7 +19,7 @@ function inicializarMapa(containerId) {
   L.control.attribution({ prefix: '© OSM' }).addTo(mapaLeaflet);
 }
 
-function renderizarMapaPontos(ficha, servicos, corTecnico = '#3b6fe0') {
+function renderizarMapaPontos(ficha, servicos, corTecnico = '#1a6fd4') {
   if (!mapaLeaflet) return;
   mapaMarkers.forEach(m => m.remove());
   mapaMarkers = [];
@@ -54,7 +31,7 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#3b6fe0') {
     pontos.push([lat, lng]);
     const icon = L.divIcon({
       className: '',
-      html: `<div style="width:36px;height:36px;border-radius:50%;background:#fff8e0;border:2px solid #b87800;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.18);">⭐</div>`,
+      html: `<div style="width:36px;height:36px;border-radius:50%;background:#fff8e0;border:2px solid #b87800;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.25);">⭐</div>`,
       iconSize: [36, 36], iconAnchor: [18, 18],
     });
     const marker = L.marker([lat, lng], { icon }).addTo(mapaLeaflet)
@@ -66,10 +43,10 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#3b6fe0') {
     if (!s.lat || !s.lng || (s.lat === 0 && s.lng === 0)) return;
     pontos.push([s.lat, s.lng]);
     const num = i + 1;
-    const cor = corTecnico || '#3b6fe0';
+    const cor = corTecnico || '#1a6fd4';
     const icon = L.divIcon({
       className: '',
-      html: `<div style="width:34px;height:34px;border-radius:50%;background:${cor};border:2px solid white;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.22);font-family:'JetBrains Mono',monospace;">${num}</div>`,
+      html: `<div style="width:34px;height:34px;border-radius:50%;background:${cor};border:2px solid white;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:'JetBrains Mono',monospace;">${num}</div>`,
       iconSize: [34, 34], iconAnchor: [17, 17],
     });
     const endLabel = s.numero ? `Nº ${s.numero} · ${s.endereco_completo || ''}` : (s.endereco_completo || '—');
@@ -78,7 +55,7 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#3b6fe0') {
     mapaMarkers.push(marker);
   });
   if (pontos.length >= 2) {
-    mapaPolyline = L.polyline(pontos, { color: corTecnico || '#3b6fe0', weight: 3, opacity: 0.75, dashArray: '6, 6' }).addTo(mapaLeaflet);
+    mapaPolyline = L.polyline(pontos, { color: corTecnico || '#1a6fd4', weight: 3, opacity: 0.7, dashArray: '6, 6' }).addTo(mapaLeaflet);
   }
   if (pontos.length === 1) mapaLeaflet.setView(pontos[0], 15);
   else if (pontos.length >= 2) mapaLeaflet.fitBounds(pontos, { padding: [32, 32] });
@@ -132,7 +109,6 @@ async function carregarTecnicos() {
     const list = document.getElementById('sidebar-list');
     if (tecnicos.length === 0) {
       list.innerHTML = `<div style="padding:20px 14px;color:var(--text-muted);font-size:12px;text-align:center;">Nenhum técnico cadastrado.<br>Clique em + para adicionar.</div>`;
-      renderConfigTecnicos();
       return;
     }
     list.innerHTML = tecnicos.map(t => `
@@ -150,7 +126,6 @@ async function carregarTecnicos() {
       </div>
     `).join('');
     for (const t of tecnicos) await carregarFichasTecnico(t.id);
-    renderConfigTecnicos();
   } catch (e) {
     toast('Erro ao carregar técnicos', 'error');
   }
@@ -209,36 +184,8 @@ async function deletarTecnico(evt, id) {
   toast('Técnico removido', 'info');
 }
 
-// ─── ABA CONFIGURAÇÕES ───────────────────────────────────────────────
-function _iniConfig(nome) { return nome.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
-
-function renderConfigTecnicos() {
-  const wrap = document.getElementById('config-tecnicos-list');
-  if (!wrap) return;
-  if (!tecnicos || tecnicos.length === 0) {
-    wrap.innerHTML = `<div class="config-empty" style="grid-column:1/-1;">Nenhum técnico cadastrado ainda.<br>Clique em "+ Novo Técnico" para começar.</div>`;
-    return;
-  }
-  wrap.innerHTML = tecnicos.map(t => `
-    <div class="config-tecnico-card" style="--tec-cor:${t.cor}">
-      <div class="config-tecnico-top">
-        <div class="config-tecnico-avatar" style="background:${t.cor}">${_iniConfig(t.nome)}</div>
-        <div>
-          <div class="config-tecnico-nome">${t.nome}</div>
-          <div class="config-tecnico-cor">${t.cor}</div>
-        </div>
-      </div>
-      <div class="config-tecnico-actions">
-        <button class="btn btn-ghost" onclick="abrirModalNovaFicha(${t.id});switchTab('rotas')">+ Ficha</button>
-        <button class="btn btn-ghost" onclick="deletarTecnico(event,${t.id})">Remover</button>
-      </div>
-    </div>
-  `).join('');
-}
-
 // ─── FICHAS ──────────────────────────────────────────────────────────
 async function selecionarFicha(id) {
-  if (abaAtiva !== 'rotas') switchTab('rotas');
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('ficha-detail').style.display = 'block';
   await renderFichaDetalhe(id);
@@ -388,7 +335,7 @@ const DIAS_ABREV = {
 
 function _ini(nome) { return nome.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
 function _hexRgb(h) { return `${parseInt(h.slice(1,3),16)},${parseInt(h.slice(3,5),16)},${parseInt(h.slice(5,7),16)}`; }
-function _scoreCor(s) { if (s >= 130) return '#1d4ed8'; if (s >= 80) return '#08794f'; return '#8894a8'; }
+function _scoreCor(s) { if (s >= 130) return '#185FA5'; if (s >= 80) return '#0F6E56'; return '#888780'; }
 function _scorePalavra(s, rank) {
   if (rank === 0 && s >= 100) return 'Excelente';
   if (s >= 100) return 'Muito bom';
@@ -437,7 +384,7 @@ function _renderVcep(container, r) {
   container.innerHTML = `
     <div class="vcep-geo">
       <div class="vcep-geo-pin">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#E6F1FB" stroke-width="2.5">
           <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
         </svg>
       </div>
@@ -666,9 +613,9 @@ async function vcepAdicionarServico() {
       })
     });
     toast(`Ponto adicionado! ${distanciaReal(r.distancia_total).toFixed(1)} km`, 'success');
+    await renderFichaDetalhe(parseInt(fichaId));
     await carregarTecnicos();
     document.getElementById('verificar-resultado').innerHTML = '';
-    toast('Abra a aba "Rotas" para ver o roteiro atualizado', 'info');
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -689,7 +636,6 @@ async function vcepCriarNovoDia() {
     const r = await api('/fichas', { method: 'POST', body: JSON.stringify(body) });
     toast(`Ficha "${body.dia_semana}" criada!`, 'success');
     await carregarTecnicos();
-    switchTab('rotas');
     document.getElementById('empty-state').style.display = 'none';
     document.getElementById('ficha-detail').style.display = 'block';
     await renderFichaDetalhe(r.id);
