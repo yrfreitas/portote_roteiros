@@ -3,38 +3,45 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Sistema de roteirização de atendimentos técnicos — Porto Tec">
   <title>Portotec — Roteiros</title>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&display=swap">
+
   <link rel="icon" type="image/x-icon" href="/static/assets/favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/assets/favicon-16x16.png">
   <link rel="apple-touch-icon" href="/static/assets/apple-touch-icon.png">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
 <div class="layout">
 
-  <!-- HEADER -->
   <header>
-    <img src="/static/logo.png" alt="Porto Tec" style="height:42px;width:auto;object-fit:contain;">
+    <img src="/static/logo.png" alt="Porto Tec"
+         style="height:42px;width:auto;object-fit:contain;">
     <div class="header-meta">
       <span class="header-date" id="current-date"></span>
-      <div class="status-dot"></div>
+      <div class="status-dot" title="Sistema online"></div>
     </div>
   </header>
 
-  <!-- SIDEBAR -->
   <aside class="sidebar">
 
-    <!-- VERIFICADOR DE CEP -->
     <div class="verificador-box">
       <div class="verificador-title">Verificar CEP</div>
       <div class="verificador-row">
+        <label for="verificar-cep-input" style="position:absolute;left:-9999px;">CEP a verificar</label>
         <input type="text" class="form-input" id="verificar-cep-input"
                placeholder="00000-000" maxlength="9"
+               inputmode="numeric" autocomplete="postal-code"
                oninput="formatarCEP(this)"
                onkeydown="if(event.key==='Enter') verificarCEP()">
         <button class="btn btn-primary" onclick="verificarCEP()" id="btn-verificar">Verificar</button>
@@ -42,17 +49,16 @@
       <div id="verificar-resultado"></div>
     </div>
 
-    <!-- TÉCNICOS -->
     <div class="sidebar-header">
       <span class="sidebar-title">Técnicos</span>
-      <button class="btn-nova-ficha" onclick="abrirModalNovoTecnico()" title="Novo técnico">+</button>
+      <button class="btn-nova-ficha" onclick="abrirModalNovoTecnico()"
+              title="Novo técnico" aria-label="Adicionar técnico">+</button>
     </div>
     <div class="sidebar-list" id="sidebar-list">
       <div class="loading-row">Carregando...</div>
     </div>
   </aside>
 
-  <!-- MAIN -->
   <main class="main" id="main-content">
 
     <div class="empty-state" id="empty-state">
@@ -67,23 +73,23 @@
   </main>
 </div>
 
-<!-- MODAL NOVO TÉCNICO -->
-<div class="modal-overlay" id="modal-novo-tecnico">
+<div class="modal-overlay" id="modal-novo-tecnico" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="modal-title">Novo Técnico</div>
     <div class="form-group">
-      <label class="form-label">Nome do Técnico</label>
-      <input type="text" class="form-input" id="novo-tecnico-nome" placeholder="Ex: Pedro, Cristian...">
+      <label class="form-label" for="novo-tecnico-nome">Nome do Técnico</label>
+      <input type="text" class="form-input" id="novo-tecnico-nome"
+             maxlength="80" placeholder="Ex: Pedro, Cristian..."
+             onkeydown="if(event.key==='Enter') criarTecnico()">
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
-      <button class="btn btn-primary" onclick="criarTecnico()">Criar Técnico</button>
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="criarTecnico()">Criar Técnico</button>
     </div>
   </div>
 </div>
 
-<!-- MODAL NOVA FICHA -->
-<div class="modal-overlay" id="modal-nova-ficha">
+<div class="modal-overlay" id="modal-nova-ficha" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="modal-title">Nova Ficha de Dia</div>
     <input type="hidden" id="nova-ficha-tecnico-id">
@@ -91,85 +97,84 @@
     <div class="form-group">
       <label class="form-label">Dia da Semana</label>
       <div class="dias-grid">
-        <button class="dia-pill" onclick="selecionarDia(this, 'Segunda-feira')">SEG</button>
-        <button class="dia-pill" onclick="selecionarDia(this, 'Terça-feira')">TER</button>
-        <button class="dia-pill" onclick="selecionarDia(this, 'Quarta-feira')">QUA</button>
-        <button class="dia-pill" onclick="selecionarDia(this, 'Quinta-feira')">QUI</button>
-        <button class="dia-pill" onclick="selecionarDia(this, 'Sexta-feira')">SEX</button>
-        <button class="dia-pill" onclick="selecionarDia(this, 'Sábado')">SAB</button>
+        <button type="button" class="dia-pill" onclick="selecionarDia(this, 'Segunda-feira')">SEG</button>
+        <button type="button" class="dia-pill" onclick="selecionarDia(this, 'Terça-feira')">TER</button>
+        <button type="button" class="dia-pill" onclick="selecionarDia(this, 'Quarta-feira')">QUA</button>
+        <button type="button" class="dia-pill" onclick="selecionarDia(this, 'Quinta-feira')">QUI</button>
+        <button type="button" class="dia-pill" onclick="selecionarDia(this, 'Sexta-feira')">SEX</button>
+        <button type="button" class="dia-pill" onclick="selecionarDia(this, 'Sábado')">SAB</button>
       </div>
       <input type="hidden" id="nova-dia">
     </div>
 
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Data (opcional)</label>
+        <label class="form-label" for="nova-data">Data (opcional)</label>
         <input type="date" class="form-input" id="nova-data">
       </div>
       <div class="form-group">
-        <label class="form-label">CEP de Partida</label>
+        <label class="form-label" for="nova-partida-cep">CEP de Partida</label>
         <input type="text" class="form-input" id="nova-partida-cep"
                placeholder="01310-100" maxlength="9"
-               oninput="formatarCEP(this)">
+               inputmode="numeric" oninput="formatarCEP(this)">
       </div>
     </div>
 
     <div class="form-group">
-      <label class="form-label">Nome do Ponto de Partida</label>
+      <label class="form-label" for="nova-partida-nome">Nome do Ponto de Partida</label>
       <input type="text" class="form-input" id="nova-partida-nome"
              placeholder="Ex: Portotec — Sede Central">
     </div>
 
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
-      <button class="btn btn-primary" onclick="criarFicha()">Criar Ficha</button>
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="criarFicha()">Criar Ficha</button>
     </div>
   </div>
 </div>
 
-<!-- MODAL ADD SERVIÇO -->
-<div class="modal-overlay" id="modal-add-servico">
+<div class="modal-overlay" id="modal-add-servico" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="modal-title">Adicionar Ponto de Serviço</div>
     <input type="hidden" id="add-ficha-id">
 
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">CEP *</label>
+        <label class="form-label" for="add-cep">CEP *</label>
         <input type="text" class="form-input" id="add-cep"
                placeholder="01310-100" maxlength="9"
-               oninput="formatarCEP(this)">
+               inputmode="numeric" oninput="formatarCEP(this)">
       </div>
       <div class="form-group">
-        <label class="form-label">Número</label>
+        <label class="form-label" for="add-numero">Número</label>
         <input type="text" class="form-input" id="add-numero"
                placeholder="Ex: 42 ou Apto 3">
       </div>
     </div>
 
     <div class="form-group">
-      <label class="form-label">Cliente</label>
+      <label class="form-label" for="add-cliente">Cliente</label>
       <input type="text" class="form-input" id="add-cliente"
              placeholder="Nome do cliente">
     </div>
 
     <div class="form-group">
-      <label class="form-label">Descrição do Serviço</label>
+      <label class="form-label" for="add-descricao">Descrição do Serviço</label>
       <input type="text" class="form-input" id="add-descricao"
-             placeholder="Ex: Máquina não centrifuga, não gela...">
+             placeholder="Ex: Máquina não centrifuga, não gela..."
+             onkeydown="if(event.key==='Enter') adicionarServico()">
     </div>
 
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
-      <button class="btn btn-primary" id="btn-add-servico" onclick="adicionarServico()">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="btn-add-servico" onclick="adicionarServico()">
         Adicionar + Otimizar
       </button>
     </div>
   </div>
 </div>
 
-<!-- TOASTS -->
-<div class="toast-container" id="toast-container"></div>
+<div class="toast-container" id="toast-container" aria-live="polite"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/static/app.js"></script>

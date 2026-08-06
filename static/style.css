@@ -6,9 +6,6 @@
      gerados via CSS/SVG data-uri.
    • Continua compatível com o app.js atual (template strings iguais).
    ──────────────────────────────────────────────────────────────── */
-
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&display=swap');
-
 /* ─── TOKENS ──────────────────────────────────────────────────── */
 :root {
   /* Superfícies — navy noturno com nuance quente no bg profundo */

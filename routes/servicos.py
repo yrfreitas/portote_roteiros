@@ -1,109 +1,129 @@
-"""
-routes/servicos.py  —  PortoTec
-─────────────────────────────────────────────────────────────────────
-CORREÇÕES aplicadas:
-  ✅ Passa `numero` para geocode_cep → coordenadas precisas
-  ✅ Salva endereco_completo com número incluído
-  ✅ Resposta inclui aviso se o endereço for impreciso (centroide de CEP)
-"""
+from flask import Blueprint, jsonify, request
 
-from flask import Blueprint, request, jsonify
-from database import get_db
+from database import db_conn, execute, fetch_one
+from routes.fichas import recalcular_rota
 from services.geo import geocode_cep
-from routes.fichas import recalcular_rota, _fetchone
-import os
 
 servicos_bp = Blueprint("servicos", __name__)
 
-PG = bool(os.environ.get("DATABASE_URL"))
-PH = "%s" if PG else "?"
+AVISO_IMPRECISO = ("Endereço aproximado (centroide do CEP). "
+                   "Confira o número da casa para maior precisão.")
 
 
 @servicos_bp.route("/fichas/<int:ficha_id>/servicos", methods=["POST"])
 def adicionar_servico(ficha_id):
-    data   = request.json
-    cep    = data.get("cep", "").replace("-", "").strip()
-    numero = data.get("numero", "").strip()
+    data = request.get_json(silent=True) or {}
 
-    if not cep:
-        return jsonify({"erro": "CEP é obrigatório"}), 400
+    cep = "".join(c for c in (data.get("cep") or "") if c.isdigit())
+    numero = (data.get("numero") or "").strip()
 
-    # ── Geocodifica com número da casa ────────────────────────────────
-    # BUG CORRIGIDO: antes passava só o CEP, ignorando o número
-    # Agora passa o número para obter coordenadas precisas do endereço exato
-    geo = geocode_cep(cep, numero=numero)
+    if len(cep) != 8:
+        return jsonify({"erro": "Informe um CEP válido com 8 dígitos"}), 400
 
-    if not geo:
-        return jsonify({"erro": f"CEP {cep} não encontrado. Verifique e tente novamente."}), 400
-
-    lat      = geo.lat
-    lng      = geo.lng
-    endereco = geo.endereco   # já inclui o número, formatado
-
-    conn = get_db()
-    cur  = conn.cursor()
-    cur.execute(f"SELECT * FROM fichas WHERE id = {PH}", (ficha_id,))
-    ficha = _fetchone(cur)
-
+    with db_conn() as conn:
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
     if not ficha:
-        cur.close()
-        conn.close()
         return jsonify({"erro": "Ficha não encontrada"}), 404
 
-    cur.execute(
-        f"""INSERT INTO servicos
-               (ficha_id, cep, endereco_completo, lat, lng, cliente, descricao, numero)
-           VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})""",
-        (ficha_id, cep, endereco, lat, lng,
-         data.get("cliente", ""), data.get("descricao", ""), numero)
-    )
-    cur.close()
+    geo = geocode_cep(cep, numero=numero)
+    if not geo:
+        return jsonify({
+            "erro": f"CEP {cep[:5]}-{cep[5:]} não encontrado. "
+                    f"Confira o número e tente novamente."
+        }), 400
 
-    resultado = recalcular_rota(conn, ficha_id, ficha)
-    conn.commit()
-    conn.close()
+    with db_conn(commit=True) as conn:
+        execute(conn, """
+            INSERT INTO servicos
+                (ficha_id, cep, endereco_completo, lat, lng,
+                 cliente, descricao, numero)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (ficha_id, cep, geo.endereco, geo.lat, geo.lng,
+              (data.get("cliente") or "").strip(),
+              (data.get("descricao") or "").strip(),
+              numero))
+
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+        resultado = recalcular_rota(conn, ficha_id, ficha)
 
     resposta = {
         "mensagem": "Serviço adicionado e rota otimizada",
-        "endereco": endereco,
+        "endereco": geo.endereco,
         "numero":   numero,
-        "distancia_total": resultado["distancia_total"]
+        **resultado,
     }
 
-    # Avisa se o endereço ficou impreciso (sem número encontrado no geocoding)
     if not geo.preciso:
-        resposta["aviso"] = (
-            "Endereço aproximado (centroide do CEP). "
-            "Verifique o número da casa para maior precisão."
-        )
+        resposta["aviso"] = AVISO_IMPRECISO
+    elif resultado.get("sem_partida"):
+        resposta["aviso"] = ("Ponto adicionado, mas esta ficha não tem CEP de "
+                             "partida — a rota não pode ser otimizada ainda.")
 
+    return jsonify(resposta), 201
+
+
+@servicos_bp.route("/servicos/<int:servico_id>", methods=["PUT"])
+def editar_servico(servico_id):
+    data = request.get_json(silent=True) or {}
+
+    with db_conn() as conn:
+        servico = fetch_one(conn, "SELECT * FROM servicos WHERE id = ?", (servico_id,))
+    if not servico:
+        return jsonify({"erro": "Serviço não encontrado"}), 404
+
+    cep_novo = "".join(c for c in (data.get("cep") or servico["cep"]) if c.isdigit())
+    numero_novo = (data.get("numero") if data.get("numero") is not None
+                   else servico.get("numero") or "").strip()
+
+    mudou_local = (cep_novo != servico["cep"]
+                   or numero_novo != (servico.get("numero") or ""))
+
+    lat, lng = servico.get("lat"), servico.get("lng")
+    endereco = servico.get("endereco_completo")
+    geo = None
+
+    if mudou_local:
+        if len(cep_novo) != 8:
+            return jsonify({"erro": "Informe um CEP válido com 8 dígitos"}), 400
+        geo = geocode_cep(cep_novo, numero=numero_novo)
+        if not geo:
+            return jsonify({"erro": f"CEP {cep_novo} não encontrado"}), 400
+        lat, lng, endereco = geo.lat, geo.lng, geo.endereco
+
+    with db_conn(commit=True) as conn:
+        execute(conn, """
+            UPDATE servicos
+               SET cep = ?, numero = ?, endereco_completo = ?,
+                   lat = ?, lng = ?, cliente = ?, descricao = ?
+             WHERE id = ?
+        """, (cep_novo, numero_novo, endereco, lat, lng,
+              (data.get("cliente") if data.get("cliente") is not None
+               else servico.get("cliente") or ""),
+              (data.get("descricao") if data.get("descricao") is not None
+               else servico.get("descricao") or ""),
+              servico_id))
+
+        ficha_id = servico["ficha_id"]
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+        resultado = recalcular_rota(conn, ficha_id, ficha) if mudou_local else {}
+
+    resposta = {"mensagem": "Serviço atualizado", "endereco": endereco, **resultado}
+    if geo and not geo.preciso:
+        resposta["aviso"] = AVISO_IMPRECISO
     return jsonify(resposta)
 
 
 @servicos_bp.route("/servicos/<int:servico_id>", methods=["DELETE"])
 def remover_servico(servico_id):
-    conn = get_db()
-    cur  = conn.cursor()
-    cur.execute(f"SELECT * FROM servicos WHERE id = {PH}", (servico_id,))
-    servico = _fetchone(cur)
+    with db_conn(commit=True) as conn:
+        servico = fetch_one(conn, "SELECT * FROM servicos WHERE id = ?", (servico_id,))
+        if not servico:
+            return jsonify({"erro": "Serviço não encontrado"}), 404
 
-    if not servico:
-        cur.close()
-        conn.close()
-        return jsonify({"erro": "Serviço não encontrado"}), 404
+        ficha_id = servico["ficha_id"]
+        execute(conn, "DELETE FROM servicos WHERE id = ?", (servico_id,))
 
-    ficha_id = servico["ficha_id"]
-    cur.execute(f"DELETE FROM servicos WHERE id = {PH}", (servico_id,))
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+        resultado = recalcular_rota(conn, ficha_id, ficha)
 
-    cur.execute(f"SELECT * FROM fichas WHERE id = {PH}", (ficha_id,))
-    ficha = _fetchone(cur)
-    cur.close()
-
-    resultado = recalcular_rota(conn, ficha_id, ficha)
-    conn.commit()
-    conn.close()
-
-    return jsonify({
-        "mensagem": "Serviço removido e rota recalculada",
-        "distancia_total": resultado["distancia_total"]
-    })
+    return jsonify({"mensagem": "Serviço removido e rota recalculada", **resultado})

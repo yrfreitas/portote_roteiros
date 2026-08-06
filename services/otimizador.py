@@ -1,30 +1,15 @@
-"""
-services/otimizador.py  —  PortoTec
-─────────────────────────────────────────────────────────────────────
-CORREÇÕES aplicadas:
-  ✅ distancia_total salva em KM reais (× fator de rua 1.4), não linha reta
-  ✅ Tempo estimado calculado corretamente no backend
-  ✅ Frontend não precisa mais multiplicar por 1.4 (evita dupla-aplicação)
-  ✅ Nearest Neighbor mantido e funcionando
-"""
-
 import math
 
+FATOR_ROTA     = 1.4
+VELOCIDADE_KMH = 40
+MINUTOS_PARADA = 20
 
-# ─── Constantes ──────────────────────────────────────────────────────
+OTIMIZAR_COM_RETORNO = False
 
-FATOR_ROTA      = 1.4   # linha reta → estimativa de percurso por rua
-VELOCIDADE_KMH  = 40    # velocidade média urbana
-MINUTOS_PARADA  = 20    # tempo médio de atendimento por ponto
+_BASE = -1
 
-
-# ─── Distância ───────────────────────────────────────────────────────
 
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Distância em KM em linha reta entre dois pontos geográficos.
-    Usado apenas internamente para o algoritmo de otimização.
-    """
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -36,89 +21,139 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def distancia_rua(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Estimativa de distância real por rua (linha reta × fator).
-    Retorna KM.
-    """
     return haversine(lat1, lon1, lat2, lon2) * FATOR_ROTA
 
 
-# ─── Algoritmo Nearest Neighbor ──────────────────────────────────────
+def _matrizes(partida: dict, pontos: list):
+    n = len(pontos)
+    dp = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = haversine(pontos[i]["lat"], pontos[i]["lng"],
+                          pontos[j]["lat"], pontos[j]["lng"])
+            dp[i][j] = dp[j][i] = d
 
-def otimizar_rota(partida: dict, pontos: list) -> tuple[list, float]:
-    """
-    Ordena os pontos pelo algoritmo Nearest Neighbor (vizinho mais próximo).
+    db = [haversine(partida["lat"], partida["lng"], p["lat"], p["lng"])
+          for p in pontos]
+    return dp, db
 
-    Args:
-        partida: {"lat": float, "lng": float}
-        pontos:  [{"lat": float, "lng": float, "id": int}, ...]
 
-    Returns:
-        (ordem, dist_total_km_real)
-        - ordem: lista de índices em pontos[] na sequência otimizada
-        - dist_total_km_real: distância total estimada por rua em KM
-    """
-    if not pontos:
-        return [], 0.0
+def _dist(a: int, b: int, dp, db) -> float:
+    if a == _BASE:
+        return db[b]
+    if b == _BASE:
+        return db[a]
+    return dp[a][b]
 
-    n          = len(pontos)
-    visitados  = [False] * n
-    ordem      = []
-    dist_total = 0.0
 
-    cur_lat = partida["lat"]
-    cur_lng = partida["lng"]
+def _nearest_neighbor(n: int, dp, db) -> list:
+    visitados = [False] * n
+    ordem = []
+    atual = _BASE
 
     for _ in range(n):
-        melhor_idx  = -1
-        melhor_dist = float("inf")
-
-        for i, p in enumerate(pontos):
+        melhor_idx, melhor_dist = -1, float("inf")
+        for i in range(n):
             if visitados[i]:
                 continue
-            d = haversine(cur_lat, cur_lng, p["lat"], p["lng"])
+            d = _dist(atual, i, dp, db)
             if d < melhor_dist:
-                melhor_dist = d
-                melhor_idx  = i
-
+                melhor_dist, melhor_idx = d, i
         if melhor_idx == -1:
             break
-
         visitados[melhor_idx] = True
         ordem.append(melhor_idx)
-        dist_total += melhor_dist
-        cur_lat = pontos[melhor_idx]["lat"]
-        cur_lng = pontos[melhor_idx]["lng"]
+        atual = melhor_idx
 
-    # ── CORREÇÃO PRINCIPAL ────────────────────────────────────────────
-    # Antes: salvava dist_total (linha reta) e o frontend multiplicava por 1.4
-    # Agora: salva já com fator de rua aplicado → valor único e correto
-    dist_total_real = dist_total * FATOR_ROTA
-
-    return ordem, round(dist_total_real, 2)
+    return ordem
 
 
-# ─── Tempo estimado ──────────────────────────────────────────────────
+def _custo(ordem: list, dp, db, com_retorno: bool) -> float:
+    if not ordem:
+        return 0.0
+    total = db[ordem[0]]
+    for a, b in zip(ordem, ordem[1:]):
+        total += dp[a][b]
+    if com_retorno:
+        total += db[ordem[-1]]
+    return total
+
+
+def _dois_opt(ordem: list, dp, db, com_retorno: bool, max_passes: int = 40) -> list:
+    n = len(ordem)
+    if n < 3:
+        return ordem
+
+    ordem = ordem[:]
+    for _ in range(max_passes):
+        melhorou = False
+
+        for i in range(n):
+            anterior = _BASE if i == 0 else ordem[i - 1]
+
+            for j in range(i + 1, n):
+                if j + 1 < n:
+                    seguinte = ordem[j + 1]
+                elif com_retorno:
+                    seguinte = _BASE
+                else:
+                    seguinte = None
+
+                antes = _dist(anterior, ordem[i], dp, db)
+                depois = _dist(anterior, ordem[j], dp, db)
+                if seguinte is not None:
+                    antes += _dist(ordem[j], seguinte, dp, db)
+                    depois += _dist(ordem[i], seguinte, dp, db)
+
+                if depois < antes - 1e-9:
+                    ordem[i:j + 1] = reversed(ordem[i:j + 1])
+                    melhorou = True
+
+        if not melhorou:
+            break
+
+    return ordem
+
+
+def otimizar_rota(partida: dict, pontos: list) -> dict:
+    vazio = {
+        "ordem": [], "distancia_km": 0.0, "retorno_km": 0.0,
+        "total_km": 0.0, "tempo_minutos": 0, "ganho_2opt_km": 0.0,
+    }
+    if not pontos or partida.get("lat") is None or partida.get("lng") is None:
+        return vazio
+
+    n = len(pontos)
+    dp, db = _matrizes(partida, pontos)
+
+    ordem_nn = _nearest_neighbor(n, dp, db)
+    custo_nn = _custo(ordem_nn, dp, db, OTIMIZAR_COM_RETORNO)
+
+    ordem = _dois_opt(ordem_nn, dp, db, OTIMIZAR_COM_RETORNO)
+    custo_final = _custo(ordem, dp, db, OTIMIZAR_COM_RETORNO)
+
+    dist_ida = _custo(ordem, dp, db, com_retorno=False) * FATOR_ROTA
+    retorno = (db[ordem[-1]] * FATOR_ROTA) if ordem else 0.0
+    ganho = max(0.0, (custo_nn - custo_final) * FATOR_ROTA)
+
+    return {
+        "ordem":          ordem,
+        "distancia_km":   round(dist_ida, 2),
+        "retorno_km":     round(retorno, 2),
+        "total_km":       round(dist_ida + retorno, 2),
+        "tempo_minutos":  calcular_tempo(dist_ida, n),
+        "ganho_2opt_km":  round(ganho, 2),
+    }
+
 
 def calcular_tempo(dist_km_real: float, num_paradas: int) -> int:
-    """
-    Estima tempo total em minutos: deslocamento + atendimentos.
-
-    Args:
-        dist_km_real: distância já com fator de rua (KM)
-        num_paradas:  número de pontos de atendimento
-
-    Returns:
-        Minutos totais (int)
-    """
     tempo_deslocamento = (dist_km_real / VELOCIDADE_KMH) * 60
-    tempo_atendimento  = num_paradas * MINUTOS_PARADA
-    return round(tempo_deslocamento + tempo_atendimento)
+    tempo_atendimento = num_paradas * MINUTOS_PARADA
+    return int(round(tempo_deslocamento + tempo_atendimento))
 
 
 def formatar_tempo(minutos: int) -> str:
     if minutos < 60:
         return f"{minutos}min"
-    h = minutos // 60
-    m = minutos % 60
+    h, m = divmod(minutos, 60)
     return f"{h}h {m}min" if m else f"{h}h"

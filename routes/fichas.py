@@ -1,198 +1,197 @@
-from flask import Blueprint, request, jsonify
-from database import get_db
+from flask import Blueprint, jsonify, request
+
+from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
 from services.geo import geocode_cep
-from services.otimizador import otimizar_rota
-import os
+from services.otimizador import MINUTOS_PARADA, calcular_tempo, otimizar_rota
 
 fichas_bp = Blueprint("fichas", __name__)
 
-PG = bool(os.environ.get("DATABASE_URL"))
-PH = "%s" if PG else "?"
-
-
-def _fetchall(cur):
-    rows = cur.fetchall()
-    if PG:
-        return [dict(r) for r in rows]
-    return [dict(r) for r in rows]
-
-
-def _fetchone(cur):
-    row = cur.fetchone()
-    if row is None:
-        return None
-    return dict(row)
+DIAS_VALIDOS = {
+    "Segunda-feira", "Terça-feira", "Quarta-feira",
+    "Quinta-feira", "Sexta-feira", "Sábado", "Domingo",
+}
 
 
 @fichas_bp.route("/fichas", methods=["GET"])
 def listar_fichas():
-    conn = get_db()
-    cur = conn.cursor()
     tecnico_id = request.args.get("tecnico_id")
 
-    if PG:
-        query = """
-            SELECT f.id, f.tecnico_id, f.dia_semana, f.data_referencia,
-                   f.ponto_partida, f.ponto_partida_cep, f.ponto_partida_lat,
-                   f.ponto_partida_lng, f.distancia_total, f.created_at, f.updated_at,
-                   COUNT(s.id) as total_servicos,
-                   t.nome as tecnico_nome, t.cor as tecnico_cor
-            FROM fichas f
-            LEFT JOIN servicos s ON s.ficha_id = f.id
-            LEFT JOIN tecnicos t ON t.id = f.tecnico_id
-        """
-    else:
-        query = """
-            SELECT f.*, COUNT(s.id) as total_servicos,
-                   t.nome as tecnico_nome, t.cor as tecnico_cor
-            FROM fichas f
-            LEFT JOIN servicos s ON s.ficha_id = f.id
-            LEFT JOIN tecnicos t ON t.id = f.tecnico_id
-        """
-
-    params = []
+    filtro, params = "", []
     if tecnico_id:
-        query += f" WHERE f.tecnico_id = {PH}"
-        params.append(tecnico_id)
+        if not str(tecnico_id).isdigit():
+            return jsonify({"erro": "tecnico_id inválido"}), 400
+        filtro = "WHERE f.tecnico_id = ?"
+        params.append(int(tecnico_id))
 
-    if PG:
-        query += " GROUP BY f.id, f.tecnico_id, f.dia_semana, f.data_referencia, f.ponto_partida, f.ponto_partida_cep, f.ponto_partida_lat, f.ponto_partida_lng, f.distancia_total, f.created_at, f.updated_at, t.nome, t.cor ORDER BY f.updated_at DESC"
-    else:
-        query += " GROUP BY f.id ORDER BY f.updated_at DESC"
+    query = f"""
+        SELECT f.*,
+               COUNT(s.id) AS total_servicos,
+               t.nome AS tecnico_nome,
+               t.cor  AS tecnico_cor
+        FROM fichas f
+        LEFT JOIN servicos s ON s.ficha_id = f.id
+        LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+        {filtro}
+        GROUP BY f.id, t.nome, t.cor
+        ORDER BY f.updated_at DESC, f.id DESC
+    """
 
-    cur.execute(query, params)
-    fichas = _fetchall(cur)
-    cur.close()
-    conn.close()
-    return jsonify(fichas)
+    with db_conn() as conn:
+        return jsonify(fetch_all(conn, query, tuple(params)))
 
 
 @fichas_bp.route("/fichas", methods=["POST"])
 def criar_ficha():
-    data = request.json
-    dia = data.get("dia_semana")
+    data = request.get_json(silent=True) or {}
+
+    dia = (data.get("dia_semana") or "").strip()
     tecnico_id = data.get("tecnico_id")
 
     if not dia:
         return jsonify({"erro": "dia_semana é obrigatório"}), 400
+    if dia not in DIAS_VALIDOS:
+        return jsonify({"erro": f"Dia da semana inválido: {dia}"}), 400
     if not tecnico_id:
         return jsonify({"erro": "tecnico_id é obrigatório"}), 400
 
-    partida = data.get("ponto_partida", "")
-    partida_cep = data.get("ponto_partida_cep", "")
-    lat_p, lng_p = None, None
+    try:
+        tecnico_id = int(tecnico_id)
+    except (TypeError, ValueError):
+        return jsonify({"erro": "tecnico_id inválido"}), 400
+
+    partida = (data.get("ponto_partida") or "").strip()
+    partida_cep = "".join(c for c in (data.get("ponto_partida_cep") or "") if c.isdigit())
+    numero_partida = (data.get("ponto_partida_numero") or "").strip()
+
+    lat_p = lng_p = None
+    aviso = None
 
     if partida_cep:
-        geo = geocode_cep(partida_cep)
+        geo = geocode_cep(partida_cep, numero=numero_partida)
         if geo:
-            lat_p = geo.lat
-            lng_p = geo.lng
+            lat_p, lng_p = geo.lat, geo.lng
             if not partida:
                 partida = geo.endereco
+        else:
+            aviso = ("Não foi possível localizar o CEP de partida. "
+                     "A ficha foi criada, mas a rota só será otimizada "
+                     "depois que você corrigir o ponto de partida.")
 
-    conn = get_db()
-    cur = conn.cursor()
+    with db_conn(commit=True) as conn:
+        tecnico = fetch_one(conn, "SELECT id FROM tecnicos WHERE id = ?", (tecnico_id,))
+        if not tecnico:
+            return jsonify({"erro": "Técnico não encontrado"}), 404
 
-    if PG:
-        cur.execute(
-            """INSERT INTO fichas
-               (tecnico_id, dia_semana, data_referencia, ponto_partida,
-                ponto_partida_cep, ponto_partida_lat, ponto_partida_lng)
-               VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-            (tecnico_id, dia, data.get("data_referencia", ""),
-             partida, partida_cep, lat_p, lng_p)
-        )
-        ficha_id = cur.fetchone()["id"]
-    else:
-        cur.execute(
-            """INSERT INTO fichas
-               (tecnico_id, dia_semana, data_referencia, ponto_partida,
-                ponto_partida_cep, ponto_partida_lat, ponto_partida_lng)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (tecnico_id, dia, data.get("data_referencia", ""),
-             partida, partida_cep, lat_p, lng_p)
-        )
-        ficha_id = cur.lastrowid
+        ficha_id = insert_returning_id(conn, """
+            INSERT INTO fichas
+                (tecnico_id, dia_semana, data_referencia, ponto_partida,
+                 ponto_partida_cep, ponto_partida_lat, ponto_partida_lng)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (tecnico_id, dia, data.get("data_referencia", ""),
+              partida, partida_cep, lat_p, lng_p))
 
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({"id": ficha_id, "mensagem": "Ficha criada com sucesso"})
+    resposta = {"id": ficha_id, "mensagem": "Ficha criada com sucesso"}
+    if aviso:
+        resposta["aviso"] = aviso
+    return jsonify(resposta), 201
 
 
 @fichas_bp.route("/fichas/<int:ficha_id>", methods=["GET"])
 def obter_ficha(ficha_id):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(f"SELECT * FROM fichas WHERE id = {PH}", (ficha_id,))
-    ficha = _fetchone(cur)
+    with db_conn() as conn:
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+        if not ficha:
+            return jsonify({"erro": "Ficha não encontrada"}), 404
 
-    if not ficha:
-        cur.close()
-        conn.close()
-        return jsonify({"erro": "Ficha não encontrada"}), 404
+        servicos = fetch_all(
+            conn,
+            "SELECT * FROM servicos WHERE ficha_id = ? ORDER BY ordem, id",
+            (ficha_id,),
+        )
 
-    cur.execute(f"SELECT * FROM servicos WHERE ficha_id = {PH} ORDER BY ordem", (ficha_id,))
-    servicos = _fetchall(cur)
-    cur.close()
-    conn.close()
+    dist = ficha.get("distancia_total") or 0.0
 
-    return jsonify({"ficha": ficha, "servicos": servicos})
+    resumo = {
+        "distancia_km":  round(dist, 2),
+        "tempo_minutos": calcular_tempo(dist, len(servicos)),
+        "total_servicos": len(servicos),
+        "sem_coordenada": sum(1 for s in servicos if s.get("lat") is None),
+    }
+
+    return jsonify({"ficha": ficha, "servicos": servicos, "resumo": resumo})
 
 
 @fichas_bp.route("/fichas/<int:ficha_id>", methods=["DELETE"])
 def deletar_ficha(ficha_id):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(f"DELETE FROM fichas WHERE id = {PH}", (ficha_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
+    with db_conn(commit=True) as conn:
+        execute(conn, "DELETE FROM servicos WHERE ficha_id = ?", (ficha_id,))
+        apagadas = execute(conn, "DELETE FROM fichas WHERE id = ?", (ficha_id,))
+
+    if not apagadas:
+        return jsonify({"erro": "Ficha não encontrada"}), 404
     return jsonify({"mensagem": "Ficha removida"})
 
 
 @fichas_bp.route("/fichas/<int:ficha_id>/otimizar", methods=["POST"])
 def otimizar_ficha(ficha_id):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(f"SELECT * FROM fichas WHERE id = {PH}", (ficha_id,))
-    ficha = _fetchone(cur)
-    cur.close()
+    with db_conn(commit=True) as conn:
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+        if not ficha:
+            return jsonify({"erro": "Ficha não encontrada"}), 404
+        resultado = recalcular_rota(conn, ficha_id, ficha)
 
-    if not ficha:
-        conn.close()
-        return jsonify({"erro": "Ficha não encontrada"}), 404
-
-    resultado = recalcular_rota(conn, ficha_id, ficha)
-    conn.commit()
-    conn.close()
     return jsonify(resultado)
 
 
-def recalcular_rota(conn, ficha_id, ficha):
-    cur = conn.cursor()
-    cur.execute(f"SELECT * FROM servicos WHERE ficha_id = {PH}", (ficha_id,))
-    servicos = _fetchall(cur)
-    cur.close()
+def recalcular_rota(conn, ficha_id, ficha) -> dict:
+    servicos = fetch_all(
+        conn, "SELECT id, lat, lng FROM servicos WHERE ficha_id = ?", (ficha_id,)
+    )
 
-    if not servicos or ficha["ponto_partida_lat"] is None:
-        return {"distancia_total": 0}
+    validos = [s for s in servicos
+               if s.get("lat") is not None and s.get("lng") is not None]
+
+    tem_partida = bool(ficha) and ficha.get("ponto_partida_lat") is not None
+
+    if not validos or not tem_partida:
+        execute(conn, """
+            UPDATE fichas SET distancia_total = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (ficha_id,))
+        return {
+            "distancia_total": 0.0,
+            "retorno_km":      0.0,
+            "total_servicos":  len(servicos),
+            "tempo_minutos":   len(servicos) * MINUTOS_PARADA,
+            "sem_partida":     not tem_partida,
+            "sem_coordenada":  len(servicos) - len(validos),
+        }
 
     partida = {"lat": ficha["ponto_partida_lat"], "lng": ficha["ponto_partida_lng"]}
-    pontos = [{"lat": s["lat"], "lng": s["lng"], "id": s["id"]} for s in servicos]
+    pontos = [{"lat": s["lat"], "lng": s["lng"], "id": s["id"]} for s in validos]
 
-    ordem, dist_total = otimizar_rota(partida, pontos)
+    r = otimizar_rota(partida, pontos)
 
-    cur = conn.cursor()
-    for posicao, idx in enumerate(ordem):
-        cur.execute(
-            f"UPDATE servicos SET ordem = {PH} WHERE id = {PH}",
-            (posicao + 1, pontos[idx]["id"])
-        )
-    cur.execute(
-        f"UPDATE fichas SET distancia_total = {PH}, updated_at = CURRENT_TIMESTAMP WHERE id = {PH}",
-        (dist_total, ficha_id)
-    )
-    cur.close()
+    for posicao, idx in enumerate(r["ordem"], start=1):
+        execute(conn, "UPDATE servicos SET ordem = ? WHERE id = ?",
+                (posicao, pontos[idx]["id"]))
 
-    return {"distancia_total": dist_total, "total_servicos": len(servicos)}
+    for offset, s in enumerate(
+        [s for s in servicos if s.get("lat") is None], start=len(pontos) + 1
+    ):
+        execute(conn, "UPDATE servicos SET ordem = ? WHERE id = ?", (offset, s["id"]))
+
+    execute(conn, """
+        UPDATE fichas SET distancia_total = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (r["distancia_km"], ficha_id))
+
+    return {
+        "distancia_total": r["distancia_km"],
+        "retorno_km":      r["retorno_km"],
+        "total_km":        r["total_km"],
+        "total_servicos":  len(servicos),
+        "tempo_minutos":   r["tempo_minutos"],
+        "ganho_2opt_km":   r["ganho_2opt_km"],
+        "sem_coordenada":  len(servicos) - len(validos),
+    }
