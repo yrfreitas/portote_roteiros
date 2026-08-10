@@ -44,6 +44,10 @@
         <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
         Verificar CEP
       </button>
+      <button class="main-tab" id="mtab-historico" onclick="switchMainTab('historico')">
+        <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Histórico
+      </button>
     </nav>
 
     <div class="header-meta">
@@ -150,6 +154,16 @@
       </div>
 
       <div id="verificar-resultado"></div>
+    </div>
+  </main>
+
+  <main class="main" id="panel-historico" style="display:none; grid-row: 2; grid-column: 1 / -1;">
+    <div class="historico-wrap">
+      <div class="historico-header">
+        <span class="visao-geral-title">Rotas Concluídas</span>
+      </div>
+      <div class="historico-stats" id="historico-stats"></div>
+      <div id="historico-lista"></div>
     </div>
   </main>
 </div>
@@ -276,6 +290,74 @@
       <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
       <button type="button" class="btn btn-primary" id="btn-add-servico" onclick="adicionarServico()">
         Adicionar + Otimizar
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-editar-servico" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-title">Editar Ponto de Serviço</div>
+    <input type="hidden" id="edit-servico-id">
+    <input type="hidden" id="edit-ficha-id">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label" for="edit-cep">CEP *</label>
+        <input type="text" class="form-input" id="edit-cep"
+               placeholder="01310-100" maxlength="9"
+               inputmode="numeric" oninput="formatarCEP(this)">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="edit-numero">Número</label>
+        <input type="text" class="form-input" id="edit-numero"
+               placeholder="Ex: 42 ou Apto 3">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="edit-cliente">Cliente</label>
+      <input type="text" class="form-input" id="edit-cliente"
+             placeholder="Nome do cliente">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label" for="edit-tipo-aparelho">Tipo de Aparelho</label>
+        <select class="form-input" id="edit-tipo-aparelho">
+          <option value="">Selecione...</option>
+          <option>Geladeira</option>
+          <option>Freezer</option>
+          <option>Máquina de Lavar</option>
+          <option>Lava e Seca</option>
+          <option>Fogão</option>
+          <option>Micro-ondas</option>
+          <option>Purificador</option>
+          <option>Side by Side</option>
+          <option>Câmara Fria</option>
+          <option>Expositora</option>
+          <option>Secadora</option>
+          <option>Outro</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="edit-modelo">Modelo</label>
+        <input type="text" class="form-input" id="edit-modelo"
+               placeholder="Ex: BRM45, CRP36...">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="edit-descricao">Descrição do Serviço</label>
+      <input type="text" class="form-input" id="edit-descricao"
+             placeholder="Ex: Máquina não centrifuga, não gela..."
+             onkeydown="if(event.key==='Enter') salvarEdicaoServico()">
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="btn-editar-servico" onclick="salvarEdicaoServico()">
+        Salvar Alterações
       </button>
     </div>
   </div>

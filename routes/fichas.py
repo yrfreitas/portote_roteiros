@@ -17,13 +17,19 @@ DIAS_VALIDOS = {
 @fichas_bp.route("/fichas", methods=["GET"])
 def listar_fichas():
     tecnico_id = request.args.get("tecnico_id")
+    status = request.args.get("status")
 
-    filtro, params = "", []
+    condicoes, params = [], []
     if tecnico_id:
         if not str(tecnico_id).isdigit():
             return jsonify({"erro": "tecnico_id inválido"}), 400
-        filtro = "WHERE f.tecnico_id = ?"
+        condicoes.append("f.tecnico_id = ?")
         params.append(int(tecnico_id))
+    if status:
+        condicoes.append("f.status = ?")
+        params.append(status)
+
+    filtro = ("WHERE " + " AND ".join(condicoes)) if condicoes else ""
 
     query = f"""
         SELECT f.*,
@@ -132,6 +138,38 @@ def deletar_ficha(ficha_id):
     if not apagadas:
         return jsonify({"erro": "Ficha não encontrada"}), 404
     return jsonify({"mensagem": "Ficha removida"})
+
+
+STATUS_VALIDOS = {"pendente", "concluida"}
+
+
+@fichas_bp.route("/fichas/<int:ficha_id>/status", methods=["PUT"])
+def alterar_status_ficha(ficha_id):
+    data = request.get_json(silent=True) or {}
+    novo_status = (data.get("status") or "").strip()
+
+    if novo_status not in STATUS_VALIDOS:
+        return jsonify({"erro": f"Status inválido. Use um de: {', '.join(sorted(STATUS_VALIDOS))}"}), 400
+
+    with db_conn(commit=True) as conn:
+        ficha = fetch_one(conn, "SELECT id FROM fichas WHERE id = ?", (ficha_id,))
+        if not ficha:
+            return jsonify({"erro": "Ficha não encontrada"}), 404
+
+        if novo_status == "concluida":
+            execute(conn, """
+                UPDATE fichas SET status = ?, concluida_em = CURRENT_TIMESTAMP,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?
+            """, (novo_status, ficha_id))
+        else:
+            execute(conn, """
+                UPDATE fichas SET status = ?, concluida_em = NULL,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?
+            """, (novo_status, ficha_id))
+
+    return jsonify({"mensagem": f"Ficha marcada como {novo_status}", "status": novo_status})
 
 
 @fichas_bp.route("/fichas/<int:ficha_id>/otimizar", methods=["POST"])

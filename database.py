@@ -114,6 +114,8 @@ _SCHEMA_PG = [
         ponto_partida_lat  DOUBLE PRECISION,
         ponto_partida_lng  DOUBLE PRECISION,
         distancia_total    DOUBLE PRECISION DEFAULT 0,
+        status             TEXT DEFAULT 'pendente',
+        concluida_em       TEXT,
         created_at         TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at         TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
@@ -156,6 +158,8 @@ _SCHEMA_SQLITE = """
         ponto_partida_lat  REAL,
         ponto_partida_lng  REAL,
         distancia_total    REAL DEFAULT 0,
+        status             TEXT DEFAULT 'pendente',
+        concluida_em       TEXT,
         created_at         TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at         TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
@@ -200,12 +204,16 @@ _MIGRACOES_PG = [
     "ALTER TABLE cache_geo ADD COLUMN IF NOT EXISTS preciso BOOLEAN DEFAULT TRUE",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS tipo_aparelho TEXT",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS modelo TEXT",
+    "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente'",
+    "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS concluida_em TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
     "ALTER TABLE cache_geo ADD COLUMN preciso INTEGER DEFAULT 1",
     "ALTER TABLE servicos ADD COLUMN tipo_aparelho TEXT",
     "ALTER TABLE servicos ADD COLUMN modelo TEXT",
+    "ALTER TABLE fichas ADD COLUMN status TEXT DEFAULT 'pendente'",
+    "ALTER TABLE fichas ADD COLUMN concluida_em TEXT",
 ]
 
 

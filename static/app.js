@@ -25,6 +25,9 @@ const ICONES = {
   info:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   externo:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
   plus:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  editar:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>',
+  concluir:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+  historico:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
 };
 
 function icone(nome, cls = '') {
@@ -242,18 +245,25 @@ if ('serviceWorker' in navigator) {
 
 // ===== ABAS PRINCIPAIS (Roteiros / Verificar CEP) =====
 function switchMainTab(tab) {
-  const isCep = tab === 'cep';
+  const isRoteiros  = tab === 'roteiros';
+  const isCep       = tab === 'cep';
+  const isHistorico = tab === 'historico';
 
-  document.getElementById('panel-roteiros-sidebar').style.display = isCep ? 'none' : 'flex';
-  document.getElementById('panel-roteiros-main').style.display = isCep ? 'none' : 'block';
+  document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
+  document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
   document.getElementById('panel-cep').style.display = isCep ? 'block' : 'none';
+  document.getElementById('panel-historico').style.display = isHistorico ? 'block' : 'none';
 
-  document.getElementById('mtab-roteiros').classList.toggle('active', !isCep);
+  document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
+  document.getElementById('mtab-historico').classList.toggle('active', isHistorico);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
     setTimeout(() => document.getElementById('verificar-cep-input')?.focus(), 80);
+  }
+  if (isHistorico) {
+    carregarHistorico();
   }
 }
 
@@ -346,13 +356,17 @@ async function carregarFichasTecnico(tecnicoId) {
 
     container.innerHTML = fichas.map(f => {
       const ativa = fichaAtiva?.id === f.id;
+      const concluida = f.status === 'concluida';
       return `
-      <div class="ficha-item ${ativa ? 'active' : ''}"
+      <div class="ficha-item ${ativa ? 'active' : ''} ${concluida ? 'ficha-item-concluida' : ''}"
            onclick="selecionarFicha(${f.id})"
            id="sidebar-item-${f.id}"
            style="${ativa ? `border-color:${escCor(tecnico?.cor)}` : ''}">
         <button class="btn-del-ficha" onclick="deletarFicha(event,${f.id})">${icone('x', 'icone-11')}</button>
-        <div class="ficha-item-dia">${esc(f.dia_semana)}</div>
+        <div class="ficha-item-dia">
+          ${esc(f.dia_semana)}
+          ${concluida ? `<span class="mini-check" title="Concluída">${icone('concluir', 'icone-10')}</span>` : ''}
+        </div>
         <div class="ficha-item-meta">
           ${f.data_referencia ? `<span>${esc(formatarData(f.data_referencia))}</span>` : ''}
           <span class="badge ${f.total_servicos > 0 ? 'accent' : ''}">${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''}</span>
@@ -376,10 +390,11 @@ async function carregarVisaoGeral() {
 
   try {
     const fichas = await api('/fichas');
+    const fichasAtivas = fichas.filter(f => f.status !== 'concluida');
 
-    const totalRotas  = fichas.length;
-    const totalPontos = fichas.reduce((soma, f) => soma + (f.total_servicos || 0), 0);
-    const totalKm     = fichas.reduce((soma, f) => soma + (f.distancia_total || 0), 0);
+    const totalRotas  = fichasAtivas.length;
+    const totalPontos = fichasAtivas.reduce((soma, f) => soma + (f.total_servicos || 0), 0);
+    const totalKm     = fichasAtivas.reduce((soma, f) => soma + (f.distancia_total || 0), 0);
 
     animarNumero(document.getElementById('vg-tecnicos'), tecnicos.length);
     animarNumero(document.getElementById('vg-rotas'), totalRotas);
@@ -389,7 +404,7 @@ async function carregarVisaoGeral() {
     });
 
     const porTecnico = new Map();
-    fichas.forEach(f => {
+    fichasAtivas.forEach(f => {
       const atual = porTecnico.get(f.tecnico_id) || {
         nome: f.tecnico_nome, cor: f.tecnico_cor, rotas: 0, pontos: 0, km: 0,
       };
@@ -414,6 +429,71 @@ async function carregarVisaoGeral() {
   } catch (e) {
     console.error('Erro ao carregar visão geral', e);
   }
+}
+
+async function carregarHistorico() {
+  const statsEl = document.getElementById('historico-stats');
+  const listaEl = document.getElementById('historico-lista');
+  if (!statsEl || !listaEl) return;
+
+  try {
+    const fichas = await api('/fichas?status=concluida');
+
+    const totalRotas  = fichas.length;
+    const totalPontos = fichas.reduce((soma, f) => soma + (f.total_servicos || 0), 0);
+    const totalKm     = fichas.reduce((soma, f) => soma + (f.distancia_total || 0), 0);
+
+    statsEl.innerHTML = `
+      <div class="vg-stat">
+        <div class="vg-valor">${totalRotas}</div>
+        <div class="vg-label">Rota${totalRotas !== 1 ? 's' : ''} Concluída${totalRotas !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="vg-stat">
+        <div class="vg-valor">${totalPontos}</div>
+        <div class="vg-label">Ponto${totalPontos !== 1 ? 's' : ''} Atendido${totalPontos !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="vg-stat">
+        <div class="vg-valor">${fmtKm(totalKm)}</div>
+        <div class="vg-label">Km Rodados</div>
+      </div>
+    `;
+
+    if (fichas.length === 0) {
+      listaEl.innerHTML = `
+        <div class="historico-vazio">
+          ${icone('historico', 'icone-24')}
+          <p>Nenhuma rota concluída ainda.</p>
+        </div>`;
+      return;
+    }
+
+    const ordenadas = [...fichas].sort((a, b) => new Date(b.concluida_em || 0) - new Date(a.concluida_em || 0));
+
+    listaEl.innerHTML = ordenadas.map(f => `
+      <div class="historico-item" onclick="selecionarFichaHistorico(${f.id})">
+        <span class="vg-tecnico-dot" style="background:${escCor(f.tecnico_cor)}"></span>
+        <div class="historico-item-info">
+          <div class="historico-item-titulo">${esc(f.dia_semana)} <span class="historico-item-tecnico">· ${esc(f.tecnico_nome || '')}</span></div>
+          <div class="historico-item-meta">
+            ${f.concluida_em ? `<span>${icone('calendario', 'icone-11')} ${formatarDataHora(f.concluida_em)}</span>` : ''}
+            <span>${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''}</span>
+            <span>${fmtKm(f.distancia_total)} km</span>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); alternarStatusFicha(${f.id}, 'concluida')">
+          ${icone('atualizar', 'icone-12')} Reabrir
+        </button>
+      </div>
+    `).join('');
+  } catch (e) {
+    listaEl.innerHTML = `<div class="historico-vazio"><p>Falha ao carregar histórico.</p></div>`;
+    console.error('Erro ao carregar histórico', e);
+  }
+}
+
+function selecionarFichaHistorico(fichaId) {
+  switchMainTab('roteiros');
+  selecionarFicha(fichaId);
 }
 
 async function criarTecnico() {
@@ -488,7 +568,10 @@ async function renderFichaDetalhe(id) {
     <div class="ficha-header">
       <div>
         <div style="font-size:11px;font-weight:600;color:${cor};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;display:flex;align-items:center;gap:5px;">${icone('usuario', 'icone-11')} ${esc(tecnico?.nome) || '—'}</div>
-        <div class="ficha-titulo">${esc(ficha.dia_semana)}</div>
+        <div class="ficha-titulo">
+          ${esc(ficha.dia_semana)}
+          ${ficha.status === 'concluida' ? `<span class="tag-concluida">${icone('concluir', 'icone-11')} Concluída</span>` : ''}
+        </div>
         <div class="ficha-sub">${ficha.data_referencia ? `<span style="display:inline-flex;align-items:center;gap:4px;">${icone('calendario', 'icone-12')} ${esc(formatarData(ficha.data_referencia))}</span> · ` : ''}Criado em ${esc(formatarDataHora(ficha.created_at))}</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -500,6 +583,10 @@ async function renderFichaDetalhe(id) {
         <button class="btn btn-ghost" id="btn-whatsapp-rota" style="display:flex;align-items:center;gap:6px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
           Enviar por WhatsApp
+        </button>
+        <button class="btn ${ficha.status === 'concluida' ? 'btn-ghost' : 'btn-primary'}" id="btn-concluir-rota" style="display:flex;align-items:center;gap:6px;" onclick="alternarStatusFicha(${ficha.id}, '${ficha.status || 'pendente'}')">
+          ${icone('concluir', 'icone-14')}
+          ${ficha.status === 'concluida' ? 'Reabrir Rota' : 'Concluir Rota'}
         </button>
       </div>
     </div>
@@ -633,6 +720,7 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
         </div>
         <div class="roteiro-actions">
           ${(s.lat && s.lng) ? `<a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16" target="_blank" rel="noopener" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('externo', 'icone-13')}</a>` : ''}
+          <button class="btn-editar" onclick="abrirModalEditarServico(${s.id})" title="Editar ponto">${icone('editar', 'icone-12')}</button>
           <button class="btn-remove" onclick="removerServico(${s.id},${ficha.id})">${icone('x', 'icone-11')}</button>
         </div>
       </div>`;
@@ -1604,6 +1692,22 @@ async function forcarOtimizacao(fichaId) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+async function alternarStatusFicha(fichaId, statusAtual) {
+  const novoStatus = statusAtual === 'concluida' ? 'pendente' : 'concluida';
+
+  if (novoStatus === 'pendente' && !confirm('Reabrir esta rota como pendente de novo?')) return;
+
+  try {
+    await api(`/fichas/${fichaId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: novoStatus }),
+    });
+    toast(novoStatus === 'concluida' ? 'Rota marcada como concluída' : 'Rota reaberta', 'success');
+    await renderFichaDetalhe(fichaId);
+    await carregarTecnicos();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 function abrirModalNovoTecnico() {
   document.getElementById('novo-tecnico-nome').value = '';
   document.getElementById('modal-novo-tecnico').classList.add('open');
@@ -1626,6 +1730,59 @@ function abrirModalAddServico(fichaId) {
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('modal-add-servico').classList.add('open');
   setTimeout(() => document.getElementById('add-cep').focus(), 100);
+}
+
+function abrirModalEditarServico(servicoId) {
+  const s = servicosAtuais.find(x => x.id === servicoId);
+  if (!s) { toast('Ponto não encontrado — recarregue a ficha', 'error'); return; }
+
+  document.getElementById('edit-servico-id').value = servicoId;
+  document.getElementById('edit-ficha-id').value = fichaAtiva?.id || '';
+  document.getElementById('edit-cep').value = formatCEP(s.cep);
+  document.getElementById('edit-numero').value = s.numero || '';
+  document.getElementById('edit-cliente').value = s.cliente || '';
+  document.getElementById('edit-tipo-aparelho').value = s.tipo_aparelho || '';
+  document.getElementById('edit-modelo').value = s.modelo || '';
+  document.getElementById('edit-descricao').value = s.descricao || '';
+
+  document.getElementById('modal-editar-servico').classList.add('open');
+  setTimeout(() => document.getElementById('edit-cliente').focus(), 100);
+}
+
+async function salvarEdicaoServico() {
+  const servicoId = document.getElementById('edit-servico-id').value;
+  const fichaId = document.getElementById('edit-ficha-id').value;
+  const cep = document.getElementById('edit-cep').value.replace(/\D/g, '');
+
+  if (cep.length !== 8) { toast('Informe um CEP válido', 'error'); return; }
+
+  const btn = document.getElementById('btn-editar-servico');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Salvando...';
+
+  try {
+    await api(`/servicos/${servicoId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        cep,
+        numero:        document.getElementById('edit-numero').value,
+        cliente:       document.getElementById('edit-cliente').value,
+        descricao:     document.getElementById('edit-descricao').value,
+        tipo_aparelho: document.getElementById('edit-tipo-aparelho').value,
+        modelo:        document.getElementById('edit-modelo').value,
+      }),
+    });
+
+    fecharModais();
+    toast('Ponto atualizado', 'success');
+    await renderFichaDetalhe(parseInt(fichaId, 10));
+    await carregarTecnicos();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Salvar Alterações';
+  }
 }
 
 function fecharModais() {
