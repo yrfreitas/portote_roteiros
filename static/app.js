@@ -2,6 +2,37 @@ let fichaAtiva   = null;
 let tecnicoAtivo = null;
 let tecnicos     = [];
 
+// ===== ÍCONES (SVG de linha, não emoji) =====
+// Emoji como ícone de interface é o maior sinal visual de "feito às pressas
+// por IA". Um único jogo de ícones consistente (estilo Feather: 24x24,
+// stroke, sem preenchimento) resolve isso de vez — mesma linguagem visual
+// em toda a tela, em vez de depender da fonte de emoji do sistema.
+const ICONES = {
+  mapa:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>',
+  pin:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+  usuario:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  ferramenta: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.42l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.94 7.94l-6.9 6.9a2.12 2.12 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.94-7.94z"/></svg>',
+  estrela:    '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  casa:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+  raio:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+  atualizar:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+  calendario: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+  clipboard:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>',
+  check:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  x:          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  minus:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  alerta:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  info:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+  externo:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+  plus:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+};
+
+function icone(nome, cls = '') {
+  const svg = ICONES[nome];
+  if (!svg) return '';
+  return svg.replace('<svg ', `<svg class="icone-svg${cls ? ' ' + cls : ''}" `);
+}
+
 const _ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 function esc(v) {
@@ -60,12 +91,12 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#4f8dfb') {
     pontos.push([lat, lng]);
     const icon = L.divIcon({
       className: '',
-      html: `<div class="pin-anim" style="animation-delay:${atraso}ms;width:36px;height:36px;border-radius:50%;background:#fff8e0;border:2px solid #b87800;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.25);">⭐</div>`,
+      html: `<div class="pin-anim" style="animation-delay:${atraso}ms;width:36px;height:36px;border-radius:50%;background:#fff8e0;border:2px solid #b87800;display:flex;align-items:center;justify-content:center;color:#b87800;box-shadow:0 2px 8px rgba(0,0,0,0.25);">${icone('estrela', 'icone-16')}</div>`,
       iconSize: [36, 36], iconAnchor: [18, 18],
     });
     mapaMarkers.push(
       L.marker([lat, lng], { icon }).addTo(mapaLeaflet)
-       .bindPopup(`<b style="color:#b87800;">🏠 Partida</b><br><span style="font-size:12px;">${esc(ficha.ponto_partida)}</span>`)
+       .bindPopup(`<b style="color:#b87800;display:flex;align-items:center;gap:5px;">${icone('casa', 'icone-14')} Partida</b><br><span style="font-size:12px;">${esc(ficha.ponto_partida)}</span>`)
     );
     atraso += 70;
   }
@@ -91,11 +122,11 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#4f8dfb') {
     mapaMarkers.push(
       L.marker([s.lat, s.lng], { icon }).addTo(mapaLeaflet).bindPopup(
         `<div style="min-width:180px;">
-           <div style="font-weight:700;color:${cor};font-size:13px;margin-bottom:4px;">📍 Parada ${num}</div>
+           <div style="font-weight:700;color:${cor};font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:5px;">${icone('pin', 'icone-13')} Parada ${num}</div>
            <div style="font-family:monospace;font-size:12px;color:#555;margin-bottom:2px;">${esc(formatCEP(s.cep))}</div>
            <div style="font-size:12px;color:#333;">${endLabel}</div>
-           ${s.cliente ? `<div style="font-size:11px;color:#777;margin-top:4px;">👤 ${esc(s.cliente)}</div>` : ''}
-           ${aparelhoPopup ? `<div style="font-size:11px;color:#777;">🔧 ${esc(aparelhoPopup)}</div>` : ''}
+           ${s.cliente ? `<div style="font-size:11px;color:#777;margin-top:4px;display:flex;align-items:center;gap:4px;">${icone('usuario', 'icone-11')} ${esc(s.cliente)}</div>` : ''}
+           ${aparelhoPopup ? `<div style="font-size:11px;color:#777;display:flex;align-items:center;gap:4px;">${icone('ferramenta', 'icone-11')} ${esc(aparelhoPopup)}</div>` : ''}
            ${s.descricao ? `<div style="font-size:11px;color:#777;">${esc(s.descricao)}</div>` : ''}
          </div>`
       )
@@ -142,13 +173,25 @@ function animarTracadoRota() {
   }, 1180);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+// Relógio vivo no cabeçalho, atualizado a cada segundo — reforça a
+// sensação de painel operacional em tempo real, não uma tela estática.
+function iniciarRelogio() {
   const el = document.getElementById('current-date');
-  if (el) {
-    el.textContent = new Date()
-      .toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
-      .toUpperCase();
+  if (!el) return;
+
+  function atualizar() {
+    const agora = new Date();
+    const dia = agora.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase();
+    const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    el.textContent = `${dia} · ${hora}`;
   }
+
+  atualizar();
+  setInterval(atualizar, 1000);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  iniciarRelogio();
   carregarTecnicos();
 });
 
@@ -222,7 +265,7 @@ async function carregarTecnicos() {
           <div class="tecnico-nome" style="color:${escCor(t.cor)}">${esc(t.nome)}</div>
           <div class="tecnico-actions">
             <button class="btn-add-ficha" onclick="abrirModalNovaFicha(${t.id})" title="Nova ficha">+ Ficha</button>
-            <button class="btn-del-tecnico" onclick="deletarTecnico(event,${t.id})" title="Remover técnico">✕</button>
+            <button class="btn-del-tecnico" onclick="deletarTecnico(event,${t.id})" title="Remover técnico">${icone('x', 'icone-11')}</button>
           </div>
         </div>
         <div class="fichas-do-tecnico" id="fichas-tecnico-${t.id}">
@@ -262,7 +305,7 @@ async function carregarFichasTecnico(tecnicoId) {
            onclick="selecionarFicha(${f.id})"
            id="sidebar-item-${f.id}"
            style="${ativa ? `border-color:${escCor(tecnico?.cor)}` : ''}">
-        <button class="btn-del-ficha" onclick="deletarFicha(event,${f.id})">✕</button>
+        <button class="btn-del-ficha" onclick="deletarFicha(event,${f.id})">${icone('x', 'icone-11')}</button>
         <div class="ficha-item-dia">${esc(f.dia_semana)}</div>
         <div class="ficha-item-meta">
           ${f.data_referencia ? `<span>${esc(formatarData(f.data_referencia))}</span>` : ''}
@@ -349,9 +392,9 @@ async function renderFichaDetalhe(id) {
   detail.innerHTML = `
     <div class="ficha-header">
       <div>
-        <div style="font-size:11px;font-weight:600;color:${cor};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">👤 ${esc(tecnico?.nome) || '—'}</div>
+        <div style="font-size:11px;font-weight:600;color:${cor};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;display:flex;align-items:center;gap:5px;">${icone('usuario', 'icone-11')} ${esc(tecnico?.nome) || '—'}</div>
         <div class="ficha-titulo">${esc(ficha.dia_semana)}</div>
-        <div class="ficha-sub">${ficha.data_referencia ? `📅 ${esc(formatarData(ficha.data_referencia))} · ` : ''}Criado em ${esc(formatarDataHora(ficha.created_at))}</div>
+        <div class="ficha-sub">${ficha.data_referencia ? `<span style="display:inline-flex;align-items:center;gap:4px;">${icone('calendario', 'icone-12')} ${esc(formatarData(ficha.data_referencia))}</span> · ` : ''}Criado em ${esc(formatarDataHora(ficha.created_at))}</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button class="btn btn-primary" onclick="abrirModalAddServico(${ficha.id})">+ Adicionar Ponto</button>
@@ -374,7 +417,7 @@ async function renderFichaDetalhe(id) {
       <div class="content-col">
         <div class="panel-grid">
           <div class="panel">
-            <div class="panel-header"><div class="panel-icon">🏠</div><span class="panel-title">Ponto de Partida</span></div>
+            <div class="panel-header"><div class="panel-icon">${icone('casa', 'icone-15')}</div><span class="panel-title">Ponto de Partida</span></div>
             <div class="panel-body">
               ${temPartida
                 ? `<div style="font-family:var(--font-mono);font-size:13px;color:${cor};margin-bottom:4px;">${esc(formatCEP(ficha.ponto_partida_cep))}</div>
@@ -384,18 +427,18 @@ async function renderFichaDetalhe(id) {
             </div>
           </div>
           <div class="panel">
-            <div class="panel-header"><div class="panel-icon">⚡</div><span class="panel-title">Otimização de Rota</span></div>
+            <div class="panel-header"><div class="panel-icon">${icone('raio', 'icone-15')}</div><span class="panel-title">Otimização de Rota</span></div>
             <div class="panel-body">
               ${temPartida
-                ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">Nearest Neighbor + refinamento <strong>2-opt</strong>, recalculado ao adicionar ou remover pontos.<br><br><span style="color:var(--text-muted);font-size:11px;">ℹ️ Distância por ruas (linha reta × 1.4) · 40 km/h médios · 20 min por parada</span></div>
-                   <button class="btn btn-ghost btn-full" onclick="forcarOtimizacao(${ficha.id})">🔄 Recalcular Rota Agora</button>`
+                ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">Nearest Neighbor + refinamento <strong>2-opt</strong>, recalculado ao adicionar ou remover pontos.<br><br><span style="color:var(--text-muted);font-size:11px;display:inline-flex;align-items:center;gap:4px;">${icone('info', 'icone-11')} Distância por ruas (linha reta × 1.4) · 40 km/h médios · 20 min por parada</span></div>
+                   <button class="btn btn-ghost btn-full" onclick="forcarOtimizacao(${ficha.id})">${icone('atualizar', 'icone-13')} Recalcular Rota Agora</button>`
                 : `<div style="font-size:12px;color:var(--text-muted);">Adicione um CEP de partida para ativar a otimização.</div>`}
             </div>
           </div>
         </div>
         <div class="roteiro-container">
           <div class="roteiro-header">
-            <span class="roteiro-title">🗺️ Roteiro Ordenado</span>
+            <span class="roteiro-title">${icone('mapa', 'icone-14')} Roteiro Ordenado</span>
             ${servicos.length > 0 ? `<span class="badge accent">${servicos.length} parada${servicos.length !== 1 ? 's' : ''}</span>` : ''}
           </div>
           ${renderRoteiro(ficha, servicos, cor)}
@@ -404,12 +447,12 @@ async function renderFichaDetalhe(id) {
       <div class="mapa-col">
         <div class="mapa-wrapper">
           <div class="mapa-header">
-            <div class="panel-icon">🗺</div>
+            <div class="panel-icon">${icone('mapa', 'icone-15')}</div>
             <span class="panel-title">Mapa do Roteiro</span>
             ${temCoordenadas ? `<span class="badge accent" style="margin-left:auto;">${servicos.length} ponto${servicos.length !== 1 ? 's' : ''}</span>` : ''}
           </div>
           <div id="mapa-roteiro" class="mapa-container">
-            ${!temCoordenadas ? `<div class="mapa-empty"><div style="font-size:28px;margin-bottom:8px;">📍</div><div style="font-size:12px;color:var(--text-muted);">Adicione pontos com<br>coordenadas para ver o mapa</div></div>` : ''}
+            ${!temCoordenadas ? `<div class="mapa-empty"><div style="margin-bottom:8px;">${icone('pin', 'icone-28')}</div><div style="font-size:12px;color:var(--text-muted);">Adicione pontos com<br>coordenadas para ver o mapa</div></div>` : ''}
           </div>
           ${renderClientesRota(servicos)}
         </div>
@@ -458,11 +501,11 @@ function animarNumero(el, valorFinal, opcoes = {}) {
 
 function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
   if (servicos.length === 0) {
-    return `<div class="loading-row" style="padding:40px;text-align:center;"><div style="font-size:24px;margin-bottom:8px;">📍</div><div>Nenhum ponto adicionado ainda.</div><div style="font-size:11px;margin-top:4px;color:var(--text-muted);">Clique em "+ Adicionar Ponto" para montar o roteiro.</div></div>`;
+    return `<div class="loading-row" style="padding:40px;text-align:center;"><div style="margin-bottom:8px;">${icone('pin', 'icone-24')}</div><div>Nenhum ponto adicionado ainda.</div><div style="font-size:11px;margin-top:4px;color:var(--text-muted);">Clique em "+ Adicionar Ponto" para montar o roteiro.</div></div>`;
   }
 
   const partida = ficha.ponto_partida
-    ? `<div class="partida-strip"><div class="step-num partida">⭐</div><div><div class="partida-label">Ponto de Partida</div><div class="partida-text">${esc(ficha.ponto_partida)}</div></div></div>`
+    ? `<div class="partida-strip"><div class="step-num partida">${icone('estrela', 'icone-16')}</div><div><div class="partida-label">Ponto de Partida</div><div class="partida-text">${esc(ficha.ponto_partida)}</div></div></div>`
     : '';
 
   const ordenados = [...servicos].sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
@@ -476,13 +519,13 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
         <div class="roteiro-info">
           <div class="roteiro-cep" style="color:${cor}">${esc(formatCEP(s.cep))}</div>
           <div class="roteiro-endereco">${s.numero ? `<strong>Nº ${esc(s.numero)}</strong> · ` : ''}${esc(s.endereco_completo) || '—'}</div>
-          ${s.cliente ? `<div class="roteiro-cliente">👤 ${esc(s.cliente)}${s.descricao ? ' · ' + esc(s.descricao) : ''}</div>` : ''}
-          ${aparelho ? `<div class="roteiro-aparelho">🔧 ${esc(aparelho)}</div>` : ''}
-          ${(!s.lat || !s.lng) ? `<div class="roteiro-cliente" style="color:var(--danger-text);">⚠ sem coordenada — fora do cálculo</div>` : ''}
+          ${s.cliente ? `<div class="roteiro-cliente">${icone('usuario', 'icone-11')} ${esc(s.cliente)}${s.descricao ? ' · ' + esc(s.descricao) : ''}</div>` : ''}
+          ${aparelho ? `<div class="roteiro-aparelho">${icone('ferramenta', 'icone-11')} ${esc(aparelho)}</div>` : ''}
+          ${(!s.lat || !s.lng) ? `<div class="roteiro-cliente" style="color:var(--danger-text);display:flex;align-items:center;gap:4px;">${icone('alerta', 'icone-11')} sem coordenada — fora do cálculo</div>` : ''}
         </div>
         <div class="roteiro-actions">
-          ${(s.lat && s.lng) ? `<a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16" target="_blank" rel="noopener" style="color:${cor};font-size:11px;text-decoration:none;padding:4px 8px;">🗺</a>` : ''}
-          <button class="btn-remove" onclick="removerServico(${s.id},${ficha.id})">✕</button>
+          ${(s.lat && s.lng) ? `<a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16" target="_blank" rel="noopener" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('externo', 'icone-13')}</a>` : ''}
+          <button class="btn-remove" onclick="removerServico(${s.id},${ficha.id})">${icone('x', 'icone-11')}</button>
         </div>
       </div>`;
   }).join('');
@@ -574,9 +617,9 @@ function renderClientesRota(servicos) {
   return `
     <div class="clientes-rota">
       <div class="clientes-rota-header">
-        <span class="panel-title">👤 Clientes da Rota</span>
+        <span class="panel-title">${icone('usuario', 'icone-14')} Clientes da Rota</span>
         <button class="btn btn-ghost btn-copiar" onclick="copiarClientesRota()" id="btn-copiar-clientes">
-          📋 Copiar lista
+          ${icone('clipboard', 'icone-12')} Copiar lista
         </button>
       </div>
       <div class="clientes-rota-lista">${itensHtml}</div>
@@ -595,7 +638,7 @@ function copiarClientesRota() {
     const btn = document.getElementById('btn-copiar-clientes');
     if (btn) {
       const original = btn.innerHTML;
-      btn.innerHTML = '✓ Copiado!';
+      btn.innerHTML = `${icone('check', 'icone-12')} Copiado!`;
       setTimeout(() => { btn.innerHTML = original; }, 1800);
     }
   };
@@ -910,7 +953,7 @@ function _vcepExpandir(i, r) {
   if (!el || !s) return;
 
   card?.classList.add('vcep-rota-expanded');
-  const icones = { pos: '✓', neu: '~', neg: '✕' };
+  const icones = { pos: icone('check', 'icone-12'), neu: icone('minus', 'icone-12'), neg: icone('x', 'icone-12') };
 
   const motHtml = _motivos(s, i).map(m => `
     <div class="vcep-motivo vcep-motivo-${m.tipo}">
@@ -1324,12 +1367,12 @@ function toast(msg, type = 'info') {
 
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  const icons = { success: '✓', error: '✕', info: 'ℹ' };
+  const icons = { success: icone('check', 'icone-13'), error: icone('x', 'icone-13'), info: icone('info', 'icone-13') };
   const cor = type === 'success' ? 'var(--success-text)'
             : type === 'error'   ? 'var(--danger-text)'
             : 'var(--accent-text)';
 
-  el.innerHTML = `<span style="font-weight:600;color:${cor};">${icons[type] || 'ℹ'}</span> ${esc(msg)}`;
+  el.innerHTML = `<span style="display:inline-flex;color:${cor};">${icons[type] || icone('info', 'icone-13')}</span> ${esc(msg)}`;
   container.appendChild(el);
 
   setTimeout(() => {

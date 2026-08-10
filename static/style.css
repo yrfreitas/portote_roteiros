@@ -87,6 +87,26 @@
 /* ─── RESET ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ─── ÍCONES (SVG de linha) ──────────────────────────────────────
+   Um único jogo de ícones em vez de emoji do sistema operacional —
+   emoji varia de aparência entre Windows/Android/iOS e é o maior
+   sinal visual de interface feita às pressas. Tamanho por classe
+   modificadora (icone-11 a icone-28) em vez de inline style repetido. */
+.icone-svg {
+  width: 1em; height: 1em;
+  display: inline-block;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+}
+.icone-11 { width: 11px; height: 11px; }
+.icone-12 { width: 12px; height: 12px; }
+.icone-13 { width: 13px; height: 13px; }
+.icone-14 { width: 14px; height: 14px; }
+.icone-15 { width: 15px; height: 15px; }
+.icone-16 { width: 16px; height: 16px; }
+.icone-24 { width: 24px; height: 24px; }
+.icone-28 { width: 28px; height: 28px; }
+
 html, body {
   width: 100%; min-height: 100%;
   background: var(--bg-deep);
