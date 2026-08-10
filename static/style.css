@@ -279,6 +279,19 @@ header::after {
 @keyframes ringPulse { 0% { opacity: .55; transform: scale(.4);} 70%,100% { opacity: 0; transform: scale(1.9);} }
 @keyframes pulse { 0%,100% { opacity: 1;} 50% { opacity: .5;} }
 
+/* Marcadores do mapa "caindo" em sequência ao renderizar a rota */
+@keyframes pin-drop {
+  0%   { opacity: 0; transform: translateY(-16px) scale(.5); }
+  60%  { opacity: 1; transform: translateY(2px) scale(1.08); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.pin-anim {
+  animation: pin-drop 0.42s cubic-bezier(.34,1.56,.64,1) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pin-anim { animation: none; }
+}
+
 /* ─── SIDEBAR ────────────────────────────────────────────────── */
 .sidebar {
   position: relative;

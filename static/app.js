@@ -53,19 +53,21 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#4f8dfb') {
 
   const pontos = [];
   const temPartida = ficha.ponto_partida_lat != null && ficha.ponto_partida_lat !== 0;
+  let atraso = 0; // escalona a queda dos marcadores em vez de tudo aparecer junto
 
   if (temPartida) {
     const lat = ficha.ponto_partida_lat, lng = ficha.ponto_partida_lng;
     pontos.push([lat, lng]);
     const icon = L.divIcon({
       className: '',
-      html: `<div style="width:36px;height:36px;border-radius:50%;background:#fff8e0;border:2px solid #b87800;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.25);">⭐</div>`,
+      html: `<div class="pin-anim" style="animation-delay:${atraso}ms;width:36px;height:36px;border-radius:50%;background:#fff8e0;border:2px solid #b87800;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.25);">⭐</div>`,
       iconSize: [36, 36], iconAnchor: [18, 18],
     });
     mapaMarkers.push(
       L.marker([lat, lng], { icon }).addTo(mapaLeaflet)
        .bindPopup(`<b style="color:#b87800;">🏠 Partida</b><br><span style="font-size:12px;">${esc(ficha.ponto_partida)}</span>`)
     );
+    atraso += 70;
   }
 
   const ordenados = [...servicos].sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
@@ -76,9 +78,10 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#4f8dfb') {
     const num = i + 1;
     const icon = L.divIcon({
       className: '',
-      html: `<div style="width:34px;height:34px;border-radius:50%;background:${cor};border:2px solid white;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:'JetBrains Mono',monospace;">${num}</div>`,
+      html: `<div class="pin-anim" style="animation-delay:${atraso}ms;width:34px;height:34px;border-radius:50%;background:${cor};border:2px solid white;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:'JetBrains Mono',monospace;">${num}</div>`,
       iconSize: [34, 34], iconAnchor: [17, 17],
     });
+    atraso += 70;
     const endLabel = s.numero
       ? `Nº ${esc(s.numero)} · ${esc(s.endereco_completo)}`
       : (esc(s.endereco_completo) || '—');
@@ -98,14 +101,42 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#4f8dfb') {
 
   if (pontos.length >= 2) {
     mapaPolyline = L.polyline(pontos, {
-      color: cor, weight: 3, opacity: 0.7, dashArray: '6, 6',
+      color: cor, weight: 3, opacity: 0.85, dashArray: '6, 6',
     }).addTo(mapaLeaflet);
   }
 
   if (pontos.length === 1) mapaLeaflet.setView(pontos[0], 15);
   else if (pontos.length >= 2) mapaLeaflet.fitBounds(pontos, { padding: [32, 32] });
 
-  setTimeout(() => mapaLeaflet && mapaLeaflet.invalidateSize(), 120);
+  setTimeout(() => {
+    mapaLeaflet && mapaLeaflet.invalidateSize();
+    animarTracadoRota();
+  }, 120);
+}
+
+// Efeito de "traçar a rota": a linha nasce invisível e se revela até virar
+// o tracejado de sempre — reforça visualmente que a rota acabou de ser calculada.
+function animarTracadoRota() {
+  if (!mapaPolyline) return;
+  const path = mapaPolyline.getElement?.();
+  if (!path || !path.getTotalLength) return;
+
+  const comprimento = path.getTotalLength();
+  path.style.transition = 'none';
+  path.style.strokeDasharray = `${comprimento}`;
+  path.style.strokeDashoffset = `${comprimento}`;
+  path.getBoundingClientRect(); // força reflow antes de animar
+
+  requestAnimationFrame(() => {
+    path.style.transition = 'stroke-dashoffset 1.1s ease-out';
+    path.style.strokeDashoffset = '0';
+  });
+
+  setTimeout(() => {
+    if (!mapaPolyline) return;
+    const p = mapaPolyline.getElement?.();
+    if (p) { p.style.transition = 'none'; p.style.strokeDasharray = '6, 6'; p.style.strokeDashoffset = '0'; }
+  }, 1180);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -330,9 +361,9 @@ async function renderFichaDetalhe(id) {
     ${semCoord > 0 ? `<div class="vcep-aviso" style="margin-bottom:18px;">${semCoord} ponto${semCoord > 1 ? 's' : ''} sem coordenada — não entra${semCoord > 1 ? 'm' : ''} no cálculo da rota. Remova e cadastre de novo para corrigir.</div>` : ''}
 
     <div class="stats-strip">
-      <div class="stat-card"><div class="stat-label">Pontos de Serviço</div><div class="stat-value" style="color:${cor}">${servicos.length}<span class="stat-unit">pts</span></div></div>
-      <div class="stat-card"><div class="stat-label">Distância Estimada</div><div class="stat-value" style="color:${cor}">${distKm > 0 ? fmtKm(distKm) : '—'}<span class="stat-unit">km</span></div></div>
-      <div class="stat-card"><div class="stat-label">Tempo Total (c/ serviços)</div><div class="stat-value" style="color:${cor}">${tempo > 0 ? formatarTempo(tempo) : '—'}<span class="stat-unit"></span></div></div>
+      <div class="stat-card"><div class="stat-label">Pontos de Serviço</div><div class="stat-value" style="color:${cor}"><span class="stat-num" id="stat-num-pontos">0</span><span class="stat-unit">pts</span></div></div>
+      <div class="stat-card"><div class="stat-label">Distância Estimada</div><div class="stat-value" style="color:${cor}"><span class="stat-num" id="stat-num-dist">${distKm > 0 ? '0,0' : '—'}</span><span class="stat-unit">km</span></div></div>
+      <div class="stat-card"><div class="stat-label">Tempo Total (c/ serviços)</div><div class="stat-value" style="color:${cor}"><span class="stat-num" id="stat-num-tempo">${tempo > 0 ? '0min' : '—'}</span><span class="stat-unit"></span></div></div>
     </div>
 
     <div class="content-map-grid">
@@ -388,6 +419,35 @@ async function renderFichaDetalhe(id) {
     inicializarMapa('mapa-roteiro');
     renderizarMapaPontos(ficha, servicos, cor);
   }
+
+  animarNumero(document.getElementById('stat-num-pontos'), servicos.length);
+  if (distKm > 0) {
+    animarNumero(document.getElementById('stat-num-dist'), distKm, {
+      formatar: v => v.toFixed(1).replace('.', ','),
+    });
+  }
+  if (tempo > 0) {
+    animarNumero(document.getElementById('stat-num-tempo'), tempo, {
+      formatar: v => formatarTempo(Math.round(v)),
+    });
+  }
+}
+
+// Conta de 0 até valorFinal com easing, formatando cada quadro.
+// Usado nos cartões de estatística — reforça que o roteiro acabou de ser calculado.
+function animarNumero(el, valorFinal, opcoes = {}) {
+  if (!el || !isFinite(valorFinal)) return;
+  const { formatar = v => String(Math.round(v)), duracaoMs = 700 } = opcoes;
+  const inicio = performance.now();
+
+  function passo(agora) {
+    const t = Math.min((agora - inicio) / duracaoMs, 1);
+    const facilitado = 1 - Math.pow(1 - t, 3);
+    el.textContent = formatar(valorFinal * facilitado);
+    if (t < 1) requestAnimationFrame(passo);
+    else el.textContent = formatar(valorFinal);
+  }
+  requestAnimationFrame(passo);
 }
 
 function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
