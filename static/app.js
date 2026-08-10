@@ -229,6 +229,16 @@ document.addEventListener('DOMContentLoaded', () => {
   carregarTecnicos();
 });
 
+// Registro do PWA — silencioso, não bloqueia nada se falhar (ex: em http
+// local sem TLS, service worker é recusado pelo navegador por design).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/static/sw.js').catch((e) => {
+      console.warn('Service worker não registrado:', e.message);
+    });
+  });
+}
+
 // ===== ABAS PRINCIPAIS (Roteiros / Verificar CEP) =====
 function switchMainTab(tab) {
   const isCep = tab === 'cep';
@@ -486,6 +496,10 @@ async function renderFichaDetalhe(id) {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
           Abrir no Google Maps
         </button>
+        <button class="btn btn-ghost" id="btn-whatsapp-rota" style="display:flex;align-items:center;gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          Enviar por WhatsApp
+        </button>
       </div>
     </div>
 
@@ -545,6 +559,9 @@ async function renderFichaDetalhe(id) {
 
   const btnMaps = document.getElementById('btn-abrir-maps');
   if (btnMaps) btnMaps.addEventListener('click', () => abrirRotaGoogleMaps(ficha, servicos));
+
+  const btnWhats = document.getElementById('btn-whatsapp-rota');
+  if (btnWhats) btnWhats.addEventListener('click', () => enviarRotaWhatsApp(ficha, servicos));
 
   if (temCoordenadas) {
     inicializarMapa('mapa-roteiro');
@@ -757,6 +774,42 @@ function _copiarFallback(texto, aoSucesso) {
   } finally {
     document.body.removeChild(area);
   }
+}
+
+// Formata o roteiro do dia como texto e abre o WhatsApp pra escolher pra
+// quem mandar (wa.me sem número abre o seletor de contato/conversa —
+// não é uma mensagem fixa pro número da empresa, é o técnico compartilhando
+// a própria rota com quem ele quiser: despacho, outro técnico, etc.).
+function enviarRotaWhatsApp(ficha, servicos) {
+  const ordenados = [...servicos].sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
+
+  if (ordenados.length === 0) {
+    toast('Nenhum ponto na rota ainda', 'error');
+    return;
+  }
+
+  const linhas = [];
+  linhas.push(`*Roteiro — ${ficha.dia_semana}*`);
+  if (ficha.data_referencia) linhas.push(formatarData(ficha.data_referencia));
+  if (ficha.ponto_partida) linhas.push(`📍 Partida: ${ficha.ponto_partida}`);
+  linhas.push('');
+
+  ordenados.forEach((s, i) => {
+    const endereco = s.numero ? `Nº ${s.numero} · ${s.endereco_completo || ''}` : (s.endereco_completo || '—');
+    const aparelho = [s.tipo_aparelho, s.modelo].filter(Boolean).join(' — ');
+    linhas.push(`${i + 1}. ${endereco}`);
+    if (s.cliente) linhas.push(`   Cliente: ${s.cliente}`);
+    if (aparelho) linhas.push(`   Aparelho: ${aparelho}`);
+    if (s.descricao) linhas.push(`   Obs: ${s.descricao}`);
+  });
+
+  if (ficha.distancia_total > 0) {
+    linhas.push('');
+    linhas.push(`Distância estimada: ${fmtKm(ficha.distancia_total)} km`);
+  }
+
+  const texto = linhas.join('\n');
+  window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank', 'noopener,noreferrer');
 }
 
 function abrirRotaGoogleMaps(ficha, servicos) {
