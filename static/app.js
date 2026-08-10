@@ -227,6 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
   iniciarRelogio();
   iniciarMonitorSaude();
   carregarTecnicos();
+  _vcepRenderHistorico();
 });
 
 // Registro do PWA — silencioso, não bloqueia nada se falhar (ex: em http
@@ -960,11 +961,13 @@ async function verificarCEP() {
   resultado.innerHTML = '';
   vcepTabAtual = 'analise';
   vcepExpandido = null;
+  _vcepEsconderComparacao();
 
   try {
     const r = await api('/verificar-cep', { method: 'POST', body: JSON.stringify({ cep }) });
     verificacaoAtual = r;
     _renderVcep(resultado, r);
+    _vcepSalvarHistorico(cep, r.endereco);
     if (r.preciso === false) {
       toast('Endereço aproximado (centroide do CEP)', 'info');
     }
@@ -973,6 +976,147 @@ async function verificarCEP() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = 'Verificar';
+  }
+}
+
+async function verificarEndereco() {
+  const input = document.getElementById('verificar-endereco-input');
+  const endereco = (input.value || '').trim();
+
+  if (endereco.length < 6) { toast('Descreva o endereço com mais detalhes', 'error'); return; }
+
+  const btn = document.getElementById('btn-verificar-endereco');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div>';
+
+  const resultado = document.getElementById('verificar-resultado');
+  resultado.innerHTML = '';
+  vcepTabAtual = 'analise';
+  vcepExpandido = null;
+  _vcepEsconderComparacao();
+
+  try {
+    const r = await api('/verificar-endereco', { method: 'POST', body: JSON.stringify({ endereco }) });
+    verificacaoAtual = r;
+    _renderVcep(resultado, r);
+    if (r.cep) _vcepSalvarHistorico(r.cep, r.endereco);
+    if (r.preciso === false) {
+      toast('Localização aproximada — confira o endereço encontrado', 'info');
+    }
+  } catch (e) {
+    resultado.innerHTML = `<div class="vcep-erro">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Verificar';
+  }
+}
+
+function alternarModoBusca() {
+  const linhaCep = document.getElementById('linha-busca-cep');
+  const linhaEnd = document.getElementById('linha-busca-endereco');
+  const botao = document.getElementById('btn-modo-busca');
+  const modoEndereco = linhaEnd.style.display !== 'none';
+
+  linhaCep.style.display = modoEndereco ? 'flex' : 'none';
+  linhaEnd.style.display = modoEndereco ? 'none' : 'flex';
+  botao.textContent = modoEndereco ? 'Buscar por endereço' : 'Buscar por CEP';
+
+  if (!modoEndereco) {
+    setTimeout(() => document.getElementById('verificar-endereco-input')?.focus(), 60);
+  }
+}
+
+// ===== HISTÓRICO DE CEPs VERIFICADOS (localStorage — só neste navegador) =====
+const VCEP_HISTORICO_CHAVE = 'portotec_vcep_historico';
+const VCEP_HISTORICO_MAX = 8;
+
+function _vcepCarregarHistorico() {
+  try {
+    return JSON.parse(localStorage.getItem(VCEP_HISTORICO_CHAVE) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function _vcepSalvarHistorico(cep, endereco) {
+  if (!cep) return;
+  let lista = _vcepCarregarHistorico().filter(h => h.cep !== cep);
+  lista.unshift({ cep, endereco: endereco || '', quando: Date.now() });
+  lista = lista.slice(0, VCEP_HISTORICO_MAX);
+  localStorage.setItem(VCEP_HISTORICO_CHAVE, JSON.stringify(lista));
+  _vcepRenderHistorico();
+}
+
+function _vcepRenderHistorico() {
+  const container = document.getElementById('vcep-historico');
+  if (!container) return;
+
+  const lista = _vcepCarregarHistorico();
+  if (lista.length === 0) { container.innerHTML = ''; return; }
+
+  container.innerHTML = `
+    <div class="vcep-historico-label">Verificados recentemente</div>
+    <div class="vcep-historico-chips">
+      ${lista.map(h => `
+        <button type="button" class="vcep-chip-historico" onclick="_vcepReverificarHistorico('${h.cep}')" title="${esc(h.endereco)}">
+          ${esc(formatCEP(h.cep))}
+        </button>`).join('')}
+    </div>`;
+}
+
+function _vcepReverificarHistorico(cep) {
+  const linhaEnd = document.getElementById('linha-busca-endereco');
+  if (linhaEnd.style.display !== 'none') alternarModoBusca();
+  document.getElementById('verificar-cep-input').value = formatCEP(cep);
+  verificarCEP();
+}
+
+// ===== COMPARAR DOIS CEPs LADO A LADO =====
+function alternarComparar() {
+  const linha = document.getElementById('linha-comparar');
+  const aberto = linha.style.display !== 'none';
+  linha.style.display = aberto ? 'none' : 'flex';
+  if (!aberto) setTimeout(() => document.getElementById('verificar-cep-input-b')?.focus(), 60);
+}
+
+function _vcepEsconderComparacao() {
+  const linha = document.getElementById('linha-comparar');
+  if (linha) linha.style.display = 'none';
+}
+
+async function verificarComparar() {
+  const cepA = (document.getElementById('verificar-cep-input').value || '').replace(/\D/g, '');
+  const cepB = (document.getElementById('verificar-cep-input-b').value || '').replace(/\D/g, '');
+
+  if (cepA.length !== 8 || cepB.length !== 8) {
+    toast('Informe os dois CEPs (8 dígitos cada) pra comparar', 'error');
+    return;
+  }
+
+  const resultado = document.getElementById('verificar-resultado');
+  resultado.innerHTML = `<div class="loading-row" style="padding:30px;text-align:center;"><div class="spinner"></div></div>`;
+
+  try {
+    const [ra, rb] = await Promise.all([
+      api('/verificar-cep', { method: 'POST', body: JSON.stringify({ cep: cepA }) }),
+      api('/verificar-cep', { method: 'POST', body: JSON.stringify({ cep: cepB }) }),
+    ]);
+    _vcepSalvarHistorico(cepA, ra.endereco);
+    _vcepSalvarHistorico(cepB, rb.endereco);
+
+    resultado.innerHTML = `
+      <div class="vcep-comparar-grid">
+        <div class="vcep-comparar-col">
+          <div class="vcep-comparar-titulo">${esc(formatCEP(cepA))}<span>${esc(ra.endereco || '')}</span></div>
+          ${_vcepAnalise(ra, 'a-', false)}
+        </div>
+        <div class="vcep-comparar-col">
+          <div class="vcep-comparar-titulo">${esc(formatCEP(cepB))}<span>${esc(rb.endereco || '')}</span></div>
+          ${_vcepAnalise(rb, 'b-', false)}
+        </div>
+      </div>`;
+  } catch (e) {
+    resultado.innerHTML = `<div class="vcep-erro">${esc(e.message)}</div>`;
   }
 }
 
@@ -1039,12 +1183,17 @@ function _vcepRenderTab(r) {
   }
 }
 
-function _vcepAnalise(r) {
+function _vcepAnalise(r, prefixo = '', interativo = true) {
   if (!r.sugestoes || r.sugestoes.length === 0) {
     return `<div class="vcep-empty"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><p>Nenhuma rota cadastrada.<br>Use "Novo dia" para criar a primeira.</p></div>`;
   }
 
   const max = Math.max(...r.sugestoes.map(s => s.score), 1);
+
+  // Mesmo limite que o backend usa pra penalizar rota lotada na pontuação
+  // (CAPACIDADE_IDEAL em routes/tecnicos.py) — aqui só torna isso visível
+  // sem precisar expandir o card.
+  const CAPACIDADE_IDEAL_ROTA = 8;
 
   const cards = r.sugestoes.map((s, i) => {
     const sc    = Math.round(s.score);
@@ -1055,9 +1204,14 @@ function _vcepAnalise(r) {
 
     const dataTxt = s.data_referencia ? ' · ' + formatarData(s.data_referencia) : '';
     const ptsTxt  = s.vazia ? 'rota vazia' : `${s.total_pontos} pts`;
+    const lotada  = !s.vazia && s.total_pontos >= CAPACIDADE_IDEAL_ROTA;
+
+    const idCard = `vcep-rc-${prefixo}${i}`;
+    const idDet  = `vcep-det-${prefixo}${i}`;
 
     return `
-      <div class="vcep-rota-card${isTop ? ' vcep-rota-top' : ''}" id="vcep-rc-${i}" onclick="vcepToggleCard(${i})">
+      <div class="vcep-rota-card${isTop ? ' vcep-rota-top' : ''}" id="${idCard}"
+           ${interativo ? `onclick="vcepToggleCard('${prefixo}',${i})"` : ''}>
         <div class="vcep-rota-inner">
           <div class="vcep-avatar" style="background:rgba(${_hexRgb(s.tecnico_cor)},.13);color:${escCor(s.tecnico_cor)}">
             ${esc(_ini(s.tecnico_nome))}
@@ -1065,41 +1219,51 @@ function _vcepAnalise(r) {
           </div>
           <div class="vcep-rota-info">
             <div class="vcep-rota-nome">${esc(s.tecnico_nome)}</div>
-            <div class="vcep-rota-dia">${esc(s.dia_semana)} · ${ptsTxt}${esc(dataTxt)}</div>
+            <div class="vcep-rota-dia">
+              ${esc(s.dia_semana)} · ${ptsTxt}${esc(dataTxt)}
+              ${lotada ? `<span class="vcep-tag-lotada" title="Rota com ${s.total_pontos} pontos — acima da capacidade ideal (${CAPACIDADE_IDEAL_ROTA})">${icone('alerta', 'icone-10')} cheia</span>` : ''}
+            </div>
             <div class="vcep-rota-dist">${distTxt !== '—' ? `${distTxt} ${s.vazia ? 'da base' : 'do ponto mais próximo'}` : ''}</div>
           </div>
           <div class="vcep-rota-score">
             <div class="vcep-score-num" style="color:${encaixe.cor}">${sc}</div>
             <div class="vcep-score-bar"><div class="vcep-score-fill" style="width:${Math.round((s.score/max)*100)}%;background:${encaixe.cor}"></div></div>
           </div>
+          ${interativo ? `
+          <button type="button" class="vcep-btn-add-rapido" title="Adicionar este CEP nessa rota"
+                  onclick="event.stopPropagation(); vcepSelecionarRota(${s.ficha_id})">
+            ${icone('plus', 'icone-13')}
+          </button>` : ''}
         </div>
         <span class="vcep-badge-encaixe vcep-badge-${encaixe.classe}">${esc(encaixe.texto)}</span>
-        <div class="vcep-rota-detalhe" id="vcep-det-${i}" style="display:none"></div>
+        ${interativo ? `<div class="vcep-rota-detalhe" id="${idDet}" style="display:none"></div>` : ''}
       </div>`;
   }).join('');
 
   return `<div class="vcep-analise-wrap"><div class="vcep-analise-label">${r.sugestoes.length} rota${r.sugestoes.length !== 1 ? 's' : ''} analisada${r.sugestoes.length !== 1 ? 's' : ''}</div>${cards}</div>`;
 }
 
-function vcepToggleCard(i) {
+function vcepToggleCard(prefixo, i) {
+  // prefixo só é diferente de '' no modo comparar — que é somente
+  // leitura e nem chama isso (evita ids duplicados entre as 2 colunas).
   if (vcepExpandido === i) {
     vcepExpandido = null;
-    document.getElementById('vcep-det-' + i)?.style.setProperty('display', 'none');
-    document.getElementById('vcep-rc-' + i)?.classList.remove('vcep-rota-expanded');
+    document.getElementById('vcep-det-' + prefixo + i)?.style.setProperty('display', 'none');
+    document.getElementById('vcep-rc-' + prefixo + i)?.classList.remove('vcep-rota-expanded');
     return;
   }
   if (vcepExpandido !== null) {
-    document.getElementById('vcep-det-' + vcepExpandido)?.style.setProperty('display', 'none');
-    document.getElementById('vcep-rc-' + vcepExpandido)?.classList.remove('vcep-rota-expanded');
+    document.getElementById('vcep-det-' + prefixo + vcepExpandido)?.style.setProperty('display', 'none');
+    document.getElementById('vcep-rc-' + prefixo + vcepExpandido)?.classList.remove('vcep-rota-expanded');
   }
   vcepExpandido = i;
-  _vcepExpandir(i, verificacaoAtual);
+  _vcepExpandir(i, verificacaoAtual, prefixo);
 }
 
-function _vcepExpandir(i, r) {
+function _vcepExpandir(i, r, prefixo = '') {
   const s = r?.sugestoes?.[i];
-  const el = document.getElementById('vcep-det-' + i);
-  const card = document.getElementById('vcep-rc-' + i);
+  const el = document.getElementById('vcep-det-' + prefixo + i);
+  const card = document.getElementById('vcep-rc-' + prefixo + i);
   if (!el || !s) return;
 
   card?.classList.add('vcep-rota-expanded');

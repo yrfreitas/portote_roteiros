@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
-from services.geo import geocode_cep
+from services.geo import geocode_cep, geocode_endereco_livre
 from services.otimizador import haversine
 
 tecnicos_bp = Blueprint("tecnicos", __name__)
@@ -101,9 +101,47 @@ def verificar_cep():
     if not geo:
         return jsonify({"erro": "CEP não encontrado"}), 404
 
-    lat_alvo, lng_alvo = geo.lat, geo.lng
     zona_alvo = zona_sp(cep)
+    sugestoes, tem_boa_opcao, lista_tecnicos = _analisar_encaixe(geo.lat, geo.lng, zona_alvo)
 
+    return jsonify({
+        "cep": cep, "endereco": geo.endereco, "zona": zona_alvo, "preciso": geo.preciso,
+        "tecnicos": lista_tecnicos, "sugestoes": sugestoes, "tem_boa_opcao": tem_boa_opcao,
+    })
+
+
+@tecnicos_bp.route("/verificar-endereco", methods=["POST"])
+def verificar_endereco():
+    """Mesma análise do /verificar-cep, mas a partir de um endereço
+    digitado por extenso — útil quando o cliente não sabe o CEP de cabeça."""
+    data = request.get_json(silent=True) or {}
+    endereco_busca = (data.get("endereco") or "").strip()
+
+    if len(endereco_busca) < 6:
+        return jsonify({
+            "erro": "Descreva o endereço com mais detalhes (rua, bairro, cidade)"
+        }), 400
+
+    geo = geocode_endereco_livre(endereco_busca)
+    if not geo:
+        return jsonify({
+            "erro": "Não conseguimos localizar esse endereço. "
+                    "Tente incluir bairro e cidade, ou busque pelo CEP."
+        }), 404
+
+    zona_alvo = zona_sp(geo.cep) if geo.cep else "outros"
+    sugestoes, tem_boa_opcao, lista_tecnicos = _analisar_encaixe(geo.lat, geo.lng, zona_alvo)
+
+    return jsonify({
+        "cep": geo.cep, "endereco": geo.endereco, "zona": zona_alvo, "preciso": geo.preciso,
+        "tecnicos": lista_tecnicos, "sugestoes": sugestoes, "tem_boa_opcao": tem_boa_opcao,
+    })
+
+
+def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
+    """Núcleo do "isso encaixa em qual rota": recebe só coordenadas +
+    zona, então serve tanto pra busca por CEP quanto por endereço livre —
+    as duas rotas HTTP acima só resolvem como chegar em lat/lng/zona."""
     with db_conn() as conn:
         linhas = fetch_all(conn, """
             SELECT f.id AS ficha_id, f.dia_semana, f.data_referencia,
@@ -121,19 +159,8 @@ def verificar_cep():
             conn, "SELECT id, nome, cor FROM tecnicos ORDER BY nome"
         )
 
-    base = {
-        "cep":       cep,
-        "endereco":  geo.endereco,
-        "zona":      zona_alvo,
-        "preciso":   geo.preciso,
-        "tecnicos":  lista_tecnicos,
-    }
-
     if not linhas:
-        return jsonify({
-            **base, "sugestoes": [], "tem_boa_opcao": False,
-            "mensagem": "Nenhuma rota cadastrada ainda.",
-        })
+        return [], False, lista_tecnicos
 
     fichas = {}
     for l in linhas:
@@ -221,4 +248,4 @@ def verificar_cep():
 
     tem_boa_opcao = bool(sugestoes) and sugestoes[0]["score"] >= SCORE_MINIMO_BOM
 
-    return jsonify({**base, "sugestoes": sugestoes, "tem_boa_opcao": tem_boa_opcao})
+    return sugestoes, tem_boa_opcao, lista_tecnicos

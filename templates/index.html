@@ -110,8 +110,14 @@
 
   <main class="main" id="panel-cep" style="display:none; grid-row: 2; grid-column: 1 / -1;">
     <div class="verificador-box verificador-box--full">
-      <div class="verificador-title">Verificar CEP</div>
-      <div class="verificador-row">
+      <div class="verificador-title-row">
+        <div class="verificador-title">Verificar Encaixe</div>
+        <button type="button" class="vbusca-modo-link" id="btn-modo-busca" onclick="alternarModoBusca()">
+          Buscar por endereço
+        </button>
+      </div>
+
+      <div class="verificador-row" id="linha-busca-cep">
         <label for="verificar-cep-input" style="position:absolute;left:-9999px;">CEP a verificar</label>
         <input type="text" class="form-input" id="verificar-cep-input"
                placeholder="00000-000" maxlength="9"
@@ -120,6 +126,29 @@
                onkeydown="if(event.key==='Enter') verificarCEP()">
         <button class="btn btn-primary" onclick="verificarCEP()" id="btn-verificar">Verificar</button>
       </div>
+
+      <div class="verificador-row" id="linha-busca-endereco" style="display:none;">
+        <label for="verificar-endereco-input" style="position:absolute;left:-9999px;">Endereço a verificar</label>
+        <input type="text" class="form-input" id="verificar-endereco-input"
+               placeholder="Rua, número, bairro, cidade..."
+               onkeydown="if(event.key==='Enter') verificarEndereco()">
+        <button class="btn btn-primary" onclick="verificarEndereco()" id="btn-verificar-endereco">Verificar</button>
+      </div>
+
+      <div class="vcep-historico" id="vcep-historico"></div>
+
+      <button type="button" class="vcep-comparar-toggle" id="btn-comparar-toggle" onclick="alternarComparar()">
+        Comparar com outro CEP
+      </button>
+      <div class="verificador-row" id="linha-comparar" style="display:none;">
+        <label for="verificar-cep-input-b" style="position:absolute;left:-9999px;">Segundo CEP a comparar</label>
+        <input type="text" class="form-input" id="verificar-cep-input-b"
+               placeholder="00000-000 (comparar)" maxlength="9"
+               inputmode="numeric" oninput="formatarCEP(this)"
+               onkeydown="if(event.key==='Enter') verificarComparar()">
+        <button class="btn btn-ghost" onclick="verificarComparar()">Comparar</button>
+      </div>
+
       <div id="verificar-resultado"></div>
     </div>
   </main>

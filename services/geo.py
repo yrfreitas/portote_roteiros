@@ -35,6 +35,7 @@ class GeoResult:
     lng: float
     endereco: str
     preciso: bool = True
+    cep: str = ""  # só preenchido quando a busca já revela o CEP (endereço livre)
 
 
 def geocode_cep(cep: str, numero: str = "") -> Optional[GeoResult]:
@@ -80,6 +81,57 @@ def _marcar_impreciso(resultado: Optional[GeoResult]) -> Optional[GeoResult]:
     if resultado:
         resultado.preciso = False
     return resultado
+
+
+def geocode_endereco_livre(texto: str) -> Optional[GeoResult]:
+    """Geocodifica um endereço digitado por extenso (sem CEP conhecido),
+    ex: "Rua Augusta 500, Consolação, São Paulo". Diferente de geocode_cep,
+    não passa pelo ViaCEP — vai direto no Nominatim com o texto livre, e
+    tenta extrair o CEP da resposta (nem sempre vem)."""
+    texto = (texto or "").strip()
+    if len(texto) < 6:
+        return None
+
+    texto_lower = texto.lower()
+    consulta = texto if ("brasil" in texto_lower or "brazil" in texto_lower) else f"{texto}, Brasil"
+
+    _throttle_nominatim()
+    params = {
+        "q": consulta, "format": "json", "limit": 1,
+        "countrycodes": "br", "addressdetails": 1,
+    }
+
+    try:
+        r = _sessao.get(NOMINATIM_URL, params=params, timeout=TIMEOUT_NOMINATIM)
+        resultados = r.json()
+        if not resultados:
+            return None
+
+        item = resultados[0]
+        addr = item.get("address") or {}
+
+        logradouro = addr.get("road") or ""
+        numero     = addr.get("house_number") or ""
+        bairro     = addr.get("suburb") or addr.get("neighbourhood") or addr.get("quarter") or ""
+        cidade     = addr.get("city") or addr.get("town") or addr.get("municipality") or ""
+        estado     = addr.get("state") or ""
+        cep        = "".join(c for c in (addr.get("postcode") or "") if c.isdigit())
+
+        endereco_fmt = (
+            _formatar_endereco(logradouro, numero, bairro, cidade, estado)
+            if logradouro else (item.get("display_name") or texto)
+        )
+
+        return GeoResult(
+            lat=float(item["lat"]),
+            lng=float(item["lon"]),
+            endereco=endereco_fmt,
+            preciso=bool(numero),
+            cep=cep,
+        )
+    except Exception as exc:
+        log.warning("Geocodificação de endereço livre falhou (%r): %s", texto, exc)
+        return None
 
 
 def _google_geocode(dados_cep: dict, numero: str, api_key: str) -> Optional[GeoResult]:

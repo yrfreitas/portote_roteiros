@@ -415,6 +415,114 @@ header::after {
   box-shadow: 0 0 8px var(--accent), 0 0 16px var(--accent);
 }
 
+.verificador-title-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.verificador-title-row .verificador-title { margin-bottom: 0; }
+.vbusca-modo-link {
+  background: none; border: none; cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 11px; font-weight: 600;
+  color: var(--accent-text);
+  padding: 4px 8px; border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.vbusca-modo-link:hover { background: var(--accent-dim); color: var(--accent-light); }
+
+/* Histórico de CEPs verificados (localStorage) */
+.vcep-historico { margin-top: 10px; }
+.vcep-historico-label {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 1.4px;
+  color: var(--text-faint); font-weight: 700; margin-bottom: 7px;
+}
+.vcep-historico-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.vcep-chip-historico {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border-bright);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.vcep-chip-historico:hover { border-color: var(--accent); color: var(--accent-light); background: var(--accent-dim); }
+
+/* Comparar dois CEPs */
+.vcep-comparar-toggle {
+  background: none; border: none; cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 10.5px; font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: underline; text-underline-offset: 2px;
+  margin-top: 10px; padding: 2px 0;
+}
+.vcep-comparar-toggle:hover { color: var(--text-secondary); }
+.vcep-comparar-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-top: 6px;
+}
+.vcep-comparar-col {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.015);
+}
+.vcep-comparar-titulo {
+  display: block;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px; font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(24,41,74,0.5), rgba(24,41,74,0.15));
+}
+.vcep-comparar-titulo span {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 10px; font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.vcep-comparar-col .vcep-analise-wrap { padding: 8px; }
+.vcep-comparar-col .vcep-rota-card { cursor: default; }
+@media (max-width: 560px) {
+  .vcep-comparar-grid { grid-template-columns: 1fr; }
+}
+
+/* Aviso de rota lotada, visível sem expandir o card */
+.vcep-tag-lotada {
+  display: inline-flex; align-items: center; gap: 3px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(248,113,113,0.14);
+  color: var(--danger-text);
+  font-size: 9px; font-weight: 700;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* Botão de adicionar direto no card, sem precisar expandir */
+.vcep-btn-add-rapido {
+  width: 26px; height: 26px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border-bright);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.vcep-btn-add-rapido:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
 .verificador-row { display: flex; gap: 6px; }
 .verificador-row .form-input {
   flex: 1; min-width: 0;
