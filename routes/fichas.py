@@ -2,7 +2,9 @@ from flask import Blueprint, jsonify, request
 
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
 from services.geo import geocode_cep
-from services.otimizador import MINUTOS_PARADA, calcular_tempo, otimizar_rota
+from services.otimizador import (
+    MINUTOS_PARADA, calcular_rota_fixa, calcular_tempo, otimizar_rota,
+)
 
 fichas_bp = Blueprint("fichas", __name__)
 
@@ -143,6 +145,46 @@ def otimizar_ficha(ficha_id):
     return jsonify(resultado)
 
 
+@fichas_bp.route("/fichas/<int:ficha_id>/reordenar", methods=["PUT"])
+def reordenar_servicos(ficha_id):
+    """Aplica uma ordem escolhida manualmente (arrastar/setas no front) e
+    recalcula distância/tempo PARA ESSA ORDEM — sem rodar o otimizador de
+    novo, que ia simplesmente desfazer o que o técnico acabou de ajustar."""
+    data = request.get_json(silent=True) or {}
+    ordem_ids = data.get("ordem_ids")
+
+    if not isinstance(ordem_ids, list) or not ordem_ids:
+        return jsonify({"erro": "ordem_ids deve ser uma lista de IDs de serviço"}), 400
+
+    with db_conn(commit=True) as conn:
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+        if not ficha:
+            return jsonify({"erro": "Ficha não encontrada"}), 404
+
+        servicos = fetch_all(conn, "SELECT id FROM servicos WHERE ficha_id = ?", (ficha_id,))
+        ids_da_ficha = {s["id"] for s in servicos}
+
+        try:
+            ordem_ids = [int(i) for i in ordem_ids]
+        except (TypeError, ValueError):
+            return jsonify({"erro": "ordem_ids deve conter apenas números"}), 400
+
+        if set(ordem_ids) != ids_da_ficha:
+            return jsonify({
+                "erro": "A lista enviada não corresponde exatamente aos "
+                        "pontos desta ficha (algum foi adicionado, "
+                        "removido ou duplicado nesse meio tempo)."
+            }), 409
+
+        for posicao, servico_id in enumerate(ordem_ids, start=1):
+            execute(conn, "UPDATE servicos SET ordem = ? WHERE id = ?",
+                    (posicao, servico_id))
+
+        resultado = recalcular_distancia_ordem_fixa(conn, ficha_id, ficha)
+
+    return jsonify({"mensagem": "Ordem atualizada manualmente", **resultado})
+
+
 def recalcular_rota(conn, ficha_id, ficha) -> dict:
     servicos = fetch_all(
         conn, "SELECT id, lat, lng FROM servicos WHERE ficha_id = ?", (ficha_id,)
@@ -193,5 +235,48 @@ def recalcular_rota(conn, ficha_id, ficha) -> dict:
         "total_servicos":  len(servicos),
         "tempo_minutos":   r["tempo_minutos"],
         "ganho_2opt_km":   r["ganho_2opt_km"],
+        "sem_coordenada":  len(servicos) - len(validos),
+    }
+
+
+def recalcular_distancia_ordem_fixa(conn, ficha_id, ficha) -> dict:
+    servicos = fetch_all(
+        conn,
+        "SELECT id, lat, lng FROM servicos WHERE ficha_id = ? ORDER BY ordem, id",
+        (ficha_id,),
+    )
+    validos = [s for s in servicos
+               if s.get("lat") is not None and s.get("lng") is not None]
+    tem_partida = bool(ficha) and ficha.get("ponto_partida_lat") is not None
+
+    if not validos or not tem_partida:
+        execute(conn, """
+            UPDATE fichas SET distancia_total = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (ficha_id,))
+        return {
+            "distancia_total": 0.0,
+            "total_servicos":  len(servicos),
+            "tempo_minutos":   len(servicos) * MINUTOS_PARADA,
+            "sem_partida":     not tem_partida,
+            "sem_coordenada":  len(servicos) - len(validos),
+        }
+
+    partida = {"lat": ficha["ponto_partida_lat"], "lng": ficha["ponto_partida_lng"]}
+    pontos = [{"lat": s["lat"], "lng": s["lng"]} for s in validos]
+
+    r = calcular_rota_fixa(partida, pontos)
+
+    execute(conn, """
+        UPDATE fichas SET distancia_total = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (r["distancia_km"], ficha_id))
+
+    return {
+        "distancia_total": r["distancia_km"],
+        "retorno_km":      r["retorno_km"],
+        "total_km":        r["total_km"],
+        "total_servicos":  len(servicos),
+        "tempo_minutos":   r["tempo_minutos"],
         "sem_coordenada":  len(servicos) - len(validos),
     }

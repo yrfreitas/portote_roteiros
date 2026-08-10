@@ -146,6 +146,31 @@ def otimizar_rota(partida: dict, pontos: list) -> dict:
     }
 
 
+def calcular_rota_fixa(partida: dict, pontos_em_ordem: list) -> dict:
+    """Calcula distância/tempo para uma sequência JÁ DEFINIDA manualmente —
+    ao contrário de otimizar_rota, não reordena nada, só mede o trajeto
+    na ordem em que os pontos foram passados. Usado quando o técnico
+    reorganiza a rota à mão e queremos refletir a escolha dele, não a
+    do otimizador."""
+    vazio = {"distancia_km": 0.0, "retorno_km": 0.0, "total_km": 0.0, "tempo_minutos": 0}
+    if not pontos_em_ordem or partida.get("lat") is None or partida.get("lng") is None:
+        return vazio
+
+    n = len(pontos_em_ordem)
+    dp, db = _matrizes(partida, pontos_em_ordem)
+    identidade = list(range(n))
+
+    dist_ida = _custo(identidade, dp, db, com_retorno=False) * FATOR_ROTA
+    retorno = (db[identidade[-1]] * FATOR_ROTA) if identidade else 0.0
+
+    return {
+        "distancia_km":  round(dist_ida, 2),
+        "retorno_km":    round(retorno, 2),
+        "total_km":      round(dist_ida + retorno, 2),
+        "tempo_minutos": calcular_tempo(dist_ida, n),
+    }
+
+
 def calcular_tempo(dist_km_real: float, num_paradas: int) -> int:
     tempo_deslocamento = (dist_km_real / VELOCIDADE_KMH) * 60
     tempo_atendimento = num_paradas * MINUTOS_PARADA

@@ -847,7 +847,7 @@ header::after {
 .roteiro-item {
   position: relative;
   display: grid;
-  grid-template-columns: 48px 1fr auto;
+  grid-template-columns: 52px 1fr auto;
   align-items: center;
   gap: 16px;
   padding: 16px 20px;
@@ -855,6 +855,26 @@ header::after {
   transition: background 0.18s;
   animation: slideIn 0.3s cubic-bezier(.22,.68,0,1);
 }
+
+.roteiro-ordem-ctrl {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.btn-mover {
+  width: 24px; height: 16px;
+  border: none; border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.btn-mover:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: var(--accent-text);
+}
+.btn-mover:disabled { opacity: 0.22; cursor: default; }
 @keyframes slideIn {
   from { opacity: 0; transform: translateX(-10px); }
   to   { opacity: 1; transform: translateX(0); }
@@ -931,6 +951,11 @@ header::after {
   color: var(--text-muted);
   margin-top: 2px;
   font-style: italic;
+}
+.roteiro-aparelho {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .roteiro-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }

@@ -86,6 +86,8 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#4f8dfb') {
       ? `Nº ${esc(s.numero)} · ${esc(s.endereco_completo)}`
       : (esc(s.endereco_completo) || '—');
 
+    const aparelhoPopup = [s.tipo_aparelho, s.modelo].filter(Boolean).join(' — ');
+
     mapaMarkers.push(
       L.marker([s.lat, s.lng], { icon }).addTo(mapaLeaflet).bindPopup(
         `<div style="min-width:180px;">
@@ -93,6 +95,7 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#4f8dfb') {
            <div style="font-family:monospace;font-size:12px;color:#555;margin-bottom:2px;">${esc(formatCEP(s.cep))}</div>
            <div style="font-size:12px;color:#333;">${endLabel}</div>
            ${s.cliente ? `<div style="font-size:11px;color:#777;margin-top:4px;">👤 ${esc(s.cliente)}</div>` : ''}
+           ${aparelhoPopup ? `<div style="font-size:11px;color:#777;">🔧 ${esc(aparelhoPopup)}</div>` : ''}
            ${s.descricao ? `<div style="font-size:11px;color:#777;">${esc(s.descricao)}</div>` : ''}
          </div>`
       )
@@ -459,24 +462,63 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
     ? `<div class="partida-strip"><div class="step-num partida">⭐</div><div><div class="partida-label">Ponto de Partida</div><div class="partida-text">${esc(ficha.ponto_partida)}</div></div></div>`
     : '';
 
-  const items = [...servicos]
-    .sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999))
-    .map((s, i) => `
+  const ordenados = [...servicos].sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
+  servicosOrdemAtual = ordenados.map(s => s.id);
+  const ultimoIndice = ordenados.length - 1;
+
+  const items = ordenados.map((s, i) => {
+    const aparelho = [s.tipo_aparelho, s.modelo].filter(Boolean).join(' — ');
+    return `
       <div class="roteiro-item" id="svc-${s.id}">
-        <div class="step-num" style="background:${cor}20;border-color:${cor}60;color:${cor}">${i + 1}</div>
+        <div class="roteiro-ordem-ctrl">
+          <button class="btn-mover" onclick="moverServico(${ficha.id},${s.id},'up')"
+                  ${i === 0 ? 'disabled' : ''} title="Mover para cima" aria-label="Mover para cima">▲</button>
+          <div class="step-num" style="background:${cor}20;border-color:${cor}60;color:${cor}">${i + 1}</div>
+          <button class="btn-mover" onclick="moverServico(${ficha.id},${s.id},'down')"
+                  ${i === ultimoIndice ? 'disabled' : ''} title="Mover para baixo" aria-label="Mover para baixo">▼</button>
+        </div>
         <div class="roteiro-info">
           <div class="roteiro-cep" style="color:${cor}">${esc(formatCEP(s.cep))}</div>
           <div class="roteiro-endereco">${s.numero ? `<strong>Nº ${esc(s.numero)}</strong> · ` : ''}${esc(s.endereco_completo) || '—'}</div>
           ${s.cliente ? `<div class="roteiro-cliente">👤 ${esc(s.cliente)}${s.descricao ? ' · ' + esc(s.descricao) : ''}</div>` : ''}
+          ${aparelho ? `<div class="roteiro-aparelho">🔧 ${esc(aparelho)}</div>` : ''}
           ${(!s.lat || !s.lng) ? `<div class="roteiro-cliente" style="color:var(--danger-text);">⚠ sem coordenada — fora do cálculo</div>` : ''}
         </div>
         <div class="roteiro-actions">
           ${(s.lat && s.lng) ? `<a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16" target="_blank" rel="noopener" style="color:${cor};font-size:11px;text-decoration:none;padding:4px 8px;">🗺</a>` : ''}
           <button class="btn-remove" onclick="removerServico(${s.id},${ficha.id})">✕</button>
         </div>
-      </div>`).join('');
+      </div>`;
+  }).join('');
 
   return partida + items;
+}
+
+let servicosOrdemAtual = [];
+
+function moverServico(fichaId, servicoId, direcao) {
+  const i = servicosOrdemAtual.indexOf(servicoId);
+  if (i === -1) return;
+  const j = direcao === 'up' ? i - 1 : i + 1;
+  if (j < 0 || j >= servicosOrdemAtual.length) return;
+
+  const nova = [...servicosOrdemAtual];
+  [nova[i], nova[j]] = [nova[j], nova[i]];
+  salvarNovaOrdem(fichaId, nova);
+}
+
+async function salvarNovaOrdem(fichaId, ordemIds) {
+  try {
+    await api(`/fichas/${fichaId}/reordenar`, {
+      method: 'PUT',
+      body: JSON.stringify({ ordem_ids: ordemIds }),
+    });
+    toast('Ordem da rota atualizada', 'success');
+    await renderFichaDetalhe(fichaId);
+    await carregarTecnicos();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
 }
 
 let clientesRotaAtual = [];
@@ -897,6 +939,28 @@ function _vcepAdd(r) {
           <input class="vcep-input" type="text" id="vadd-cli" placeholder="Nome do cliente">
         </div>
         <div class="vcep-fg vcep-fg-half">
+          <label class="vcep-lbl">Tipo de Aparelho</label>
+          <select class="vcep-select" id="vadd-tipo">
+            <option value="">Selecione...</option>
+            <option>Geladeira</option>
+            <option>Freezer</option>
+            <option>Máquina de Lavar</option>
+            <option>Lava e Seca</option>
+            <option>Fogão</option>
+            <option>Micro-ondas</option>
+            <option>Purificador</option>
+            <option>Side by Side</option>
+            <option>Câmara Fria</option>
+            <option>Expositora</option>
+            <option>Secadora</option>
+            <option>Outro</option>
+          </select>
+        </div>
+        <div class="vcep-fg vcep-fg-half">
+          <label class="vcep-lbl">Modelo</label>
+          <input class="vcep-input" type="text" id="vadd-modelo" placeholder="Ex: BRM45">
+        </div>
+        <div class="vcep-fg vcep-fg-half">
           <label class="vcep-lbl">Descrição</label>
           <input class="vcep-input" type="text" id="vadd-desc" placeholder="Ex: não gela">
         </div>
@@ -965,9 +1029,11 @@ async function vcepAdicionarServico() {
       method: 'POST',
       body: JSON.stringify({
         cep: cep.replace(/\D/g, ''),
-        numero:    document.getElementById('vadd-num')?.value || '',
-        cliente:   document.getElementById('vadd-cli')?.value || '',
-        descricao: document.getElementById('vadd-desc')?.value || '',
+        numero:        document.getElementById('vadd-num')?.value || '',
+        cliente:       document.getElementById('vadd-cli')?.value || '',
+        descricao:     document.getElementById('vadd-desc')?.value || '',
+        tipo_aparelho: document.getElementById('vadd-tipo')?.value || '',
+        modelo:        document.getElementById('vadd-modelo')?.value || '',
       }),
     });
 
@@ -1086,9 +1152,11 @@ async function adicionarServico() {
       method: 'POST',
       body: JSON.stringify({
         cep,
-        numero:    document.getElementById('add-numero').value,
-        cliente:   document.getElementById('add-cliente').value,
-        descricao: document.getElementById('add-descricao').value,
+        numero:        document.getElementById('add-numero').value,
+        cliente:       document.getElementById('add-cliente').value,
+        descricao:     document.getElementById('add-descricao').value,
+        tipo_aparelho: document.getElementById('add-tipo-aparelho').value,
+        modelo:        document.getElementById('add-modelo').value,
       }),
     });
 
@@ -1161,7 +1229,7 @@ function abrirModalNovaFicha(tecnicoId) {
 
 function abrirModalAddServico(fichaId) {
   document.getElementById('add-ficha-id').value = fichaId;
-  ['add-cep','add-numero','add-cliente','add-descricao']
+  ['add-cep','add-numero','add-cliente','add-descricao','add-tipo-aparelho','add-modelo']
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('modal-add-servico').classList.add('open');
   setTimeout(() => document.getElementById('add-cep').focus(), 100);
