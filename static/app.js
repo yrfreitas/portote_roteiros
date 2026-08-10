@@ -190,8 +190,42 @@ function iniciarRelogio() {
   setInterval(atualizar, 1000);
 }
 
+// Monitor de saúde real da API — o indicador do cabeçalho não é mais um
+// ponto verde decorativo fixo: ele de fato bate no /api/health a cada
+// 15s, mede o tempo de resposta e mostra offline se a chamada falhar.
+async function verificarSaude() {
+  const dot   = document.getElementById('status-dot');
+  const texto = document.getElementById('status-texto');
+  const lat   = document.getElementById('status-latencia');
+  const pill  = document.getElementById('status-pill');
+  if (!dot) return;
+
+  const inicio = performance.now();
+  try {
+    const resp = await fetch(`${BASE}/api/health`, { cache: 'no-store' });
+    const ms = Math.round(performance.now() - inicio);
+    if (!resp.ok) throw new Error('unhealthy');
+
+    dot.classList.remove('status-dot--erro');
+    if (texto) texto.textContent = 'online';
+    if (lat) lat.textContent = `${ms}ms`;
+    if (pill) pill.title = `Sistema online · resposta em ${ms}ms`;
+  } catch {
+    dot.classList.add('status-dot--erro');
+    if (texto) texto.textContent = 'offline';
+    if (lat) lat.textContent = '';
+    if (pill) pill.title = 'Sem conexão com o servidor';
+  }
+}
+
+function iniciarMonitorSaude() {
+  verificarSaude();
+  setInterval(verificarSaude, 15000);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   iniciarRelogio();
+  iniciarMonitorSaude();
   carregarTecnicos();
 });
 
@@ -539,12 +573,18 @@ function animarNumero(el, valorFinal, opcoes = {}) {
   const { formatar = v => String(Math.round(v)), duracaoMs = 700 } = opcoes;
   const inicio = performance.now();
 
+  el.classList.add('numero-vivo');
+
   function passo(agora) {
     const t = Math.min((agora - inicio) / duracaoMs, 1);
     const facilitado = 1 - Math.pow(1 - t, 3);
     el.textContent = formatar(valorFinal * facilitado);
-    if (t < 1) requestAnimationFrame(passo);
-    else el.textContent = formatar(valorFinal);
+    if (t < 1) {
+      requestAnimationFrame(passo);
+    } else {
+      el.textContent = formatar(valorFinal);
+      setTimeout(() => el.classList.remove('numero-vivo'), 260);
+    }
   }
   requestAnimationFrame(passo);
 }

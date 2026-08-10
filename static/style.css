@@ -299,6 +299,38 @@ header::after {
 @keyframes ringPulse { 0% { opacity: .55; transform: scale(.4);} 70%,100% { opacity: 0; transform: scale(1.9);} }
 @keyframes pulse { 0%,100% { opacity: 1;} 50% { opacity: .5;} }
 
+/* Monitor de saúde real da API — não é mais decoração fixa verde */
+.status-pill {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.status-latencia { color: var(--text-muted); font-size: 10px; }
+.status-dot--erro {
+  background: var(--danger);
+  box-shadow: 0 0 8px var(--danger);
+  animation: pulse 0.9s ease-in-out infinite;
+}
+.status-dot--erro::before {
+  border-color: var(--danger);
+  animation: ringPulse 0.9s ease-in-out infinite;
+}
+
+/* Brilho breve num número quando ele muda — não só na carga inicial,
+   mas toda vez que um valor é recalculado (reordenar rota, otimizar). */
+.numero-vivo {
+  color: var(--accent-2) !important;
+  text-shadow: 0 0 18px rgba(34,211,238,0.75) !important;
+  transition: color 0.25s ease, text-shadow 0.25s ease;
+}
+
 /* Marcadores do mapa "caindo" em sequência ao renderizar a rota */
 @keyframes pin-drop {
   0%   { opacity: 0; transform: translateY(-16px) scale(.5); }
@@ -1138,6 +1170,25 @@ header::after {
   z-index: 2;
   box-shadow: 0 0 0 1px rgba(166,200,255,0.08) inset;
 }
+/* Cantos estilo HUD — reutilizável em qualquer painel, não só o mapa.
+   Precisa de position:relative + overflow:hidden no elemento. */
+.hud-frame { position: relative; }
+.hud-frame::after {
+  content: '';
+  position: absolute; inset: 10px;
+  pointer-events: none; z-index: 3;
+  background:
+    linear-gradient(var(--accent-text), var(--accent-text)) top left / 14px 1.5px no-repeat,
+    linear-gradient(var(--accent-text), var(--accent-text)) top left / 1.5px 14px no-repeat,
+    linear-gradient(var(--accent-text), var(--accent-text)) top right / 14px 1.5px no-repeat,
+    linear-gradient(var(--accent-text), var(--accent-text)) top right / 1.5px 14px no-repeat,
+    linear-gradient(var(--accent-text), var(--accent-text)) bottom left / 14px 1.5px no-repeat,
+    linear-gradient(var(--accent-text), var(--accent-text)) bottom left / 1.5px 14px no-repeat,
+    linear-gradient(var(--accent-text), var(--accent-text)) bottom right / 14px 1.5px no-repeat,
+    linear-gradient(var(--accent-text), var(--accent-text)) bottom right / 1.5px 14px no-repeat;
+  opacity: 0.4;
+}
+
 .mapa-wrapper::after {
   content: '';
   position: absolute; inset: 12px;

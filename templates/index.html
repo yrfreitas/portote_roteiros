@@ -41,7 +41,11 @@
 
     <div class="header-meta">
       <span class="header-date" id="current-date"></span>
-      <div class="status-dot" title="Sistema online"></div>
+      <div class="status-pill" id="status-pill" title="Verificando conexão...">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-texto">conectando</span>
+        <span id="status-latencia" class="status-latencia"></span>
+      </div>
     </div>
   </header>
 
@@ -59,7 +63,7 @@
   <main class="main" id="panel-roteiros-main">
 
     <div class="empty-state" id="empty-state">
-      <div class="visao-geral" id="visao-geral">
+      <div class="visao-geral hud-frame" id="visao-geral">
         <div class="visao-geral-header">
           <span class="visao-geral-title">Visão Geral</span>
           <span class="visao-geral-live"><span class="status-dot"></span>ao vivo</span>
