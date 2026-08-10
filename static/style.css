@@ -655,6 +655,94 @@ header::after {
   opacity: 0.65;
   filter: drop-shadow(0 0 40px rgba(79,141,251,0.4));
 }
+
+/* ─── VISÃO GERAL (painel de operações, dentro do estado vazio) ── */
+.visao-geral {
+  width: 100%;
+  max-width: 620px;
+  text-align: left;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  background: linear-gradient(160deg, var(--glass-fill), var(--glass-fill-2));
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-card);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.visao-geral-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(24,41,74,0.6), rgba(24,41,74,0.25));
+}
+.visao-geral-title {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+}
+.visao-geral-live {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--success-text);
+}
+
+.visao-geral-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+}
+.vg-stat {
+  background: var(--bg-card);
+  padding: 18px 14px;
+  text-align: center;
+}
+.vg-valor {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 500;
+  color: #fff;
+  text-shadow: 0 0 24px rgba(166,200,255,0.35);
+  letter-spacing: -0.5px;
+}
+.vg-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.visao-geral-tecnicos { padding: 6px 8px; }
+.visao-geral-tecnicos:empty { padding: 0; }
+.vg-tecnico-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+.vg-tecnico-row:hover { background: rgba(255,255,255,0.03); }
+.vg-tecnico-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+.vg-tecnico-nome { color: var(--text-primary); font-weight: 600; flex-shrink: 0; }
+.vg-tecnico-meta { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; margin-left: auto; }
+
+@media (max-width: 560px) {
+  .visao-geral-stats { grid-template-columns: repeat(2, 1fr); }
+  .vg-tecnico-meta { margin-left: 0; }
+  .vg-tecnico-row { flex-wrap: wrap; }
+}
 .empty-state h2 {
   font-family: var(--font-serif);
   font-size: 30px;

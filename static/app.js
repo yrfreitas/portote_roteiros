@@ -253,6 +253,7 @@ async function carregarTecnicos() {
   const list = document.getElementById('sidebar-list');
   try {
     tecnicos = await api('/tecnicos');
+    carregarVisaoGeral(); // não espera — não trava o carregamento da sidebar
 
     if (tecnicos.length === 0) {
       list.innerHTML = `<div style="padding:20px 14px;color:var(--text-muted);font-size:12px;text-align:center;">Nenhum técnico cadastrado.<br>Clique em + para adicionar.</div>`;
@@ -318,6 +319,55 @@ async function carregarFichasTecnico(tecnicoId) {
   } catch (e) {
     container.innerHTML = `<div style="padding:8px 14px;color:var(--danger-text);font-size:11px;">Falha ao carregar fichas.</div>`;
     console.error('Erro ao carregar fichas do técnico', tecnicoId, e);
+  }
+}
+
+// Painel de visão geral — some assim que uma ficha é aberta (é a tela de
+// "nenhuma ficha selecionada"), então isso é o que a equipe vê ao abrir
+// o sistema: quanto está rodando, sem precisar clicar em nada.
+async function carregarVisaoGeral() {
+  const painel = document.getElementById('visao-geral');
+  if (!painel) return;
+
+  try {
+    const fichas = await api('/fichas');
+
+    const totalRotas  = fichas.length;
+    const totalPontos = fichas.reduce((soma, f) => soma + (f.total_servicos || 0), 0);
+    const totalKm     = fichas.reduce((soma, f) => soma + (f.distancia_total || 0), 0);
+
+    animarNumero(document.getElementById('vg-tecnicos'), tecnicos.length);
+    animarNumero(document.getElementById('vg-rotas'), totalRotas);
+    animarNumero(document.getElementById('vg-pontos'), totalPontos);
+    animarNumero(document.getElementById('vg-km'), totalKm, {
+      formatar: v => v.toFixed(1).replace('.', ','),
+    });
+
+    const porTecnico = new Map();
+    fichas.forEach(f => {
+      const atual = porTecnico.get(f.tecnico_id) || {
+        nome: f.tecnico_nome, cor: f.tecnico_cor, rotas: 0, pontos: 0, km: 0,
+      };
+      atual.rotas  += 1;
+      atual.pontos += f.total_servicos || 0;
+      atual.km     += f.distancia_total || 0;
+      porTecnico.set(f.tecnico_id, atual);
+    });
+
+    const listaEl = document.getElementById('visao-geral-tecnicos');
+    if (listaEl) {
+      listaEl.innerHTML = Array.from(porTecnico.values())
+        .sort((a, b) => b.km - a.km)
+        .map(t => `
+          <div class="vg-tecnico-row">
+            <span class="vg-tecnico-dot" style="background:${escCor(t.cor)}"></span>
+            <span class="vg-tecnico-nome">${esc(t.nome)}</span>
+            <span class="vg-tecnico-meta">${t.rotas} rota${t.rotas !== 1 ? 's' : ''} · ${t.pontos} pt${t.pontos !== 1 ? 's' : ''} · ${fmtKm(t.km)} km</span>
+          </div>`)
+        .join('');
+    }
+  } catch (e) {
+    console.error('Erro ao carregar visão geral', e);
   }
 }
 
