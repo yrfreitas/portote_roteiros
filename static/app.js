@@ -883,18 +883,23 @@ function _hexRgb(h) {
   return `${parseInt(c.slice(1,3),16)},${parseInt(c.slice(3,5),16)},${parseInt(c.slice(5,7),16)}`;
 }
 
-function _scoreCor(s) {
-  if (s >= 130) return '#4f8dfb';
-  if (s >= 80)  return '#34d399';
-  return '#5a6d8a';
-}
-
-function _scorePalavra(s, rank) {
-  if (rank === 0 && s >= 100) return 'Excelente';
-  if (s >= 100) return 'Muito bom';
-  if (s >= 80)  return 'Bom';
-  if (s >= 50)  return 'Regular';
-  return 'Baixo';
+// Única fonte de verdade pra "essa rota serve ou não" — usada no número,
+// na barra e no selo do card. Antes disso existiam duas escalas soltas
+// (cor por faixa + palavra por faixa) que podiam se contradizer.
+function _encaixeInfo(s, rank, isTop) {
+  if (s.vazia) {
+    return { texto: 'Rota vazia', classe: 'vazio', cor: 'var(--text-muted)' };
+  }
+  if (isTop) {
+    return { texto: 'Melhor encaixe', classe: 'otimo', cor: 'var(--accent-light)' };
+  }
+  if (s.score >= 100) {
+    return { texto: 'Encaixa bem', classe: 'bom', cor: 'var(--success)' };
+  }
+  if (s.score >= 50) {
+    return { texto: 'Encaixa, mas não é ideal', classe: 'medio', cor: 'var(--gold)' };
+  }
+  return { texto: 'Não recomendado', classe: 'ruim', cor: 'var(--danger)' };
 }
 
 function _motivos(s, rank) {
@@ -1044,7 +1049,9 @@ function _vcepAnalise(r) {
   const cards = r.sugestoes.map((s, i) => {
     const sc    = Math.round(s.score);
     const isTop = i === 0 && r.tem_boa_opcao;
-    const cor   = _scoreCor(s.score);
+    const encaixe = _encaixeInfo(s, i, isTop);
+    const distTxt = (s.dist_minima !== null && s.dist_minima !== undefined)
+      ? `${fmtKm(s.dist_minima)} km` : '—';
 
     const dataTxt = s.data_referencia ? ' · ' + formatarData(s.data_referencia) : '';
     const ptsTxt  = s.vazia ? 'rota vazia' : `${s.total_pontos} pts`;
@@ -1059,19 +1066,19 @@ function _vcepAnalise(r) {
           <div class="vcep-rota-info">
             <div class="vcep-rota-nome">${esc(s.tecnico_nome)}</div>
             <div class="vcep-rota-dia">${esc(s.dia_semana)} · ${ptsTxt}${esc(dataTxt)}</div>
+            <div class="vcep-rota-dist">${distTxt !== '—' ? `${distTxt} ${s.vazia ? 'da base' : 'do ponto mais próximo'}` : ''}</div>
           </div>
           <div class="vcep-rota-score">
-            <div class="vcep-score-num" style="color:${cor}">${sc}</div>
-            <div class="vcep-score-bar"><div class="vcep-score-fill" style="width:${Math.round((s.score/max)*100)}%;background:${cor}"></div></div>
-            ${isTop ? `<span class="vcep-badge-ideal">IDEAL</span>`
-                    : (s.score >= 80 ? `<span class="vcep-badge-bom">${_scorePalavra(s.score,i)}</span>` : '')}
+            <div class="vcep-score-num" style="color:${encaixe.cor}">${sc}</div>
+            <div class="vcep-score-bar"><div class="vcep-score-fill" style="width:${Math.round((s.score/max)*100)}%;background:${encaixe.cor}"></div></div>
           </div>
         </div>
+        <span class="vcep-badge-encaixe vcep-badge-${encaixe.classe}">${esc(encaixe.texto)}</span>
         <div class="vcep-rota-detalhe" id="vcep-det-${i}" style="display:none"></div>
       </div>`;
   }).join('');
 
-  return `<div class="vcep-analise-wrap"><div class="vcep-analise-label">${r.sugestoes.length} rota${r.sugestoes.length !== 1 ? 's' : ''} analisada${r.sugestoes.length !== 1 ? 's' : ''} · score 0–200</div>${cards}</div>`;
+  return `<div class="vcep-analise-wrap"><div class="vcep-analise-label">${r.sugestoes.length} rota${r.sugestoes.length !== 1 ? 's' : ''} analisada${r.sugestoes.length !== 1 ? 's' : ''}</div>${cards}</div>`;
 }
 
 function vcepToggleCard(i) {

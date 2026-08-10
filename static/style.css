@@ -1719,6 +1719,7 @@ header::after {
 .vcep-rota-info { flex: 1; min-width: 0; }
 .vcep-rota-nome { font-size: 13px; font-weight: 600; color: var(--text-primary); letter-spacing: 0.1px; }
 .vcep-rota-dia { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.vcep-rota-dist { font-size: 10px; color: var(--text-faint); margin-top: 1px; font-family: var(--font-mono); }
 
 .vcep-rota-score { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
 .vcep-score-num {
@@ -1743,23 +1744,40 @@ header::after {
   box-shadow: 0 0 10px rgba(79,141,251,0.6);
   transition: width 0.7s cubic-bezier(.22,.68,0,1);
 }
-.vcep-badge-ideal {
-  font-size: 9px; font-weight: 800;
-  letter-spacing: 0.8px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-  color: var(--on-accent);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), var(--glow-accent-sm);
+/* Selo de encaixe — sempre visível, em toda rota, sem precisar clicar.
+   É a resposta direta a "isso cabe ou não?" sem precisar interpretar
+   o número de score. */
+.vcep-badge-encaixe {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 7px 14px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+.vcep-badge-otimo {
+  background: linear-gradient(90deg, rgba(79,141,251,0.22), rgba(79,141,251,0.06));
+  color: var(--accent-light);
   text-transform: uppercase;
+  font-weight: 800;
 }
 .vcep-badge-bom {
-  font-size: 9px; font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--success-dim);
+  background: linear-gradient(90deg, rgba(52,211,153,0.16), rgba(52,211,153,0.04));
   color: var(--success-text);
-  border: 1px solid rgba(52,211,153,0.25);
+}
+.vcep-badge-medio {
+  background: linear-gradient(90deg, rgba(245,181,68,0.16), rgba(245,181,68,0.04));
+  color: var(--gold-text);
+}
+.vcep-badge-ruim {
+  background: linear-gradient(90deg, rgba(248,113,113,0.16), rgba(248,113,113,0.04));
+  color: var(--danger-text);
+}
+.vcep-badge-vazio {
+  background: rgba(255,255,255,0.02);
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 /* Detalhe expandido */
