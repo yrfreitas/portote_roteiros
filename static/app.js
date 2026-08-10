@@ -118,6 +118,23 @@ document.addEventListener('DOMContentLoaded', () => {
   carregarTecnicos();
 });
 
+// ===== ABAS PRINCIPAIS (Roteiros / Verificar CEP) =====
+function switchMainTab(tab) {
+  const isCep = tab === 'cep';
+
+  document.getElementById('panel-roteiros-sidebar').style.display = isCep ? 'none' : 'flex';
+  document.getElementById('panel-roteiros-main').style.display = isCep ? 'none' : 'block';
+  document.getElementById('panel-cep').style.display = isCep ? 'block' : 'none';
+
+  document.getElementById('mtab-roteiros').classList.toggle('active', !isCep);
+  document.getElementById('mtab-cep').classList.toggle('active', isCep);
+
+  // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
+  if (isCep) {
+    setTimeout(() => document.getElementById('verificar-cep-input')?.focus(), 80);
+  }
+}
+
 const BASE = '';
 const TIMEOUT_PADRAO = 45000;
 

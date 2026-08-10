@@ -27,15 +27,48 @@
   <header>
     <img src="/static/logo.png" alt="Porto Tec"
          style="height:42px;width:auto;object-fit:contain;">
+
+    <nav class="main-tabs" id="main-tabs">
+      <button class="main-tab active" id="mtab-roteiros" onclick="switchMainTab('roteiros')">
+        🗺️ Roteiros
+      </button>
+      <button class="main-tab" id="mtab-cep" onclick="switchMainTab('cep')">
+        📍 Verificar CEP
+      </button>
+    </nav>
+
     <div class="header-meta">
       <span class="header-date" id="current-date"></span>
       <div class="status-dot" title="Sistema online"></div>
     </div>
   </header>
 
-  <aside class="sidebar">
+  <aside class="sidebar" id="panel-roteiros-sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Técnicos</span>
+      <button class="btn-nova-ficha" onclick="abrirModalNovoTecnico()"
+              title="Novo técnico" aria-label="Adicionar técnico">+</button>
+    </div>
+    <div class="sidebar-list" id="sidebar-list">
+      <div class="loading-row">Carregando...</div>
+    </div>
+  </aside>
 
-    <div class="verificador-box">
+  <main class="main" id="panel-roteiros-main">
+
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">🗺️</div>
+      <h2>Nenhuma ficha selecionada</h2>
+      <p>Selecione um técnico e abra uma ficha de dia para ver o roteiro.</p>
+      <button class="btn btn-primary" onclick="abrirModalNovoTecnico()">+ Novo Técnico</button>
+    </div>
+
+    <div id="ficha-detail" style="display:none;"></div>
+
+  </main>
+
+  <main class="main" id="panel-cep" style="display:none; grid-row: 2; grid-column: 1 / -1;">
+    <div class="verificador-box verificador-box--full">
       <div class="verificador-title">Verificar CEP</div>
       <div class="verificador-row">
         <label for="verificar-cep-input" style="position:absolute;left:-9999px;">CEP a verificar</label>
@@ -48,28 +81,6 @@
       </div>
       <div id="verificar-resultado"></div>
     </div>
-
-    <div class="sidebar-header">
-      <span class="sidebar-title">Técnicos</span>
-      <button class="btn-nova-ficha" onclick="abrirModalNovoTecnico()"
-              title="Novo técnico" aria-label="Adicionar técnico">+</button>
-    </div>
-    <div class="sidebar-list" id="sidebar-list">
-      <div class="loading-row">Carregando...</div>
-    </div>
-  </aside>
-
-  <main class="main" id="main-content">
-
-    <div class="empty-state" id="empty-state">
-      <div class="empty-icon">🗺️</div>
-      <h2>Nenhuma ficha selecionada</h2>
-      <p>Selecione um técnico e abra uma ficha de dia para ver o roteiro.</p>
-      <button class="btn btn-primary" onclick="abrirModalNovoTecnico()">+ Novo Técnico</button>
-    </div>
-
-    <div id="ficha-detail" style="display:none;"></div>
-
   </main>
 </div>
 
