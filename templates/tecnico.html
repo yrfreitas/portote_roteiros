@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#060911">
+  <title>{{ tecnico.nome }} — Minha rota</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@500&family=Inter:wght@400;500;600&display=swap">
+  <link rel="icon" type="image/x-icon" href="/static/assets/favicon.ico">
+  <link rel="stylesheet" href="/static/tecnico.css">
+</head>
+<body data-token="{{ token }}" data-vapid-key="{{ vapid_public_key }}">
+  <div class="t-header">
+    <span class="t-header-dot" style="background:{{ tecnico.cor }};color:{{ tecnico.cor }};"></span>
+    <div>
+      <div class="t-header-nome">{{ tecnico.nome }}</div>
+      <div class="t-header-sub">Minha rota</div>
+    </div>
+    <button class="t-btn-sino" id="btn-notificacoes" title="Ativar notificações de nova rota">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    </button>
+  </div>
+
+  <div class="t-main">
+    <div id="lista-fichas" class="t-fichas">
+      <div class="t-loading">Carregando suas rotas...</div>
+    </div>
+
+    <div id="detalhe-ficha" class="t-detalhe"></div>
+  </div>
+
+  <div class="t-toast" id="toast"></div>
+
+  <script src="/static/tecnico.js"></script>
+</body>
+</html>

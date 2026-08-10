@@ -6,7 +6,7 @@
 // do app (HTML/CSS/JS/ícones) é cacheada, pra abrir rápido e funcionar
 // com internet ruim; os dados sempre vêm da rede.
 
-const CACHE_VERSAO = 'portotec-roteiros-v1';
+const CACHE_VERSAO = 'portotec-roteiros-v2';
 
 const ARQUIVOS_CASCA = [
   '/',
@@ -14,6 +14,8 @@ const ARQUIVOS_CASCA = [
   '/static/app.js',
   '/static/logo.png',
   '/static/manifest.json',
+  '/static/tecnico.css',
+  '/static/tecnico.js',
 ];
 
 self.addEventListener('install', (evento) => {
@@ -74,6 +76,35 @@ self.addEventListener('fetch', (evento) => {
       }).catch(() => cacheado);
 
       return cacheado || buscaRede;
+    })
+  );
+});
+
+// Notificação de rota nova atribuída — o payload vem do backend em
+// services/push.py, formato {titulo, corpo, url}.
+self.addEventListener('push', (evento) => {
+  let dados = { titulo: 'Portotec', corpo: 'Você tem uma atualização.', url: '/' };
+  try { dados = { ...dados, ...evento.data.json() }; } catch (e) { /* payload vazio, usa default */ }
+
+  evento.waitUntil(
+    self.registration.showNotification(dados.titulo, {
+      body: dados.corpo,
+      icon: '/static/assets/android-chrome-192x192.png',
+      badge: '/static/assets/favicon-32x32.png',
+      data: { url: dados.url },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (evento) => {
+  evento.notification.close();
+  const alvo = evento.notification.data?.url || '/';
+  evento.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then((janelas) => {
+      for (const janela of janelas) {
+        if (janela.url.includes(alvo) && 'focus' in janela) return janela.focus();
+      }
+      return self.clients.openWindow(alvo);
     })
   );
 });

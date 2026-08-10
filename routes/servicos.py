@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from database import db_conn, execute, fetch_one
+from extensions import limiter
 from routes.fichas import recalcular_rota
 from services.geo import geocode_cep
 
@@ -9,8 +10,26 @@ servicos_bp = Blueprint("servicos", __name__)
 AVISO_IMPRECISO = ("Endereço aproximado (centroide do CEP). "
                    "Confira o número da casa para maior precisão.")
 
+STATUS_SERVICO_VALIDOS = {"pendente", "concluido"}
+
+
+def aplicar_status_servico(conn, servico_id: int, novo_status: str) -> None:
+    """UPDATE puro, sem validação — quem chama já garantiu que o status é
+    válido e que o serviço existe e pertence a quem está pedindo a mudança.
+    Compartilhado entre a rota admin (servicos_bp) e a rota escopada por
+    token do técnico (tecnico_api_bp)."""
+    if novo_status == "concluido":
+        execute(conn, """
+            UPDATE servicos SET status = ?, concluido_em = CURRENT_TIMESTAMP WHERE id = ?
+        """, (novo_status, servico_id))
+    else:
+        execute(conn, """
+            UPDATE servicos SET status = ?, concluido_em = NULL WHERE id = ?
+        """, (novo_status, servico_id))
+
 
 @servicos_bp.route("/fichas/<int:ficha_id>/servicos", methods=["POST"])
+@limiter.limit("60 per minute")
 def adicionar_servico(ficha_id):
     data = request.get_json(silent=True) or {}
 
@@ -118,6 +137,25 @@ def editar_servico(servico_id):
     if geo and not geo.preciso:
         resposta["aviso"] = AVISO_IMPRECISO
     return jsonify(resposta)
+
+
+@servicos_bp.route("/servicos/<int:servico_id>/status", methods=["PUT"])
+def alterar_status_servico(servico_id):
+    data = request.get_json(silent=True) or {}
+    novo_status = (data.get("status") or "").strip()
+
+    if novo_status not in STATUS_SERVICO_VALIDOS:
+        return jsonify({
+            "erro": f"Status inválido. Use um de: {', '.join(sorted(STATUS_SERVICO_VALIDOS))}"
+        }), 400
+
+    with db_conn(commit=True) as conn:
+        servico = fetch_one(conn, "SELECT id FROM servicos WHERE id = ?", (servico_id,))
+        if not servico:
+            return jsonify({"erro": "Serviço não encontrado"}), 404
+        aplicar_status_servico(conn, servico_id, novo_status)
+
+    return jsonify({"mensagem": f"Serviço marcado como {novo_status}", "status": novo_status})
 
 
 @servicos_bp.route("/servicos/<int:servico_id>", methods=["DELETE"])

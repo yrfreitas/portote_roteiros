@@ -5,13 +5,19 @@ load_dotenv()
 import logging
 import os
 import secrets
+from datetime import timedelta
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import HTTPException
 
 from database import init_db
+from extensions import limiter
+from routes.auth import auth_bp
 from routes.fichas import fichas_bp
+from routes.relatorios import relatorios_bp
 from routes.servicos import servicos_bp
+from routes.tecnico_api import tecnico_api_bp
+from routes.tecnico_view import tecnico_view_bp
 from routes.tecnicos import tecnicos_bp
 
 logging.basicConfig(
@@ -31,6 +37,9 @@ if not _secret:
     )
 app.config["SECRET_KEY"] = _secret
 app.config["JSON_SORT_KEYS"] = False
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 _origens = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 if _origens:
@@ -38,11 +47,36 @@ if _origens:
     CORS(app, resources={r"/api/*": {"origins": _origens}})
     log.info("CORS liberado para: %s", ", ".join(_origens))
 
+limiter.init_app(app)
+
 init_db()
 
+app.register_blueprint(auth_bp)
 app.register_blueprint(fichas_bp, url_prefix="/api")
 app.register_blueprint(servicos_bp, url_prefix="/api")
 app.register_blueprint(tecnicos_bp, url_prefix="/api")
+app.register_blueprint(relatorios_bp, url_prefix="/api")
+app.register_blueprint(tecnico_api_bp, url_prefix="/api/t")
+app.register_blueprint(tecnico_view_bp)
+
+
+def _e_api() -> bool:
+    return request.path.startswith("/api")
+
+
+_CAMINHOS_PUBLICOS = {"/login", "/api/health"}
+_PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/")
+
+
+@app.before_request
+def _exigir_autenticacao():
+    if request.path in _CAMINHOS_PUBLICOS or request.path.startswith(_PREFIXOS_PUBLICOS):
+        return
+    if session.get("admin"):
+        return
+    if _e_api():
+        return jsonify({"erro": "Não autenticado"}), 401
+    return redirect(url_for("auth.login", next=request.path))
 
 
 @app.route("/")
@@ -53,10 +87,6 @@ def index():
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok"})
-
-
-def _e_api() -> bool:
-    return request.path.startswith("/api")
 
 
 @app.errorhandler(HTTPException)

@@ -1,6 +1,9 @@
+import secrets
+
 from flask import Blueprint, jsonify, request
 
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
+from extensions import limiter
 from services.geo import geocode_cep, geocode_endereco_livre
 from services.otimizador import haversine
 
@@ -66,12 +69,14 @@ def criar_tecnico():
 
         total = fetch_one(conn, "SELECT COUNT(*) AS total FROM tecnicos")["total"]
         cor = (data.get("cor") or CORES_PADRAO[total % len(CORES_PADRAO)])
+        token = secrets.token_urlsafe(24)
 
         tecnico_id = insert_returning_id(
-            conn, "INSERT INTO tecnicos (nome, cor) VALUES (?, ?)", (nome, cor)
+            conn, "INSERT INTO tecnicos (nome, cor, token) VALUES (?, ?, ?)",
+            (nome, cor, token)
         )
 
-    return jsonify({"id": tecnico_id, "nome": nome, "cor": cor}), 201
+    return jsonify({"id": tecnico_id, "nome": nome, "cor": cor, "token": token}), 201
 
 
 @tecnicos_bp.route("/tecnicos/<int:tecnico_id>", methods=["DELETE"])
@@ -90,6 +95,7 @@ def deletar_tecnico(tecnico_id):
 
 
 @tecnicos_bp.route("/verificar-cep", methods=["POST"])
+@limiter.limit("30 per minute")
 def verificar_cep():
     data = request.get_json(silent=True) or {}
     cep = "".join(c for c in (data.get("cep") or "") if c.isdigit())
@@ -111,6 +117,7 @@ def verificar_cep():
 
 
 @tecnicos_bp.route("/verificar-endereco", methods=["POST"])
+@limiter.limit("30 per minute")
 def verificar_endereco():
     """Mesma análise do /verificar-cep, mas a partir de um endereço
     digitado por extenso — útil quando o cliente não sabe o CEP de cabeça."""

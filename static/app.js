@@ -304,6 +304,14 @@ async function api(path, options = {}, timeoutMs = TIMEOUT_PADRAO) {
   }
 }
 
+function copiarLinkTecnico(token) {
+  if (!token) { toast('Esse técnico ainda não tem link — recarregue a página', 'error'); return; }
+  const link = `${window.location.origin}/tecnico/${token}`;
+  navigator.clipboard.writeText(link)
+    .then(() => toast('Link do técnico copiado — mande por WhatsApp', 'success'))
+    .catch(() => toast(link, 'info'));
+}
+
 async function carregarTecnicos() {
   const list = document.getElementById('sidebar-list');
   try {
@@ -321,6 +329,7 @@ async function carregarTecnicos() {
           <div class="tecnico-nome" style="color:${escCor(t.cor)}">${esc(t.nome)}</div>
           <div class="tecnico-actions">
             <button class="btn-add-ficha" onclick="abrirModalNovaFicha(${t.id})" title="Nova ficha">+ Ficha</button>
+            <button class="btn-link-tecnico" onclick="copiarLinkTecnico('${t.token || ''}')" title="Copiar link de acesso do técnico">${icone('externo', 'icone-11')}</button>
             <button class="btn-del-tecnico" onclick="deletarTecnico(event,${t.id})" title="Remover técnico">${icone('x', 'icone-11')}</button>
           </div>
         </div>
@@ -489,11 +498,47 @@ async function carregarHistorico() {
     listaEl.innerHTML = `<div class="historico-vazio"><p>Falha ao carregar histórico.</p></div>`;
     console.error('Erro ao carregar histórico', e);
   }
+
+  carregarTendencia();
 }
 
 function selecionarFichaHistorico(fichaId) {
   switchMainTab('roteiros');
   selecionarFicha(fichaId);
+}
+
+async function carregarTendencia() {
+  const wrap = document.getElementById('tendencia-wrap');
+  const lista = document.getElementById('tendencia-lista');
+  if (!wrap || !lista) return;
+
+  try {
+    const { semanas } = await api('/metricas/tendencia');
+    if (!semanas || semanas.length === 0) { wrap.style.display = 'none'; return; }
+
+    wrap.style.display = '';
+    lista.innerHTML = [...semanas].reverse().map(s => `
+      <div class="tendencia-semana">
+        <div class="tendencia-semana-titulo">${esc(s.semana)}</div>
+        <div class="tendencia-tecnicos">
+          ${s.tecnicos.map(t => `
+            <div class="vg-tecnico-row">
+              <span class="vg-tecnico-dot" style="background:${escCor(t.tecnico_cor)}"></span>
+              <span class="vg-tecnico-nome">${esc(t.tecnico_nome)}</span>
+              <span class="vg-tecnico-meta">${t.rotas} rota${t.rotas !== 1 ? 's' : ''} · ${t.pontos} pt${t.pontos !== 1 ? 's' : ''} · ${fmtKm(t.km)} km</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    wrap.style.display = 'none';
+    console.error('Erro ao carregar tendência', e);
+  }
+}
+
+function exportarHistorico() {
+  window.open('/api/historico/exportar', '_blank');
 }
 
 async function criarTecnico() {
@@ -707,10 +752,15 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
 
   const items = ordenados.map((s, i) => {
     const aparelho = [s.tipo_aparelho, s.modelo].filter(Boolean).join(' — ');
+    const feito = s.status === 'concluido';
     return `
-      <div class="roteiro-item" id="svc-${s.id}" data-id="${s.id}">
+      <div class="roteiro-item ${feito ? 'roteiro-item-concluido' : ''}" id="svc-${s.id}" data-id="${s.id}">
         <div class="drag-handle" title="Arraste para reordenar">⠿</div>
-        <div class="step-num" style="background:${cor}20;border-color:${cor}60;color:${cor}">${i + 1}</div>
+        <button class="step-num step-num-btn" style="background:${cor}20;border-color:${cor}60;color:${cor}"
+                onclick="alternarStatusServico(${s.id},'${feito ? 'pendente' : 'concluido'}',${ficha.id})"
+                title="${feito ? 'Marcar como pendente' : 'Marcar como concluído'}">
+          ${feito ? icone('check', 'icone-13') : i + 1}
+        </button>
         <div class="roteiro-info">
           <div class="roteiro-cep" style="color:${cor}">${esc(formatCEP(s.cep))}</div>
           <div class="roteiro-endereco">${s.numero ? `<strong>Nº ${esc(s.numero)}</strong> · ` : ''}${esc(s.endereco_completo) || '—'}</div>
@@ -1705,6 +1755,17 @@ async function alternarStatusFicha(fichaId, statusAtual) {
     toast(novoStatus === 'concluida' ? 'Rota marcada como concluída' : 'Rota reaberta', 'success');
     await renderFichaDetalhe(fichaId);
     await carregarTecnicos();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function alternarStatusServico(servicoId, novoStatus, fichaId) {
+  try {
+    await api(`/servicos/${servicoId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: novoStatus }),
+    });
+    toast(novoStatus === 'concluido' ? 'Ponto marcado como feito' : 'Ponto reaberto', 'success');
+    await renderFichaDetalhe(fichaId);
   } catch (e) { toast(e.message, 'error'); }
 }
 

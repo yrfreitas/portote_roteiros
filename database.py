@@ -102,6 +102,7 @@ _SCHEMA_PG = [
         id          SERIAL PRIMARY KEY,
         nome        TEXT NOT NULL,
         cor         TEXT DEFAULT '#1a6fd4',
+        token       TEXT,
         created_at  TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
     """CREATE TABLE IF NOT EXISTS fichas (
@@ -129,7 +130,9 @@ _SCHEMA_PG = [
         lng                DOUBLE PRECISION,
         cliente            TEXT,
         descricao          TEXT,
-        ordem              INTEGER DEFAULT 0
+        ordem              INTEGER DEFAULT 0,
+        status             TEXT DEFAULT 'pendente',
+        concluido_em       TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS cache_geo (
         cep         TEXT PRIMARY KEY,
@@ -139,6 +142,14 @@ _SCHEMA_PG = [
         preciso     BOOLEAN DEFAULT TRUE,
         updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
+    """CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id          SERIAL PRIMARY KEY,
+        tecnico_id  INTEGER NOT NULL REFERENCES tecnicos(id) ON DELETE CASCADE,
+        endpoint    TEXT NOT NULL,
+        p256dh      TEXT NOT NULL,
+        auth        TEXT NOT NULL,
+        created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 
 _SCHEMA_SQLITE = """
@@ -146,6 +157,7 @@ _SCHEMA_SQLITE = """
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         nome        TEXT NOT NULL,
         cor         TEXT DEFAULT '#1a6fd4',
+        token       TEXT,
         created_at  TEXT DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS fichas (
@@ -175,6 +187,8 @@ _SCHEMA_SQLITE = """
         cliente            TEXT,
         descricao          TEXT,
         ordem              INTEGER DEFAULT 0,
+        status             TEXT DEFAULT 'pendente',
+        concluido_em       TEXT,
         FOREIGN KEY (ficha_id) REFERENCES fichas(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS cache_geo (
@@ -185,12 +199,22 @@ _SCHEMA_SQLITE = """
         preciso     INTEGER DEFAULT 1,
         updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        tecnico_id  INTEGER NOT NULL,
+        endpoint    TEXT NOT NULL,
+        p256dh      TEXT NOT NULL,
+        auth        TEXT NOT NULL,
+        created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
+    );
 """
 
 _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_servicos_ficha   ON servicos(ficha_id)",
     "CREATE INDEX IF NOT EXISTS idx_servicos_ordem   ON servicos(ficha_id, ordem)",
     "CREATE INDEX IF NOT EXISTS idx_fichas_tecnico   ON fichas(tecnico_id)",
+    "CREATE INDEX IF NOT EXISTS idx_push_tecnico     ON push_subscriptions(tecnico_id)",
 ]
 
 _MIGRACOES_PG = [
@@ -206,6 +230,10 @@ _MIGRACOES_PG = [
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS modelo TEXT",
     "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente'",
     "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS concluida_em TEXT",
+    "ALTER TABLE tecnicos ADD COLUMN IF NOT EXISTS token TEXT",
+    "ALTER TABLE tecnicos ADD CONSTRAINT tecnicos_token_unique UNIQUE (token)",
+    "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente'",
+    "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS concluido_em TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -214,6 +242,9 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE servicos ADD COLUMN modelo TEXT",
     "ALTER TABLE fichas ADD COLUMN status TEXT DEFAULT 'pendente'",
     "ALTER TABLE fichas ADD COLUMN concluida_em TEXT",
+    "ALTER TABLE tecnicos ADD COLUMN token TEXT",
+    "ALTER TABLE servicos ADD COLUMN status TEXT DEFAULT 'pendente'",
+    "ALTER TABLE servicos ADD COLUMN concluido_em TEXT",
 ]
 
 
@@ -263,3 +294,17 @@ def init_db():
                 conn.rollback()
 
         sincronizar_sequences(conn)
+        _gerar_tokens_faltantes(conn)
+
+
+def _gerar_tokens_faltantes(conn):
+    """Técnicos criados antes do link individual existir ficam sem token —
+    preenche na inicialização em vez de exigir uma migração de dados à parte."""
+    import secrets as _secrets
+
+    sem_token = fetch_all(conn, "SELECT id FROM tecnicos WHERE token IS NULL OR token = ''")
+    for row in sem_token:
+        execute(conn, "UPDATE tecnicos SET token = ? WHERE id = ?",
+                (_secrets.token_urlsafe(24), row["id"]))
+    if sem_token:
+        conn.commit()

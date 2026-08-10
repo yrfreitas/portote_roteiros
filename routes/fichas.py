@@ -5,6 +5,7 @@ from services.geo import geocode_cep
 from services.otimizador import (
     MINUTOS_PARADA, calcular_rota_fixa, calcular_tempo, otimizar_rota,
 )
+from services.push import notificar_tecnico
 
 fichas_bp = Blueprint("fichas", __name__)
 
@@ -97,6 +98,11 @@ def criar_ficha():
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (tecnico_id, dia, data.get("data_referencia", ""),
               partida, partida_cep, lat_p, lng_p))
+
+    notificar_tecnico(
+        tecnico_id, "Nova rota atribuída",
+        f"Você tem uma nova ficha de {dia} pra conferir.",
+    )
 
     resposta = {"id": ficha_id, "mensagem": "Ficha criada com sucesso"}
     if aviso:
