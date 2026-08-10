@@ -335,6 +335,7 @@ async function renderFichaDetalhe(id) {
   }
 
   fichaAtiva = ficha;
+  servicosAtuais = servicos;
   const tecnico = tecnicos.find(t => t.id === ficha.tecnico_id);
   const cor = escCor(tecnico?.cor);
 
@@ -423,6 +424,8 @@ async function renderFichaDetalhe(id) {
     renderizarMapaPontos(ficha, servicos, cor);
   }
 
+  if (servicos.length > 1) inicializarDragRoteiro(ficha.id);
+
   animarNumero(document.getElementById('stat-num-pontos'), servicos.length);
   if (distKm > 0) {
     animarNumero(document.getElementById('stat-num-dist'), distKm, {
@@ -463,20 +466,13 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
     : '';
 
   const ordenados = [...servicos].sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
-  servicosOrdemAtual = ordenados.map(s => s.id);
-  const ultimoIndice = ordenados.length - 1;
 
   const items = ordenados.map((s, i) => {
     const aparelho = [s.tipo_aparelho, s.modelo].filter(Boolean).join(' — ');
     return `
-      <div class="roteiro-item" id="svc-${s.id}">
-        <div class="roteiro-ordem-ctrl">
-          <button class="btn-mover" onclick="moverServico(${ficha.id},${s.id},'up')"
-                  ${i === 0 ? 'disabled' : ''} title="Mover para cima" aria-label="Mover para cima">▲</button>
-          <div class="step-num" style="background:${cor}20;border-color:${cor}60;color:${cor}">${i + 1}</div>
-          <button class="btn-mover" onclick="moverServico(${ficha.id},${s.id},'down')"
-                  ${i === ultimoIndice ? 'disabled' : ''} title="Mover para baixo" aria-label="Mover para baixo">▼</button>
-        </div>
+      <div class="roteiro-item" id="svc-${s.id}" data-id="${s.id}">
+        <div class="drag-handle" title="Arraste para reordenar">⠿</div>
+        <div class="step-num" style="background:${cor}20;border-color:${cor}60;color:${cor}">${i + 1}</div>
         <div class="roteiro-info">
           <div class="roteiro-cep" style="color:${cor}">${esc(formatCEP(s.cep))}</div>
           <div class="roteiro-endereco">${s.numero ? `<strong>Nº ${esc(s.numero)}</strong> · ` : ''}${esc(s.endereco_completo) || '—'}</div>
@@ -491,33 +487,73 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
       </div>`;
   }).join('');
 
-  return partida + items;
+  return partida + `<div class="roteiro-lista" id="roteiro-lista">${items}</div>`;
 }
 
-let servicosOrdemAtual = [];
+let servicosAtuais  = [];   // últimos serviços carregados (com lat/lng), pra redesenhar o mapa sem refetch
+let sortableRoteiro = null;
 
-function moverServico(fichaId, servicoId, direcao) {
-  const i = servicosOrdemAtual.indexOf(servicoId);
-  if (i === -1) return;
-  const j = direcao === 'up' ? i - 1 : i + 1;
-  if (j < 0 || j >= servicosOrdemAtual.length) return;
+// Liga o arraste na lista de paradas. Chamado toda vez que a ficha é
+// (re)renderizada — precisa destruir a instância anterior, senão fica
+// presa a um elemento do DOM que já não existe mais.
+function inicializarDragRoteiro(fichaId) {
+  const lista = document.getElementById('roteiro-lista');
+  if (!lista || typeof Sortable === 'undefined') return;
 
-  const nova = [...servicosOrdemAtual];
-  [nova[i], nova[j]] = [nova[j], nova[i]];
-  salvarNovaOrdem(fichaId, nova);
+  if (sortableRoteiro) { sortableRoteiro.destroy(); sortableRoteiro = null; }
+
+  sortableRoteiro = new Sortable(lista, {
+    handle: '.drag-handle',
+    animation: 180,
+    ghostClass: 'roteiro-item-ghost',
+    dragClass: 'roteiro-item-dragging',
+    onEnd: () => aoSoltarReordenacao(fichaId),
+  });
 }
 
-async function salvarNovaOrdem(fichaId, ordemIds) {
+// Depois de soltar: renumera na hora (sem esperar rede), manda a nova
+// ordem pro servidor em segundo plano, e só atualiza números + mapa —
+// nunca recarrega a ficha inteira, pra não piscar tudo de novo.
+async function aoSoltarReordenacao(fichaId) {
+  const lista = document.getElementById('roteiro-lista');
+  if (!lista) return;
+
+  const itens = Array.from(lista.children);
+  const novaOrdemIds = itens.map(el => parseInt(el.dataset.id, 10));
+
+  itens.forEach((el, i) => {
+    const numEl = el.querySelector('.step-num');
+    if (numEl) numEl.textContent = i + 1;
+  });
+
   try {
-    await api(`/fichas/${fichaId}/reordenar`, {
+    const r = await api(`/fichas/${fichaId}/reordenar`, {
       method: 'PUT',
-      body: JSON.stringify({ ordem_ids: ordemIds }),
+      body: JSON.stringify({ ordem_ids: novaOrdemIds }),
     });
-    toast('Ordem da rota atualizada', 'success');
-    await renderFichaDetalhe(fichaId);
-    await carregarTecnicos();
+
+    if (r.distancia_total > 0) {
+      animarNumero(document.getElementById('stat-num-dist'), r.distancia_total, {
+        formatar: v => v.toFixed(1).replace('.', ','),
+      });
+    }
+    if (r.tempo_minutos > 0) {
+      animarNumero(document.getElementById('stat-num-tempo'), r.tempo_minutos, {
+        formatar: v => formatarTempo(Math.round(v)),
+      });
+    }
+
+    const porId = new Map(servicosAtuais.map(s => [s.id, s]));
+    const reordenados = novaOrdemIds.map(id => porId.get(id)).filter(Boolean);
+    if (reordenados.length === servicosAtuais.length) servicosAtuais = reordenados;
+
+    if (fichaAtiva) {
+      const tecnico = tecnicos.find(t => t.id === fichaAtiva.tecnico_id);
+      renderizarMapaPontos(fichaAtiva, servicosAtuais, escCor(tecnico?.cor));
+    }
   } catch (e) {
-    toast(e.message, 'error');
+    toast(`Não foi possível salvar a nova ordem: ${e.message}`, 'error');
+    await renderFichaDetalhe(fichaId); // estado local pode ter ficado incoerente — recarrega do zero
   }
 }
 
