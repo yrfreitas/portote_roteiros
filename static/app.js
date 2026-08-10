@@ -376,6 +376,7 @@ async function renderFichaDetalhe(id) {
           <div id="mapa-roteiro" class="mapa-container">
             ${!temCoordenadas ? `<div class="mapa-empty"><div style="font-size:28px;margin-bottom:8px;">📍</div><div style="font-size:12px;color:var(--text-muted);">Adicione pontos com<br>coordenadas para ver o mapa</div></div>` : ''}
           </div>
+          ${renderClientesRota(servicos)}
         </div>
       </div>
     </div>`;
@@ -416,6 +417,75 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
       </div>`).join('');
 
   return partida + items;
+}
+
+let clientesRotaAtual = [];
+
+function renderClientesRota(servicos) {
+  const ordenados = [...servicos].sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
+  clientesRotaAtual = ordenados.map(s => (s.cliente || '').trim());
+
+  if (ordenados.length === 0) return '';
+
+  const itensHtml = ordenados.map((s, i) => `
+    <div class="cliente-linha">
+      <span class="cliente-num">${i + 1}</span>
+      <span class="cliente-nome">${s.cliente ? esc(s.cliente) : '<em>Sem nome</em>'}</span>
+    </div>`).join('');
+
+  return `
+    <div class="clientes-rota">
+      <div class="clientes-rota-header">
+        <span class="panel-title">👤 Clientes da Rota</span>
+        <button class="btn btn-ghost btn-copiar" onclick="copiarClientesRota()" id="btn-copiar-clientes">
+          📋 Copiar lista
+        </button>
+      </div>
+      <div class="clientes-rota-lista">${itensHtml}</div>
+    </div>`;
+}
+
+function copiarClientesRota() {
+  if (clientesRotaAtual.length === 0) { toast('Nenhum cliente na rota', 'error'); return; }
+
+  const texto = clientesRotaAtual
+    .map((nome, i) => `${i + 1}. ${nome || 'Sem nome'}`)
+    .join('\n');
+
+  const _sucesso = () => {
+    toast('Lista de clientes copiada!', 'success');
+    const btn = document.getElementById('btn-copiar-clientes');
+    if (btn) {
+      const original = btn.innerHTML;
+      btn.innerHTML = '✓ Copiado!';
+      setTimeout(() => { btn.innerHTML = original; }, 1800);
+    }
+  };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(texto).then(_sucesso).catch(() => _copiarFallback(texto, _sucesso));
+  } else {
+    _copiarFallback(texto, _sucesso);
+  }
+}
+
+// Fallback pra navegadores/WebViews antigos sem Clipboard API (comuns em
+// celular Android mais velho que técnico de campo costuma usar).
+function _copiarFallback(texto, aoSucesso) {
+  const area = document.createElement('textarea');
+  area.value = texto;
+  area.style.position = 'fixed';
+  area.style.left = '-9999px';
+  document.body.appendChild(area);
+  area.select();
+  try {
+    document.execCommand('copy');
+    aoSucesso();
+  } catch {
+    toast('Não foi possível copiar automaticamente. Selecione o texto manualmente.', 'error');
+  } finally {
+    document.body.removeChild(area);
+  }
 }
 
 function abrirRotaGoogleMaps(ficha, servicos) {

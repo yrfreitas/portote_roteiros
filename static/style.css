@@ -1036,6 +1036,42 @@ header::after {
 }
 .mapa-empty > * { position: relative; z-index: 1; }
 
+/* ─── CLIENTES DA ROTA (lista copiável, abaixo do mapa) ─────────── */
+.clientes-rota { border-top: 1px solid var(--border); }
+.clientes-rota-header {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: linear-gradient(180deg, rgba(24,41,74,0.6), rgba(24,41,74,0.25));
+}
+.btn-copiar { padding: 7px 14px; font-size: 10.5px; white-space: nowrap; }
+.clientes-rota-lista {
+  padding: 8px 10px 12px;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.clientes-rota-lista::-webkit-scrollbar { width: 3px; }
+.clientes-rota-lista::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+.cliente-linha {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+.cliente-linha:hover { background: rgba(255,255,255,0.03); }
+.cliente-num {
+  width: 22px; height: 22px; flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: var(--accent-text);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+.cliente-nome { color: var(--text-secondary); overflow-wrap: anywhere; }
+.cliente-nome em { color: var(--text-muted); font-style: normal; }
+
 /* ─── FORMS ──────────────────────────────────────────────────── */
 .form-group { margin-bottom: 16px; }
 .form-label {
