@@ -144,17 +144,26 @@ def _google_geocode(dados_cep: dict, numero: str, api_key: str) -> Optional[GeoR
     if not logradouro or not cidade:
         return None
 
-    params = {
-        "address":    _montar_query(logradouro, numero, bairro, cidade, estado),
-        "components": f"country:BR|postal_code:{cep}",
-        "key":        api_key,
-        "language":   "pt-BR",
-        "region":     "br",
-    }
+    def _tentar(components: str) -> Optional[dict]:
+        params = {
+            "address":    _montar_query(logradouro, numero, bairro, cidade, estado),
+            "components": components,
+            "key":        api_key,
+            "language":   "pt-BR",
+            "region":     "br",
+        }
+        r = _sessao.get(GOOGLE_GEOCODE_URL, params=params, timeout=TIMEOUT_GOOGLE)
+        return r.json()
 
     try:
-        r = _sessao.get(GOOGLE_GEOCODE_URL, params=params, timeout=TIMEOUT_GOOGLE)
-        data = r.json()
+        # Primeiro tenta restringindo pelo CEP exato (mais preciso quando bate).
+        # O CEP dos Correios é MUITO mais granular que o postal_code que o
+        # Google guarda pra cada rua — é comum uma rua toda ter um CEP
+        # "genérico" no Google (ex: 08270-000) enquanto o ViaCEP devolve um
+        # CEP específico daquele trecho (ex: 08270-580). Com a restrição
+        # ligada, isso vira ZERO_RESULTS mesmo a rua existindo no Google —
+        # então se der zero resultado, tenta de novo só com country:BR.
+        data = _tentar(f"country:BR|postal_code:{cep}")
         status = data.get("status")
 
         if status == "REQUEST_DENIED":
@@ -164,10 +173,11 @@ def _google_geocode(dados_cep: dict, numero: str, api_key: str) -> Optional[GeoR
         if status == "OVER_QUERY_LIMIT":
             log.warning("Google Geocoding: cota estourada")
             return None
-        if status != "OK":
-            return None
 
         results = data.get("results") or []
+        if not results and status == "ZERO_RESULTS":
+            data = _tentar("country:BR")
+            results = data.get("results") or []
         if not results:
             return None
 
