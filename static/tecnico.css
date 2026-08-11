@@ -135,6 +135,7 @@ body {
   border: 1px solid var(--border-bright); border-radius: 999px; padding: 5px 11px;
   display: inline-flex; align-items: center; gap: 5px;
 }
+.t-ponto-link-waze { color: #a6e0ff; border-color: rgba(166,224,255,0.3); }
 .t-ponto-check {
   border: 1px solid var(--border-bright);
   background: var(--bg-elevated);

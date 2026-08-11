@@ -82,6 +82,11 @@
     const pontosHtml = servicos.map((s, i) => {
       const feito = s.status === 'concluido';
       const enderecoBusca = encodeURIComponent(s.endereco_completo || s.cep || '');
+      const temCoord = s.lat && s.lng;
+      const urlMaps = `https://www.google.com/maps/search/?api=1&query=${enderecoBusca}`;
+      const urlWaze = temCoord
+        ? `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`
+        : `https://waze.com/ul?q=${enderecoBusca}&navigate=yes`;
       return `
         <div class="t-ponto ${feito ? 'concluido' : ''}">
           <div class="t-ponto-num">${i + 1}</div>
@@ -90,7 +95,8 @@
             <div class="t-ponto-endereco">${esc(s.endereco_completo)}</div>
             ${s.tipo_aparelho ? `<div class="t-ponto-aparelho">${esc(s.tipo_aparelho)}${s.modelo ? ' · ' + esc(s.modelo) : ''}</div>` : ''}
             <div class="t-ponto-acoes">
-              <a class="t-ponto-link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${enderecoBusca}">Abrir no Maps</a>
+              <a class="t-ponto-link" target="_blank" rel="noopener" href="${urlMaps}">Google Maps</a>
+              <a class="t-ponto-link t-ponto-link-waze" target="_blank" rel="noopener" href="${urlWaze}">Waze</a>
               <button class="t-ponto-check ${feito ? 'concluido' : ''}" onclick="window._tConcluirPonto(${s.id}, '${feito ? 'pendente' : 'concluido'}')">
                 ${feito ? 'Concluído' : 'Marcar feito'}
               </button>
