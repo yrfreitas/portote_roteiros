@@ -50,6 +50,14 @@ def listar():
         log.exception("Falha ao listar pedidos da planilha")
         return jsonify({"erro": f"Falha ao ler a planilha: {exc}"}), 502
 
+    # A sugestão de peça NÃO é feita aqui de propósito: ler os XMLs das notas
+    # por IMAP levava 24s e a tela ficava travada em "carregando" (e o Railway
+    # cortaria a requisição). Vem por /pedidos/sugestoes, chamado depois que a
+    # lista já apareceu.
+    for p in pedidos:
+        p["peca_sugerida"] = ""
+        p["itens_nota"] = []
+
     # Clientes já cadastrados no site, pra oferecer como lista de escolha —
     # escolher em vez de digitar é o que faz a conciliação casar exato depois.
     with db_conn() as conn:
@@ -67,7 +75,66 @@ def listar():
         for l in linhas
     ]
 
-    return jsonify({"configurada": True, "pedidos": pedidos, "clientes": clientes})
+    from services.nfe import imap_configurado as _imap_ok
+
+    return jsonify({
+        "configurada": True,
+        "pedidos": pedidos,
+        "clientes": clientes,
+        "sugestao_peca_ativa": _imap_ok(),
+        "pendentes": sum(1 for p in pedidos if not p["cliente_final"]),
+    })
+
+
+@pedidos_bp.route("/pedidos/sugestoes", methods=["GET"])
+def sugerir_pecas():
+    """Peças lidas do XML da NF-e, por chave de nota.
+
+    Separado da listagem porque ler os XMLs por IMAP é lento (~24s pra 18
+    notas): a tela mostra a lista na hora e preenche as sugestões quando
+    chegarem, em vez de ficar travada carregando.
+    """
+    from services.nfe import imap_configurado, pecas_por_nota
+
+    if not imap_configurado():
+        return jsonify({"ativo": False, "sugestoes": {}})
+
+    chaves = [c.strip() for c in (request.args.get("notas") or "").split(",") if c.strip()]
+    if not chaves:
+        return jsonify({"ativo": True, "sugestoes": {}})
+
+    # Trava de segurança: uma requisição não pode varrer a caixa inteira.
+    chaves = chaves[:40]
+
+    try:
+        achadas = pecas_por_nota(chaves)
+    except Exception:
+        log.exception("Falha ao buscar peças nas notas fiscais")
+        return jsonify({"ativo": True, "sugestoes": {}, "erro": True})
+
+    return jsonify({
+        "ativo": True,
+        "sugestoes": {k: v["resumo"] for k, v in achadas.items()},
+    })
+
+
+@pedidos_bp.route("/pedidos/pendentes", methods=["GET"])
+def contar_pendentes():
+    """Só a contagem, pro selo na aba. Não lê e-mail nem sugere peça —
+    é chamado no carregamento da página e precisa ser barato."""
+    from services.planilha import listar_pedidos, planilha_configurada
+
+    if not planilha_configurada():
+        return jsonify({"pendentes": 0, "configurada": False})
+
+    try:
+        return jsonify({
+            "pendentes": len(listar_pedidos(apenas_pendentes=True)),
+            "configurada": True,
+        })
+    except Exception:
+        log.exception("Falha ao contar peças pendentes")
+        return jsonify({"pendentes": 0, "configurada": True, "erro": True})
 
 
 @pedidos_bp.route("/pedidos/<int:linha>", methods=["PUT"])
@@ -94,3 +161,48 @@ def vincular(linha):
         return jsonify({"erro": f"Falha ao gravar na planilha: {exc}"}), 502
 
     return jsonify({"mensagem": f"Peça vinculada a {cliente}", "linha": linha})
+
+
+@pedidos_bp.route("/pedidos/lote", methods=["PUT"])
+def vincular_lote():
+    """Vincula várias linhas de uma vez. Cada item: {linha, cliente, peca}.
+
+    Grava uma por uma e relata individualmente: se a 3ª falhar, as duas
+    primeiras continuam valendo e o usuário vê exatamente qual não foi.
+    """
+    from services.planilha import atualizar_pedido, planilha_configurada
+
+    if not planilha_configurada():
+        return jsonify({"erro": "Integração com a planilha não está configurada."}), 503
+
+    itens = (request.get_json(silent=True) or {}).get("itens") or []
+    if not isinstance(itens, list) or not itens:
+        return jsonify({"erro": "Nada para vincular"}), 400
+
+    gravados, falhas = [], []
+    for item in itens:
+        try:
+            linha = int(item.get("linha"))
+        except (TypeError, ValueError):
+            falhas.append({"linha": item.get("linha"), "erro": "linha inválida"})
+            continue
+
+        cliente = (item.get("cliente") or "").strip()
+        if not cliente or linha < 2:
+            falhas.append({"linha": linha, "erro": "cliente vazio ou linha inválida"})
+            continue
+
+        try:
+            atualizar_pedido(linha, cliente, (item.get("peca") or "").strip(),
+                             (item.get("numero_os") or "").strip())
+            gravados.append(linha)
+        except Exception as exc:
+            log.exception("Falha ao vincular linha %s em lote", linha)
+            falhas.append({"linha": linha, "erro": str(exc)})
+
+    return jsonify({
+        "gravados": gravados,
+        "falhas": falhas,
+        "mensagem": f"{len(gravados)} peça(s) vinculada(s)"
+                    + (f", {len(falhas)} com erro" if falhas else ""),
+    })

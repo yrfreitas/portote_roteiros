@@ -2495,3 +2495,40 @@ select:focus-visible,
   .peca-form { grid-template-columns: 1fr; }
   .peca-topo { flex-direction: column; gap: 8px; }
 }
+
+/* ─── Selo de pendência na aba ───────────────────────────────────── */
+.aba-selo {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; padding: 0 5px; margin-left: 6px;
+  border-radius: 999px;
+  background: var(--danger); color: #fff;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  line-height: 1;
+}
+
+/* ─── Barra e sugestão da aba Peças ──────────────────────────────── */
+.pecas-barra {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 12px; margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.pecas-contagem {
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);
+}
+
+.peca-sugestao {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; margin-bottom: 12px;
+  background: var(--success-dim);
+  border: 1px solid rgba(52,211,153,0.28);
+  border-radius: var(--radius);
+}
+.peca-sugestao-txt {
+  flex: 1; min-width: 0;
+  font-size: 11.5px; color: var(--success-text); line-height: 1.45;
+}
+.peca-sugestao-txt strong { font-weight: 700; }
+
+@media (max-width: 560px) {
+  .peca-sugestao { flex-direction: column; align-items: stretch; }
+}

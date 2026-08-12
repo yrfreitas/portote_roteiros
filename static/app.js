@@ -232,6 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
   iniciarMonitorSaude();
   carregarTecnicos();
   _vcepRenderHistorico();
+  carregarSeloPecas();
 });
 
 // Registro do PWA — silencioso, não bloqueia nada se falhar (ex: em http
@@ -580,8 +581,18 @@ async function carregarPecas() {
     return;
   }
 
-  lista.innerHTML = pedidos.map(p => `
-    <div class="peca-card" id="peca-${p.linha}">
+  lista.innerHTML = `
+    <div class="pecas-barra">
+      <span class="pecas-contagem">${pedidos.length} compra${pedidos.length !== 1 ? 's' : ''}</span>
+      ${r.sugestao_peca_ativa
+        ? `<span class="conc-tag ok" title="As peças vêm do XML da nota fiscal enviada pela Panasonic">peça automática ligada</span>`
+        : `<span class="conc-tag neutro" title="Configure IMAP_USER e IMAP_PASSWORD para ler as notas fiscais">peça automática desligada</span>`}
+      <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="salvarPecasEmLote()">
+        Vincular todas preenchidas
+      </button>
+    </div>
+  ` + pedidos.map(p => `
+    <div class="peca-card" id="peca-${p.linha}" data-linha="${p.linha}">
       <div class="peca-topo">
         <div>
           <div class="peca-valor">${esc(p.valor) || '—'}</div>
@@ -591,6 +602,9 @@ async function carregarPecas() {
           ? `<span class="conc-tag ok">${esc(p.cliente_final)}</span>`
           : `<span class="conc-tag neutro">sem cliente</span>`}
       </div>
+
+      <div class="peca-sugestao-slot" id="sugestao-${p.linha}"
+           data-nota="${esc(p.nota_fiscal)}"></div>
 
       <div class="peca-form">
         <div class="form-group" style="margin:0;">
@@ -613,6 +627,11 @@ async function carregarPecas() {
       ${clientesConhecidos.map(c => `<option value="${esc(c.nome)}">${esc(c.aparelho)}${c.modelo ? ' · ' + esc(c.modelo) : ''}</option>`).join('')}
     </datalist>`;
 
+  atualizarSeloPecas(r.pendentes ?? pedidos.filter(p => !p.cliente_final).length);
+
+  // Sugestões vêm depois, sem travar a tela (ler os XMLs das notas é lento).
+  if (r.sugestao_peca_ativa) buscarSugestoesPecas(pedidos);
+
   // Escolheu um cliente que o site conhece? já sugere o modelo dele.
   pedidos.forEach(p => {
     const inp = document.getElementById(`peca-cliente-${p.linha}`);
@@ -624,6 +643,113 @@ async function carregarPecas() {
       }
     });
   });
+}
+
+// Busca as peças no XML das notas fiscais e injeta nos cards já renderizados.
+// Em blocos pequenos, pra as primeiras sugestões aparecerem rápido em vez de
+// tudo de uma vez no fim.
+async function buscarSugestoesPecas(pedidos) {
+  const alvos = pedidos.filter(p => !p.peca && p.nota_fiscal);
+  if (alvos.length === 0) return;
+
+  const aviso = document.querySelector('.pecas-barra .conc-tag.ok');
+  if (aviso) aviso.textContent = 'lendo notas fiscais...';
+
+  const TAMANHO = 6;
+  let achadas = 0;
+
+  for (let i = 0; i < alvos.length; i += TAMANHO) {
+    const bloco = alvos.slice(i, i + TAMANHO);
+    let r;
+    try {
+      r = await api(`/pedidos/sugestoes?notas=${bloco.map(p => p.nota_fiscal).join(',')}`);
+    } catch (e) {
+      console.warn('sugestão de peça falhou:', e.message);
+      break;
+    }
+
+    Object.entries(r.sugestoes || {}).forEach(([nota, resumo]) => {
+      const alvo = alvos.find(p => p.nota_fiscal === nota);
+      if (!alvo || !resumo) return;
+      const slot = document.getElementById(`sugestao-${alvo.linha}`);
+      const campo = document.getElementById(`peca-desc-${alvo.linha}`);
+      if (!slot || !campo) return;
+
+      achadas++;
+      campo.dataset.sugestao = resumo;
+      if (!campo.value.trim()) campo.value = resumo;
+      slot.innerHTML = `
+        <div class="peca-sugestao">
+          <div class="peca-sugestao-txt"><strong>Da nota fiscal:</strong> ${esc(resumo)}</div>
+        </div>`;
+    });
+  }
+
+  if (aviso) {
+    aviso.textContent = achadas
+      ? `${achadas} peça(s) lidas da nota`
+      : 'peça automática ligada';
+  }
+}
+
+function usarSugestao(linha, botao) {
+  const campo = document.getElementById(`peca-desc-${linha}`);
+  const sugestao = campo?.dataset.sugestao || '';
+  if (campo && sugestao) {
+    campo.value = sugestao;
+    botao.textContent = 'Aplicado';
+    botao.disabled = true;
+  }
+}
+
+// Selo com quantas peças estão esperando vínculo — sem isso ninguém lembra
+// de abrir a aba, e a baixa simplesmente não acontece no dia seguinte.
+function atualizarSeloPecas(qtd) {
+  const aba = document.getElementById('mtab-pecas');
+  if (!aba) return;
+  aba.querySelector('.aba-selo')?.remove();
+  if (qtd > 0) {
+    const selo = document.createElement('span');
+    selo.className = 'aba-selo';
+    selo.textContent = qtd;
+    selo.title = `${qtd} peça(s) sem cliente vinculado`;
+    aba.appendChild(selo);
+  }
+}
+
+async function carregarSeloPecas() {
+  try {
+    const r = await api('/pedidos/pendentes');
+    if (r.configurada) atualizarSeloPecas(r.pendentes);
+  } catch (e) { /* integração desligada: sem selo, sem barulho */ }
+}
+
+async function salvarPecasEmLote() {
+  const cards = Array.from(document.querySelectorAll('.peca-card'));
+  const itens = cards.map(c => {
+    const linha = parseInt(c.dataset.linha, 10);
+    return {
+      linha,
+      cliente: document.getElementById(`peca-cliente-${linha}`)?.value.trim() || '',
+      peca: document.getElementById(`peca-desc-${linha}`)?.value.trim() || '',
+    };
+  }).filter(i => i.cliente);
+
+  if (itens.length === 0) {
+    toast('Preencha o cliente de pelo menos uma peça', 'error');
+    return;
+  }
+  if (!confirm(`Vincular ${itens.length} peça(s) de uma vez?`)) return;
+
+  try {
+    const r = await api('/pedidos/lote', {
+      method: 'PUT',
+      body: JSON.stringify({ itens }),
+    });
+    toast(r.mensagem, (r.falhas || []).length ? 'error' : 'success');
+    (r.falhas || []).forEach(f => toast(`Linha ${f.linha}: ${f.erro}`, 'error'));
+    await carregarPecas();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function salvarPeca(linha) {
