@@ -14,6 +14,7 @@ from database import init_db
 from extensions import limiter
 from routes.auth import auth_bp
 from routes.fichas import fichas_bp
+from routes.pedidos import pedidos_bp
 from routes.relatorios import relatorios_bp
 from routes.servicos import servicos_bp
 from routes.tecnico_api import tecnico_api_bp
@@ -56,6 +57,7 @@ app.register_blueprint(fichas_bp, url_prefix="/api")
 app.register_blueprint(servicos_bp, url_prefix="/api")
 app.register_blueprint(tecnicos_bp, url_prefix="/api")
 app.register_blueprint(relatorios_bp, url_prefix="/api")
+app.register_blueprint(pedidos_bp, url_prefix="/api")
 app.register_blueprint(tecnico_api_bp, url_prefix="/api/t")
 app.register_blueprint(tecnico_view_bp)
 

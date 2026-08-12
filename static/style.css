@@ -2460,3 +2460,38 @@ select:focus-visible,
 @media (max-width: 560px) {
   .conc-resumo { grid-template-columns: 1fr; }
 }
+
+/* ─── PEÇAS COMPRADAS ────────────────────────────────────────────── */
+.pecas-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11px; color: var(--text-muted);
+  cursor: pointer; user-select: none;
+}
+.pecas-toggle input { accent-color: var(--accent); cursor: pointer; }
+
+.peca-card {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, var(--glass-fill), var(--glass-fill-2));
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.peca-topo {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.peca-valor {
+  font-family: var(--font-mono); font-size: 16px;
+  color: var(--text-primary); font-weight: 500;
+}
+.peca-meta {
+  font-size: 11px; color: var(--text-muted);
+  font-family: var(--font-mono); margin-top: 2px;
+}
+.peca-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+@media (max-width: 560px) {
+  .peca-form { grid-template-columns: 1fr; }
+  .peca-topo { flex-direction: column; gap: 8px; }
+}

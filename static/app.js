@@ -249,15 +249,18 @@ function switchMainTab(tab) {
   const isRoteiros  = tab === 'roteiros';
   const isCep       = tab === 'cep';
   const isHistorico = tab === 'historico';
+  const isPecas     = tab === 'pecas';
 
   document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
   document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
   document.getElementById('panel-cep').style.display = isCep ? 'block' : 'none';
   document.getElementById('panel-historico').style.display = isHistorico ? 'block' : 'none';
+  document.getElementById('panel-pecas').style.display = isPecas ? 'block' : 'none';
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
   document.getElementById('mtab-historico').classList.toggle('active', isHistorico);
+  document.getElementById('mtab-pecas').classList.toggle('active', isPecas);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
@@ -265,6 +268,9 @@ function switchMainTab(tab) {
   }
   if (isHistorico) {
     carregarHistorico();
+  }
+  if (isPecas) {
+    carregarPecas();
   }
 }
 
@@ -540,6 +546,109 @@ async function carregarTendencia() {
 
 function exportarHistorico() {
   window.open('/api/historico/exportar', '_blank');
+}
+
+// ─── Peças compradas (planilha de pedidos) ──────────────────────────
+// Vincular a peça ao cliente aqui, escolhendo da lista, faz o nome gravado
+// ficar idêntico ao do site — e aí a baixa ao concluir a rota casa exato.
+let clientesConhecidos = [];
+
+async function carregarPecas() {
+  const lista = document.getElementById('pecas-lista');
+  if (!lista) return;
+
+  const todas = document.getElementById('pecas-mostrar-todas')?.checked;
+  lista.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Lendo a planilha...</div>`;
+
+  let r;
+  try {
+    r = await api(`/pedidos${todas ? '?todos=true' : ''}`);
+  } catch (e) {
+    lista.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  clientesConhecidos = r.clientes || [];
+  const pedidos = r.pedidos || [];
+
+  if (pedidos.length === 0) {
+    lista.innerHTML = `
+      <div class="historico-vazio">
+        ${icone('check', 'icone-24')}
+        <p>${todas ? 'Nenhuma compra na planilha.' : 'Todas as peças já estão vinculadas a um cliente.'}</p>
+      </div>`;
+    return;
+  }
+
+  lista.innerHTML = pedidos.map(p => `
+    <div class="peca-card" id="peca-${p.linha}">
+      <div class="peca-topo">
+        <div>
+          <div class="peca-valor">${esc(p.valor) || '—'}</div>
+          <div class="peca-meta">NF ${esc((p.nota_fiscal || '').slice(-8))} · ${esc(p.data)}</div>
+        </div>
+        ${p.cliente_final
+          ? `<span class="conc-tag ok">${esc(p.cliente_final)}</span>`
+          : `<span class="conc-tag neutro">sem cliente</span>`}
+      </div>
+
+      <div class="peca-form">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Cliente</label>
+          <input class="form-input" list="lista-clientes" id="peca-cliente-${p.linha}"
+                 value="${esc(p.cliente_final)}" placeholder="Escolha ou digite...">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Peça / Modelo</label>
+          <input class="form-input" id="peca-desc-${p.linha}"
+                 value="${esc(p.peca)}" placeholder="Ex: NR-BB64PV1BA">
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-sm" style="margin-top:10px;"
+              onclick="salvarPeca(${p.linha})">Vincular</button>
+    </div>
+  `).join('') + `
+    <datalist id="lista-clientes">
+      ${clientesConhecidos.map(c => `<option value="${esc(c.nome)}">${esc(c.aparelho)}${c.modelo ? ' · ' + esc(c.modelo) : ''}</option>`).join('')}
+    </datalist>`;
+
+  // Escolheu um cliente que o site conhece? já sugere o modelo dele.
+  pedidos.forEach(p => {
+    const inp = document.getElementById(`peca-cliente-${p.linha}`);
+    inp?.addEventListener('change', () => {
+      const achado = clientesConhecidos.find(c => c.nome === inp.value);
+      const campoPeca = document.getElementById(`peca-desc-${p.linha}`);
+      if (achado?.modelo && campoPeca && !campoPeca.value.trim()) {
+        campoPeca.value = achado.modelo;
+      }
+    });
+  });
+}
+
+async function salvarPeca(linha) {
+  const cliente = document.getElementById(`peca-cliente-${linha}`).value.trim();
+  const peca = document.getElementById(`peca-desc-${linha}`).value.trim();
+
+  if (!cliente) { toast('Escolha ou digite o cliente', 'error'); return; }
+
+  const card = document.getElementById(`peca-${linha}`);
+  const btn = card.querySelector('button');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Gravando...';
+
+  try {
+    await api(`/pedidos/${linha}`, {
+      method: 'PUT',
+      body: JSON.stringify({ cliente, peca }),
+    });
+    toast(`Peça vinculada a ${cliente}`, 'success');
+    await carregarPecas();
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Vincular';
+  }
 }
 
 async function criarTecnico() {

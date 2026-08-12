@@ -42,6 +42,12 @@ COL_DESCRICAO_PECA = 10
 VERDE = {"red": 0.85, "green": 0.94, "blue": 0.83}   # casou nome + modelo
 AMARELO = {"red": 1.0, "green": 0.95, "blue": 0.80}  # casou só o nome
 
+# A coluna "Situacao OS" tem lista suspensa no Sheets (strict), então o texto
+# gravado precisa ser EXATAMENTE um dos valores dela — senão a célula é
+# recusada. Opções da lista: Aguardando Peça, Peça Chegou, Em Reparo,
+# Aguardando Retirada, Concluída, Cancelada.
+SITUACAO_CONCLUIDA = "Concluída"
+
 
 def normalizar(texto: str) -> str:
     """Tira acento, baixa a caixa e colapsa espaço — pra 'MARIA DAS GRAÇAS'
@@ -203,7 +209,7 @@ def conciliar(ficha: dict, servicos: list, tecnico_nome: str,
     # dá baixa nas linhas que casaram
     for c in casados:
         n = c["linha"]
-        aba_pedidos.update_cell(n, COL_SITUACAO_OS, "CONCLUÍDO")
+        aba_pedidos.update_cell(n, COL_SITUACAO_OS, SITUACAO_CONCLUIDA)
         if not (todas[n - 1][COL_NUMERO_OS - 1] if len(todas[n - 1]) >= COL_NUMERO_OS else ""):
             aba_pedidos.update_cell(n, COL_NUMERO_OS, identificacao_ficha)
         cor = VERDE if c["forca"] == "nome+modelo" else AMARELO
@@ -225,6 +231,78 @@ def conciliar(ficha: dict, servicos: list, tecnico_nome: str,
         )
 
     return resumo
+
+
+def listar_pedidos(apenas_pendentes: bool = True) -> list:
+    """Lista as compras de peça da aba Pedidos, pra vincular a um cliente
+    pelo site em vez de digitar direto na planilha.
+
+    Cada compra vira 2 linhas na planilha (CRIADO e APROVADO) porque o robô
+    registra os dois eventos da CrediPay. Agrupa por nota fiscal e devolve
+    uma entrada só, apontando pra linha que deve ser editada.
+    """
+    if not planilha_configurada():
+        return []
+
+    aba = _abrir_planilha().worksheet(ABA_PEDIDOS)
+    todas = aba.get_all_values()
+
+    por_nota = {}
+    for numero_linha, linha in enumerate(todas[1:], start=2):
+        def col(i):
+            return linha[i - 1].strip() if len(linha) >= i else ""
+
+        nota = col(2)
+        if not nota:
+            continue
+
+        cliente_final = col(COL_NOME_CLIENTE_FINAL)
+        situacao = col(COL_SITUACAO_OS)
+
+        # Prefere a linha APROVADO como a "oficial" da compra; se já tem
+        # cliente vinculado, essa linha manda.
+        atual = por_nota.get(nota)
+        eh_melhor = (
+            atual is None
+            or bool(cliente_final)
+            or (col(5).upper() == "APROVADO" and not atual["cliente_final"])
+        )
+        if not eh_melhor:
+            continue
+
+        por_nota[nota] = {
+            "linha": numero_linha,
+            "nota_fiscal": nota,
+            "valor": col(4),
+            "status_compra": col(5),
+            "data": col(6),
+            "cliente_final": cliente_final,
+            "numero_os": col(COL_NUMERO_OS),
+            "situacao_os": situacao,
+            "peca": col(COL_DESCRICAO_PECA),
+        }
+
+    pedidos = list(por_nota.values())
+    if apenas_pendentes:
+        pedidos = [p for p in pedidos if not p["cliente_final"]]
+
+    pedidos.sort(key=lambda p: p["linha"], reverse=True)
+    return pedidos
+
+
+def atualizar_pedido(linha: int, cliente: str, peca: str, numero_os: str = "") -> dict:
+    """Grava cliente/peça/OS numa linha da aba Pedidos."""
+    if not planilha_configurada():
+        return {"configurada": False}
+
+    aba = _abrir_planilha().worksheet(ABA_PEDIDOS)
+
+    aba.update_cell(linha, COL_NOME_CLIENTE_FINAL, cliente)
+    aba.update_cell(linha, COL_DESCRICAO_PECA, peca)
+    if numero_os:
+        aba.update_cell(linha, COL_NUMERO_OS, numero_os)
+
+    return {"configurada": True, "linha": linha}
 
 
 def reverter(ficha: dict, servicos: list) -> dict:
