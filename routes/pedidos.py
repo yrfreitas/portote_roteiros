@@ -22,9 +22,20 @@ pedidos_bp = Blueprint("pedidos", __name__)
 
 @pedidos_bp.route("/pedidos/diagnostico", methods=["GET"])
 def diagnostico_planilha():
-    """Diz o que falta pra integração funcionar, sem expor nenhum segredo."""
+    """Diz o que falta pra integração funcionar, sem expor nenhum segredo.
+
+    ?testar=true também abre a conexão com o e-mail pra confirmar que a
+    senha de app é aceita — só dizer que a variável existe não prova nada.
+    """
+    from services.nfe import diagnostico_imap
     from services.planilha import diagnostico
-    return jsonify(diagnostico())
+
+    testar = str(request.args.get("testar", "")).lower() in ("1", "true", "sim")
+
+    return jsonify({
+        "planilha": diagnostico(),
+        "email": diagnostico_imap(testar_conexao=testar),
+    })
 
 
 @pedidos_bp.route("/pedidos", methods=["GET"])

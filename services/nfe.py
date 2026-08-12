@@ -27,7 +27,42 @@ TIMEOUT_IMAP = 30
 
 
 def imap_configurado() -> bool:
-    return bool(os.environ.get("IMAP_USER") and os.environ.get("IMAP_PASSWORD"))
+    return bool((os.environ.get("IMAP_USER") or "").strip()
+                and (os.environ.get("IMAP_PASSWORD") or "").strip())
+
+
+def diagnostico_imap(testar_conexao: bool = False) -> dict:
+    """Estado do acesso ao e-mail, sem expor a senha.
+
+    Erros comuns num painel de deploy: a variável não salvar, salvar com
+    espaço sobrando, ou a senha de app do Gmail chegar truncada.
+    """
+    usuario = (os.environ.get("IMAP_USER") or "").strip()
+    senha = os.environ.get("IMAP_PASSWORD") or ""
+
+    info = {
+        "configurado": imap_configurado(),
+        "tem_usuario": bool(usuario),
+        "usuario": usuario,
+        "tem_senha": bool(senha.strip()),
+        "tamanho_senha": len(senha),
+        "senha_tem_espaco_nas_pontas": senha != senha.strip(),
+        "host": os.environ.get("IMAP_HOST", "imap.gmail.com"),
+        "porta": os.environ.get("IMAP_PORT", "993"),
+    }
+
+    if testar_conexao and info["configurado"]:
+        try:
+            conn = _conectar()
+            status, data = conn.search(None, "FROM", REMETENTE_NFE)
+            info["conexao"] = "ok"
+            info["emails_de_nfe"] = len(data[0].split()) if status == "OK" else 0
+            conn.logout()
+        except Exception as exc:
+            info["conexao"] = "falhou"
+            info["erro"] = str(exc)[:200]
+
+    return info
 
 
 def _conectar():
