@@ -11,7 +11,8 @@ import logging
 
 from flask import Blueprint, jsonify, request
 
-from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
+from database import (IS_PG, db_conn, execute, fetch_all, fetch_one,
+                      insert_returning_id)
 
 log = logging.getLogger("portotec.setores")
 
@@ -19,6 +20,11 @@ setores_bp = Blueprint("setores", __name__)
 
 CORES_PADRAO = ["#1a6fd4", "#e05c2a", "#2aa05c", "#9b3db8",
                 "#d4a01a", "#2aaab8", "#d41a5c", "#5c7ad4"]
+
+# "ativo" é BOOLEAN no Postgres e INTEGER no SQLite. Comparar com 1 quebra no
+# Postgres (tipos incompatíveis) e comparar com TRUE não existe no SQLite —
+# então o predicado tem que ser escolhido conforme o banco.
+ATIVO = "s.ativo IS TRUE" if IS_PG else "s.ativo = 1"
 
 
 @setores_bp.route("/setores", methods=["GET"])
@@ -30,7 +36,7 @@ def listar():
     """
     todos = str(request.args.get("todos", "")).lower() in ("1", "true", "sim")
 
-    filtro = "" if todos else "WHERE s.ativo IN (1, TRUE)"
+    filtro = "" if todos else f"WHERE {ATIVO}"
 
     with db_conn() as conn:
         setores = fetch_all(conn, f"""
@@ -142,14 +148,14 @@ def remover(setor_id):
 def resumo():
     """Números por setor, pra Visão Geral e Histórico."""
     with db_conn() as conn:
-        linhas = fetch_all(conn, """
+        linhas = fetch_all(conn, f"""
             SELECT s.id, s.nome, s.cor,
                    COUNT(sv.id) AS pontos,
                    COUNT(CASE WHEN sv.status = 'concluido' THEN 1 END) AS concluidos,
                    COUNT(DISTINCT sv.ficha_id) AS rotas
               FROM setores s
               LEFT JOIN servicos sv ON sv.setor_id = s.id
-             WHERE s.ativo IN (1, TRUE)
+             WHERE {ATIVO}
              GROUP BY s.id, s.nome, s.cor
              ORDER BY pontos DESC, s.nome
         """)
