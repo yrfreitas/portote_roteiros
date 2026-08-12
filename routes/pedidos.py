@@ -118,6 +118,45 @@ def sugerir_pecas():
     })
 
 
+@pedidos_bp.route("/pedidos/revisar", methods=["GET"])
+def revisar():
+    """Baixas que casaram só pelo nome (as amarelas), pra conferência.
+
+    Casar só por nome é o elo mais fraco — dois clientes homônimos, ou o
+    mesmo nome em compras diferentes, dariam baixa na linha errada. Ficam
+    marcadas de amarelo na planilha; aqui dá pra revisar sem caçar na mão.
+    """
+    from services.planilha import listar_conciliadas_fracas, planilha_configurada
+
+    if not planilha_configurada():
+        return jsonify({"itens": [], "configurada": False})
+
+    try:
+        return jsonify({"configurada": True, "itens": listar_conciliadas_fracas()})
+    except Exception as exc:
+        log.exception("Falha ao listar conciliações para revisão")
+        return jsonify({"erro": f"Falha ao ler a planilha: {exc}"}), 502
+
+
+@pedidos_bp.route("/pedidos/<int:linha>/desfazer", methods=["PUT"])
+def desfazer(linha):
+    """Tira a baixa de uma linha — quando a revisão mostra que casou errado."""
+    from services.planilha import desfazer_baixa, planilha_configurada
+
+    if not planilha_configurada():
+        return jsonify({"erro": "Integração com a planilha não está configurada."}), 503
+    if linha < 2:
+        return jsonify({"erro": "Linha inválida"}), 400
+
+    try:
+        desfazer_baixa(linha)
+    except Exception as exc:
+        log.exception("Falha ao desfazer baixa na linha %s", linha)
+        return jsonify({"erro": f"Falha ao gravar na planilha: {exc}"}), 502
+
+    return jsonify({"mensagem": f"Baixa desfeita na linha {linha}"})
+
+
 @pedidos_bp.route("/pedidos/pendentes", methods=["GET"])
 def contar_pendentes():
     """Só a contagem, pro selo na aba. Não lê e-mail nem sugere peça —

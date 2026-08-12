@@ -55,14 +55,15 @@ def adicionar_servico(ficha_id):
         execute(conn, """
             INSERT INTO servicos
                 (ficha_id, cep, endereco_completo, lat, lng,
-                 cliente, descricao, numero, tipo_aparelho, modelo)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cliente, descricao, numero, tipo_aparelho, modelo, numero_os)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (ficha_id, cep, geo.endereco, geo.lat, geo.lng,
               (data.get("cliente") or "").strip(),
               (data.get("descricao") or "").strip(),
               numero,
               (data.get("tipo_aparelho") or "").strip(),
-              (data.get("modelo") or "").strip()))
+              (data.get("modelo") or "").strip(),
+              (data.get("numero_os") or "").strip()))
 
         ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
         resultado = recalcular_rota(conn, ficha_id, ficha)
@@ -116,7 +117,7 @@ def editar_servico(servico_id):
             UPDATE servicos
                SET cep = ?, numero = ?, endereco_completo = ?,
                    lat = ?, lng = ?, cliente = ?, descricao = ?,
-                   tipo_aparelho = ?, modelo = ?
+                   tipo_aparelho = ?, modelo = ?, numero_os = ?
              WHERE id = ?
         """, (cep_novo, numero_novo, endereco, lat, lng,
               (data.get("cliente") if data.get("cliente") is not None
@@ -127,6 +128,8 @@ def editar_servico(servico_id):
                else servico.get("tipo_aparelho") or ""),
               (data.get("modelo") if data.get("modelo") is not None
                else servico.get("modelo") or ""),
+              (data.get("numero_os") if data.get("numero_os") is not None
+               else servico.get("numero_os") or ""),
               servico_id))
 
         ficha_id = servico["ficha_id"]

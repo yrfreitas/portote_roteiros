@@ -133,7 +133,8 @@ _SCHEMA_PG = [
         descricao          TEXT,
         ordem              INTEGER DEFAULT 0,
         status             TEXT DEFAULT 'pendente',
-        concluido_em       TEXT
+        concluido_em       TEXT,
+        numero_os          TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS cache_geo (
         cep         TEXT PRIMARY KEY,
@@ -191,6 +192,7 @@ _SCHEMA_SQLITE = """
         ordem              INTEGER DEFAULT 0,
         status             TEXT DEFAULT 'pendente',
         concluido_em       TEXT,
+        numero_os          TEXT,
         FOREIGN KEY (ficha_id) REFERENCES fichas(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS cache_geo (
@@ -237,6 +239,7 @@ _MIGRACOES_PG = [
     "ALTER TABLE tecnicos ADD CONSTRAINT tecnicos_token_unique UNIQUE (token)",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente'",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS concluido_em TEXT",
+    "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS numero_os TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -249,6 +252,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE tecnicos ADD COLUMN token TEXT",
     "ALTER TABLE servicos ADD COLUMN status TEXT DEFAULT 'pendente'",
     "ALTER TABLE servicos ADD COLUMN concluido_em TEXT",
+    "ALTER TABLE servicos ADD COLUMN numero_os TEXT",
 ]
 
 

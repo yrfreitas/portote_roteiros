@@ -30,7 +30,7 @@ ABA_OUTROS = os.environ.get("ABA_OUTROS", "Outros Atendimentos")
 
 CABECALHO_OUTROS = [
     "Data Conclusão", "Cliente", "Endereço", "Aparelho", "Modelo",
-    "Descrição", "Técnico", "Ficha (dia)", "Motivo",
+    "Descrição", "Técnico", "Ficha (dia)", "Nº OS", "Motivo",
 ]
 
 # Colunas da aba Pedidos que interessam (1-indexed, como o Sheets espera)
@@ -133,7 +133,22 @@ def _obter_ou_criar_outros(planilha):
     import gspread
 
     try:
-        return planilha.worksheet(ABA_OUTROS)
+        aba = planilha.worksheet(ABA_OUTROS)
+        # A aba pode ter sido criada com menos colunas numa versão anterior.
+        # Sem migrar o cabeçalho, um campo novo entraria na coluna do campo
+        # antigo e embaralharia tudo que já está gravado.
+        atual = aba.row_values(1)
+        if len(atual) < len(CABECALHO_OUTROS):
+            if aba.col_count < len(CABECALHO_OUTROS):
+                aba.add_cols(len(CABECALHO_OUTROS) - aba.col_count)
+            aba.update(
+                values=[CABECALHO_OUTROS],
+                range_name=f"A1:{chr(64 + len(CABECALHO_OUTROS))}1",
+                value_input_option="USER_ENTERED",
+            )
+            log.info("Cabeçalho da aba '%s' migrado para %d colunas",
+                     ABA_OUTROS, len(CABECALHO_OUTROS))
+        return aba
     except gspread.WorksheetNotFound:
         log.info("Criando aba '%s'", ABA_OUTROS)
         aba = planilha.add_worksheet(
@@ -147,11 +162,33 @@ def _obter_ou_criar_outros(planilha):
 def _casar(servico: dict, linhas: list) -> Optional[dict]:
     """Procura o serviço na aba Pedidos.
 
-    Devolve {'linha': n, 'forca': 'nome+modelo'|'nome', 'peca': ...} ou None.
-    Só considera linhas ainda sem baixa — uma peça já conciliada não é
-    reaproveitada por outro atendimento.
+    Ordem de confiança:
+      1. Nº da OS igual        -> certeza, é identificador único
+      2. Nome + modelo         -> forte
+      3. Só o nome             -> fraco, marca amarelo pra conferir
+
+    Devolve {'linha': n, 'forca': ..., 'peca': ...} ou None. Só considera
+    linhas ainda sem baixa — peça já conciliada não é reaproveitada.
     """
     nome_alvo = normalizar(servico.get("cliente"))
+    os_alvo = _so_alfanumerico(servico.get("numero_os"))
+
+    # Nº da OS bate? acabou a discussão — não precisa nem de nome.
+    if os_alvo:
+        for numero_linha, linha in linhas:
+            situacao = (
+                linha[COL_SITUACAO_OS - 1] if len(linha) >= COL_SITUACAO_OS else ""
+            ).strip()
+            if situacao:
+                continue
+            os_planilha = _so_alfanumerico(
+                linha[COL_NUMERO_OS - 1] if len(linha) >= COL_NUMERO_OS else ""
+            )
+            if os_planilha and os_planilha == os_alvo:
+                peca = (linha[COL_DESCRICAO_PECA - 1]
+                        if len(linha) >= COL_DESCRICAO_PECA else "")
+                return {"linha": numero_linha, "forca": "nº da OS", "peca": peca}
+
     if not nome_alvo:
         return None
 
@@ -222,6 +259,7 @@ def conciliar(ficha: dict, servicos: list, tecnico_nome: str,
             casados.append({
                 "cliente": s.get("cliente"),
                 "modelo": s.get("modelo"),
+                "numero_os": s.get("numero_os") or "",
                 "linha": resultado["linha"],
                 "forca": resultado["forca"],
                 "peca": resultado["peca"],
@@ -232,6 +270,7 @@ def conciliar(ficha: dict, servicos: list, tecnico_nome: str,
                 "endereco": s.get("endereco_completo"),
                 "aparelho": s.get("tipo_aparelho"),
                 "modelo": s.get("modelo"),
+                "numero_os": s.get("numero_os") or "",
                 "descricao": s.get("descricao"),
                 "motivo": "Sem correspondência na aba Pedidos "
                           "(outra marca, vistoria ou peça ainda não lançada)",
@@ -255,9 +294,17 @@ def conciliar(ficha: dict, servicos: list, tecnico_nome: str,
     for c in casados:
         n = c["linha"]
         aba_pedidos.update_cell(n, COL_SITUACAO_OS, SITUACAO_CONCLUIDA)
-        if not (todas[n - 1][COL_NUMERO_OS - 1] if len(todas[n - 1]) >= COL_NUMERO_OS else ""):
-            aba_pedidos.update_cell(n, COL_NUMERO_OS, identificacao_ficha)
-        cor = VERDE if c["forca"] == "nome+modelo" else AMARELO
+
+        # Prefere o nº real da OS (do DigiTeam); só cai pro dia da ficha se
+        # o ponto não tiver OS preenchida — o dia é identificação fraca.
+        atual = (todas[n - 1][COL_NUMERO_OS - 1]
+                 if len(todas[n - 1]) >= COL_NUMERO_OS else "").strip()
+        if not atual:
+            aba_pedidos.update_cell(
+                n, COL_NUMERO_OS, c.get("numero_os") or identificacao_ficha
+            )
+
+        cor = AMARELO if c["forca"] == "nome" else VERDE
         try:
             aba_pedidos.format(f"A{n}:J{n}", {"backgroundColor": cor})
         except Exception as exc:
@@ -268,7 +315,8 @@ def conciliar(ficha: dict, servicos: list, tecnico_nome: str,
         aba_outros = _obter_ou_criar_outros(planilha)
         aba_outros.append_rows(
             [[agora, o["cliente"], o["endereco"], o["aparelho"], o["modelo"],
-              o["descricao"], tecnico_nome, identificacao_ficha, o["motivo"]]
+              o["descricao"], tecnico_nome, identificacao_ficha,
+              o.get("numero_os", ""), o["motivo"]]
              for o in outros],
             value_input_option="USER_ENTERED",
             insert_data_option="INSERT_ROWS",
@@ -348,6 +396,73 @@ def atualizar_pedido(linha: int, cliente: str, peca: str, numero_os: str = "") -
         aba.update_cell(linha, COL_NUMERO_OS, numero_os)
 
     return {"configurada": True, "linha": linha}
+
+
+def listar_conciliadas_fracas() -> list:
+    """Linhas com baixa que ficaram AMARELAS (casaram só pelo nome).
+
+    Identifica pela cor de fundo, que é o que a conciliação usa pra sinalizar
+    confiança: verde = nome+modelo ou nº da OS, amarelo = só o nome.
+    """
+    planilha = _abrir_planilha()
+    aba = planilha.worksheet(ABA_PEDIDOS)
+    valores = aba.get_all_values()
+
+    # Busca as cores de fundo de uma vez só (uma chamada, não uma por linha).
+    meta = aba.spreadsheet.fetch_sheet_metadata({
+        "includeGridData": "true",
+        "ranges": f"{ABA_PEDIDOS}!A2:A{len(valores)}",
+        "fields": "sheets(data(rowData(values(effectiveFormat(backgroundColor)))))",
+    })
+
+    linhas_amarelas = set()
+    try:
+        grid = meta["sheets"][0]["data"][0].get("rowData", [])
+        for i, row in enumerate(grid, start=2):
+            vals = row.get("values") or []
+            if not vals:
+                continue
+            cor = (vals[0].get("effectiveFormat") or {}).get("backgroundColor") or {}
+            r, g, b = cor.get("red", 1), cor.get("green", 1), cor.get("blue", 1)
+            # amarelo: vermelho e verde altos, azul claramente menor
+            if r > 0.9 and g > 0.85 and b < 0.87:
+                linhas_amarelas.add(i)
+    except (KeyError, IndexError):
+        log.warning("Não consegui ler as cores da planilha para revisão")
+
+    itens = []
+    for numero_linha, linha in enumerate(valores[1:], start=2):
+        if numero_linha not in linhas_amarelas:
+            continue
+
+        def col(i):
+            return linha[i - 1].strip() if len(linha) >= i else ""
+
+        if not col(COL_SITUACAO_OS):
+            continue
+
+        itens.append({
+            "linha": numero_linha,
+            "cliente": col(COL_NOME_CLIENTE_FINAL),
+            "numero_os": col(COL_NUMERO_OS),
+            "situacao": col(COL_SITUACAO_OS),
+            "peca": col(COL_DESCRICAO_PECA),
+            "valor": col(4),
+            "nota_fiscal": col(2),
+        })
+
+    return itens
+
+
+def desfazer_baixa(linha: int) -> None:
+    """Limpa a situação e volta a linha ao branco."""
+    aba = _abrir_planilha().worksheet(ABA_PEDIDOS)
+    aba.update_cell(linha, COL_SITUACAO_OS, "")
+    try:
+        aba.format(f"A{linha}:J{linha}",
+                   {"backgroundColor": {"red": 1, "green": 1, "blue": 1}})
+    except Exception as exc:
+        log.warning("Não consegui limpar a cor da linha %s: %s", linha, exc)
 
 
 def reverter(ficha: dict, servicos: list) -> dict:

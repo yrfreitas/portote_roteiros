@@ -2532,3 +2532,23 @@ select:focus-visible,
 @media (max-width: 560px) {
   .peca-sugestao { flex-direction: column; align-items: stretch; }
 }
+
+.roteiro-os {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--accent-text);
+  background: var(--accent-dim);
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  padding: 2px 7px;
+  margin-top: 4px;
+  display: inline-block;
+  letter-spacing: 0.4px;
+}
+
+.previa-vinculo {
+  margin-top: 10px; padding: 10px;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.02);
+}

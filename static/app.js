@@ -495,6 +495,7 @@ async function carregarHistorico() {
             ${f.concluida_em ? `<span>${icone('calendario', 'icone-11')} ${formatarDataHora(f.concluida_em)}</span>` : ''}
             <span>${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''}</span>
             <span>${fmtKm(f.distancia_total)} km</span>
+            ${f.conciliada_em ? `<span class="conc-tag ok" style="font-size:8px;padding:2px 6px;">planilha ok</span>` : ''}
           </div>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); alternarStatusFicha(${f.id}, 'concluida')">
@@ -587,10 +588,12 @@ async function carregarPecas() {
       ${r.sugestao_peca_ativa
         ? `<span class="conc-tag ok" title="As peças vêm do XML da nota fiscal enviada pela Panasonic">peça automática ligada</span>`
         : `<span class="conc-tag neutro" title="Configure IMAP_USER e IMAP_PASSWORD para ler as notas fiscais">peça automática desligada</span>`}
+      <button class="btn btn-ghost btn-sm" onclick="revisarAmarelas()">Revisar amarelas</button>
       <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="salvarPecasEmLote()">
         Vincular todas preenchidas
       </button>
     </div>
+    <div id="pecas-revisao"></div>
   ` + pedidos.map(p => `
     <div class="peca-card" id="peca-${p.linha}" data-linha="${p.linha}">
       <div class="peca-topo">
@@ -690,6 +693,54 @@ async function buscarSugestoesPecas(pedidos) {
       ? `${achadas} peça(s) lidas da nota`
       : 'peça automática ligada';
   }
+}
+
+// Baixas que casaram só pelo nome (amarelas na planilha). É o elo mais fraco
+// do casamento, então dá pra conferir e desfazer o que ficou errado.
+async function revisarAmarelas() {
+  const alvo = document.getElementById('pecas-revisao');
+  if (!alvo) return;
+  alvo.innerHTML = `<div class="loading-row" style="display:flex;gap:8px;padding:14px;"><div class="spinner"></div> Conferindo...</div>`;
+
+  let r;
+  try {
+    r = await api('/pedidos/revisar');
+  } catch (e) {
+    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const itens = r.itens || [];
+  if (itens.length === 0) {
+    alvo.innerHTML = `<div class="conc-alerta" style="margin:0 0 14px;">
+      Nenhuma baixa duvidosa. Todas casaram por nº da OS ou nome + modelo.
+    </div>`;
+    return;
+  }
+
+  alvo.innerHTML = `
+    <div class="conc-titulo">Baixas que casaram só pelo nome (${itens.length})</div>
+    ${itens.map(i => `
+      <div class="conc-item" id="revisao-${i.linha}">
+        <span class="conc-tag aviso">conferir</span>
+        <div style="flex:1;min-width:0;">
+          <div class="conc-cliente">${esc(i.cliente)}</div>
+          <div class="conc-meta">linha ${i.linha} · ${esc(i.valor)} · ${esc(i.peca) || 'sem peça'}</div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:7px;"
+                  onclick="desfazerBaixa(${i.linha})">Desfazer baixa</button>
+        </div>
+      </div>`).join('')}
+  `;
+}
+
+async function desfazerBaixa(linha) {
+  if (!confirm(`Desfazer a baixa da linha ${linha}?`)) return;
+  try {
+    await api(`/pedidos/${linha}/desfazer`, { method: 'PUT' });
+    toast('Baixa desfeita', 'success');
+    document.getElementById(`revisao-${linha}`)?.remove();
+    carregarSeloPecas();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 function usarSugestao(linha, botao) {
@@ -1002,6 +1053,7 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
           <div class="roteiro-endereco">${s.numero ? `<strong>Nº ${esc(s.numero)}</strong> · ` : ''}${esc(s.endereco_completo) || '—'}</div>
           ${s.cliente ? `<div class="roteiro-cliente">${icone('usuario', 'icone-11')} ${esc(s.cliente)}${s.descricao ? ' · ' + esc(s.descricao) : ''}</div>` : ''}
           ${aparelho ? `<div class="roteiro-aparelho">${icone('ferramenta', 'icone-11')} ${esc(aparelho)}</div>` : ''}
+          ${s.numero_os ? `<div class="roteiro-os">OS ${esc(s.numero_os)}</div>` : ''}
           ${(!s.lat || !s.lng) ? `<div class="roteiro-cliente" style="color:var(--danger-text);display:flex;align-items:center;gap:4px;">${icone('alerta', 'icone-11')} sem coordenada — fora do cálculo</div>` : ''}
         </div>
         <div class="roteiro-actions">
@@ -1925,6 +1977,7 @@ async function adicionarServico() {
         descricao:     document.getElementById('add-descricao').value,
         tipo_aparelho: document.getElementById('add-tipo-aparelho').value,
         modelo:        document.getElementById('add-modelo').value,
+        numero_os:     document.getElementById('add-numero-os').value,
       }),
     });
 
@@ -2065,12 +2118,16 @@ async function abrirConciliacao(fichaId) {
 
     ${outros.length ? `
       <div class="conc-titulo">Outros atendimentos (outra marca / vistoria)</div>
-      ${outros.map(o => `
+      ${outros.map((o, i) => `
         <div class="conc-item">
           <span class="conc-tag neutro">fora da planilha</span>
-          <div>
+          <div style="flex:1;min-width:0;">
             <div class="conc-cliente">${esc(o.cliente)}</div>
             <div class="conc-meta">${esc(o.aparelho) || '—'}${o.modelo ? ' · ' + esc(o.modelo) : ''}</div>
+            <button class="btn btn-ghost btn-sm" style="margin-top:7px;"
+                    onclick="vincularPelaPrevia(${fichaId}, ${i}, this)">
+              Tem peça comprada? vincular
+            </button>
           </div>
         </div>`).join('')}
     ` : ''}
@@ -2086,6 +2143,75 @@ async function abrirConciliacao(fichaId) {
   btn.disabled = false;
   btn.textContent = `Confirmar (${casados.length} baixa${casados.length !== 1 ? 's' : ''})`;
   btn.onclick = () => aplicarConciliacao(fichaId);
+
+  _conciliacaoOutros = outros;
+}
+
+// Guarda os "não casados" da prévia atual, pra poder vincular um deles a uma
+// compra sem sair do modal.
+let _conciliacaoOutros = [];
+
+// Erro de ordem comum: concluir a rota antes de vincular a peça. Aqui dá pra
+// consertar na hora, em vez de descobrir depois que a baixa não aconteceu.
+async function vincularPelaPrevia(fichaId, indice, botao) {
+  const alvo = _conciliacaoOutros[indice];
+  if (!alvo) return;
+
+  botao.disabled = true;
+  botao.textContent = 'Buscando compras...';
+
+  let r;
+  try {
+    r = await api('/pedidos');
+  } catch (e) {
+    toast(e.message, 'error');
+    botao.disabled = false;
+    botao.textContent = 'Tem peça comprada? vincular';
+    return;
+  }
+
+  const pendentes = (r.pedidos || []).filter(p => !p.cliente_final);
+  if (pendentes.length === 0) {
+    botao.textContent = 'Nenhuma compra sem cliente';
+    return;
+  }
+
+  const container = botao.parentElement;
+  botao.remove();
+  const caixa = document.createElement('div');
+  caixa.className = 'previa-vinculo';
+  caixa.innerHTML = `
+    <label class="form-label">Qual compra é do ${esc(alvo.cliente)}?</label>
+    <select class="form-input" id="previa-sel-${indice}">
+      <option value="">Selecione a compra...</option>
+      ${pendentes.map(p => `
+        <option value="${p.linha}">${esc(p.valor)} · NF ...${esc((p.nota_fiscal||'').slice(-8))} · ${esc(p.data)}</option>
+      `).join('')}
+    </select>
+    <button class="btn btn-primary btn-sm" style="margin-top:8px;"
+            onclick="confirmarVinculoPrevia(${fichaId}, ${indice})">Vincular e refazer prévia</button>
+  `;
+  container.appendChild(caixa);
+}
+
+async function confirmarVinculoPrevia(fichaId, indice) {
+  const alvo = _conciliacaoOutros[indice];
+  const linha = parseInt(document.getElementById(`previa-sel-${indice}`)?.value, 10);
+  if (!alvo || !linha) { toast('Escolha a compra', 'error'); return; }
+
+  try {
+    await api(`/pedidos/${linha}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        cliente: alvo.cliente,
+        peca: alvo.modelo || '',
+        numero_os: alvo.numero_os || '',
+      }),
+    });
+    toast(`Peça vinculada a ${alvo.cliente}`, 'success');
+    carregarSeloPecas();
+    abrirConciliacao(fichaId);   // refaz a prévia, agora com o vínculo valendo
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function aplicarConciliacao(fichaId) {
@@ -2132,7 +2258,7 @@ function abrirModalNovaFicha(tecnicoId) {
 
 function abrirModalAddServico(fichaId) {
   document.getElementById('add-ficha-id').value = fichaId;
-  ['add-cep','add-numero','add-cliente','add-descricao','add-tipo-aparelho','add-modelo']
+  ['add-cep','add-numero','add-cliente','add-descricao','add-tipo-aparelho','add-modelo','add-numero-os']
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('modal-add-servico').classList.add('open');
   setTimeout(() => document.getElementById('add-cep').focus(), 100);
@@ -2149,6 +2275,7 @@ function abrirModalEditarServico(servicoId) {
   document.getElementById('edit-cliente').value = s.cliente || '';
   document.getElementById('edit-tipo-aparelho').value = s.tipo_aparelho || '';
   document.getElementById('edit-modelo').value = s.modelo || '';
+  document.getElementById('edit-numero-os').value = s.numero_os || '';
   document.getElementById('edit-descricao').value = s.descricao || '';
 
   document.getElementById('modal-editar-servico').classList.add('open');
@@ -2176,6 +2303,7 @@ async function salvarEdicaoServico() {
         descricao:     document.getElementById('edit-descricao').value,
         tipo_aparelho: document.getElementById('edit-tipo-aparelho').value,
         modelo:        document.getElementById('edit-modelo').value,
+        numero_os:     document.getElementById('edit-numero-os').value,
       }),
     });
 
