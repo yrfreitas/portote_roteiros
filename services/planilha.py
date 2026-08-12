@@ -63,11 +63,56 @@ def _so_alfanumerico(texto: str) -> str:
 
 
 def planilha_configurada() -> bool:
-    tem_credencial = bool(
-        os.environ.get("GOOGLE_CREDENTIALS_JSON")
-        or os.environ.get("GOOGLE_CREDENTIALS_PATH")
-    )
-    return tem_credencial and bool(os.environ.get("PLANILHA_ID"))
+    return not faltando_para_configurar()
+
+
+def faltando_para_configurar() -> list:
+    """Diz exatamente o que falta, pra não ter que adivinhar qual variável
+    de ambiente ficou de fora. Nunca devolve o valor de nada — só o nome."""
+    falta = []
+
+    bruto = (os.environ.get("GOOGLE_CREDENTIALS_JSON") or "").strip()
+    caminho = (os.environ.get("GOOGLE_CREDENTIALS_PATH") or "").strip()
+
+    if not bruto and not caminho:
+        falta.append("GOOGLE_CREDENTIALS_JSON (ou GOOGLE_CREDENTIALS_PATH)")
+    elif bruto:
+        # Erro comum: colar o JSON e o valor chegar truncado/escapado.
+        try:
+            dados = json.loads(bruto)
+        except json.JSONDecodeError as exc:
+            falta.append(f"GOOGLE_CREDENTIALS_JSON não é um JSON válido ({exc.msg})")
+        else:
+            for chave in ("client_email", "private_key", "token_uri"):
+                if not dados.get(chave):
+                    falta.append(f"GOOGLE_CREDENTIALS_JSON sem o campo '{chave}'")
+
+    if not (os.environ.get("PLANILHA_ID") or "").strip():
+        falta.append("PLANILHA_ID")
+
+    return falta
+
+
+def diagnostico() -> dict:
+    """Estado da integração, sem vazar segredo — só o que dá pra conferir."""
+    bruto = (os.environ.get("GOOGLE_CREDENTIALS_JSON") or "").strip()
+    email = ""
+    if bruto:
+        try:
+            email = json.loads(bruto).get("client_email", "")
+        except json.JSONDecodeError:
+            email = "(JSON inválido)"
+
+    return {
+        "configurada": planilha_configurada(),
+        "faltando": faltando_para_configurar(),
+        "tem_credentials_json": bool(bruto),
+        "tamanho_credentials_json": len(bruto),
+        "tem_credentials_path": bool(os.environ.get("GOOGLE_CREDENTIALS_PATH")),
+        "tem_planilha_id": bool((os.environ.get("PLANILHA_ID") or "").strip()),
+        "conta_de_servico": email,
+        "aba_pedidos": ABA_PEDIDOS,
+    }
 
 
 def _abrir_planilha():

@@ -20,15 +20,25 @@ log = logging.getLogger("portotec.pedidos")
 pedidos_bp = Blueprint("pedidos", __name__)
 
 
+@pedidos_bp.route("/pedidos/diagnostico", methods=["GET"])
+def diagnostico_planilha():
+    """Diz o que falta pra integração funcionar, sem expor nenhum segredo."""
+    from services.planilha import diagnostico
+    return jsonify(diagnostico())
+
+
 @pedidos_bp.route("/pedidos", methods=["GET"])
 def listar():
     """Compras de peça. ?todos=true traz também as já vinculadas."""
-    from services.planilha import listar_pedidos, planilha_configurada
+    from services.planilha import (faltando_para_configurar, listar_pedidos,
+                                   planilha_configurada)
 
     if not planilha_configurada():
+        falta = faltando_para_configurar()
         return jsonify({
             "erro": "Integração com a planilha não está configurada. "
-                    "Faltam PLANILHA_ID e GOOGLE_CREDENTIALS_JSON.",
+                    "Falta: " + "; ".join(falta),
+            "faltando": falta,
             "configurada": False,
         }), 503
 
