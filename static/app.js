@@ -227,9 +227,116 @@ function iniciarMonitorSaude() {
   setInterval(verificarSaude, 15000);
 }
 
+// ===== AUTO-REFRESH =====
+// O servidor mantém um contador que sobe a cada escrita (ver bump_revisao no
+// database.py). Aqui só perguntamos "o número mudou?" a cada 10s: a resposta
+// tem duas dezenas de bytes, então perguntar é ordens de grandeza mais barato
+// que rebaixar as fichas às cegas.
+//
+// O ponto delicado não é detectar a mudança — é escolher a HORA de aplicar.
+// Recarregar por baixo de alguém que está digitando um endereço ou arrastando
+// um ponto na rota destrói trabalho. Por isso a mudança detectada fica
+// pendente e só entra quando a tela está ociosa.
+const INTERVALO_REVISAO = 10000;
+
+let _revisaoConhecida = null;
+let _recarregandoAuto = false;
+
+async function _lerRevisao() {
+  const resp = await fetch(`${BASE}/api/versao`, { cache: 'no-store' });
+  if (!resp.ok) throw new Error('revisão indisponível');
+  const dados = await resp.json();
+  return dados.revisao;
+}
+
+// Chamado depois das escrituras do próprio usuário: a tela dele já se
+// atualizou sozinha na resposta da ação, então absorvemos o novo número sem
+// disparar recarga. Sem isso, todo clique em "salvar" provocaria um segundo
+// recarregamento redundante 10s depois.
+async function sincronizarRevisaoSilenciosa() {
+  try { _revisaoConhecida = await _lerRevisao(); } catch { /* silencioso de propósito */ }
+}
+
+function _telaOciosa() {
+  const ativo = document.activeElement;
+  if (ativo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ativo.tagName)) return false;
+  if (document.querySelector('.modal-overlay.open')) return false;
+  // Classes que o SortableJS aplica enquanto o arraste está em curso
+  if (document.querySelector('.sortable-chosen, .sortable-drag')) return false;
+  return true;
+}
+
+async function recarregarViewAtual() {
+  if (_recarregandoAuto) return;
+  _recarregandoAuto = true;
+
+  try {
+    const abas = ['roteiros', 'cep', 'historico', 'pecas'];
+    const ativa = abas.find(t => document.getElementById(`mtab-${t}`)?.classList.contains('active')) || 'roteiros';
+
+    if (ativa === 'roteiros') {
+      await carregarTecnicos();
+      // A ficha aberta é redesenhada depois da sidebar porque carregarTecnicos
+      // reconstrói a lista inteira e o detalhe precisa refletir o estado novo.
+      if (fichaAtiva) await renderFichaDetalhe(fichaAtiva);
+    } else if (ativa === 'historico') {
+      await carregarHistorico();
+    } else if (ativa === 'pecas') {
+      await carregarPecas();
+    }
+    // A aba "cep" não mostra dado compartilhado — é uma consulta pontual do
+    // usuário e recarregar apagaria o resultado que ele está lendo.
+
+    carregarSeloPecas(); // o selo vermelho aparece em qualquer aba
+  } finally {
+    _recarregandoAuto = false;
+  }
+}
+
+async function verificarRevisao() {
+  if (document.hidden) return; // aba em segundo plano não precisa gastar rede
+
+  let revisao;
+  try {
+    revisao = await _lerRevisao();
+  } catch {
+    return; // offline ou servidor caído: o monitor de saúde já avisa isso
+  }
+
+  if (_revisaoConhecida === null) {
+    _revisaoConhecida = revisao; // primeira leitura só estabelece a referência
+    return;
+  }
+  if (revisao === _revisaoConhecida) return;
+
+  // Mudou, mas o usuário está no meio de alguma coisa. Não gravamos a revisão
+  // nova: assim a checagem seguinte torna a detectar a diferença e aplica
+  // quando der. Perder a atualização por causa de um campo focado seria pior
+  // que atrasá-la.
+  if (!_telaOciosa()) return;
+
+  _revisaoConhecida = revisao;
+  await recarregarViewAtual();
+  toast('Dados atualizados', 'info');
+}
+
+function iniciarAutoRefresh() {
+  sincronizarRevisaoSilenciosa();
+  setInterval(verificarRevisao, INTERVALO_REVISAO);
+
+  // Voltar para a aba é o momento de maior chance de estar desatualizado —
+  // esperar o próximo ciclo de 10s aqui seria exatamente o "ter que recarregar
+  // a página" que este mecanismo existe para eliminar.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) verificarRevisao();
+  });
+  window.addEventListener('online', verificarRevisao);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   iniciarRelogio();
   iniciarMonitorSaude();
+  iniciarAutoRefresh();
   carregarTecnicos();
   _vcepRenderHistorico();
   carregarSeloPecas();
@@ -298,6 +405,15 @@ async function api(path, options = {}, timeoutMs = TIMEOUT_PADRAO) {
     }
 
     if (!res.ok) throw new Error(data.erro || `Erro ${res.status}`);
+
+    // Escrita do próprio usuário: a tela dele já reflete o resultado, então
+    // absorvemos a revisão nova em silêncio. Sem isso o auto-refresh veria o
+    // contador subir e recarregaria tudo de novo logo depois de cada ação.
+    const metodo = (options.method || 'GET').toUpperCase();
+    if (metodo !== 'GET' && typeof sincronizarRevisaoSilenciosa === 'function') {
+      sincronizarRevisaoSilenciosa(); // sem await — não atrasa a resposta ao usuário
+    }
+
     return data;
 
   } catch (e) {

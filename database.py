@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
 import psycopg2
 import psycopg2.extras
@@ -160,6 +161,15 @@ _SCHEMA_PG = [
         auth        TEXT NOT NULL,
         created_at  TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
+    # Contador único que serve ao auto-refresh: uma linha só, incrementada a
+    # cada escrita bem-sucedida na API. O front pergunta "mudou alguma coisa?"
+    # comparando um inteiro, em vez de rebaixar dados inteiros a cada 10s.
+    # O CHECK(id=1) é a trava que garante que existe uma linha e só uma.
+    """CREATE TABLE IF NOT EXISTS meta_revisao (
+        id            INTEGER PRIMARY KEY CHECK (id = 1),
+        revisao       BIGINT NOT NULL DEFAULT 0,
+        atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 
 _SCHEMA_SQLITE = """
@@ -229,6 +239,11 @@ _SCHEMA_SQLITE = """
         created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS meta_revisao (
+        id            INTEGER PRIMARY KEY CHECK (id = 1),
+        revisao       INTEGER NOT NULL DEFAULT 0,
+        atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP
+    );
 """
 
 _INDICES = [
@@ -293,6 +308,58 @@ def sincronizar_sequences(conn):
             conn.rollback()
 
 
+# ─── Revisão global (motor do auto-refresh) ─────────────────────────────
+# Um único inteiro que só cresce. Toda escrita bem-sucedida na API o
+# incrementa (ver o after_request em app.py); o navegador pergunta o valor de
+# tempos em tempos e só rebaixa dados de verdade quando o número mudou.
+#
+# Escolhi contador em vez de MAX(updated_at) porque timestamp não detecta
+# DELETE — apagar um ponto não mexe em updated_at de linha nenhuma, e o painel
+# de quem estava olhando continuaria mostrando o ponto apagado.
+
+
+def bump_revisao(conn) -> None:
+    # UPDATE-e-só-se-preciso-INSERT em vez de um upsert com ON CONFLICT.
+    # Verboso de propósito: o ON CONFLICT tem diferenças de dialeto entre
+    # SQLite e Postgres, e CURRENT_TIMESTAMP indo para coluna TEXT depende de
+    # cast implícito que os dois tratam diferente. Este projeto já perdeu tempo
+    # com SQL que passava em SQLite e estourava em produção — aqui não há
+    # dialeto nenhum em jogo, e o timestamp vai como parâmetro comum.
+    # O INSERT é praticamente código morto (a linha é semeada no init_db), mas
+    # garante que um banco restaurado sem ela ainda funcione.
+    agora = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    afetadas = execute(
+        conn,
+        "UPDATE meta_revisao SET revisao = revisao + 1, atualizado_em = ? WHERE id = 1",
+        (agora,),
+    )
+    if not afetadas:
+        execute(
+            conn,
+            "INSERT INTO meta_revisao (id, revisao, atualizado_em) VALUES (1, 1, ?)",
+            (agora,),
+        )
+
+
+def ler_revisao(conn) -> dict:
+    linha = fetch_one(conn, "SELECT revisao, atualizado_em FROM meta_revisao WHERE id = 1")
+    if not linha:
+        return {"revisao": 0, "atualizado_em": None}
+    return {"revisao": int(linha["revisao"]), "atualizado_em": linha["atualizado_em"]}
+
+
+def _semear_revisao(conn):
+    # Sem a linha inicial o primeiro bump viraria um INSERT comum e o
+    # ON CONFLICT nunca dispararia — funciona, mas deixa a leitura devolvendo
+    # vazio até a primeira escrita. Semear evita esse estado intermediário.
+    try:
+        execute(conn, "INSERT INTO meta_revisao (id, revisao) VALUES (1, 0)")
+        conn.commit()
+    except Exception:
+        conn.rollback()  # já existe — é o caso normal a partir do 2º boot
+
+
 def init_db():
     with db_conn(commit=True) as conn:
         if IS_PG:
@@ -324,6 +391,7 @@ def init_db():
         sincronizar_sequences(conn)
         _gerar_tokens_faltantes(conn)
         _criar_setores_iniciais(conn)
+        _semear_revisao(conn)
 
 
 # Setores criados na primeira execução. Só entram se a tabela estiver vazia —

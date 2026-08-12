@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from database import db_conn, execute, fetch_all, fetch_one
+from database import db_conn, execute, fetch_all, fetch_one, ler_revisao
 from routes.fichas import STATUS_VALIDOS, recalcular_distancia_ordem_fixa
 from routes.servicos import STATUS_SERVICO_VALIDOS, aplicar_status_servico
 
@@ -18,6 +18,18 @@ def _ficha_do_tecnico(conn, ficha_id, tecnico_id):
         conn, "SELECT * FROM fichas WHERE id = ? AND tecnico_id = ?",
         (ficha_id, tecnico_id),
     )
+
+
+# Espelho do /api/versao para o técnico em campo. Existe separado porque
+# /api/versao passa pela sessão de admin e o técnico não tem sessão — o link
+# dele é a credencial. Valida o token do mesmo jeito que as demais rotas daqui:
+# link inválido não recebe nem o número da revisão.
+@tecnico_api_bp.route("/<token>/versao", methods=["GET"])
+def versao_tecnico(token):
+    with db_conn() as conn:
+        if not _tecnico_por_token(conn, token):
+            return jsonify({"erro": "Link inválido"}), 404
+        return jsonify(ler_revisao(conn))
 
 
 @tecnico_api_bp.route("/<token>/fichas", methods=["GET"])

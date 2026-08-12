@@ -6,7 +6,12 @@
 // do app (HTML/CSS/JS/ícones) é cacheada, pra abrir rápido e funcionar
 // com internet ruim; os dados sempre vêm da rede.
 
-const CACHE_VERSAO = 'portotec-roteiros-v2';
+// Subir esta versão a cada mudança em app.js/tecnico.js/style.css é
+// obrigatório: o activate abaixo apaga todo cache com nome diferente, e é isso
+// que força quem já tem o PWA instalado a receber o arquivo novo. Sem o bump,
+// o navegador continua servindo o JS antigo do cache indefinidamente.
+// v3 = entrada do auto-refresh (verificarRevisao em app.js e tecnico.js).
+const CACHE_VERSAO = 'portotec-roteiros-v3';
 
 const ARQUIVOS_CASCA = [
   '/',

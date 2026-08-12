@@ -11,7 +11,7 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from database import init_db
+from database import bump_revisao, db_conn, init_db, ler_revisao
 from extensions import limiter
 from routes.auth import auth_bp
 from routes.fichas import fichas_bp
@@ -107,6 +107,50 @@ def index():
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+# ─── Auto-refresh: quem está com a tela aberta vê a mudança sozinho ──────
+# O navegador pergunta a revisão a cada poucos segundos e só recarrega dados
+# de verdade quando o número mudou. Duas decisões por trás disso:
+#
+# 1. Polling e não WebSocket/SSE. O gunicorn roda com 1 worker e 8 threads
+#    (ver Procfile); cada conexão SSE aberta prenderia UMA thread pelo tempo
+#    todo, então oito abas abertas travariam a aplicação inteira. Polling não
+#    segura thread, sobrevive a restart do Railway e atravessa proxy sem
+#    tratamento especial.
+# 2. O bump vive num after_request central, e não espalhado pelas rotas de
+#    escrita — mesmo motivo do _exigir_autenticacao: numa rota nova, é
+#    impossível esquecer de chamar.
+_METODOS_DE_ESCRITA = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.after_request
+def _marcar_revisao(resp):
+    if request.method not in _METODOS_DE_ESCRITA:
+        return resp
+    if not request.path.startswith("/api"):
+        return resp
+    # 4xx/5xx não mudaram nada no banco. Bumpar aqui faria todo mundo
+    # rebaixar dados à toa a cada tentativa malsucedida.
+    if resp.status_code >= 400:
+        return resp
+
+    try:
+        with db_conn(commit=True) as conn:
+            bump_revisao(conn)
+    except Exception:
+        # A escrita do usuário já foi concluída com sucesso — derrubar a
+        # resposta agora por causa do contador seria trocar um problema
+        # cosmético (alguém aperta F5) por perda de trabalho real.
+        log.exception("Falha ao incrementar a revisão em %s", request.path)
+
+    return resp
+
+
+@app.route("/api/versao")
+def versao():
+    with db_conn() as conn:
+        return jsonify(ler_revisao(conn))
 
 
 # 'unsafe-inline' em script-src é uma concessão consciente: index.html e app.js

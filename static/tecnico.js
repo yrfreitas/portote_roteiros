@@ -210,5 +210,56 @@
       .catch(() => {});
   }
 
+  // ===== AUTO-REFRESH =====
+  // Mesmo mecanismo do painel: um contador no servidor sobe a cada escrita e
+  // aqui só perguntamos se ele mudou. No campo isso importa mais do que no
+  // escritório — o técnico não fica olhando a tela esperando para apertar F5,
+  // e uma rota alterada que não aparece no celular dele vira viagem perdida.
+  //
+  // 20s em vez dos 10s do painel: o celular costuma estar em rede móvel, e
+  // metade das checagens é metade do consumo de dados e de bateria.
+  const INTERVALO_REVISAO = 20000;
+  let revisaoConhecida = null;
+
+  async function lerRevisao() {
+    const resp = await fetch(`${API}/versao`, { cache: 'no-store' });
+    if (!resp.ok) throw new Error('revisão indisponível');
+    return (await resp.json()).revisao;
+  }
+
+  async function verificarRevisao() {
+    if (document.hidden) return;
+
+    let revisao;
+    try {
+      revisao = await lerRevisao();
+    } catch {
+      return; // sem sinal no meio da rua é situação esperada, não erro
+    }
+
+    if (revisaoConhecida === null) {
+      revisaoConhecida = revisao;
+      return;
+    }
+    if (revisao === revisaoConhecida) return;
+    revisaoConhecida = revisao;
+
+    // Recarrega exatamente a tela em que o técnico está: se ele abriu uma
+    // rota, mantém a rota aberta em vez de jogá-lo de volta para a lista.
+    if (fichaAbertaId !== null) {
+      await abrirFicha(fichaAbertaId);
+    } else {
+      await carregarFichas();
+    }
+    toast('Rota atualizada');
+  }
+
   carregarFichas();
+
+  lerRevisao().then((r) => { revisaoConhecida = r; }).catch(() => {});
+  setInterval(verificarRevisao, INTERVALO_REVISAO);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) verificarRevisao();
+  });
+  window.addEventListener('online', verificarRevisao);
 })();
