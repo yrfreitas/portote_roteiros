@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from database import init_db
 from extensions import limiter
@@ -30,6 +31,14 @@ log = logging.getLogger("portotec")
 
 app = Flask(__name__)
 
+# O Railway serve a aplicação atrás de um proxy reverso. Sem isso, o Flask lê o
+# IP da borda da Railway em vez do IP de quem realmente chamou — o que fazia o
+# rate limiting contar todo mundo como se fosse um cliente só (confirmado em
+# 2026-08-12: 44 tentativas de login erradas seguidas, nenhuma bloqueada).
+# x_for/x_proto=1 = confiar em exatamente UM proxy à frente. Confiar em mais do
+# que existe permitiria a um cliente forjar o próprio IP via X-Forwarded-For.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 _secret = os.environ.get("SECRET_KEY")
 if not _secret:
     _secret = secrets.token_hex(32)
@@ -42,6 +51,13 @@ app.config["JSON_SORT_KEYS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+# O cookie de sessão só pode trafegar por HTTPS. Fica desligado quando
+# FLASK_DEBUG está ativo porque o servidor de desenvolvimento roda em HTTP puro —
+# com Secure=True o navegador simplesmente descarta o cookie e o login local
+# entra em laço infinito de "senha correta mas continua deslogado".
+_debug_local = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
+app.config["SESSION_COOKIE_SECURE"] = not _debug_local
 
 _origens = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 if _origens:
@@ -91,6 +107,44 @@ def index():
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+# 'unsafe-inline' em script-src é uma concessão consciente: index.html e app.js
+# usam handlers onclick= inline em dezenas de lugares, e uma CSP estrita
+# quebraria o painel inteiro. A proteção que de fato importa aqui é
+# frame-ancestors 'none' (impede o painel de ser embutido em iframe alheio, base
+# do clickjacking) somada a object-src/base-uri/form-action. Para endurecer o
+# script-src depois, é preciso antes migrar os onclick para addEventListener.
+_CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://unpkg.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://unpkg.com",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+])
+
+
+@app.after_request
+def _headers_de_seguranca(resp):
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), payment=()")
+    resp.headers.setdefault("Content-Security-Policy", _CSP)
+
+    # HSTS só faz sentido (e só é honrado) sobre HTTPS. Enviar em HTTP local
+    # não quebra nada, mas sujar o header à toa não ajuda ninguém a depurar.
+    # request.is_secure funciona porque o ProxyFix já traduziu X-Forwarded-Proto.
+    if request.is_secure:
+        resp.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return resp
 
 
 @app.errorhandler(HTTPException)
