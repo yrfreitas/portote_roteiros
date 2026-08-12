@@ -17,6 +17,7 @@ from routes.fichas import fichas_bp
 from routes.pedidos import pedidos_bp
 from routes.relatorios import relatorios_bp
 from routes.servicos import servicos_bp
+from routes.setores import setores_bp
 from routes.tecnico_api import tecnico_api_bp
 from routes.tecnico_view import tecnico_view_bp
 from routes.tecnicos import tecnicos_bp
@@ -58,6 +59,7 @@ app.register_blueprint(servicos_bp, url_prefix="/api")
 app.register_blueprint(tecnicos_bp, url_prefix="/api")
 app.register_blueprint(relatorios_bp, url_prefix="/api")
 app.register_blueprint(pedidos_bp, url_prefix="/api")
+app.register_blueprint(setores_bp, url_prefix="/api")
 app.register_blueprint(tecnico_api_bp, url_prefix="/api/t")
 app.register_blueprint(tecnico_view_bp)
 

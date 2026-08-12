@@ -233,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
   carregarTecnicos();
   _vcepRenderHistorico();
   carregarSeloPecas();
+  carregarSetores();
 });
 
 // Registro do PWA — silencioso, não bloqueia nada se falhar (ex: em http
@@ -310,6 +311,37 @@ async function api(path, options = {}, timeoutMs = TIMEOUT_PADRAO) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ─── Setores (Panasonic / Philco / Loja / ...) ──────────────────────
+// Setor fica no PONTO, não na ficha: uma rota do dia pode ter uma geladeira
+// Panasonic e uma lavadora Philco, e só separando no ponto dá pra contabilizar
+// cada frente direito.
+let setores = [];
+
+async function carregarSetores() {
+  try {
+    const r = await api('/setores');
+    setores = r.setores || [];
+  } catch (e) {
+    setores = [];
+    console.warn('setores não carregados:', e.message);
+  }
+  return setores;
+}
+
+function preencherSelectSetor(idSelect, selecionado = null) {
+  const sel = document.getElementById(idSelect);
+  if (!sel) return;
+  sel.innerHTML = `<option value="">Sem setor</option>` +
+    setores.map(s => `
+      <option value="${s.id}" ${String(s.id) === String(selecionado) ? 'selected' : ''}>
+        ${esc(s.nome)}
+      </option>`).join('');
+}
+
+function setorPorId(id) {
+  return setores.find(s => String(s.id) === String(id)) || null;
 }
 
 function copiarLinkTecnico(token) {
@@ -445,6 +477,41 @@ async function carregarVisaoGeral() {
     }
   } catch (e) {
     console.error('Erro ao carregar visão geral', e);
+  }
+
+  carregarResumoSetores();
+}
+
+// Quanto cada frente (Panasonic / Philco / Loja) representa. Sem isso, tudo
+// vira um número só e não dá pra saber de onde vem o trabalho.
+async function carregarResumoSetores() {
+  const alvo = document.getElementById('vg-setores');
+  if (!alvo) return;
+
+  try {
+    const r = await api('/setores/resumo');
+    const lista = (r.setores || []).filter(s => s.pontos > 0);
+    if (lista.length === 0) { alvo.innerHTML = ''; return; }
+
+    const total = lista.reduce((soma, s) => soma + s.pontos, 0);
+
+    alvo.innerHTML = `
+      <div class="vg-setores-titulo">Por setor</div>
+      ${lista.map(s => {
+        const pct = total ? Math.round((s.pontos / total) * 100) : 0;
+        return `
+        <div class="vg-setor-row">
+          <span class="vg-tecnico-dot" style="background:${escCor(s.cor)}"></span>
+          <span class="vg-tecnico-nome">${esc(s.nome)}</span>
+          <div class="vg-setor-barra">
+            <div class="vg-setor-preenchido" style="width:${pct}%;background:${escCor(s.cor)}"></div>
+          </div>
+          <span class="vg-tecnico-meta">${s.pontos} pt${s.pontos !== 1 ? 's' : ''} · ${pct}%</span>
+        </div>`;
+      }).join('')}
+    `;
+  } catch (e) {
+    alvo.innerHTML = '';
   }
 }
 
@@ -1053,7 +1120,14 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
           <div class="roteiro-endereco">${s.numero ? `<strong>Nº ${esc(s.numero)}</strong> · ` : ''}${esc(s.endereco_completo) || '—'}</div>
           ${s.cliente ? `<div class="roteiro-cliente">${icone('usuario', 'icone-11')} ${esc(s.cliente)}${s.descricao ? ' · ' + esc(s.descricao) : ''}</div>` : ''}
           ${aparelho ? `<div class="roteiro-aparelho">${icone('ferramenta', 'icone-11')} ${esc(aparelho)}</div>` : ''}
-          ${s.numero_os ? `<div class="roteiro-os">OS ${esc(s.numero_os)}</div>` : ''}
+          ${(() => {
+            const st = setorPorId(s.setor_id);
+            const os = s.numero_os ? `<span class="roteiro-os">OS ${esc(s.numero_os)}</span>` : '';
+            const marca = st
+              ? `<span class="roteiro-setor" style="color:${escCor(st.cor)};border-color:${escCor(st.cor)}55;background:${escCor(st.cor)}18;">${esc(st.nome)}</span>`
+              : '';
+            return (os || marca) ? `<div class="roteiro-etiquetas">${marca}${os}</div>` : '';
+          })()}
           ${(!s.lat || !s.lng) ? `<div class="roteiro-cliente" style="color:var(--danger-text);display:flex;align-items:center;gap:4px;">${icone('alerta', 'icone-11')} sem coordenada — fora do cálculo</div>` : ''}
         </div>
         <div class="roteiro-actions">
@@ -1978,6 +2052,7 @@ async function adicionarServico() {
         tipo_aparelho: document.getElementById('add-tipo-aparelho').value,
         modelo:        document.getElementById('add-modelo').value,
         numero_os:     document.getElementById('add-numero-os').value,
+        setor_id:      document.getElementById('add-setor').value || null,
       }),
     });
 
@@ -2260,6 +2335,7 @@ function abrirModalAddServico(fichaId) {
   document.getElementById('add-ficha-id').value = fichaId;
   ['add-cep','add-numero','add-cliente','add-descricao','add-tipo-aparelho','add-modelo','add-numero-os']
     .forEach(id => { document.getElementById(id).value = ''; });
+  preencherSelectSetor('add-setor');
   document.getElementById('modal-add-servico').classList.add('open');
   setTimeout(() => document.getElementById('add-cep').focus(), 100);
 }
@@ -2276,6 +2352,7 @@ function abrirModalEditarServico(servicoId) {
   document.getElementById('edit-tipo-aparelho').value = s.tipo_aparelho || '';
   document.getElementById('edit-modelo').value = s.modelo || '';
   document.getElementById('edit-numero-os').value = s.numero_os || '';
+  preencherSelectSetor('edit-setor', s.setor_id);
   document.getElementById('edit-descricao').value = s.descricao || '';
 
   document.getElementById('modal-editar-servico').classList.add('open');
@@ -2304,6 +2381,7 @@ async function salvarEdicaoServico() {
         tipo_aparelho: document.getElementById('edit-tipo-aparelho').value,
         modelo:        document.getElementById('edit-modelo').value,
         numero_os:     document.getElementById('edit-numero-os').value,
+        setor_id:      document.getElementById('edit-setor').value || null,
       }),
     });
 

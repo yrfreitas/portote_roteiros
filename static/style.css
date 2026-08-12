@@ -2533,17 +2533,29 @@ select:focus-visible,
   .peca-sugestao { flex-direction: column; align-items: stretch; }
 }
 
-.roteiro-os {
+.roteiro-etiquetas {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;
+}
+.roteiro-os, .roteiro-setor {
   font-family: var(--font-mono);
   font-size: 10.5px;
+  border-radius: 5px;
+  padding: 2px 7px;
+  letter-spacing: 0.4px;
+  display: inline-block;
+}
+.roteiro-os {
   color: var(--accent-text);
   background: var(--accent-dim);
   border: 1px solid var(--border-bright);
-  border-radius: 5px;
-  padding: 2px 7px;
-  margin-top: 4px;
-  display: inline-block;
-  letter-spacing: 0.4px;
+}
+.roteiro-setor {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border: 1px solid;
 }
 
 .previa-vinculo {
@@ -2551,4 +2563,31 @@ select:focus-visible,
   border: 1px solid var(--border-bright);
   border-radius: var(--radius);
   background: rgba(255,255,255,0.02);
+}
+
+/* ─── Resumo por setor na Visão Geral ────────────────────────────── */
+.vg-setores { padding: 6px 8px 12px; }
+.vg-setores:empty { padding: 0; }
+.vg-setores-titulo {
+  font-family: var(--font-display);
+  font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.6px;
+  color: var(--text-muted);
+  padding: 8px 12px 6px;
+  border-top: 1px solid var(--border);
+}
+.vg-setor-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 12px; font-size: 12px;
+}
+.vg-setor-barra {
+  flex: 1; min-width: 40px; height: 5px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 999px; overflow: hidden;
+}
+.vg-setor-preenchido { height: 100%; border-radius: 999px; transition: width 0.5s ease; }
+
+@media (max-width: 560px) {
+  .vg-setor-row { flex-wrap: wrap; }
+  .vg-setor-barra { order: 3; flex-basis: 100%; }
 }

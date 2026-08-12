@@ -98,6 +98,13 @@ def insert_returning_id(conn, query: str, params=()):
 
 
 _SCHEMA_PG = [
+    """CREATE TABLE IF NOT EXISTS setores (
+        id         SERIAL PRIMARY KEY,
+        nome       TEXT NOT NULL,
+        cor        TEXT DEFAULT '#4f8dfb',
+        ativo      BOOLEAN DEFAULT TRUE,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
     """CREATE TABLE IF NOT EXISTS tecnicos (
         id          SERIAL PRIMARY KEY,
         nome        TEXT NOT NULL,
@@ -134,7 +141,8 @@ _SCHEMA_PG = [
         ordem              INTEGER DEFAULT 0,
         status             TEXT DEFAULT 'pendente',
         concluido_em       TEXT,
-        numero_os          TEXT
+        numero_os          TEXT,
+        setor_id           INTEGER REFERENCES setores(id) ON DELETE SET NULL
     )""",
     """CREATE TABLE IF NOT EXISTS cache_geo (
         cep         TEXT PRIMARY KEY,
@@ -155,6 +163,13 @@ _SCHEMA_PG = [
 ]
 
 _SCHEMA_SQLITE = """
+    CREATE TABLE IF NOT EXISTS setores (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome       TEXT NOT NULL,
+        cor        TEXT DEFAULT '#4f8dfb',
+        ativo      INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE TABLE IF NOT EXISTS tecnicos (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         nome        TEXT NOT NULL,
@@ -193,7 +208,9 @@ _SCHEMA_SQLITE = """
         status             TEXT DEFAULT 'pendente',
         concluido_em       TEXT,
         numero_os          TEXT,
-        FOREIGN KEY (ficha_id) REFERENCES fichas(id) ON DELETE CASCADE
+        setor_id           INTEGER,
+        FOREIGN KEY (ficha_id) REFERENCES fichas(id) ON DELETE CASCADE,
+        FOREIGN KEY (setor_id) REFERENCES setores(id) ON DELETE SET NULL
     );
     CREATE TABLE IF NOT EXISTS cache_geo (
         cep         TEXT PRIMARY KEY,
@@ -219,6 +236,7 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_servicos_ordem   ON servicos(ficha_id, ordem)",
     "CREATE INDEX IF NOT EXISTS idx_fichas_tecnico   ON fichas(tecnico_id)",
     "CREATE INDEX IF NOT EXISTS idx_push_tecnico     ON push_subscriptions(tecnico_id)",
+    "CREATE INDEX IF NOT EXISTS idx_servicos_setor   ON servicos(setor_id)",
 ]
 
 _MIGRACOES_PG = [
@@ -240,6 +258,7 @@ _MIGRACOES_PG = [
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente'",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS concluido_em TEXT",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS numero_os TEXT",
+    "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS setor_id INTEGER",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -253,6 +272,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE servicos ADD COLUMN status TEXT DEFAULT 'pendente'",
     "ALTER TABLE servicos ADD COLUMN concluido_em TEXT",
     "ALTER TABLE servicos ADD COLUMN numero_os TEXT",
+    "ALTER TABLE servicos ADD COLUMN setor_id INTEGER",
 ]
 
 
@@ -303,6 +323,30 @@ def init_db():
 
         sincronizar_sequences(conn)
         _gerar_tokens_faltantes(conn)
+        _criar_setores_iniciais(conn)
+
+
+# Setores criados na primeira execução. Só entram se a tabela estiver vazia —
+# assim o usuário pode renomear, remover ou acrescentar sem que a lista volte
+# a aparecer no próximo start.
+SETORES_INICIAIS = [
+    ("Panasonic", "#1a6fd4"),
+    ("Philco",    "#e05c2a"),
+    ("Loja",      "#2aa05c"),
+]
+
+
+def _criar_setores_iniciais(conn):
+    try:
+        total = fetch_one(conn, "SELECT COUNT(*) AS total FROM setores")["total"]
+    except Exception:
+        return
+    if total:
+        return
+
+    for nome, cor in SETORES_INICIAIS:
+        execute(conn, "INSERT INTO setores (nome, cor) VALUES (?, ?)", (nome, cor))
+    conn.commit()
 
 
 def _gerar_tokens_faltantes(conn):
