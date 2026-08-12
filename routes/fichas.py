@@ -1,3 +1,5 @@
+import logging
+
 from flask import Blueprint, jsonify, request
 
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
@@ -6,6 +8,8 @@ from services.otimizador import (
     MINUTOS_PARADA, calcular_rota_fixa, calcular_tempo, otimizar_rota,
 )
 from services.push import notificar_tecnico
+
+log = logging.getLogger("portotec.fichas")
 
 fichas_bp = Blueprint("fichas", __name__)
 
@@ -169,13 +173,96 @@ def alterar_status_ficha(ficha_id):
                  WHERE id = ?
             """, (novo_status, ficha_id))
         else:
+            # Limpa conciliada_em junto: reabrir a rota tem que permitir
+            # conciliar de novo depois de corrigir o que estava errado.
             execute(conn, """
                 UPDATE fichas SET status = ?, concluida_em = NULL,
-                       updated_at = CURRENT_TIMESTAMP
+                       conciliada_em = NULL, updated_at = CURRENT_TIMESTAMP
                  WHERE id = ?
             """, (novo_status, ficha_id))
 
-    return jsonify({"mensagem": f"Ficha marcada como {novo_status}", "status": novo_status})
+    resposta = {"mensagem": f"Ficha marcada como {novo_status}", "status": novo_status}
+
+    # Reabrir a rota tem que desfazer a baixa na planilha — senão o site diz
+    # "pendente" e a planilha diz "concluído", e ninguém confia em nenhum dos dois.
+    if novo_status == "pendente":
+        try:
+            from services.planilha import planilha_configurada, reverter
+            if planilha_configurada():
+                with db_conn() as conn:
+                    servicos = fetch_all(
+                        conn, "SELECT * FROM servicos WHERE ficha_id = ?", (ficha_id,)
+                    )
+                r = reverter({"id": ficha_id}, servicos)
+                if r.get("revertidas"):
+                    resposta["planilha"] = f"{r['revertidas']} baixa(s) desfeita(s) na planilha"
+        except Exception:
+            # Falha na planilha não pode impedir de reabrir a rota no site.
+            log.exception("Falha ao reverter baixa na planilha da ficha %s", ficha_id)
+            resposta["aviso"] = ("Rota reaberta, mas não consegui desfazer a baixa "
+                                 "na planilha — confira manualmente.")
+
+    return jsonify(resposta)
+
+
+@fichas_bp.route("/fichas/<int:ficha_id>/conciliar", methods=["POST"])
+def conciliar_ficha(ficha_id):
+    """Casa os pontos concluídos da ficha com a planilha de pedidos.
+
+    ?aplicar=true grava de verdade; sem isso é só prévia, pra o técnico ver
+    o que vai acontecer antes de mexer na planilha.
+    """
+    from services.planilha import conciliar
+
+    aplicar = str(request.args.get("aplicar", "")).lower() in ("1", "true", "sim")
+
+    with db_conn() as conn:
+        ficha = fetch_one(conn, """
+            SELECT f.*, t.nome AS tecnico_nome
+            FROM fichas f LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+            WHERE f.id = ?
+        """, (ficha_id,))
+        if not ficha:
+            return jsonify({"erro": "Ficha não encontrada"}), 404
+
+        servicos = fetch_all(conn, """
+            SELECT * FROM servicos
+             WHERE ficha_id = ? AND status = 'concluido'
+             ORDER BY ordem, id
+        """, (ficha_id,))
+
+    if not servicos:
+        return jsonify({
+            "erro": "Nenhum ponto concluído nesta ficha. "
+                    "Marque os pontos atendidos antes de finalizar o dia."
+        }), 400
+
+    # Gravar duas vezes duplicaria as linhas em "Outros Atendimentos" e não
+    # daria baixa nenhuma (as linhas já conciliadas são puladas). Trava aqui.
+    if aplicar and ficha.get("conciliada_em"):
+        return jsonify({
+            "erro": "Esta ficha já foi conciliada com a planilha em "
+                    f"{ficha['conciliada_em']}. Reabra a rota se precisar refazer.",
+            "ja_conciliada": True,
+        }), 409
+
+    try:
+        resultado = conciliar(ficha, servicos, ficha.get("tecnico_nome") or "", aplicar)
+    except Exception as exc:
+        log.exception("Falha ao conciliar ficha %s", ficha_id)
+        return jsonify({"erro": f"Falha ao acessar a planilha: {exc}"}), 502
+
+    if resultado.get("configurada") is False:
+        return jsonify(resultado), 503
+
+    if aplicar:
+        with db_conn(commit=True) as conn:
+            execute(conn, """
+                UPDATE fichas SET conciliada_em = CURRENT_TIMESTAMP WHERE id = ?
+            """, (ficha_id,))
+
+    resultado["ja_conciliada"] = bool(ficha.get("conciliada_em"))
+    return jsonify(resultado)
 
 
 @fichas_bp.route("/fichas/<int:ficha_id>/otimizar", methods=["POST"])

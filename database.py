@@ -117,6 +117,7 @@ _SCHEMA_PG = [
         distancia_total    DOUBLE PRECISION DEFAULT 0,
         status             TEXT DEFAULT 'pendente',
         concluida_em       TEXT,
+        conciliada_em      TEXT,
         created_at         TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at         TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
@@ -172,6 +173,7 @@ _SCHEMA_SQLITE = """
         distancia_total    REAL DEFAULT 0,
         status             TEXT DEFAULT 'pendente',
         concluida_em       TEXT,
+        conciliada_em      TEXT,
         created_at         TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at         TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
@@ -230,6 +232,7 @@ _MIGRACOES_PG = [
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS modelo TEXT",
     "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente'",
     "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS concluida_em TEXT",
+    "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS conciliada_em TEXT",
     "ALTER TABLE tecnicos ADD COLUMN IF NOT EXISTS token TEXT",
     "ALTER TABLE tecnicos ADD CONSTRAINT tecnicos_token_unique UNIQUE (token)",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente'",
@@ -242,6 +245,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE servicos ADD COLUMN modelo TEXT",
     "ALTER TABLE fichas ADD COLUMN status TEXT DEFAULT 'pendente'",
     "ALTER TABLE fichas ADD COLUMN concluida_em TEXT",
+    "ALTER TABLE fichas ADD COLUMN conciliada_em TEXT",
     "ALTER TABLE tecnicos ADD COLUMN token TEXT",
     "ALTER TABLE servicos ADD COLUMN status TEXT DEFAULT 'pendente'",
     "ALTER TABLE servicos ADD COLUMN concluido_em TEXT",

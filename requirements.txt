@@ -7,3 +7,5 @@ python-dotenv
 requests
 pywebpush
 openpyxl
+gspread
+google-auth

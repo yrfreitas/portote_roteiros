@@ -1750,14 +1750,122 @@ async function alternarStatusFicha(fichaId, statusAtual) {
   if (novoStatus === 'pendente' && !confirm('Reabrir esta rota como pendente de novo?')) return;
 
   try {
-    await api(`/fichas/${fichaId}/status`, {
+    const r = await api(`/fichas/${fichaId}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status: novoStatus }),
     });
     toast(novoStatus === 'concluida' ? 'Rota marcada como concluída' : 'Rota reaberta', 'success');
+    if (r?.planilha) toast(r.planilha, 'info');
+    if (r?.aviso) toast(r.aviso, 'error');
     await renderFichaDetalhe(fichaId);
     await carregarTecnicos();
+
+    // Concluiu a rota? oferece dar baixa na planilha de pedidos.
+    if (novoStatus === 'concluida') abrirConciliacao(fichaId);
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Conciliação com a planilha de pedidos ──────────────────────────
+// Sempre mostra a prévia antes de gravar: mexer na planilha da equipe sem
+// avisar é o tipo de coisa que ninguém perdoa se der errado.
+async function abrirConciliacao(fichaId) {
+  const modal = document.getElementById('modal-conciliacao');
+  const corpo = document.getElementById('conciliacao-corpo');
+  const btn = document.getElementById('btn-aplicar-conciliacao');
+
+  modal.classList.add('open');
+  corpo.innerHTML = `<div class="loading-row" style="justify-content:center;gap:10px;display:flex;padding:20px;"><div class="spinner"></div> Conferindo a planilha...</div>`;
+  btn.style.display = 'none';
+
+  let r;
+  try {
+    r = await api(`/fichas/${fichaId}/conciliar`, { method: 'POST' });
+  } catch (e) {
+    corpo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const casados = r.casados || [];
+  const outros = r.outros || [];
+
+  // Ficha já conciliada: a prévia mentiria (as linhas com baixa são puladas e
+  // tudo cairia em "Outros"). Melhor dizer a verdade e não deixar gravar.
+  if (r.ja_conciliada) {
+    corpo.innerHTML = `
+      <div class="conc-alerta" style="margin-top:0;">
+        Esta ficha <strong>já foi conciliada</strong> com a planilha. As baixas
+        já estão lá.<br><br>
+        Se precisar refazer, reabra a rota primeiro — aí as baixas são desfeitas
+        e você pode conciliar de novo.
+      </div>`;
+    btn.style.display = 'none';
+    return;
+  }
+
+  corpo.innerHTML = `
+    <div class="conc-resumo">
+      <div class="conc-bloco">
+        <div class="conc-num" style="color:var(--success-text)">${casados.length}</div>
+        <div class="conc-lbl">com baixa na planilha</div>
+      </div>
+      <div class="conc-bloco">
+        <div class="conc-num" style="color:var(--gold-text)">${outros.length}</div>
+        <div class="conc-lbl">vão pra "Outros Atendimentos"</div>
+      </div>
+    </div>
+
+    ${casados.length ? `
+      <div class="conc-titulo">Baixa na planilha</div>
+      ${casados.map(c => `
+        <div class="conc-item">
+          <span class="conc-tag ${c.forca === 'nome+modelo' ? 'ok' : 'aviso'}">
+            ${c.forca === 'nome+modelo' ? 'nome + modelo' : 'só o nome'}
+          </span>
+          <div>
+            <div class="conc-cliente">${esc(c.cliente)}</div>
+            <div class="conc-meta">linha ${c.linha} · peça: ${esc(c.peca) || '—'}</div>
+          </div>
+        </div>`).join('')}
+    ` : ''}
+
+    ${outros.length ? `
+      <div class="conc-titulo">Outros atendimentos (outra marca / vistoria)</div>
+      ${outros.map(o => `
+        <div class="conc-item">
+          <span class="conc-tag neutro">fora da planilha</span>
+          <div>
+            <div class="conc-cliente">${esc(o.cliente)}</div>
+            <div class="conc-meta">${esc(o.aparelho) || '—'}${o.modelo ? ' · ' + esc(o.modelo) : ''}</div>
+          </div>
+        </div>`).join('')}
+    ` : ''}
+
+    ${casados.some(c => c.forca === 'nome') ? `
+      <div class="conc-alerta">
+        Os marcados como <strong>"só o nome"</strong> casaram pelo cliente, mas o modelo
+        não bateu — vão ficar amarelos na planilha pra alguém conferir.
+      </div>` : ''}
+  `;
+
+  btn.style.display = '';
+  btn.disabled = false;
+  btn.textContent = `Confirmar (${casados.length} baixa${casados.length !== 1 ? 's' : ''})`;
+  btn.onclick = () => aplicarConciliacao(fichaId);
+}
+
+async function aplicarConciliacao(fichaId) {
+  const btn = document.getElementById('btn-aplicar-conciliacao');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Gravando...';
+  try {
+    const r = await api(`/fichas/${fichaId}/conciliar?aplicar=true`, { method: 'POST' });
+    fecharModais();
+    toast(`Planilha atualizada: ${(r.casados || []).length} baixa(s), ${(r.outros || []).length} em Outros`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Tentar de novo';
+  }
 }
 
 async function alternarStatusServico(servicoId, novoStatus, fichaId) {
