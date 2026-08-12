@@ -49,6 +49,13 @@ def diagnostico_imap(testar_conexao: bool = False) -> dict:
         "senha_tem_espaco_nas_pontas": senha != senha.strip(),
         "host": os.environ.get("IMAP_HOST", "imap.gmail.com"),
         "porta": os.environ.get("IMAP_PORT", "993"),
+        # Só os NOMES das variáveis parecidas — nunca os valores. Serve pra
+        # flagrar erro de digitação no nome (IMAP_PASSWORLD, IMAP_SENHA...),
+        # que é indistinguível de "variável não salva" olhando só o resultado.
+        "variaveis_parecidas": sorted(
+            nome for nome in os.environ
+            if any(p in nome.upper() for p in ("IMAP", "MAIL", "SENHA", "PASS"))
+        ),
     }
 
     if testar_conexao and info["configurado"]:
