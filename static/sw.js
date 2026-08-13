@@ -11,7 +11,9 @@
 // que força quem já tem o PWA instalado a receber o arquivo novo. Sem o bump,
 // o navegador continua servindo o JS antigo do cache indefinidamente.
 // v3 = entrada do auto-refresh (verificarRevisao em app.js e tecnico.js).
-const CACHE_VERSAO = 'portotec-roteiros-v3';
+// v4 = resumo por setor com denominador correto e linha "Sem setor",
+//      e rota concluída saindo da sidebar (passa a viver só no Histórico).
+const CACHE_VERSAO = 'portotec-roteiros-v4';
 
 const ARQUIVOS_CASCA = [
   '/',

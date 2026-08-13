@@ -2576,6 +2576,19 @@ select:focus-visible,
   padding: 8px 12px 6px;
   border-top: 1px solid var(--border);
 }
+/* Deixa explícito no próprio título o que está sendo contado. Sem isso o
+   número volta a ser ambíguo entre "hoje", "em aberto" e "desde sempre" —
+   que foi exatamente a dúvida que originou esta mudança. */
+.vg-setores-escopo {
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: none;
+  opacity: 0.7;
+}
+/* Os pontos sem classificação aparecem em cinza, sem cor de marca: a linha
+   existe para incomodar de leve até alguém atribuir o setor, não para
+   competir visualmente com as frentes de verdade. */
+.vg-setor-row--sem .vg-setor-preenchido { opacity: 0.45; }
 .vg-setor-row {
   display: flex; align-items: center; gap: 10px;
   padding: 7px 12px; font-size: 12px;

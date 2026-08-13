@@ -146,17 +146,61 @@ def remover(setor_id):
 
 @setores_bp.route("/setores/resumo", methods=["GET"])
 def resumo():
-    """Números por setor, pra Visão Geral e Histórico."""
+    """Números por setor para a Visão Geral.
+
+    Conta por padrão só o trabalho EM ABERTO (fichas não concluídas). Antes
+    somava tudo desde sempre, sem filtro de data nem de status: num painel
+    chamado "Visão Geral" isso ia virando um acumulado de meses que misturava
+    o serviço de hoje com tudo que já foi fechado. O acumulado histórico tem
+    aba própria — `?escopo=tudo` devolve ele para quem precisar.
+
+    Devolve também `total` e `sem_setor`, e essa é a parte que importa: sem o
+    total real, o front calculava a fatia de cada setor dividindo pela soma dos
+    pontos JÁ classificados. Com 5 pontos classificados de 44, Panasonic
+    aparecia como 100% do trabalho quando era 11%. O percentual precisa do
+    denominador certo, e os pontos sem setor precisam aparecer — enquanto forem
+    invisíveis, ninguém vai classificá-los.
+    """
+    escopo_tudo = request.args.get("escopo") == "tudo"
+    filtro_ficha = "" if escopo_tudo else "WHERE f.status <> 'concluida'"
+
     with db_conn() as conn:
+        # Subconsulta em vez de filtrar no ON do LEFT JOIN: com o filtro no ON,
+        # os serviços de ficha concluída continuariam entrando na contagem
+        # (a linha existe, só vem com f.* nulo). Restringindo antes, o LEFT
+        # JOIN volta a significar o que se espera dele.
         linhas = fetch_all(conn, f"""
             SELECT s.id, s.nome, s.cor,
                    COUNT(sv.id) AS pontos,
                    COUNT(CASE WHEN sv.status = 'concluido' THEN 1 END) AS concluidos,
                    COUNT(DISTINCT sv.ficha_id) AS rotas
               FROM setores s
-              LEFT JOIN servicos sv ON sv.setor_id = s.id
+              LEFT JOIN (
+                   SELECT sv.id, sv.setor_id, sv.status, sv.ficha_id
+                     FROM servicos sv
+                     JOIN fichas f ON f.id = sv.ficha_id
+                     {filtro_ficha}
+              ) sv ON sv.setor_id = s.id
              WHERE {ATIVO}
              GROUP BY s.id, s.nome, s.cor
              ORDER BY pontos DESC, s.nome
         """)
-    return jsonify({"setores": linhas})
+
+        total = fetch_one(conn, f"""
+            SELECT COUNT(*) AS total
+              FROM servicos sv
+              JOIN fichas f ON f.id = sv.ficha_id
+              {filtro_ficha}
+        """)["total"]
+
+    # sem_setor por subtração, não por "setor_id IS NULL": assim os pontos
+    # presos num setor desativado também entram na conta em vez de sumirem do
+    # painel sem deixar rastro.
+    classificados = sum(linha["pontos"] for linha in linhas)
+
+    return jsonify({
+        "setores": linhas,
+        "total": total,
+        "sem_setor": total - classificados,
+        "escopo": "tudo" if escopo_tudo else "abertas",
+    })

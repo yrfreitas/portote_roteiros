@@ -34,6 +34,13 @@ def listar_fichas():
         condicoes.append("f.status = ?")
         params.append(status)
 
+    # ?abertas=true esconde o que já foi concluído. Existe separado do
+    # ?status=pendente de propósito: se algum dia entrar um terceiro status
+    # (em andamento, cancelada), "aberta" continua significando "não fechada"
+    # sem precisar caçar todos os lugares que listam ficha.
+    if str(request.args.get("abertas", "")).lower() in ("1", "true", "sim"):
+        condicoes.append("f.status <> 'concluida'")
+
     filtro = ("WHERE " + " AND ".join(condicoes)) if condicoes else ""
 
     query = f"""

@@ -510,10 +510,14 @@ async function carregarFichasTecnico(tecnicoId) {
   if (!container) return;
 
   try {
-    const fichas = await api(`/fichas?tecnico_id=${tecnicoId}`);
+    // Só as rotas em aberto. Depois de concluída a ficha vive no Histórico —
+    // a sidebar é a lista de trabalho a fazer, e rota fechada ali só empurra
+    // para baixo o que ainda precisa de atenção. Não vira beco sem saída: o
+    // Histórico abre a ficha e o botão "Reabrir Rota" continua na tela dela.
+    const fichas = await api(`/fichas?tecnico_id=${tecnicoId}&abertas=true`);
 
     if (fichas.length === 0) {
-      container.innerHTML = `<div style="padding:8px 14px;color:var(--text-muted);font-size:11px;">Nenhuma ficha ainda.</div>`;
+      container.innerHTML = `<div style="padding:8px 14px;color:var(--text-muted);font-size:11px;">Nenhuma rota em aberto.</div>`;
       return;
     }
 
@@ -607,24 +611,38 @@ async function carregarResumoSetores() {
   try {
     const r = await api('/setores/resumo');
     const lista = (r.setores || []).filter(s => s.pontos > 0);
-    if (lista.length === 0) { alvo.innerHTML = ''; return; }
+    const semSetor = r.sem_setor || 0;
+    if (lista.length === 0 && semSetor === 0) { alvo.innerHTML = ''; return; }
 
-    const total = lista.reduce((soma, s) => soma + s.pontos, 0);
+    // O denominador é o total de pontos em aberto, NÃO a soma dos já
+    // classificados. Dividindo pelos classificados, um único setor preenchido
+    // sempre daria 100% — foi o que aconteceu: Panasonic marcava 100% do
+    // painel sendo 5 de 44 pontos.
+    const total = r.total || lista.reduce((soma, s) => soma + s.pontos, 0);
+    const pctDe = (n) => (total ? Math.round((n / total) * 100) : 0);
+
+    const linhaSemSetor = semSetor > 0 ? `
+        <div class="vg-setor-row vg-setor-row--sem">
+          <span class="vg-tecnico-dot" style="background:var(--text-muted)"></span>
+          <span class="vg-tecnico-nome" style="color:var(--text-muted)">Sem setor</span>
+          <div class="vg-setor-barra">
+            <div class="vg-setor-preenchido" style="width:${pctDe(semSetor)}%;background:var(--text-muted)"></div>
+          </div>
+          <span class="vg-tecnico-meta">${semSetor} pt${semSetor !== 1 ? 's' : ''} · ${pctDe(semSetor)}%</span>
+        </div>` : '';
 
     alvo.innerHTML = `
-      <div class="vg-setores-titulo">Por setor</div>
-      ${lista.map(s => {
-        const pct = total ? Math.round((s.pontos / total) * 100) : 0;
-        return `
+      <div class="vg-setores-titulo">Por setor <span class="vg-setores-escopo">em aberto · ${total} pt${total !== 1 ? 's' : ''}</span></div>
+      ${lista.map(s => `
         <div class="vg-setor-row">
           <span class="vg-tecnico-dot" style="background:${escCor(s.cor)}"></span>
           <span class="vg-tecnico-nome">${esc(s.nome)}</span>
           <div class="vg-setor-barra">
-            <div class="vg-setor-preenchido" style="width:${pct}%;background:${escCor(s.cor)}"></div>
+            <div class="vg-setor-preenchido" style="width:${pctDe(s.pontos)}%;background:${escCor(s.cor)}"></div>
           </div>
-          <span class="vg-tecnico-meta">${s.pontos} pt${s.pontos !== 1 ? 's' : ''} · ${pct}%</span>
-        </div>`;
-      }).join('')}
+          <span class="vg-tecnico-meta">${s.pontos} pt${s.pontos !== 1 ? 's' : ''} · ${pctDe(s.pontos)}%</span>
+        </div>`).join('')}
+      ${linhaSemSetor}
     `;
   } catch (e) {
     alvo.innerHTML = '';
