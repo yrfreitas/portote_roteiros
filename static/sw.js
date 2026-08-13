@@ -29,7 +29,8 @@
 // v18 = fichas na ordem da semana e destaque para a rota de hoje.
 // v19 = ordem de calendário de verdade (ano, mês, dia).
 // v20 = "HOJE" compara a data, não o nome do dia.
-const CACHE_VERSAO = 'portotec-roteiros-v20';
+// v21 = edição de ficha (dia e data) — antes não existia.
+const CACHE_VERSAO = 'portotec-roteiros-v21';
 
 const ARQUIVOS_CASCA = [
   '/',

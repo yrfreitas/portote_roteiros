@@ -213,6 +213,52 @@ def obter_ficha(ficha_id):
     return jsonify({"ficha": ficha, "servicos": servicos, "resumo": resumo})
 
 
+@fichas_bp.route("/fichas/<int:ficha_id>", methods=["PUT"])
+def editar_ficha(ficha_id):
+    """Corrige dia da semana e data de referência de uma ficha existente.
+
+    Não existia. Uma data digitada errada só se resolvia apagando a ficha e
+    refazendo — perdendo todos os pontos junto. Foi assim que uma ficha ficou
+    com 2006 no lugar de 2026 e passou a encabeçar a lista para sempre.
+
+    Só estes dois campos: ponto de partida mexe em coordenada e obriga
+    recalcular a rota, o que é outra operação com outras consequências.
+    """
+    data = request.get_json(silent=True) or {}
+
+    with db_conn() as conn:
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+    if not ficha:
+        return jsonify({"erro": "Ficha não encontrada"}), 404
+
+    dia = (data.get("dia_semana") or ficha.get("dia_semana") or "").strip()
+    if dia not in DIAS_VALIDOS:
+        return jsonify({"erro": f"Dia da semana inválido: {dia}"}), 400
+
+    if "data_referencia" in data:
+        data_ref = (data.get("data_referencia") or "").strip()
+        # Vazio é permitido (ficha sem data marcada), mas texto que não seja
+        # uma data real não: ela ordena a lista inteira, e lixo aqui volta a
+        # embaralhar tudo — que é exatamente o problema que estamos fechando.
+        if data_ref:
+            try:
+                datetime.strptime(data_ref, "%Y-%m-%d")
+            except ValueError:
+                return jsonify({"erro": "Data inválida. Use o formato AAAA-MM-DD."}), 400
+    else:
+        data_ref = ficha.get("data_referencia") or ""
+
+    with db_conn(commit=True) as conn:
+        execute(conn, """
+            UPDATE fichas SET dia_semana = ?, data_referencia = ?,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?
+        """, (dia, data_ref, ficha_id))
+
+    return jsonify({"mensagem": "Ficha atualizada",
+                    "dia_semana": dia, "data_referencia": data_ref})
+
+
 @fichas_bp.route("/fichas/<int:ficha_id>", methods=["DELETE"])
 def deletar_ficha(ficha_id):
     with db_conn(commit=True) as conn:
