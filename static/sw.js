@@ -24,7 +24,8 @@
 // v13 = folha de botões no "A caminho" + selo de versão na tela.
 // v14 = botão "A caminho" também no painel, na linha de cada cliente.
 // v15 = rastreio ao vivo: o cliente acompanha o técnico a caminho.
-const CACHE_VERSAO = 'portotec-roteiros-v15';
+// v16 = código do app passa a ser rede-primeiro (fim do JS velho no cache).
+const CACHE_VERSAO = 'portotec-roteiros-v16';
 
 const ARQUIVOS_CASCA = [
   '/',
@@ -131,7 +132,35 @@ self.addEventListener('fetch', (evento) => {
     return;
   }
 
-  // Casca do app: cache primeiro, atualiza em segundo plano (stale-while-revalidate).
+  // CÓDIGO DO APP: rede primeiro, cache só como rede de segurança.
+  //
+  // Isto era cache-first ("stale-while-revalidate") e custou caro: o navegador
+  // servia o JS velho e só buscava o novo depois, então TODA correção só
+  // aparecia na segunda abertura. Em 2026-08-13 o técnico testou um botão
+  // novo três vezes e continuou rodando a versão antiga — o diagnóstico
+  // mostrou zero rastreios criados enquanto a API funcionava perfeitamente.
+  //
+  // Para HTML/JS/CSS, servir versão velha não é "um pouco desatualizado": é o
+  // aplicativo errado. Estes arquivos são pequenos e a rede resolve em
+  // milissegundos; o cache continua ali para quando não houver rede.
+  const ehCodigoDoApp = /\.(js|css)$/.test(url.pathname) || url.pathname === '/'
+    || url.pathname.startsWith('/tecnico/');
+
+  if (ehCodigoDoApp) {
+    evento.respondWith(
+      fetch(evento.request).then((resposta) => {
+        if (resposta.ok) {
+          const clone = resposta.clone();
+          caches.open(CACHE_VERSAO).then((cache) => cache.put(evento.request, clone));
+        }
+        return resposta;
+      }).catch(() => caches.match(evento.request))
+    );
+    return;
+  }
+
+  // Demais estáticos (ícones, imagens, manifest): cache primeiro, atualiza em
+  // segundo plano. Esses raramente mudam e não alteram comportamento.
   evento.respondWith(
     caches.match(evento.request).then((cacheado) => {
       const buscaRede = fetch(evento.request).then((resposta) => {
