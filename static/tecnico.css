@@ -160,3 +160,20 @@ body {
 .t-toast.show { opacity: 1; }
 
 svg { width: 14px; height: 14px; }
+
+/* Faixa de aviso quando a tela está mostrando dados do cache offline ou tem
+   ação esperando sinal. Fica no topo, fixa e em cor de alerta de propósito:
+   é informação que muda o que o técnico deve confiar na tela, não um detalhe
+   decorativo que possa passar batido enquanto ele dirige. */
+.t-aviso-offline {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 7px 12px;
+  background: #8a5a00;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 0.2px;
+}

@@ -14,7 +14,8 @@
 // v4 = resumo por setor com denominador correto e linha "Sem setor",
 //      e rota concluída saindo da sidebar (passa a viver só no Histórico).
 // v5 = setor obrigatório, classificação em lote e filtro de período.
-const CACHE_VERSAO = 'portotec-roteiros-v5';
+// v6 = modo offline de leitura do técnico + fila de sincronização.
+const CACHE_VERSAO = 'portotec-roteiros-v6';
 
 const ARQUIVOS_CASCA = [
   '/',
@@ -34,24 +35,73 @@ self.addEventListener('install', (evento) => {
   );
 });
 
+// Cache separado e de nome FIXO para o modo offline do técnico. Fica de fora
+// da limpeza do activate de propósito: se ele fosse apagado a cada deploy, o
+// técnico que abrisse o app sem sinal logo depois de uma atualização ficaria
+// sem nada — justamente o cenário que este cache existe para cobrir.
+const CACHE_OFFLINE = 'portotec-tecnico-offline';
+
 self.addEventListener('activate', (evento) => {
   evento.waitUntil(
     caches.keys().then((nomes) =>
       Promise.all(
         nomes
-          .filter((nome) => nome !== CACHE_VERSAO)
+          .filter((nome) => nome !== CACHE_VERSAO && nome !== CACHE_OFFLINE)
           .map((nome) => caches.delete(nome))
       )
     ).then(() => self.clients.claim())
   );
 });
 
+// Leitura do técnico: rede primeiro, cache só quando a rede falha.
+//
+// A regra "nunca cachear /api/" continua valendo para o painel e para toda
+// escrita — mostrar rota desatualizada como se fosse atual é pior que não
+// mostrar nada. O que muda aqui é que a resposta guardada volta MARCADA como
+// offline, e a tela avisa de quando ela é. Um técnico que sabe que está vendo
+// a foto das 07h40 consegue trabalhar; um que não sabe, não.
+async function redeComQuedaParaCache(request) {
+  try {
+    const resposta = await fetch(request);
+    if (resposta.ok) {
+      const clone = resposta.clone();
+      const corpo = await clone.blob();
+      const cabecalhos = new Headers(clone.headers);
+      cabecalhos.set('X-Capturado-Em', new Date().toISOString());
+      const cache = await caches.open(CACHE_OFFLINE);
+      await cache.put(request, new Response(corpo, { status: 200, headers: cabecalhos }));
+    }
+    return resposta;
+  } catch (erroDeRede) {
+    const cache = await caches.open(CACHE_OFFLINE);
+    const cacheado = await cache.match(request);
+    if (!cacheado) throw erroDeRede;
+
+    const corpo = await cacheado.blob();
+    const cabecalhos = new Headers(cacheado.headers);
+    cabecalhos.set('X-Offline', '1');
+    return new Response(corpo, { status: 200, headers: cabecalhos });
+  }
+}
+
 self.addEventListener('fetch', (evento) => {
   const url = new URL(evento.request.url);
 
-  // API: sempre rede, nunca cache. Ponto final.
+  // API: sempre rede, nunca cache — com uma exceção medida.
   if (url.pathname.startsWith('/api/')) {
-    evento.respondWith(fetch(evento.request));
+    // Só GET das rotas do técnico entra no fallback offline. Escrita nunca:
+    // devolver do cache um "concluir ponto" daria ao técnico a impressão de
+    // que gravou quando nada saiu do celular. E /versao fica de fora porque
+    // servir revisão velha faria o auto-refresh achar que nada mudou.
+    const leituraDoTecnico = evento.request.method === 'GET'
+      && url.pathname.startsWith('/api/t/')
+      && !url.pathname.endsWith('/versao');
+
+    if (leituraDoTecnico) {
+      evento.respondWith(redeComQuedaParaCache(evento.request));
+    } else {
+      evento.respondWith(fetch(evento.request));
+    }
     return;
   }
 

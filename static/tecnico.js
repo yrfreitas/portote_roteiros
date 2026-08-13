@@ -13,14 +13,106 @@
     setTimeout(() => el.classList.remove('show'), 2200);
   }
 
+  // Guarda se a última leitura veio do cache offline e de quando ela é.
+  // Fica fora do api() porque quem renderiza precisa saber, e o api() só
+  // devolve o corpo já parseado.
+  let ultimaLeituraOffline = null;
+
   async function api(path, opts = {}) {
     const resp = await fetch(`${API}${path}`, {
       headers: { 'Content-Type': 'application/json' },
       ...opts,
     });
+
+    const ehLeitura = !opts.method || opts.method.toUpperCase() === 'GET';
+    if (ehLeitura) {
+      ultimaLeituraOffline = resp.headers.get('X-Offline')
+        ? resp.headers.get('X-Capturado-Em')
+        : null;
+    }
+
     const dados = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(dados.erro || 'Erro inesperado');
     return dados;
+  }
+
+  // ===== FILA DE SINCRONIZACAO =====
+  // Sem sinal, "marcar feito" não pode simplesmente falhar: o técnico está
+  // com o cliente na frente e não vai voltar depois para reapertar. A ação
+  // entra numa fila e sobe quando o sinal voltar.
+  //
+  // Reenviar é seguro porque as duas operações da fila são idempotentes:
+  // gravar status 'concluido' duas vezes dá no mesmo resultado. Se não
+  // fossem, uma fila cega como esta seria perigosa.
+  const CHAVE_FILA = `portotec:fila:${TOKEN}`;
+
+  function lerFila() {
+    try { return JSON.parse(localStorage.getItem(CHAVE_FILA)) || []; }
+    catch { return []; }
+  }
+
+  function gravarFila(fila) {
+    localStorage.setItem(CHAVE_FILA, JSON.stringify(fila));
+    atualizarAvisoTopo();
+  }
+
+  function enfileirar(path, opts) {
+    const fila = lerFila();
+    fila.push({ path, opts, quando: new Date().toISOString() });
+    gravarFila(fila);
+  }
+
+  async function sincronizarFila() {
+    let fila = lerFila();
+    if (fila.length === 0) return;
+
+    const pendentes = [];
+    for (const item of fila) {
+      try {
+        await fetch(`${API}${item.path}`, {
+          headers: { 'Content-Type': 'application/json' },
+          ...item.opts,
+        });
+      } catch {
+        pendentes.push(item); // ainda sem rede: devolve para a fila
+      }
+    }
+
+    gravarFila(pendentes);
+    if (pendentes.length === 0 && fila.length > 0) {
+      toast(`${fila.length} ação${fila.length !== 1 ? 'ões' : ''} sincronizada${fila.length !== 1 ? 's' : ''}`);
+      if (fichaAbertaId !== null) abrirFicha(fichaAbertaId); else carregarFichas();
+    }
+  }
+
+  // Uma faixa no topo dizendo o que está acontecendo. Cache silencioso é
+  // pior que erro: o técnico agiria sobre dado velho sem desconfiar.
+  function atualizarAvisoTopo() {
+    let faixa = document.getElementById('t-aviso-offline');
+    const naFila = lerFila().length;
+
+    if (!ultimaLeituraOffline && naFila === 0) {
+      if (faixa) faixa.remove();
+      return;
+    }
+
+    if (!faixa) {
+      faixa = document.createElement('div');
+      faixa.id = 't-aviso-offline';
+      faixa.className = 't-aviso-offline';
+      document.body.prepend(faixa);
+    }
+
+    const partes = [];
+    if (ultimaLeituraOffline) {
+      const d = new Date(ultimaLeituraOffline);
+      const hora = isNaN(d) ? '?' : d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      partes.push(`Sem conexão · dados de ${hora}`);
+    }
+    if (naFila > 0) {
+      partes.push(`${naFila} ação${naFila !== 1 ? 'ões' : ''} aguardando envio`);
+    }
+    faixa.textContent = partes.join(' · ');
   }
 
   function esc(v) {
@@ -56,6 +148,8 @@
       `).join('');
     } catch (e) {
       container.innerHTML = `<div class="t-vazio"><h1>Falha ao carregar</h1><p>${esc(e.message)}</p></div>`;
+    } finally {
+      atualizarAvisoTopo();
     }
   }
 
@@ -72,6 +166,8 @@
       renderDetalhe(dados.ficha, dados.servicos);
     } catch (e) {
       detalhe.innerHTML = `<div class="t-vazio"><p>${esc(e.message)}</p></div>`;
+    } finally {
+      atualizarAvisoTopo(); // o api() acabou de dizer se a leitura veio do cache
     }
   }
 
@@ -133,11 +229,21 @@
   };
 
   window._tConcluirPonto = async function (servicoId, novoStatus) {
+    const opts = { method: 'PUT', body: JSON.stringify({ status: novoStatus }) };
     try {
-      await api(`/servicos/${servicoId}/status`, { method: 'PUT', body: JSON.stringify({ status: novoStatus }) });
+      await api(`/servicos/${servicoId}/status`, opts);
       toast(novoStatus === 'concluido' ? 'Ponto marcado como feito' : 'Ponto reaberto');
       if (fichaAbertaId) abrirFicha(fichaAbertaId);
-    } catch (e) { toast(e.message); }
+    } catch (e) {
+      // TypeError do fetch = não saiu do aparelho. Erro do servidor (regra de
+      // negócio, 4xx) não vai para a fila: reenviar depois daria o mesmo erro.
+      if (e instanceof TypeError || !navigator.onLine) {
+        enfileirar(`/servicos/${servicoId}/status`, opts);
+        toast('Sem sinal — vai subir quando a conexão voltar');
+      } else {
+        toast(e.message);
+      }
+    }
   };
 
   // ─── Notificações push ──────────────────────────────────────────
@@ -254,12 +360,22 @@
     toast('Rota atualizada');
   }
 
-  carregarFichas();
+  carregarFichas().then(atualizarAvisoTopo);
 
   lerRevisao().then((r) => { revisaoConhecida = r; }).catch(() => {});
   setInterval(verificarRevisao, INTERVALO_REVISAO);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) verificarRevisao();
   });
-  window.addEventListener('online', verificarRevisao);
+
+  // A volta do sinal dispara as duas coisas na ordem certa: primeiro sobe o
+  // que ficou pendente, depois busca o estado atualizado. Ao contrário, a
+  // tela mostraria dados sem as ações que ainda estavam na fila.
+  window.addEventListener('online', async () => {
+    await sincronizarFila();
+    verificarRevisao();
+  });
+  window.addEventListener('offline', atualizarAvisoTopo);
+
+  sincronizarFila();
 })();
