@@ -1439,6 +1439,7 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
         <div class="roteiro-actions">
           ${(s.lat && s.lng) ? `<a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16" target="_blank" rel="noopener" title="Ver no mapa" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('externo', 'icone-13')}</a>` : ''}
           ${(s.lat && s.lng) ? `<a href="https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes" target="_blank" rel="noopener" title="Navegar com Waze" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('navegacao', 'icone-13')}</a>` : ''}
+          <button class="btn-a-caminho" onclick="avisarACaminho(${s.id})" title="Avisar no WhatsApp que está a caminho deste cliente">A caminho</button>
           <button class="btn-editar" onclick="abrirModalEditarServico(${s.id})" title="Editar ponto">${icone('editar', 'icone-12')}</button>
           <button class="btn-remove" onclick="removerServico(${s.id},${ficha.id})">${icone('x', 'icone-11')}</button>
         </div>
@@ -1446,6 +1447,63 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
   }).join('');
 
   return partida + `<div class="roteiro-lista" id="roteiro-lista">${items}</div>`;
+}
+
+// ─── "A caminho": avisa o grupo do WhatsApp sobre um cliente ────────────
+// Fica na linha do cliente, dentro do roteiro, porque a mensagem é sobre
+// AQUELE atendimento — o nome do cliente e o endereço saem do próprio ponto.
+//
+// Não dispara sozinho, e isso é decisão tomada depois de três tentativas
+// falharem no celular: window.open é barrado por bloqueador de pop-up,
+// location.href é atropelado pela navegação seguinte, e navigator.share varia
+// por aparelho. Todas falham em SILÊNCIO. Um link que o usuário toca não
+// depende de permissão nenhuma e funciona em qualquer lugar.
+function montarMensagemACaminho(s, tecnicoNome) {
+  const partes = [];
+  partes.push(`🚗 Técnico ${tecnicoNome || ''} a caminho do cliente ${s.cliente || 'sem nome'}`.trim());
+  if (s.endereco_completo) partes.push(`📍 ${s.endereco_completo}`);
+  if (s.lat && s.lng) {
+    partes.push(`https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`);
+  } else if (s.endereco_completo || s.cep) {
+    partes.push(`https://waze.com/ul?q=${encodeURIComponent(s.endereco_completo || s.cep)}&navigate=yes`);
+  }
+  return partes.join('\n\n');
+}
+
+function avisarACaminho(servicoId) {
+  const s = servicosAtuais.find(x => x.id === servicoId);
+  if (!s) { toast('Ponto não encontrado', 'error'); return; }
+
+  const tecnico = tecnicos.find(t => t.id === fichaAtiva?.tecnico_id);
+  const texto = montarMensagemACaminho(s, tecnico?.nome);
+
+  document.getElementById('acaminho-msg').textContent = texto;
+
+  // whatsapp:// abre o aplicativo direto na tela de escolher conversa, com o
+  // grupo entre as recentes. No desktop esse esquema não existe: vai wa.me.
+  const ehCelular = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+  document.getElementById('acaminho-whats').href = ehCelular
+    ? `whatsapp://send?text=${encodeURIComponent(texto)}`
+    : `https://wa.me/?text=${encodeURIComponent(texto)}`;
+
+  // Copiar é a última garantia: se o link não abrir naquele aparelho, ainda
+  // dá para colar no WhatsApp à mão. Nunca fica sem saída.
+  document.getElementById('acaminho-copiar').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      toast('Mensagem copiada', 'success');
+    } catch {
+      const campo = document.createElement('textarea');
+      campo.value = texto;
+      document.body.appendChild(campo);
+      campo.select();
+      try { document.execCommand('copy'); toast('Mensagem copiada', 'success'); }
+      catch { toast('Não consegui copiar — selecione o texto acima', 'error'); }
+      campo.remove();
+    }
+  };
+
+  document.getElementById('modal-a-caminho').classList.add('open');
 }
 
 let servicosAtuais  = [];   // últimos serviços carregados (com lat/lng), pra redesenhar o mapa sem refetch

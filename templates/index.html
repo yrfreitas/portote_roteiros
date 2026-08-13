@@ -428,6 +428,21 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-a-caminho" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-title">Avisar que está a caminho</div>
+    <p style="font-size:12px;color:var(--text-muted);margin:-6px 0 12px;">
+      A mensagem já vai pronta. Escolha o grupo no WhatsApp e envie.
+    </p>
+    <pre id="acaminho-msg" class="acaminho-msg"></pre>
+    <a class="btn btn-primary acaminho-btn" id="acaminho-whats" href="#" target="_blank" rel="noopener">Enviar no WhatsApp</a>
+    <button type="button" class="btn btn-ghost acaminho-btn" id="acaminho-copiar">Copiar mensagem</button>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-classificar" role="dialog" aria-modal="true">
   <div class="modal" style="max-width:620px;">
     <div class="modal-title">Classificar pontos sem setor</div>

@@ -2763,3 +2763,46 @@ select:focus-visible,
   background: #fff8e0; color: #b87800; border: 2px solid #b87800;
   box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
+
+/* Botão "A caminho" na linha do cliente, dentro do roteiro.
+   Verde do WhatsApp para não se confundir com os ícones de navegação ao lado —
+   são ações diferentes. Texto em vez de ícone porque a ação não tem símbolo
+   óbvio, e um ícone genérico aqui viraria adivinhação. */
+.btn-a-caminho {
+  background: #128c7e;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 4px 9px;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s;
+}
+.btn-a-caminho:hover { background: #0f7568; }
+
+.acaminho-msg {
+  background: var(--surface-2, rgba(127,127,127,0.06));
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 11px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 32vh;
+  overflow-y: auto;
+  margin: 0 0 12px;
+  font-family: inherit;
+}
+.acaminho-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-bottom: 8px;
+  text-decoration: none;
+}
