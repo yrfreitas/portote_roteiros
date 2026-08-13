@@ -247,72 +247,70 @@
       : `https://waze.com/ul?q=${busca}&navigate=yes`;
   }
 
-  window._tAvisarACaminho = async function (servicoId) {
-    // Procura o ponto na ficha aberta. Os dados ja estao em memoria, entao o
-    // aviso funciona sem rede — inclusive quando a leitura veio do cache.
+  // Duas tentativas de disparar o WhatsApp automaticamente falharam no celular
+  // do Kalebe — pop-up barrado numa, navegacao atropelada na outra. O problema
+  // de fundo e sempre o mesmo: acao programatica que sai da tela depende de
+  // permissao do navegador, varia por aparelho e falha em SILENCIO.
+  //
+  // Toque de verdade em link nao depende de permissao nenhuma. Entao a tela
+  // para de adivinhar e passa a oferecer os alvos: ele toca, e funciona em
+  // qualquer aparelho. Custa um toque a mais e nunca falha calada.
+  window._tAvisarACaminho = function (servicoId) {
     const s = servicosAbertos.find(x => x.id === servicoId);
     if (!s) { toast('Ponto não encontrado'); return; }
 
     const texto = montarAviso(s);
-
-    // O Waze passa a ser oferecido ANTES de sair da tela, e nunca sozinho.
-    // Na versao anterior eu abria o WhatsApp e logo em seguida navegava para o
-    // Waze automaticamente — e a navegacao matava a aba do WhatsApp antes dela
-    // aparecer. Sintoma exato relatado pelo Kalebe: "abre so o waze".
-    // Agora o Waze e um alvo esperando o toque dele, nunca uma navegacao que
-    // atropela o passo anterior.
-    oferecerWaze(s);
-
-    if (navigator.share) {
-      try {
-        await navigator.share({ text: texto });
-        return;
-      } catch (e) {
-        // Desistiu da bandeja: nao insiste abrindo o WhatsApp por outro
-        // caminho, que seria forcar o que ele acabou de recusar.
-        if (e && e.name === 'AbortError') return;
-        // Qualquer outro erro cai no plano B abaixo.
-      }
-    }
-
-    // Plano B: NAVEGACAO, nao window.open. Pop-up em aba nova e barrado por
-    // bloqueador na maioria dos celulares e some sem avisar — foi o que
-    // aconteceu. O esquema whatsapp:// abre o aplicativo direto e cai na tela
-    // de escolher conversa, onde o grupo esta entre as recentes.
-    const appUrl = `whatsapp://send?text=${encodeURIComponent(texto)}`;
-    const webUrl = `https://wa.me/?text=${encodeURIComponent(texto)}`;
     const ehCelular = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+    // whatsapp:// abre o app direto na tela de escolher conversa (o grupo fica
+    // entre as recentes). No desktop esse esquema nao existe, entao vai wa.me.
+    const urlWhats = ehCelular
+      ? `whatsapp://send?text=${encodeURIComponent(texto)}`
+      : `https://wa.me/?text=${encodeURIComponent(texto)}`;
 
-    window.location.href = ehCelular ? appUrl : webUrl;
+    const folha = document.createElement('div');
+    folha.className = 't-folha-fundo';
+    folha.innerHTML = `
+      <div class="t-folha">
+        <div class="t-folha-titulo">Avisar que está a caminho</div>
+        <pre class="t-folha-msg">${esc(texto)}</pre>
+        <a class="t-folha-btn whats" href="${esc(urlWhats)}" target="_blank" rel="noopener">Enviar no WhatsApp</a>
+        <button type="button" class="t-folha-btn copiar">Copiar mensagem</button>
+        <a class="t-folha-btn waze" href="${esc(urlWazeDe(s))}" target="_blank" rel="noopener">Abrir Waze</a>
+        <button type="button" class="t-folha-btn fechar">Fechar</button>
+      </div>`;
+
+    const fechar = () => folha.remove();
+    folha.addEventListener('click', (e) => { if (e.target === folha) fechar(); });
+    folha.querySelector('.fechar').addEventListener('click', fechar);
+
+    // Depois de tocar no WhatsApp, o Waze ganha destaque — a ordem real e
+    // avisar e depois dirigir, e a folha continua aberta quando ele voltar.
+    folha.querySelector('.whats').addEventListener('click', () => {
+      setTimeout(() => {
+        if (folha.isConnected) folha.querySelector('.waze').classList.add('destaque');
+      }, 400);
+    });
+
+    // Copiar e a ultima garantia: se nenhum link abrir no aparelho dele, ainda
+    // da para colar no WhatsApp a mao. Nunca fica sem saida.
+    folha.querySelector('.copiar').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(texto);
+        toast('Mensagem copiada');
+      } catch {
+        const campo = document.createElement('textarea');
+        campo.value = texto;
+        document.body.appendChild(campo);
+        campo.select();
+        try { document.execCommand('copy'); toast('Mensagem copiada'); }
+        catch { toast('Não consegui copiar — selecione o texto acima'); }
+        campo.remove();
+      }
+    });
+
+    document.body.appendChild(folha);
   };
 
-  // Deixa o Waze pronto no rodape para quando o tecnico voltar do WhatsApp.
-  // NAO navega sozinho: era isso que atropelava a abertura do WhatsApp. Duas
-  // saidas de tela disputando o mesmo toque sempre terminam com uma perdendo,
-  // e a que perdia era justamente o aviso ao grupo.
-  function oferecerWaze(s) {
-    const url = urlWazeDe(s);
-
-    const antiga = document.getElementById('t-abrir-waze');
-    if (antiga) antiga.remove();
-
-    const faixa = document.createElement('a');
-    faixa.id = 't-abrir-waze';
-    faixa.className = 't-abrir-waze';
-    faixa.href = url;
-    faixa.target = '_blank';
-    faixa.rel = 'noopener';
-    faixa.innerHTML = `Abrir Waze para ${esc(s.cliente || 'o cliente')} &rarr;`;
-    faixa.addEventListener('click', () => faixa.remove());
-    document.body.appendChild(faixa);
-
-    // 5 minutos: tempo de mandar a mensagem, escolher o grupo e voltar. Os 45s
-    // de antes sumiam antes do tecnico terminar de escrever no WhatsApp.
-    setTimeout(() => {
-      const atual = document.getElementById('t-abrir-waze');
-      if (atual === faixa) faixa.remove();
-    }, 300000);
-  }
 
   window._tAbrirFicha = abrirFicha;
 
@@ -463,6 +461,19 @@
     }
     toast('Rota atualizada');
   }
+
+  // Selo de versão no rodapé. Sem ele não há como saber, olhando o celular do
+  // técnico, se o código novo chegou ou se o service worker ainda está
+  // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
+  // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
+  const VERSAO_TELA = 'v13';
+
+  (function marcarVersao() {
+    const selo = document.createElement('div');
+    selo.className = 't-selo-versao';
+    selo.textContent = VERSAO_TELA;
+    document.body.appendChild(selo);
+  })();
 
   carregarFichas().then(atualizarAvisoTopo);
 

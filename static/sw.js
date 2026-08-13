@@ -21,7 +21,8 @@
 // v10 = botão "A caminho" que avisa o grupo do WhatsApp.
 // v11 = o Waze abre logo depois do aviso, sem voltar à tela.
 // v12 = conserta o WhatsApp que não abria (o Waze atropelava).
-const CACHE_VERSAO = 'portotec-roteiros-v12';
+// v13 = folha de botões no "A caminho" + selo de versão na tela.
+const CACHE_VERSAO = 'portotec-roteiros-v13';
 
 const ARQUIVOS_CASCA = [
   '/',
