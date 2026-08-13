@@ -27,7 +27,8 @@
 // v16 = código do app passa a ser rede-primeiro (fim do JS velho no cache).
 // v17 = acompanhamento por previsão de chegada (sem GPS).
 // v18 = fichas na ordem da semana e destaque para a rota de hoje.
-const CACHE_VERSAO = 'portotec-roteiros-v18';
+// v19 = ordem de calendário de verdade (ano, mês, dia).
+const CACHE_VERSAO = 'portotec-roteiros-v19';
 
 const ARQUIVOS_CASCA = [
   '/',

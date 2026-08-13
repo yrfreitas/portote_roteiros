@@ -28,21 +28,29 @@ _INDICE_DIA = {dia: i for i, dia in enumerate(ORDEM_DIAS)}
 
 
 def ordenar_por_semana(fichas: list) -> list:
-    """Segunda → Domingo, e dentro do mesmo dia a data mais antiga primeiro.
+    """Ordem de CALENDÁRIO: ano, mês, dia — como a vida acontece.
 
-    Ordena em PYTHON e não em SQL de propósito: exigiria um CASE de sete
-    ramos repetido em cada consulta, e SQLite e Postgres divergem em NULLS
-    FIRST/LAST para a data. As listas aqui têm dezenas de linhas — o custo é
-    irrelevante e o código fica legível. Mesma razão pela qual as métricas por
-    semana já são agregadas em Python neste projeto.
+    A primeira versão ordenava pelo dia da semana e agrupava todas as segundas
+    juntas, independente da data. Errado: 17/08 e 24/08 são duas segundas
+    diferentes, e a de hoje tem que vir antes da semana que vem.
 
-    Dia desconhecido vai para o fim em vez de quebrar a ordenação.
+    A data_referencia vem no formato "AAAA-MM-DD", então a ordenação textual
+    já é cronológica — ano, depois mês, depois dia. Não precisa converter.
+
+    Ficha SEM data cai no fim, agrupada pelo dia da semana: sem data não há
+    onde encaixá-la na linha do tempo, e chutar uma posição seria pior que
+    deixá-la claramente separada no rodapé da lista.
+
+    Ordena em Python e não em SQL porque SQLite e Postgres divergem em NULLS
+    FIRST/LAST — e aqui a regra de nulo é justamente o que importa.
     """
-    return sorted(fichas, key=lambda f: (
-        _INDICE_DIA.get(f.get("dia_semana"), len(ORDEM_DIAS)),
-        f.get("data_referencia") or "",
-        f.get("id") or 0,
-    ))
+    def chave(f):
+        data = (f.get("data_referencia") or "").strip()
+        if data:
+            return (0, data, f.get("id") or 0)
+        return (1, "", _INDICE_DIA.get(f.get("dia_semana"), len(ORDEM_DIAS)))
+
+    return sorted(fichas, key=chave)
 
 
 @fichas_bp.route("/fichas", methods=["GET"])
