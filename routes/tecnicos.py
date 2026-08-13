@@ -334,7 +334,17 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
 
         return zona_bonus + dist_score + regiao_bonus - penal_lotacao
 
-    ordenadas = sorted(fichas.values(), key=score, reverse=True)
+    # Ordena por CLASSIFICAÇÃO primeiro, score depois. Ordenar só por score
+    # deixava um card "Dá pra encaixar" (164 pontos, mas 10 km) acima de um
+    # "Encaixa bem" (162 pontos, 5,5 km) — a lista contradizia os próprios
+    # rótulos, que é o problema que esta tela toda veio resolver.
+    _PESO = {"bem": 0, "razoavel": 1, "fora": 2}
+
+    def ordem(f):
+        pontuacao = max(0, round(score(f), 1))
+        return (_PESO[_classificar(pontuacao, f["dist_minima"])], -pontuacao)
+
+    ordenadas = sorted(fichas.values(), key=ordem)
     sugestoes = []
 
     for f in ordenadas[:10]:
@@ -364,6 +374,9 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
             "lotada":            (not f["vazia"]) and f["total_pontos"] >= CAPACIDADE_IDEAL,
         })
 
-    tem_boa_opcao = bool(sugestoes) and sugestoes[0]["classificacao"] == "bem"
+    # "Existe alguma boa opção?", não "a primeira é boa?". Com a lista já
+    # ordenada por classificação as duas perguntas dão no mesmo, mas escrito
+    # assim a resposta não depende da ordenação continuar como está.
+    tem_boa_opcao = any(s["classificacao"] == "bem" for s in sugestoes)
 
     return sugestoes, tem_boa_opcao, lista_tecnicos
