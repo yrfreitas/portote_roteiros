@@ -17,7 +17,8 @@
 // v6 = modo offline de leitura do técnico + fila de sincronização.
 // v7 = verificador de encaixe com régua única, motivos e mapa.
 // v8 = correção do mapa (setView antes das camadas).
-const CACHE_VERSAO = 'portotec-roteiros-v8';
+// v9 = simulação "como o dia fica" ao clicar num dia.
+const CACHE_VERSAO = 'portotec-roteiros-v9';
 
 const ARQUIVOS_CASCA = [
   '/',

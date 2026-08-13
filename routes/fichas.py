@@ -298,6 +298,93 @@ def conciliar_ficha(ficha_id):
     return jsonify(resultado)
 
 
+@fichas_bp.route("/fichas/<int:ficha_id>/simular-encaixe", methods=["POST"])
+def simular_encaixe(ficha_id):
+    """Prévia de como o dia fica SE este endereço entrar na rota.
+
+    Otimiza duas vezes — sem e com o ponto novo — e devolve as duas
+    sequências. A diferença entre elas é a resposta que interessa: quantos
+    quilômetros e quantos minutos o ponto custa, e em que parada ele entra.
+
+    Não grava nada. É simulação: o usuário decide depois de ver.
+    """
+    data = request.get_json(silent=True) or {}
+
+    try:
+        lat = float(data.get("lat"))
+        lng = float(data.get("lng"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Coordenadas inválidas para simular."}), 400
+
+    with db_conn() as conn:
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+        if not ficha:
+            return jsonify({"erro": "Ficha não encontrada"}), 404
+
+        servicos = fetch_all(conn, """
+            SELECT id, cliente, endereco_completo, lat, lng, ordem
+              FROM servicos
+             WHERE ficha_id = ? AND lat IS NOT NULL AND lng IS NOT NULL
+             ORDER BY ordem, id
+        """, (ficha_id,))
+
+    partida = {"lat": ficha.get("ponto_partida_lat"), "lng": ficha.get("ponto_partida_lng")}
+    if partida["lat"] is None or partida["lng"] is None:
+        # Sem base não existe trajeto para comparar: o otimizador precisa de um
+        # ponto de saída. Erro explícito em vez de devolver zeros silenciosos,
+        # que o usuário leria como "não custa nada adicionar".
+        return jsonify({
+            "erro": "Esta rota não tem CEP de partida definido — sem ele não dá "
+                    "para calcular como o dia ficaria.",
+            "sem_partida": True,
+        }), 400
+
+    novo = {"lat": lat, "lng": lng}
+    antes = otimizar_rota(partida, servicos) if servicos else None
+    depois = otimizar_rota(partida, servicos + [novo])
+
+    def sequencia(resultado, pontos):
+        """Traduz os índices devolvidos pelo otimizador em paradas legíveis."""
+        saida = []
+        for posicao, indice in enumerate(resultado["ordem"], start=1):
+            p = pontos[indice]
+            e_novo = p is novo
+            saida.append({
+                "posicao":  posicao,
+                "cliente":  "Este endereço" if e_novo else (p.get("cliente") or "Sem nome"),
+                "endereco": data.get("endereco", "") if e_novo else (p.get("endereco_completo") or ""),
+                "lat": p["lat"], "lng": p["lng"],
+                "novo": e_novo,
+            })
+        return saida
+
+    seq_depois = sequencia(depois, servicos + [novo])
+    posicao_novo = next((p["posicao"] for p in seq_depois if p["novo"]), None)
+
+    # distancia_km (ida) e NÃO total_km (ida + retorno à base). É a métrica que
+    # recalcular_rota grava em fichas.distancia_total e que aparece na sidebar,
+    # no histórico e no XLSX. Usar total_km aqui mostraria 18,15 km para um dia
+    # que o resto do sistema chama de 11,57 km — dois números para a mesma
+    # rota, que é justamente o tipo de incoerência que esta tela veio matar.
+    km_antes = antes["distancia_km"] if antes else 0.0
+    min_antes = antes["tempo_minutos"] if antes else 0
+    km_depois = depois["distancia_km"]
+
+    return jsonify({
+        "ficha_id":     ficha_id,
+        "dia_semana":   ficha.get("dia_semana"),
+        "partida":      {"lat": partida["lat"], "lng": partida["lng"],
+                         "endereco": ficha.get("ponto_partida") or "Partida"},
+        "antes":        {"km": km_antes, "minutos": min_antes, "paradas": len(servicos)},
+        "depois":       {"km": km_depois, "minutos": depois["tempo_minutos"],
+                         "paradas": len(servicos) + 1, "sequencia": seq_depois},
+        "acrescimo_km":  round(km_depois - km_antes, 2),
+        "acrescimo_min": depois["tempo_minutos"] - min_antes,
+        "posicao_novo":  posicao_novo,
+        "rota_vazia":    not servicos,
+    })
+
+
 @fichas_bp.route("/fichas/<int:ficha_id>/otimizar", methods=["POST"])
 def otimizar_ficha(ficha_id):
     with db_conn(commit=True) as conn:

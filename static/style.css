@@ -2708,3 +2708,58 @@ select:focus-visible,
 .vcep-toggle-fora:hover { color: var(--text); border-color: var(--text-muted); }
 .vcep-toggle-fora.aberto { border-style: solid; }
 .vcep-fora-lista { margin-top: 8px; }
+
+/* ─── Simulação "como o dia fica" ─────────────────────────────────────── */
+
+.vcep-sim-barra {
+  margin: -8px 0 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2, rgba(127,127,127,0.05));
+  font-size: 12px;
+  min-height: 38px;
+  display: flex; align-items: center;
+}
+.vcep-sim-dica, .vcep-sim-carregando { color: var(--text-muted); font-size: 11.5px; }
+.vcep-sim-erro { color: var(--danger-text); font-size: 11.5px; }
+
+.vcep-sim-resumo { width: 100%; }
+.vcep-sim-linha { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.vcep-sim-pos { font-size: 11px; color: var(--text-muted); }
+.vcep-sim-numeros {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 4px; font-size: 12px;
+}
+.vcep-sim-seta { color: var(--text-muted); margin: 0 2px; }
+
+/* O acréscimo é o número que decide. Verde quando o desvio é pequeno,
+   âmbar quando não — para o olho responder antes da leitura. */
+.vcep-sim-delta {
+  font-weight: 700;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 11.5px;
+}
+.vcep-sim-delta.ok   { color: var(--success-text); background: rgba(42,160,92,0.12); }
+.vcep-sim-delta.caro { color: var(--gold-text);    background: rgba(212,160,26,0.14); }
+
+/* Paradas numeradas na ordem em que o técnico vai rodar */
+.vcep-pin-parada {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 11px; font-weight: 700;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+}
+/* A parada nova pulsa: é a única que ainda não existe, e ver ONDE ela cai
+   na sequência é o ponto inteiro da simulação. */
+.vcep-pin-parada.novo {
+  background: #e02020;
+  box-shadow: 0 0 0 4px rgba(224,32,32,0.25);
+}
+.vcep-pin-base {
+  width: 26px; height: 26px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff8e0; color: #b87800; border: 2px solid #b87800;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}

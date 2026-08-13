@@ -2084,6 +2084,9 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
 
   return `<div class="vcep-analise-wrap">
     <div id="vcep-mapa-encaixe" class="vcep-mapa"></div>
+    <div id="vcep-sim-barra" class="vcep-sim-barra">
+      <span class="vcep-sim-dica">Clique num dia para ver como a rota ficaria com este endereço.</span>
+    </div>
     ${alerta}
     <div class="vcep-analise-label">${servem.length} rota${servem.length !== 1 ? 's' : ''} que ${servem.length !== 1 ? 'servem' : 'serve'}</div>
     ${servem.join('')}
@@ -2200,6 +2203,106 @@ function vcepDestacarNoMapa(indice) {
   });
 }
 
+// ─── Simulação: como o dia fica se este endereço entrar ─────────────────
+// Clicar no dia deixa de ser só "expandir detalhe" e passa a desenhar o
+// trajeto inteiro na ordem em que o técnico vai rodar, com o ponto novo já
+// no lugar que o otimizador daria a ele. A pergunta que isso responde não é
+// "encaixa?", é "encaixa ONDE, e me custa quanto?".
+let vcepCamadaSimulacao = null;
+
+async function vcepSimularNoMapa(indice) {
+  const r = verificacaoAtual;
+  if (!r || !vcepMapa) return;
+  const s = r.sugestoes?.[indice];
+  if (!s) return;
+
+  const barra = document.getElementById('vcep-sim-barra');
+  if (barra) barra.innerHTML = `<span class="vcep-sim-carregando">Calculando como o dia ${esc(s.dia_semana)} ficaria...</span>`;
+
+  let sim;
+  try {
+    sim = await api(`/fichas/${s.ficha_id}/simular-encaixe`, {
+      method: 'POST',
+      body: JSON.stringify({ lat: r.lat, lng: r.lng, endereco: r.endereco || r.cep }),
+    });
+  } catch (e) {
+    if (barra) barra.innerHTML = `<span class="vcep-sim-erro">${esc(e.message)}</span>`;
+    return;
+  }
+
+  // Limpa só a camada da simulação — os pontos de contexto das outras rotas
+  // continuam no mapa, senão o usuário perde a noção de onde tudo está.
+  if (vcepCamadaSimulacao) { vcepCamadaSimulacao.remove(); vcepCamadaSimulacao = null; }
+  vcepCamadaSimulacao = L.layerGroup().addTo(vcepMapa);
+
+  const cor = s.tecnico_cor || '#4f8dfb';
+  const caminho = [];
+
+  if (Number.isFinite(sim.partida?.lat)) {
+    caminho.push([sim.partida.lat, sim.partida.lng]);
+    L.marker([sim.partida.lat, sim.partida.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="vcep-pin-base">${icone('casa', 'icone-12')}</div>`,
+        iconSize: [26, 26], iconAnchor: [13, 13],
+      }),
+    }).addTo(vcepCamadaSimulacao).bindTooltip('Partida: ' + (sim.partida.endereco || ''), { direction: 'top' });
+  }
+
+  (sim.depois?.sequencia || []).forEach((p) => {
+    caminho.push([p.lat, p.lng]);
+    // O ponto novo entra visualmente diferente: é a única parada que ainda
+    // não existe, e o senso da simulação é justamente ver onde ela cai.
+    L.marker([p.lat, p.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="vcep-pin-parada${p.novo ? ' novo' : ''}"
+                    style="${p.novo ? '' : `background:${escCor(cor)}`}">${p.posicao}</div>`,
+        iconSize: [24, 24], iconAnchor: [12, 12],
+      }),
+      zIndexOffset: p.novo ? 1000 : 0,
+    }).addTo(vcepCamadaSimulacao)
+      .bindTooltip(`${p.posicao}. ${esc(p.cliente)}`, { direction: 'top' });
+  });
+
+  if (caminho.length > 1) {
+    L.polyline(caminho, { color: cor, weight: 3, opacity: 0.85 }).addTo(vcepCamadaSimulacao);
+  }
+
+  const caixa = L.latLngBounds(caminho);
+  if (caixa.isValid()) vcepMapa.fitBounds(caixa.pad(0.15));
+
+  if (barra) barra.innerHTML = _vcepResumoSimulacao(sim, s);
+}
+
+function _vcepResumoSimulacao(sim, s) {
+  if (sim.rota_vazia) {
+    return `<div class="vcep-sim-resumo">
+      <strong>${esc(s.dia_semana)}</strong> — rota vazia. Este seria o primeiro
+      ponto do dia: <strong>${fmtKm(sim.depois.km)} km</strong> saindo da base.
+    </div>`;
+  }
+
+  const km = sim.acrescimo_km;
+  const min = sim.acrescimo_min;
+  // Custo por parada é o que deixa a comparação entre dias justa: 4 km num dia
+  // de 2 pontos pesa muito mais do que 4 km num dia de 8.
+  const barato = km <= 3;
+
+  return `<div class="vcep-sim-resumo">
+    <div class="vcep-sim-linha">
+      <strong>${esc(s.dia_semana)}</strong>
+      <span class="vcep-sim-pos">entra como parada ${sim.posicao_novo} de ${sim.depois.paradas}</span>
+    </div>
+    <div class="vcep-sim-numeros">
+      <span>${fmtKm(sim.antes.km)} km <span class="vcep-sim-seta">→</span> <strong>${fmtKm(sim.depois.km)} km</strong></span>
+      <span class="vcep-sim-delta ${barato ? 'ok' : 'caro'}">
+        +${fmtKm(km)} km · +${min} min
+      </span>
+    </div>
+  </div>`;
+}
+
 function vcepAlternarFora(btn) {
   const lista = btn.nextElementSibling;
   const escondida = lista.style.display === 'none';
@@ -2214,6 +2317,12 @@ function vcepToggleCard(prefixo, i) {
     vcepExpandido = null;
     document.getElementById('vcep-det-' + prefixo + i)?.style.setProperty('display', 'none');
     document.getElementById('vcep-rc-' + prefixo + i)?.classList.remove('vcep-rota-expanded');
+    // Fechar o card também limpa a simulação: deixar o trajeto desenhado sem
+    // nenhum dia selecionado faria o mapa mostrar uma rota que não é resposta
+    // a pergunta nenhuma.
+    if (vcepCamadaSimulacao) { vcepCamadaSimulacao.remove(); vcepCamadaSimulacao = null; }
+    const barra = document.getElementById('vcep-sim-barra');
+    if (barra) barra.innerHTML = `<span class="vcep-sim-dica">Clique num dia para ver como a rota ficaria com este endereço.</span>`;
     return;
   }
   if (vcepExpandido !== null) {
@@ -2222,6 +2331,10 @@ function vcepToggleCard(prefixo, i) {
   }
   vcepExpandido = i;
   _vcepExpandir(i, verificacaoAtual, prefixo);
+  // Sem await: o detalhe em texto abre na hora e a simulação (que bate no
+  // servidor) preenche a barra quando chegar. Esperar deixaria o clique com
+  // uma lentidão que não precisa existir.
+  vcepSimularNoMapa(i);
 }
 
 function _vcepExpandir(i, r, prefixo = '') {
