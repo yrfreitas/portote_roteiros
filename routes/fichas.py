@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 
@@ -40,6 +41,31 @@ def listar_fichas():
     # sem precisar caçar todos os lugares que listam ficha.
     if str(request.args.get("abertas", "")).lower() in ("1", "true", "sim"):
         condicoes.append("f.status <> 'concluida'")
+
+    # ?dias=7 / ?dias=30 para o filtro de período do Histórico. Filtra por
+    # concluida_em e não por created_at: o que interessa ali é quando a rota
+    # foi FECHADA, não quando alguém a criou — uma rota montada na sexta e
+    # concluída na segunda pertence à segunda.
+    #
+    # O corte é calculado em Python e vai como parâmetro. SQLite e Postgres não
+    # compartilham função de data (date('now','-7 day') vs NOW() - INTERVAL),
+    # e essa é a mesma razão pela qual as métricas por semana já são agregadas
+    # em Python neste projeto.
+    #
+    # ARMADILHA: a coluna é TEXT e é gravada com CURRENT_TIMESTAMP, que produz
+    # "2026-08-13 19:41:14" — separador ESPAÇO. Um isoformat() do Python produz
+    # "2026-08-13T19:41:14", com T. Como a comparação aqui é textual e o espaço
+    # (0x20) vem antes do T (0x54), o corte com T seria maior que qualquer data
+    # gravada e o filtro devolveria lista vazia sempre. Daí o strftime manual.
+    # O Postgres acrescenta ".123456+00" no fim, o que não atrapalha: os 19
+    # primeiros caracteres já ordenam certo, e o resto só pesaria num empate.
+    dias = request.args.get("dias")
+    if dias:
+        if not str(dias).isdigit() or not (1 <= int(dias) <= 3650):
+            return jsonify({"erro": "dias inválido"}), 400
+        corte = (datetime.now(timezone.utc) - timedelta(days=int(dias)))
+        condicoes.append("f.concluida_em >= ?")
+        params.append(corte.strftime("%Y-%m-%d %H:%M:%S"))
 
     filtro = ("WHERE " + " AND ".join(condicoes)) if condicoes else ""
 

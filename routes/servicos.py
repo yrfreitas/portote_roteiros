@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from database import db_conn, execute, fetch_one
+from database import IS_PG, db_conn, execute, fetch_all, fetch_one
 from extensions import limiter
 from routes.fichas import recalcular_rota
 from services.geo import geocode_cep
@@ -11,6 +11,35 @@ AVISO_IMPRECISO = ("Endereço aproximado (centroide do CEP). "
                    "Confira o número da casa para maior precisão.")
 
 STATUS_SERVICO_VALIDOS = {"pendente", "concluido"}
+
+# "ativo" é BOOLEAN no Postgres e INTEGER no SQLite — comparar com o literal
+# errado quebra num dos dois. Mesmo motivo do ATIVO em routes/setores.py.
+_SETOR_ATIVO = "ativo IS TRUE" if IS_PG else "ativo = 1"
+
+
+def _validar_setor(valor):
+    """Devolve (mensagem_de_erro, setor_id). Erro vazio significa que passou.
+
+    Rejeita setor ausente, inexistente e desativado. O desativado importa: o
+    sistema desativa em vez de apagar setor em uso, e sem esta checagem daria
+    para classificar ponto novo numa frente que não existe mais.
+    """
+    if valor in (None, "", 0, "0"):
+        return "Escolha o setor do atendimento (Panasonic, Philco, Loja...).", None
+
+    try:
+        setor_id = int(valor)
+    except (TypeError, ValueError):
+        return "Setor inválido.", None
+
+    with db_conn() as conn:
+        setor = fetch_one(
+            conn, f"SELECT id FROM setores WHERE id = ? AND {_SETOR_ATIVO}", (setor_id,)
+        )
+    if not setor:
+        return "Esse setor não existe ou foi desativado.", None
+
+    return "", setor_id
 
 
 def aplicar_status_servico(conn, servico_id: int, novo_status: str) -> None:
@@ -39,6 +68,15 @@ def adicionar_servico(ficha_id):
     if len(cep) != 8:
         return jsonify({"erro": "Informe um CEP válido com 8 dígitos"}), 400
 
+    # Setor virou obrigatório em 2026-08-13. Era opcional e ficava no fim do
+    # formulário: 32 dos 38 pontos em aberto (84%) estavam sem classificação
+    # nenhuma, o que tornava o relatório por setor inútil — não dava para dizer
+    # quanto do mês foi Panasonic e quanto foi Philco. Ninguém preenche o que
+    # dá para pular, então o jeito é não deixar pular.
+    erro_setor, setor_id = _validar_setor(data.get("setor_id"))
+    if erro_setor:
+        return jsonify({"erro": erro_setor}), 400
+
     with db_conn() as conn:
         ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
     if not ficha:
@@ -64,7 +102,7 @@ def adicionar_servico(ficha_id):
               (data.get("tipo_aparelho") or "").strip(),
               (data.get("modelo") or "").strip(),
               (data.get("numero_os") or "").strip(),
-              data.get("setor_id") or None))
+              setor_id))
 
         ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
         resultado = recalcular_rota(conn, ficha_id, ficha)
@@ -93,6 +131,16 @@ def editar_servico(servico_id):
         servico = fetch_one(conn, "SELECT * FROM servicos WHERE id = ?", (servico_id,))
     if not servico:
         return jsonify({"erro": "Serviço não encontrado"}), 404
+
+    # Editar também exige setor. Assim, abrir um ponto antigo para corrigir
+    # qualquer coisa já força a classificação que faltava, em vez de perpetuar
+    # o ponto órfão. Se o cliente não mandou o campo, cai no que já estava —
+    # só bloqueia mesmo quando continua vazio dos dois lados.
+    erro_setor, setor_id = _validar_setor(
+        data.get("setor_id") if "setor_id" in data else servico.get("setor_id")
+    )
+    if erro_setor:
+        return jsonify({"erro": erro_setor}), 400
 
     cep_novo = "".join(c for c in (data.get("cep") or servico["cep"]) if c.isdigit())
     numero_novo = (data.get("numero") if data.get("numero") is not None
@@ -132,8 +180,7 @@ def editar_servico(servico_id):
                else servico.get("modelo") or ""),
               (data.get("numero_os") if data.get("numero_os") is not None
                else servico.get("numero_os") or ""),
-              (data.get("setor_id") if "setor_id" in data
-               else servico.get("setor_id")) or None,
+              setor_id,
               servico_id))
 
         ficha_id = servico["ficha_id"]
@@ -179,3 +226,70 @@ def remover_servico(servico_id):
         resultado = recalcular_rota(conn, ficha_id, ficha)
 
     return jsonify({"mensagem": "Serviço removido e rota recalculada", **resultado})
+
+
+# ─── Pontos órfãos: os que ficaram sem setor de antes da obrigatoriedade ──
+# Tornar o campo obrigatório resolve daqui pra frente, mas não conserta o
+# passado: a base já tinha 32 pontos sem classificação. Sem uma forma de
+# atribuir em lote, a única saída seria abrir ponto por ponto — que é
+# exatamente o atrito que fez ninguém preencher em primeiro lugar.
+
+
+@servicos_bp.route("/servicos/sem-setor", methods=["GET"])
+def listar_sem_setor():
+    """Pontos sem setor, agrupáveis por ficha. Só de rotas ainda em aberto:
+    reclassificar rota já fechada mexeria em número de mês que já passou."""
+    incluir_concluidas = str(request.args.get("todas", "")).lower() in ("1", "true", "sim")
+    filtro = "" if incluir_concluidas else "AND f.status <> 'concluida'"
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, f"""
+            SELECT sv.id, sv.cliente, sv.tipo_aparelho, sv.modelo,
+                   sv.endereco_completo, sv.numero_os,
+                   f.id AS ficha_id, f.dia_semana, f.status AS ficha_status,
+                   t.nome AS tecnico_nome, t.cor AS tecnico_cor
+              FROM servicos sv
+              JOIN fichas f ON f.id = sv.ficha_id
+              LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+             WHERE sv.setor_id IS NULL {filtro}
+             ORDER BY f.id DESC, sv.ordem, sv.id
+        """)
+
+    return jsonify({"servicos": linhas, "total": len(linhas)})
+
+
+@servicos_bp.route("/servicos/setor-em-lote", methods=["PUT"])
+def definir_setor_em_lote():
+    data = request.get_json(silent=True) or {}
+
+    erro_setor, setor_id = _validar_setor(data.get("setor_id"))
+    if erro_setor:
+        return jsonify({"erro": erro_setor}), 400
+
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"erro": "Selecione ao menos um ponto."}), 400
+
+    try:
+        ids = [int(i) for i in ids]
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Lista de pontos inválida."}), 400
+
+    # Limite defensivo: o IN abaixo monta um placeholder por id, e uma lista
+    # gigante viraria uma query absurda. 500 cobre qualquer uso real aqui.
+    if len(ids) > 500:
+        return jsonify({"erro": "Selecione no máximo 500 pontos por vez."}), 400
+
+    marcadores = ", ".join("?" for _ in ids)
+    with db_conn(commit=True) as conn:
+        alteradas = execute(
+            conn,
+            f"UPDATE servicos SET setor_id = ? WHERE id IN ({marcadores})",
+            tuple([setor_id] + ids),
+        )
+
+    return jsonify({
+        "mensagem": f"{alteradas} ponto{'s' if alteradas != 1 else ''} classificado"
+                    f"{'s' if alteradas != 1 else ''}.",
+        "atualizados": alteradas,
+    })

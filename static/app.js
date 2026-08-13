@@ -337,6 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
   iniciarRelogio();
   iniciarMonitorSaude();
   iniciarAutoRefresh();
+  iniciarFiltroHistorico();
   carregarTecnicos();
   _vcepRenderHistorico();
   carregarSeloPecas();
@@ -446,18 +447,156 @@ async function carregarSetores() {
   return setores;
 }
 
+// Lembra o último setor usado. A maioria dos dias é de uma frente só, então
+// pré-selecionar acerta quase sempre e transforma o campo obrigatório em zero
+// cliques a mais. Fica no localStorage por ser preferência de quem está na
+// máquina, não dado do negócio — não vale uma coluna no banco.
+const CHAVE_ULTIMO_SETOR = 'portotec:ultimo-setor';
+
+function ultimoSetorUsado() {
+  const id = localStorage.getItem(CHAVE_ULTIMO_SETOR);
+  // Só serve se o setor ainda existir e estiver ativo: setor desativado no
+  // meio do caminho deixaria o formulário abrir com uma opção inválida.
+  return setorPorId(id) ? id : null;
+}
+
+function lembrarSetor(id) {
+  if (id) localStorage.setItem(CHAVE_ULTIMO_SETOR, String(id));
+}
+
 function preencherSelectSetor(idSelect, selecionado = null) {
   const sel = document.getElementById(idSelect);
   if (!sel) return;
-  sel.innerHTML = `<option value="">Sem setor</option>` +
+
+  // Sem escolha explícita, cai no último usado. O placeholder é "Selecione..."
+  // e não "Sem setor" porque sem setor deixou de ser uma opção válida: 84% dos
+  // pontos estavam assim e o relatório por setor não valia nada.
+  const alvo = selecionado ?? ultimoSetorUsado();
+
+  sel.innerHTML = `<option value="">Selecione o setor...</option>` +
     setores.map(s => `
-      <option value="${s.id}" ${String(s.id) === String(selecionado) ? 'selected' : ''}>
+      <option value="${s.id}" ${String(s.id) === String(alvo) ? 'selected' : ''}>
         ${esc(s.nome)}
       </option>`).join('');
 }
 
 function setorPorId(id) {
   return setores.find(s => String(s.id) === String(id)) || null;
+}
+
+// ─── Classificação em lote dos pontos órfãos ────────────────────────
+// Tornar o setor obrigatório resolve daqui pra frente. Não conserta os 32
+// pontos que já entraram sem classificação — e mandar o usuário abrir ponto
+// por ponto seria repetir o atrito que criou o problema.
+async function abrirClassificacaoEmLote() {
+  const modal = document.getElementById('modal-classificar');
+  const corpo = document.getElementById('classificar-corpo');
+  const btn   = document.getElementById('btn-aplicar-lote');
+
+  modal.classList.add('open');
+  corpo.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:20px;"><div class="spinner"></div> Procurando pontos sem setor...</div>`;
+  preencherSelectSetor('lote-setor');
+
+  let r;
+  try {
+    r = await api('/servicos/sem-setor');
+  } catch (e) {
+    corpo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const servicos = r.servicos || [];
+  if (servicos.length === 0) {
+    corpo.innerHTML = `<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:12px;">Nenhum ponto sem setor. Tudo classificado.</div>`;
+    btn.style.display = 'none';
+    return;
+  }
+
+  // Agrupa por ficha: a decisão real é "esta rota inteira é Panasonic", quase
+  // nunca ponto a ponto. Ver os pontos juntos por dia é o que torna a escolha
+  // rápida em vez de uma lista solta de 32 nomes.
+  const porFicha = new Map();
+  servicos.forEach(s => {
+    if (!porFicha.has(s.ficha_id)) porFicha.set(s.ficha_id, []);
+    porFicha.get(s.ficha_id).push(s);
+  });
+
+  corpo.innerHTML = [...porFicha.entries()].map(([fichaId, pontos]) => `
+    <div class="conc-titulo" style="display:flex;align-items:center;gap:8px;">
+      <span class="vg-tecnico-dot" style="background:${escCor(pontos[0].tecnico_cor)}"></span>
+      ${esc(pontos[0].dia_semana)} · ${esc(pontos[0].tecnico_nome || 'sem técnico')}
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-left:auto;"
+              onclick="marcarPontosDaFicha(${fichaId})">Marcar a rota toda</button>
+    </div>
+    ${pontos.map(p => `
+      <label class="conc-item" style="cursor:pointer;align-items:center;">
+        <input type="checkbox" class="lote-check" data-ficha="${fichaId}" value="${p.id}">
+        <div style="flex:1;min-width:0;">
+          <div class="conc-cliente">${esc(p.cliente) || 'Cliente sem nome'}</div>
+          <div class="conc-meta">${esc(p.tipo_aparelho) || '—'}${p.modelo ? ' · ' + esc(p.modelo) : ''}${p.numero_os ? ' · OS ' + esc(p.numero_os) : ''}</div>
+        </div>
+      </label>`).join('')}
+  `).join('');
+
+  btn.style.display = '';
+  btn.disabled = false;
+  btn.textContent = `Aplicar (0 de ${servicos.length})`;
+  btn.onclick = aplicarClassificacaoEmLote;
+
+  corpo.querySelectorAll('.lote-check').forEach(c => {
+    c.addEventListener('change', () => atualizarContadorLote(servicos.length));
+  });
+  document.getElementById('btn-lote-todos').onclick = () => {
+    const todos = corpo.querySelectorAll('.lote-check');
+    const marcarTudo = [...todos].some(c => !c.checked);
+    todos.forEach(c => { c.checked = marcarTudo; });
+    atualizarContadorLote(servicos.length);
+  };
+}
+
+function marcarPontosDaFicha(fichaId) {
+  const corpo = document.getElementById('classificar-corpo');
+  const daFicha = corpo.querySelectorAll(`.lote-check[data-ficha="${fichaId}"]`);
+  const marcarTudo = [...daFicha].some(c => !c.checked);
+  daFicha.forEach(c => { c.checked = marcarTudo; });
+  atualizarContadorLote(corpo.querySelectorAll('.lote-check').length);
+}
+
+function atualizarContadorLote(total) {
+  const marcados = document.querySelectorAll('.lote-check:checked').length;
+  const btn = document.getElementById('btn-aplicar-lote');
+  btn.textContent = `Aplicar (${marcados} de ${total})`;
+  btn.disabled = marcados === 0;
+}
+
+async function aplicarClassificacaoEmLote() {
+  const setorId = document.getElementById('lote-setor').value;
+  if (!setorId) { toast('Escolha o setor a aplicar.', 'error'); return; }
+
+  const ids = [...document.querySelectorAll('.lote-check:checked')].map(c => parseInt(c.value, 10));
+  if (ids.length === 0) { toast('Marque ao menos um ponto.', 'error'); return; }
+
+  const btn = document.getElementById('btn-aplicar-lote');
+  btn.disabled = true;
+  btn.textContent = 'Aplicando...';
+
+  try {
+    const r = await api('/servicos/setor-em-lote', {
+      method: 'PUT',
+      body: JSON.stringify({ ids, setor_id: setorId }),
+    });
+    lembrarSetor(setorId);
+    toast(r.mensagem, 'success');
+
+    // Reabre em vez de fechar: quase sempre sobra outra frente para
+    // classificar, e fechar obrigaria a navegar de volta.
+    await abrirClassificacaoEmLote();
+    await carregarVisaoGeral();
+    if (fichaAtiva) await renderFichaDetalhe(fichaAtiva);
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false;
+  }
 }
 
 function copiarLinkTecnico(token) {
@@ -622,7 +761,8 @@ async function carregarResumoSetores() {
     const pctDe = (n) => (total ? Math.round((n / total) * 100) : 0);
 
     const linhaSemSetor = semSetor > 0 ? `
-        <div class="vg-setor-row vg-setor-row--sem">
+        <div class="vg-setor-row vg-setor-row--sem" onclick="abrirClassificacaoEmLote()"
+             title="Clique para classificar estes pontos">
           <span class="vg-tecnico-dot" style="background:var(--text-muted)"></span>
           <span class="vg-tecnico-nome" style="color:var(--text-muted)">Sem setor</span>
           <div class="vg-setor-barra">
@@ -649,13 +789,39 @@ async function carregarResumoSetores() {
   }
 }
 
+// Período selecionado no Histórico. Vazio = tudo, que é o padrão.
+let historicoDias = '';
+
+function iniciarFiltroHistorico() {
+  const barra = document.getElementById('hist-periodo');
+  if (!barra) return;
+
+  barra.querySelectorAll('.hist-periodo-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      historicoDias = btn.dataset.dias || '';
+      barra.querySelectorAll('.hist-periodo-btn')
+           .forEach(b => b.classList.toggle('active', b === btn));
+      carregarHistorico();
+      // A tendência não entra aqui: ela tem janela própria de 8 semanas
+      // (/metricas/tendencia) e não responde a este filtro. Recarregá-la
+      // seria só gastar rede para redesenhar exatamente a mesma coisa.
+    });
+  });
+}
+
 async function carregarHistorico() {
   const statsEl = document.getElementById('historico-stats');
   const listaEl = document.getElementById('historico-lista');
   if (!statsEl || !listaEl) return;
 
   try {
-    const fichas = await api('/fichas?status=concluida');
+    // Filtro de período. "Tudo" continua sendo o padrão para não mudar o que
+    // o usuário via antes sem ele pedir — os recortes são um atalho, não uma
+    // troca do comportamento.
+    const consulta = historicoDias
+      ? `/fichas?status=concluida&dias=${historicoDias}`
+      : '/fichas?status=concluida';
+    const fichas = await api(consulta);
 
     const totalRotas  = fichas.length;
     const totalPontos = fichas.reduce((soma, f) => soma + (f.total_servicos || 0), 0);
@@ -748,7 +914,13 @@ async function carregarTendencia() {
 }
 
 function exportarHistorico() {
-  window.open('/api/historico/exportar', '_blank');
+  // O XLSX segue o período que está na tela. Exportar "tudo" enquanto o
+  // usuário olha os últimos 7 dias entregaria uma planilha que não confere
+  // com o que ele acabou de ver — e ele levaria isso para uma reunião.
+  const url = historicoDias
+    ? `/api/historico/exportar?dias=${historicoDias}`
+    : '/api/historico/exportar';
+  window.open(url, '_blank');
 }
 
 // ─── Peças compradas (planilha de pedidos) ──────────────────────────
@@ -2175,6 +2347,15 @@ async function adicionarServico() {
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div> Geocodificando...';
 
+  // Valida antes de chamar o servidor. O backend também recusa, mas avisar
+  // aqui evita o usuário perder o formulário preenchido numa ida e volta.
+  const setorEscolhido = document.getElementById('add-setor').value;
+  if (!setorEscolhido) {
+    toast('Escolha o setor do atendimento.', 'error');
+    document.getElementById('add-setor').focus();
+    return;
+  }
+
   try {
     const r = await api(`/fichas/${fichaId}/servicos`, {
       method: 'POST',
@@ -2186,9 +2367,11 @@ async function adicionarServico() {
         tipo_aparelho: document.getElementById('add-tipo-aparelho').value,
         modelo:        document.getElementById('add-modelo').value,
         numero_os:     document.getElementById('add-numero-os').value,
-        setor_id:      document.getElementById('add-setor').value || null,
+        setor_id:      setorEscolhido,
       }),
     });
+
+    lembrarSetor(setorEscolhido);
 
     fecharModais();
     toast(`Ponto adicionado! Distância estimada: ${fmtKm(r.distancia_total)} km`, 'success');
@@ -2504,6 +2687,13 @@ async function salvarEdicaoServico() {
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div> Salvando...';
 
+  const setorEditado = document.getElementById('edit-setor').value;
+  if (!setorEditado) {
+    toast('Escolha o setor do atendimento.', 'error');
+    document.getElementById('edit-setor').focus();
+    return;
+  }
+
   try {
     await api(`/servicos/${servicoId}`, {
       method: 'PUT',
@@ -2515,9 +2705,11 @@ async function salvarEdicaoServico() {
         tipo_aparelho: document.getElementById('edit-tipo-aparelho').value,
         modelo:        document.getElementById('edit-modelo').value,
         numero_os:     document.getElementById('edit-numero-os').value,
-        setor_id:      document.getElementById('edit-setor').value || null,
+        setor_id:      setorEditado,
       }),
     });
+
+    lembrarSetor(setorEditado);
 
     fecharModais();
     toast('Ponto atualizado', 'success');

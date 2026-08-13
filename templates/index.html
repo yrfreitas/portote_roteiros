@@ -170,6 +170,11 @@
     <div class="historico-wrap">
       <div class="historico-header">
         <span class="visao-geral-title">Rotas Concluídas</span>
+        <div class="hist-periodo" id="hist-periodo">
+          <button type="button" class="hist-periodo-btn" data-dias="7">7 dias</button>
+          <button type="button" class="hist-periodo-btn" data-dias="30">30 dias</button>
+          <button type="button" class="hist-periodo-btn active" data-dias="">Tudo</button>
+        </div>
         <button class="btn btn-ghost btn-sm" onclick="exportarHistorico()">
           <svg class="icone-svg icone-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Exportar XLSX
@@ -317,7 +322,7 @@
 
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label" for="add-setor">Setor</label>
+        <label class="form-label" for="add-setor">Setor <span class="form-obrigatorio">*</span></label>
         <select class="form-input" id="add-setor"></select>
       </div>
       <div class="form-group">
@@ -397,7 +402,7 @@
 
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label" for="edit-setor">Setor</label>
+        <label class="form-label" for="edit-setor">Setor <span class="form-obrigatorio">*</span></label>
         <select class="form-input" id="edit-setor"></select>
       </div>
       <div class="form-group">
@@ -419,6 +424,33 @@
       <button type="button" class="btn btn-primary" id="btn-editar-servico" onclick="salvarEdicaoServico()">
         Salvar Alterações
       </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-classificar" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:620px;">
+    <div class="modal-title">Classificar pontos sem setor</div>
+    <p style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px;">
+      Estes pontos entraram antes do setor ser obrigatório. Marque os que são da
+      mesma frente, escolha o setor e aplique de uma vez.
+    </p>
+
+    <div class="form-row" style="align-items:flex-end;">
+      <div class="form-group" style="flex:1;">
+        <label class="form-label" for="lote-setor">Setor a aplicar</label>
+        <select class="form-input" id="lote-setor"></select>
+      </div>
+      <div class="form-group" style="flex:0 0 auto;">
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-lote-todos">Marcar todos</button>
+      </div>
+    </div>
+
+    <div id="classificar-corpo" style="max-height:46vh;overflow-y:auto;"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Fechar</button>
+      <button type="button" class="btn btn-primary" id="btn-aplicar-lote">Aplicar</button>
     </div>
   </div>
 </div>

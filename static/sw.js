@@ -13,7 +13,8 @@
 // v3 = entrada do auto-refresh (verificarRevisao em app.js e tecnico.js).
 // v4 = resumo por setor com denominador correto e linha "Sem setor",
 //      e rota concluída saindo da sidebar (passa a viver só no Histórico).
-const CACHE_VERSAO = 'portotec-roteiros-v4';
+// v5 = setor obrigatório, classificação em lote e filtro de período.
+const CACHE_VERSAO = 'portotec-roteiros-v5';
 
 const ARQUIVOS_CASCA = [
   '/',

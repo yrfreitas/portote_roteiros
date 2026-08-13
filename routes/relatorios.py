@@ -1,8 +1,8 @@
 import io
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, jsonify, send_file
+from flask import Blueprint, jsonify, request, send_file
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
@@ -25,18 +25,30 @@ def _parse_dt(valor):
 
 @relatorios_bp.route("/historico/exportar", methods=["GET"])
 def exportar_historico():
+    # Acompanha o filtro de período da tela. Sem isso, quem estivesse olhando
+    # os últimos 7 dias exportaria a planilha inteira e levaria para uma
+    # reunião um número que não confere com o que viu.
+    # Mesmo formato de corte do listar_fichas: espaço como separador, porque a
+    # coluna é TEXT gravada com CURRENT_TIMESTAMP e a comparação é textual.
+    dias = request.args.get("dias")
+    filtro, params = "", ()
+    if dias and str(dias).isdigit() and 1 <= int(dias) <= 3650:
+        corte = datetime.now(timezone.utc) - timedelta(days=int(dias))
+        filtro = "AND f.concluida_em >= ?"
+        params = (corte.strftime("%Y-%m-%d %H:%M:%S"),)
+
     with db_conn() as conn:
-        fichas = fetch_all(conn, """
+        fichas = fetch_all(conn, f"""
             SELECT f.dia_semana, f.data_referencia, f.concluida_em,
                    f.distancia_total, t.nome AS tecnico_nome,
                    COUNT(s.id) AS total_servicos
             FROM fichas f
             LEFT JOIN servicos s ON s.ficha_id = f.id
             LEFT JOIN tecnicos t ON t.id = f.tecnico_id
-            WHERE f.status = 'concluida'
+            WHERE f.status = 'concluida' {filtro}
             GROUP BY f.id, t.nome
             ORDER BY f.concluida_em DESC
-        """)
+        """, params)
 
     wb = Workbook()
     ws = wb.active
