@@ -16,7 +16,8 @@
 // v5 = setor obrigatório, classificação em lote e filtro de período.
 // v6 = modo offline de leitura do técnico + fila de sincronização.
 // v7 = verificador de encaixe com régua única, motivos e mapa.
-const CACHE_VERSAO = 'portotec-roteiros-v7';
+// v8 = correção do mapa (setView antes das camadas).
+const CACHE_VERSAO = 'portotec-roteiros-v8';
 
 const ARQUIVOS_CASCA = [
   '/',

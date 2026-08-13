@@ -2100,16 +2100,40 @@ let vcepCamadas = [];   // uma camada por sugestão, para o destaque cruzado
 let vcepAlvoMarker = null;
 
 function vcepRenderizarMapa(r) {
+  try {
+    _vcepDesenharMapa(r);
+  } catch (e) {
+    // O mapa é apoio à decisão, não a decisão. Se ele falhar, a análise em
+    // texto — que é a informação essencial — não pode cair junto.
+    console.error('Falha ao desenhar o mapa de encaixe:', e);
+    const el = document.getElementById('vcep-mapa-encaixe');
+    if (el) el.style.display = 'none';
+  }
+}
+
+function _vcepDesenharMapa(r) {
   const el = document.getElementById('vcep-mapa-encaixe');
-  if (!el || !r || r.lat == null || r.lng == null || typeof L === 'undefined') return;
+  if (!el || !r || typeof L === 'undefined') return;
+  if (!Number.isFinite(r.lat) || !Number.isFinite(r.lng)) return;
 
   // O Leaflet guarda estado no elemento; recriar sem destruir deixa o mapa
   // cinza quando a tela é redesenhada (e ela é, a cada nova consulta).
   if (vcepMapa) { vcepMapa.remove(); vcepMapa = null; }
   vcepCamadas = [];
 
-  vcepMapa = L.map(el, { scrollWheelZoom: false, attributionControl: false });
+  // O setView TEM que vir junto com a criação, antes de qualquer camada.
+  // Sem visão definida o mapa não tem origem de pixel, e o primeiro
+  // circleMarker adicionado estoura com "Cannot read properties of undefined
+  // (reading 'intersects')" — o renderizador tenta cruzar os limites da tela
+  // com os do desenho, e os da tela ainda não existem.
+  vcepMapa = L.map(el, { scrollWheelZoom: false, attributionControl: false })
+              .setView([r.lat, r.lng], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(vcepMapa);
+
+  // Coordenada que não seja número finito envenena os limites e faz o
+  // fitBounds falhar depois, longe daqui — filtrar na entrada sai mais barato
+  // que caçar o efeito lá na frente.
+  const valida = (p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng);
 
   const limites = [[r.lat, r.lng]];
 
@@ -2120,7 +2144,7 @@ function vcepRenderizarMapa(r) {
     // outras rotas passam, sem competir com o que de fato interessa.
     const fraca = s.classificacao === 'fora' && !s.vazia;
 
-    (s.pontos || []).forEach(p => {
+    (s.pontos || []).filter(valida).forEach(p => {
       L.circleMarker([p.lat, p.lng], {
         radius: fraca ? 3 : 5,
         color: cor, fillColor: cor,
@@ -2133,7 +2157,7 @@ function vcepRenderizarMapa(r) {
 
     // A linha até o ponto mais próximo é o que torna "2,1 km fora da rota"
     // uma distância que se enxerga em vez de um número para acreditar.
-    if (s.ponto_proximo && !fraca) {
+    if (valida(s.ponto_proximo) && !fraca) {
       L.polyline([[r.lat, r.lng], [s.ponto_proximo.lat, s.ponto_proximo.lng]], {
         color: cor, weight: 2, opacity: 0.5, dashArray: '4,6',
       }).addTo(camada);
@@ -2150,7 +2174,13 @@ function vcepRenderizarMapa(r) {
     r.endereco || r.cep || 'Endereço consultado', { direction: 'top' }
   );
 
-  vcepMapa.fitBounds(L.latLngBounds(limites).pad(0.2));
+  // Só reenquadra se houver mais de um ponto e os limites forem válidos.
+  // Com o alvo sozinho, o fitBounds daria zoom máximo num ponto único; o
+  // setView de cima já deixou um enquadramento razoável nesse caso.
+  if (limites.length > 1) {
+    const caixa = L.latLngBounds(limites);
+    if (caixa.isValid()) vcepMapa.fitBounds(caixa.pad(0.2));
+  }
 
   // O container nasce com display:none dentro da aba; sem isso o Leaflet
   // calcula tamanho zero e o mapa aparece cortado.
