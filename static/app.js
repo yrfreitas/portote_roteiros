@@ -464,6 +464,12 @@ function lembrarSetor(id) {
   if (id) localStorage.setItem(CHAVE_ULTIMO_SETOR, String(id));
 }
 
+// Dia de hoje no mesmo formato que o banco guarda ("Segunda-feira").
+function diaDeHoje() {
+  const d = new Date().toLocaleDateString('pt-BR', { weekday: 'long' });
+  return d.charAt(0).toUpperCase() + d.slice(1);
+}
+
 function preencherSelectSetor(idSelect, selecionado = null) {
   const sel = document.getElementById(idSelect);
   if (!sel) return;
@@ -673,6 +679,7 @@ async function carregarFichasTecnico(tecnicoId) {
         <button class="btn-del-ficha" onclick="deletarFicha(event,${f.id})">${icone('x', 'icone-11')}</button>
         <div class="ficha-item-dia">
           ${esc(f.dia_semana)}
+          ${f.dia_semana === diaDeHoje() ? '<span class="tag-hoje">hoje</span>' : ''}
           ${concluida ? `<span class="mini-check" title="Concluída">${icone('concluir', 'icone-10')}</span>` : ''}
         </div>
         <div class="ficha-item-meta">

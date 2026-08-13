@@ -280,3 +280,13 @@ button.t-ponto-link-waze {
   font-size: inherit;
   cursor: pointer;
 }
+
+/* A rota de hoje salta aos olhos: e a pergunta que o tecnico faz ao abrir o
+   app, e ele faz isso com pressa, muitas vezes ja dentro do carro. */
+.t-ficha-card.hoje { border-left: 4px solid #2aa05c; background: rgba(42,160,92,.07); }
+.t-tag-hoje {
+  background: #2aa05c; color: #fff;
+  font-size: 10px; font-weight: 800; letter-spacing: .6px;
+  padding: 2px 7px; border-radius: 4px; margin-left: 6px;
+  vertical-align: middle;
+}

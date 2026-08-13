@@ -19,6 +19,31 @@ DIAS_VALIDOS = {
     "Quinta-feira", "Sexta-feira", "Sábado", "Domingo",
 }
 
+# Ordem da semana. A lista existe porque dia_semana é TEXTO no banco: ordenar
+# por ele daria ordem alfabética (Domingo, Quarta, Quinta, Segunda, Sexta...),
+# que é pior ainda que a bagunça que havia.
+ORDEM_DIAS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
+              "Sexta-feira", "Sábado", "Domingo"]
+_INDICE_DIA = {dia: i for i, dia in enumerate(ORDEM_DIAS)}
+
+
+def ordenar_por_semana(fichas: list) -> list:
+    """Segunda → Domingo, e dentro do mesmo dia a data mais antiga primeiro.
+
+    Ordena em PYTHON e não em SQL de propósito: exigiria um CASE de sete
+    ramos repetido em cada consulta, e SQLite e Postgres divergem em NULLS
+    FIRST/LAST para a data. As listas aqui têm dezenas de linhas — o custo é
+    irrelevante e o código fica legível. Mesma razão pela qual as métricas por
+    semana já são agregadas em Python neste projeto.
+
+    Dia desconhecido vai para o fim em vez de quebrar a ordenação.
+    """
+    return sorted(fichas, key=lambda f: (
+        _INDICE_DIA.get(f.get("dia_semana"), len(ORDEM_DIAS)),
+        f.get("data_referencia") or "",
+        f.get("id") or 0,
+    ))
+
 
 @fichas_bp.route("/fichas", methods=["GET"])
 def listar_fichas():
@@ -79,11 +104,19 @@ def listar_fichas():
         LEFT JOIN tecnicos t ON t.id = f.tecnico_id
         {filtro}
         GROUP BY f.id, t.nome, t.cor
-        ORDER BY f.updated_at DESC, f.id DESC
     """
 
     with db_conn() as conn:
-        return jsonify(fetch_all(conn, query, tuple(params)))
+        fichas = fetch_all(conn, query, tuple(params))
+
+    # Histórico continua do mais recente para o mais antigo — ali a pergunta é
+    # "o que foi feito por último". Na lista de trabalho a pergunta é outra:
+    # "qual é a ordem da semana".
+    if request.args.get("status") == "concluida":
+        return jsonify(sorted(fichas,
+                              key=lambda f: (f.get("concluida_em") or ""),
+                              reverse=True))
+    return jsonify(ordenar_por_semana(fichas))
 
 
 @fichas_bp.route("/fichas", methods=["POST"])

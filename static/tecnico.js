@@ -129,6 +129,13 @@
     }[c]));
   }
 
+  // Dia de hoje por extenso, no mesmo texto que o banco guarda. O toLocaleDateString
+  // devolve "segunda-feira" em minusculo — daí o ajuste da primeira letra.
+  function diaDeHoje() {
+    const d = new Date().toLocaleDateString('pt-BR', { weekday: 'long' });
+    return d.charAt(0).toUpperCase() + d.slice(1);
+  }
+
   function fmtKm(v) {
     return (v === null || v === undefined || isNaN(v)) ? '—' : Number(v).toFixed(1);
   }
@@ -145,10 +152,12 @@
         return;
       }
 
+      const hoje = diaDeHoje();
       container.innerHTML = fichas.map((f) => `
-        <div class="t-ficha-card ${f.status === 'concluida' ? 'concluida' : ''}" onclick="window._tAbrirFicha(${f.id})">
+        <div class="t-ficha-card ${f.status === 'concluida' ? 'concluida' : ''} ${f.dia_semana === hoje ? 'hoje' : ''}" onclick="window._tAbrirFicha(${f.id})">
           <div class="t-ficha-titulo">
             ${esc(f.dia_semana)}
+            ${f.dia_semana === hoje ? '<span class="t-tag-hoje">HOJE</span>' : ''}
             ${f.status === 'concluida' ? '<span class="t-tag-ok">Concluída</span>' : ''}
           </div>
           <div class="t-ficha-meta">${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''} · ${fmtKm(f.distancia_total)} km</div>
@@ -481,7 +490,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v17';
+  const VERSAO_TELA = 'v18';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

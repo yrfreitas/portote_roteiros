@@ -26,7 +26,8 @@
 // v15 = rastreio ao vivo: o cliente acompanha o técnico a caminho.
 // v16 = código do app passa a ser rede-primeiro (fim do JS velho no cache).
 // v17 = acompanhamento por previsão de chegada (sem GPS).
-const CACHE_VERSAO = 'portotec-roteiros-v17';
+// v18 = fichas na ordem da semana e destaque para a rota de hoje.
+const CACHE_VERSAO = 'portotec-roteiros-v18';
 
 const ARQUIVOS_CASCA = [
   '/',

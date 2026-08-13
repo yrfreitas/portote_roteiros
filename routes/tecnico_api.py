@@ -1,7 +1,8 @@
 from flask import Blueprint, jsonify, request
 
 from database import db_conn, execute, fetch_all, fetch_one, ler_revisao
-from routes.fichas import STATUS_VALIDOS, recalcular_distancia_ordem_fixa
+from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
+                           recalcular_distancia_ordem_fixa)
 from routes.servicos import STATUS_SERVICO_VALIDOS, aplicar_status_servico
 
 tecnico_api_bp = Blueprint("tecnico_api", __name__)
@@ -45,8 +46,12 @@ def fichas_do_tecnico(token):
             LEFT JOIN servicos s ON s.ficha_id = f.id
             WHERE f.tecnico_id = ?
             GROUP BY f.id
-            ORDER BY f.updated_at DESC, f.id DESC
         """, (tecnico["id"],))
+
+        # Mesma ordem da semana do painel. O técnico abre o app para saber o
+        # que vem hoje; lista embaralhada por "quem foi editado por último"
+        # obriga a procurar o próprio dia numa tela pequena.
+        fichas = ordenar_por_semana(fichas)
 
     return jsonify({"tecnico": {"id": tecnico["id"], "nome": tecnico["nome"], "cor": tecnico["cor"]},
                      "fichas": fichas})
