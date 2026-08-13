@@ -16,6 +16,7 @@ from extensions import limiter
 from routes.auth import auth_bp
 from routes.fichas import fichas_bp
 from routes.pedidos import pedidos_bp
+from routes.rastreio import rastreio_bp
 from routes.relatorios import relatorios_bp
 from routes.servicos import servicos_bp
 from routes.setores import setores_bp
@@ -78,6 +79,7 @@ app.register_blueprint(pedidos_bp, url_prefix="/api")
 app.register_blueprint(setores_bp, url_prefix="/api")
 app.register_blueprint(tecnico_api_bp, url_prefix="/api/t")
 app.register_blueprint(tecnico_view_bp)
+app.register_blueprint(rastreio_bp, url_prefix="/api")
 
 
 def _e_api() -> bool:
@@ -85,7 +87,11 @@ def _e_api() -> bool:
 
 
 _CAMINHOS_PUBLICOS = {"/login", "/api/health"}
-_PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/")
+# /acompanhar/ e /api/rastreio/ são públicos porque quem abre é o CLIENTE, que
+# não tem conta no sistema. O link de 16 bytes é a credencial — mesmo modelo do
+# link do técnico. Só expõem posição e destino daquele atendimento.
+_PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
+                      "/acompanhar/", "/api/rastreio/")
 
 
 @app.before_request
@@ -107,6 +113,17 @@ def index():
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/acompanhar/<token>")
+def acompanhar(token):
+    """Página pública onde o cliente vê o técnico a caminho.
+
+    Sem login de propósito: o cliente não tem conta. O link é a credencial,
+    mesmo modelo do link do técnico. Fica aqui e não no blueprint de rastreio
+    porque lá tudo vive sob /api — isto é HTML.
+    """
+    return render_template("acompanhar.html", token=token)
 
 
 # ─── Auto-refresh: quem está com a tela aberta vê a mudança sozinho ──────

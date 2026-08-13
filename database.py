@@ -170,6 +170,22 @@ _SCHEMA_PG = [
         revisao       BIGINT NOT NULL DEFAULT 0,
         atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
+    # Rastreio ao vivo: o cliente acompanha o técnico a caminho.
+    # Guarda só a ÚLTIMA posição, não o histórico. Duas razões: o cliente quer
+    # saber onde ele está agora, não por onde passou; e guardar trajeto de
+    # funcionário é dado sensível que ninguém pediu para ter.
+    """CREATE TABLE IF NOT EXISTS rastreios (
+        id            SERIAL PRIMARY KEY,
+        token         TEXT NOT NULL UNIQUE,
+        servico_id    INTEGER NOT NULL REFERENCES servicos(id) ON DELETE CASCADE,
+        tecnico_id    INTEGER NOT NULL REFERENCES tecnicos(id) ON DELETE CASCADE,
+        lat           DOUBLE PRECISION,
+        lng           DOUBLE PRECISION,
+        ativo         BOOLEAN DEFAULT TRUE,
+        criado_em     TEXT DEFAULT CURRENT_TIMESTAMP,
+        atualizado_em TEXT,
+        encerrado_em  TEXT
+    )""",
 ]
 
 _SCHEMA_SQLITE = """
@@ -244,6 +260,20 @@ _SCHEMA_SQLITE = """
         revisao       INTEGER NOT NULL DEFAULT 0,
         atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS rastreios (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        token         TEXT NOT NULL UNIQUE,
+        servico_id    INTEGER NOT NULL,
+        tecnico_id    INTEGER NOT NULL,
+        lat           REAL,
+        lng           REAL,
+        ativo         INTEGER DEFAULT 1,
+        criado_em     TEXT DEFAULT CURRENT_TIMESTAMP,
+        atualizado_em TEXT,
+        encerrado_em  TEXT,
+        FOREIGN KEY (servico_id) REFERENCES servicos(id) ON DELETE CASCADE,
+        FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
+    );
 """
 
 _INDICES = [
@@ -252,6 +282,8 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_fichas_tecnico   ON fichas(tecnico_id)",
     "CREATE INDEX IF NOT EXISTS idx_push_tecnico     ON push_subscriptions(tecnico_id)",
     "CREATE INDEX IF NOT EXISTS idx_servicos_setor   ON servicos(setor_id)",
+    "CREATE INDEX IF NOT EXISTS idx_rastreios_servico ON rastreios(servico_id)",
+    "CREATE INDEX IF NOT EXISTS idx_rastreios_ativo   ON rastreios(ativo)",
 ]
 
 _MIGRACOES_PG = [

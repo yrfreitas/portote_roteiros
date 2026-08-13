@@ -23,7 +23,8 @@
 // v12 = conserta o WhatsApp que não abria (o Waze atropelava).
 // v13 = folha de botões no "A caminho" + selo de versão na tela.
 // v14 = botão "A caminho" também no painel, na linha de cada cliente.
-const CACHE_VERSAO = 'portotec-roteiros-v14';
+// v15 = rastreio ao vivo: o cliente acompanha o técnico a caminho.
+const CACHE_VERSAO = 'portotec-roteiros-v15';
 
 const ARQUIVOS_CASCA = [
   '/',

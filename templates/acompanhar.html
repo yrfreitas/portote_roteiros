@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Acompanhe seu atendimento · Porto Tec</title>
+  <link rel="icon" href="/static/assets/favicon-32x32.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #0c0f12; color: #e8edf3;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column;
+    }
+    header { padding: 14px 16px; border-bottom: 1px solid #1e252d; }
+    .marca { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #6f7d8c; }
+    h1 { font-size: 17px; margin: 4px 0 0; font-weight: 700; }
+    #mapa { flex: 1; min-height: 320px; background: #11161b; }
+    .painel { padding: 14px 16px 20px; border-top: 1px solid #1e252d; }
+    .estado {
+      display: flex; align-items: center; gap: 9px;
+      font-size: 14px; font-weight: 600; margin-bottom: 6px;
+    }
+    .bolinha { width: 10px; height: 10px; border-radius: 50%; background: #2aa05c; flex: none; }
+    .bolinha.pulsa { animation: pulsa 1.6s ease-in-out infinite; }
+    .bolinha.parado { background: #8b97a3; animation: none; }
+    @keyframes pulsa { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+    .detalhe { font-size: 12.5px; color: #94a1ae; line-height: 1.6; }
+    .aviso {
+      margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+      background: rgba(42,160,92,.12); border: 1px solid rgba(42,160,92,.3);
+      font-size: 12.5px; line-height: 1.55;
+    }
+    .aviso.encerrado { background: rgba(139,151,163,.12); border-color: rgba(139,151,163,.3); }
+    /* Leaflet injeta estilo inline nos tiles; sem isso o mapa fica claro
+       demais ao lado do resto da página. */
+    .leaflet-tile { filter: brightness(.85) saturate(.9); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="marca">Porto Tec Assistência Técnica</div>
+    <h1 id="titulo">Acompanhe seu atendimento</h1>
+  </header>
+
+  <div id="mapa"></div>
+
+  <div class="painel">
+    <div class="estado">
+      <span class="bolinha pulsa" id="bolinha"></span>
+      <span id="estado-txt">Carregando...</span>
+    </div>
+    <div class="detalhe" id="detalhe"></div>
+    <div id="caixa-aviso"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    (function () {
+      const TOKEN = {{ token | tojson }};
+      // 15s: um carro em cidade anda ~200m nesse tempo. Mais frequente gasta
+      // bateria e dados do cliente sem ele ver diferença no mapa.
+      const INTERVALO = 15000;
+
+      let mapa = null, marcadorTecnico = null, marcadorDestino = null, linha = null;
+      let primeiraCarga = true;
+
+      function iniciarMapa(centro) {
+        // setView junto com a criação: adicionar camada antes de haver visão
+        // definida quebra o Leaflet com "undefined (reading 'intersects')".
+        mapa = L.map('mapa', { attributionControl: false }).setView(centro, 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(mapa);
+      }
+
+      function pin(cor, texto) {
+        return L.divIcon({
+          className: '',
+          html: `<div style="width:30px;height:30px;border-radius:50%;background:${cor};
+                 border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;
+                 align-items:center;justify-content:center;font-size:14px;">${texto}</div>`,
+          iconSize: [30, 30], iconAnchor: [15, 15],
+        });
+      }
+
+      async function atualizar() {
+        let d;
+        try {
+          const resp = await fetch(`/api/rastreio/${TOKEN}`, { cache: 'no-store' });
+          d = await resp.json();
+          if (!resp.ok) throw new Error(d.erro || 'Não foi possível carregar');
+        } catch (e) {
+          document.getElementById('estado-txt').textContent = 'Sem conexão';
+          document.getElementById('bolinha').className = 'bolinha parado';
+          return;
+        }
+
+        const destino = d.destino || {};
+        const temDestino = destino.lat != null && destino.lng != null;
+
+        if (!mapa) {
+          const centro = d.posicao ? [d.posicao.lat, d.posicao.lng]
+                       : temDestino ? [destino.lat, destino.lng]
+                       : [-23.55, -46.63];
+          iniciarMapa(centro);
+        }
+
+        if (temDestino && !marcadorDestino) {
+          marcadorDestino = L.marker([destino.lat, destino.lng], { icon: pin('#e02020', '🏠') })
+            .addTo(mapa).bindTooltip('Seu endereço', { direction: 'top' });
+        }
+
+        const estadoTxt = document.getElementById('estado-txt');
+        const bolinha = document.getElementById('bolinha');
+        const detalhe = document.getElementById('detalhe');
+        const caixa = document.getElementById('caixa-aviso');
+
+        if (d.chegou) {
+          estadoTxt.textContent = 'Atendimento concluído';
+          bolinha.className = 'bolinha parado';
+          detalhe.textContent = 'O técnico já finalizou este atendimento.';
+          caixa.innerHTML = '<div class="aviso encerrado">Obrigado por acompanhar.</div>';
+          return true; // encerra o ciclo
+        }
+
+        if (!d.ativo) {
+          estadoTxt.textContent = 'Acompanhamento encerrado';
+          bolinha.className = 'bolinha parado';
+          detalhe.textContent = 'Este link não está mais ativo.';
+          caixa.innerHTML = '<div class="aviso encerrado">Se ainda estiver aguardando, fale com a Porto Tec.</div>';
+          return true;
+        }
+
+        if (d.posicao) {
+          const p = [d.posicao.lat, d.posicao.lng];
+          if (!marcadorTecnico) {
+            marcadorTecnico = L.marker(p, { icon: pin('#1a6fd4', '🚗') })
+              .addTo(mapa).bindTooltip(`${d.tecnico}`, { direction: 'top' });
+          } else {
+            marcadorTecnico.setLatLng(p);
+          }
+
+          if (temDestino) {
+            const traco = [p, [destino.lat, destino.lng]];
+            if (!linha) linha = L.polyline(traco, { color: '#1a6fd4', weight: 3, opacity: .6, dashArray: '6,8' }).addTo(mapa);
+            else linha.setLatLngs(traco);
+          }
+
+          // Só reenquadra na primeira vez: refazer o zoom a cada 15s tiraria o
+          // mapa do lugar bem na hora em que a pessoa está olhando.
+          if (primeiraCarga) {
+            const pontos = temDestino ? [p, [destino.lat, destino.lng]] : [p];
+            mapa.fitBounds(L.latLngBounds(pontos).pad(0.35));
+            primeiraCarga = false;
+          }
+
+          estadoTxt.textContent = `${d.tecnico} está a caminho`;
+          bolinha.className = 'bolinha pulsa';
+          const quando = d.posicao.em ? d.posicao.em.substring(11, 16) : '';
+          detalhe.textContent = destino.endereco
+            ? `Indo até ${destino.endereco}${quando ? ' · posição de ' + quando : ''}`
+            : 'Posição atualizada automaticamente';
+        } else {
+          estadoTxt.textContent = `${d.tecnico} vai sair em instantes`;
+          bolinha.className = 'bolinha pulsa';
+          detalhe.textContent = 'A localização aparece assim que ele iniciar o trajeto.';
+        }
+
+        return false;
+      }
+
+      async function ciclo() {
+        const acabou = await atualizar();
+        if (!acabou) setTimeout(ciclo, INTERVALO);
+      }
+      ciclo();
+    })();
+  </script>
+</body>
+</html>

@@ -271,3 +271,12 @@ svg { width: 14px; height: 14px; }
   color: rgba(255,255,255,0.28);
   pointer-events: none;
 }
+
+/* O "Waze" agora e um <button> (dispara o aviso antes de navegar), entao
+   precisa herdar a aparencia dos links irmaos em vez da do botao do sistema. */
+button.t-ponto-link-waze {
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}

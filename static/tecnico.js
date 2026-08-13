@@ -187,11 +187,9 @@
     const pontosHtml = servicos.map((s, i) => {
       const feito = s.status === 'concluido';
       const enderecoBusca = encodeURIComponent(s.endereco_completo || s.cep || '');
-      const temCoord = s.lat && s.lng;
       const urlMaps = `https://www.google.com/maps/search/?api=1&query=${enderecoBusca}`;
-      const urlWaze = temCoord
-        ? `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`
-        : `https://waze.com/ul?q=${enderecoBusca}&navigate=yes`;
+      // A URL do Waze nao e montada aqui: o botao passa pelo aviso primeiro, e
+      // quem gera o link e o urlWazeDe(), fonte unica para mensagem e botao.
       return `
         <div class="t-ponto ${feito ? 'concluido' : ''}">
           <div class="t-ponto-num">${i + 1}</div>
@@ -201,8 +199,7 @@
             ${s.tipo_aparelho ? `<div class="t-ponto-aparelho">${esc(s.tipo_aparelho)}${s.modelo ? ' · ' + esc(s.modelo) : ''}</div>` : ''}
             <div class="t-ponto-acoes">
               <a class="t-ponto-link" target="_blank" rel="noopener" href="${urlMaps}">Google Maps</a>
-              <a class="t-ponto-link t-ponto-link-waze" target="_blank" rel="noopener" href="${urlWaze}">Waze</a>
-              <button class="t-ponto-link t-ponto-link-aviso" onclick="window._tAvisarACaminho(${s.id})">A caminho</button>
+              <button class="t-ponto-link t-ponto-link-waze" onclick="window._tAvisarACaminho(${s.id})">Waze</button>
               <button class="t-ponto-check ${feito ? 'concluido' : ''}" onclick="window._tConcluirPonto(${s.id}, '${feito ? 'pendente' : 'concluido'}')">
                 ${feito ? 'Concluído' : 'Marcar feito'}
               </button>
@@ -231,13 +228,70 @@
   // navigator.share abre a bandeja nativa do celular, onde o grupo aparece
   // entre as conversas recentes — um toque. O wa.me e o plano B para desktop,
   // onde a bandeja nativa nao existe.
-  function montarAviso(s) {
+  function montarAviso(s, linkAcompanhar) {
     const partes = [];
     partes.push(`🚗 Técnico ${tecnicoNome || ''} a caminho do cliente ${s.cliente || 'sem nome'}`.trim());
     if (s.endereco_completo) partes.push(`📍 ${s.endereco_completo}`);
+    // O link de acompanhamento vem primeiro entre os dois: é o que interessa a
+    // quem recebe. O do Waze fica como referência do destino.
+    if (linkAcompanhar) partes.push(`Acompanhe ao vivo:\n${linkAcompanhar}`);
     partes.push(urlWazeDe(s));
 
     return partes.join('\n\n');
+  }
+
+  // ===== RASTREIO AO VIVO =====
+  // O Waze tem "Compartilhar percurso", mas o link so nasce dentro do
+  // aplicativo depois de comecar a navegar — nao ha API para gerar de fora.
+  // Entao o acompanhamento e nosso: este celular manda a posicao e o cliente
+  // ve numa pagina publica.
+  let rastreioAtivo = null;   // { token, servicoId, watchId }
+
+  async function iniciarRastreio(servicoId) {
+    try {
+      const r = await api(`/servicos/${servicoId}/rastreio`, { method: 'POST' });
+      const token = r.token;
+
+      pararRastreio(); // um atendimento por vez: quem sai para o proximo
+                       // cliente nao pode continuar aparecendo indo ao anterior
+
+      if (navigator.geolocation) {
+        // watchPosition em vez de setInterval + getCurrentPosition: o sistema
+        // avisa quando a posicao muda de verdade, o que gasta menos bateria
+        // que perguntar de tempo em tempo.
+        const watchId = navigator.geolocation.watchPosition(
+          (pos) => enviarPosicao(token, pos.coords.latitude, pos.coords.longitude),
+          (err) => console.warn('GPS indisponível:', err && err.message),
+          { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+        );
+        rastreioAtivo = { token, servicoId, watchId };
+      } else {
+        rastreioAtivo = { token, servicoId, watchId: null };
+      }
+
+      return `${location.origin}/acompanhar/${token}`;
+    } catch (e) {
+      // Sem rastreio a mensagem ainda vale — so vai sem o link ao vivo.
+      // Melhor avisar o cliente sem acompanhamento do que nao avisar.
+      console.warn('Não consegui iniciar o rastreio:', e.message);
+      return null;
+    }
+  }
+
+  async function enviarPosicao(token, lat, lng) {
+    try {
+      await api(`/rastreio/${token}/posicao`, {
+        method: 'PUT',
+        body: JSON.stringify({ lat, lng }),
+      });
+    } catch { /* sem sinal: a proxima leitura do GPS tenta de novo */ }
+  }
+
+  function pararRastreio() {
+    if (rastreioAtivo && rastreioAtivo.watchId !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(rastreioAtivo.watchId);
+    }
+    rastreioAtivo = null;
   }
 
   function urlWazeDe(s) {
@@ -255,11 +309,17 @@
   // Toque de verdade em link nao depende de permissao nenhuma. Entao a tela
   // para de adivinhar e passa a oferecer os alvos: ele toca, e funciona em
   // qualquer aparelho. Custa um toque a mais e nunca falha calada.
-  window._tAvisarACaminho = function (servicoId) {
+  window._tAvisarACaminho = async function (servicoId) {
     const s = servicosAbertos.find(x => x.id === servicoId);
     if (!s) { toast('Ponto não encontrado'); return; }
 
-    const texto = montarAviso(s);
+    // O rastreio comeca ANTES de montar a mensagem, porque o link dele entra
+    // no texto. Se falhar, segue sem o link — avisar o cliente sem
+    // acompanhamento e melhor que nao avisar.
+    toast('Preparando o acompanhamento...');
+    const linkAcompanhar = await iniciarRastreio(servicoId);
+
+    const texto = montarAviso(s, linkAcompanhar);
     const ehCelular = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
     // whatsapp:// abre o app direto na tela de escolher conversa (o grupo fica
     // entre as recentes). No desktop esse esquema nao existe, entao vai wa.me.
@@ -466,7 +526,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v14';
+  const VERSAO_TELA = 'v15';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

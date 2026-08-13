@@ -51,6 +51,11 @@ def aplicar_status_servico(conn, servico_id: int, novo_status: str) -> None:
         execute(conn, """
             UPDATE servicos SET status = ?, concluido_em = CURRENT_TIMESTAMP WHERE id = ?
         """, (novo_status, servico_id))
+        # Chegou: o rastreio ao vivo perde o sentido e o link do cliente para
+        # de expor posição. Fica aqui, no caminho central de conclusão, para
+        # valer tanto pela tela do técnico quanto pela do painel.
+        from routes.rastreio import encerrar_por_servico
+        encerrar_por_servico(conn, servico_id)
     else:
         execute(conn, """
             UPDATE servicos SET status = ?, concluido_em = NULL WHERE id = ?
