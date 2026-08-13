@@ -26,10 +26,30 @@ ENCAIXA_BEM = 100      # mesma zona e perto de pontos que já existem
 ENCAIXA_RAZOAVEL = 50  # mesma região, mas desvia a rota
 
 
-def _classificar(pontuacao: float) -> str:
-    if pontuacao >= ENCAIXA_BEM:
+# Teto de distância por classificação. Existe porque o score sozinho engana:
+# zona_bonus é 100 * (pontos na mesma zona / total), então uma rota com UM
+# ponto na zona leste ganha os 100 cheios e a distância mal arranha o
+# resultado. Em produção isso classificou como "encaixa bem" uma rota cujo
+# ponto mais próximo estava a 20,3 km — o que ninguém chamaria de encaixe.
+#
+# Zona é um retângulo grosseiro no mapa: dois endereços na "leste" podem estar
+# a 25 km um do outro. Distância é a grandeza que o técnico paga em combustível
+# e hora, então ela tem poder de veto sobre a nota.
+#
+# 8 km é o desvio que ainda cabe numa rota urbana sem refazer o dia; acima de
+# 15 km é outra viagem. Se a operação mudar, é aqui que se mexe.
+KM_MAXIMO_BEM = 8.0
+KM_MAXIMO_RAZOAVEL = 15.0
+
+
+def _classificar(pontuacao: float, dist_km=None) -> str:
+    if pontuacao >= ENCAIXA_BEM and (dist_km is None or dist_km <= KM_MAXIMO_BEM):
         return "bem"
-    if pontuacao >= ENCAIXA_RAZOAVEL:
+    if pontuacao >= ENCAIXA_RAZOAVEL and (dist_km is None or dist_km <= KM_MAXIMO_RAZOAVEL):
+        return "razoavel"
+    # Score alto mas longe demais: cai para "razoável" em vez de "fora", porque
+    # a mesma zona ainda conta alguma coisa — só não é encaixe bom.
+    if pontuacao >= ENCAIXA_BEM and dist_km is not None and dist_km <= KM_MAXIMO_RAZOAVEL:
         return "razoavel"
     return "fora"
 
@@ -52,15 +72,30 @@ def _motivos(f: dict, zona_alvo: str) -> list:
     total = f["total_pontos"]
     na_zona = f["pontos_mesma_zona"]
 
+    plural = "s" if total != 1 else ""
     if na_zona == 0:
-        motivos.append(f"Nenhum dos {total} pontos está na zona {zona_alvo}")
+        motivos.append(
+            f"O único ponto não está na zona {zona_alvo}" if total == 1
+            else f"Nenhum dos {total} pontos está na zona {zona_alvo}"
+        )
     elif na_zona == total:
-        motivos.append(f"Todos os {total} pontos já estão na zona {zona_alvo}")
+        motivos.append(
+            f"O único ponto já está na zona {zona_alvo}" if total == 1
+            else f"Todos os {total} pontos já estão na zona {zona_alvo}"
+        )
     else:
-        motivos.append(f"{na_zona} dos {total} pontos na zona {zona_alvo}")
+        motivos.append(f"{na_zona} de {total} ponto{plural} na zona {zona_alvo}")
 
-    if f["dist_minima"] is not None:
-        motivos.append(f"{f['dist_minima']:.1f} km do ponto mais próximo")
+    dist = f["dist_minima"]
+    if dist is not None:
+        motivos.append(f"{dist:.1f} km do ponto mais próximo")
+        # Diz na cara quando é a distância que está segurando a nota. Sem isso
+        # o usuário vê "todos os pontos na mesma zona" e um veredito morno, e
+        # não entende de onde veio a ressalva.
+        if dist > KM_MAXIMO_RAZOAVEL:
+            motivos.append("Longe demais — é outra viagem, não um desvio")
+        elif dist > KM_MAXIMO_BEM:
+            motivos.append(f"Mesma zona, mas acima dos {KM_MAXIMO_BEM:.0f} km de desvio confortável")
 
     if total >= CAPACIDADE_IDEAL:
         motivos.append(f"Rota já com {total} pontos — acima do ideal ({CAPACIDADE_IDEAL})")
@@ -322,7 +357,7 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
             # backend dizia "boa opção" com score >= 30 e o badge do front
             # chamava o mesmo card de "não recomendado" abaixo de 50 — o card
             # se contradizia. Com uma régua só, isso não pode mais acontecer.
-            "classificacao":     _classificar(pontuacao),
+            "classificacao":     _classificar(pontuacao, f["dist_minima"]),
             "motivos":           _motivos(f, zona_alvo),
             "pontos":            f["pontos"],
             "ponto_proximo":     f["ponto_proximo"],
