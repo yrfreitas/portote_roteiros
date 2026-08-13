@@ -1458,10 +1458,12 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
 // location.href é atropelado pela navegação seguinte, e navigator.share varia
 // por aparelho. Todas falham em SILÊNCIO. Um link que o usuário toca não
 // depende de permissão nenhuma e funciona em qualquer lugar.
-function montarMensagemACaminho(s, tecnicoNome) {
+function montarMensagemACaminho(s, tecnicoNome, linkAcompanhar) {
   const partes = [];
   partes.push(`🚗 Técnico ${tecnicoNome || ''} a caminho do cliente ${s.cliente || 'sem nome'}`.trim());
   if (s.endereco_completo) partes.push(`📍 ${s.endereco_completo}`);
+  if (linkAcompanhar) partes.push(`Acompanhe a chegada:
+${linkAcompanhar}`);
   if (s.lat && s.lng) {
     partes.push(`https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`);
   } else if (s.endereco_completo || s.cep) {
@@ -1470,12 +1472,21 @@ function montarMensagemACaminho(s, tecnicoNome) {
   return partes.join('\n\n');
 }
 
-function avisarACaminho(servicoId) {
+async function avisarACaminho(servicoId) {
   const s = servicosAtuais.find(x => x.id === servicoId);
   if (!s) { toast('Ponto não encontrado', 'error'); return; }
 
   const tecnico = tecnicos.find(t => t.id === fichaAtiva?.tecnico_id);
-  const texto = montarMensagemACaminho(s, tecnico?.nome);
+
+  // O link de acompanhamento nasce aqui, no servidor, e entra na mensagem.
+  // Se falhar, segue sem ele — avisar sem acompanhamento é melhor que nada.
+  let link = null;
+  try {
+    const r = await api(`/servicos/${servicoId}/rastreio`, { method: 'POST' });
+    link = `${location.origin}/acompanhar/${r.token}`;
+  } catch (e) { console.warn('Sem link de acompanhamento:', e.message); }
+
+  const texto = montarMensagemACaminho(s, tecnico?.nome, link);
 
   document.getElementById('acaminho-msg').textContent = texto;
 

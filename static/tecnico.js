@@ -240,65 +240,21 @@
     return partes.join('\n\n');
   }
 
-  // ===== RASTREIO AO VIVO =====
-  // O Waze tem "Compartilhar percurso", mas o link so nasce dentro do
-  // aplicativo depois de comecar a navegar — nao ha API para gerar de fora.
-  // Entao o acompanhamento e nosso: este celular manda a posicao e o cliente
-  // ve numa pagina publica.
-  let rastreioAtivo = null;   // { token, servicoId, watchId }
-
-  async function iniciarRastreio(servicoId) {
+  // ===== LINK DE ACOMPANHAMENTO =====
+  // Sem GPS, de proposito: pagina web nao recebe localizacao em segundo plano.
+  // Assim que o tecnico sai para o Waze o sistema congela a pagina e o
+  // watchPosition para. O acompanhamento e por PREVISAO de chegada, calculada
+  // no servidor — nao depende de permissao nem de o app ficar aberto.
+  async function criarLinkAcompanhamento(servicoId) {
     try {
       const r = await api(`/servicos/${servicoId}/rastreio`, { method: 'POST' });
-      const token = r.token;
-
-      pararRastreio(); // um atendimento por vez: quem sai para o proximo
-                       // cliente nao pode continuar aparecendo indo ao anterior
-
-      if (navigator.geolocation) {
-        // watchPosition em vez de setInterval + getCurrentPosition: o sistema
-        // avisa quando a posicao muda de verdade, o que gasta menos bateria
-        // que perguntar de tempo em tempo.
-        const watchId = navigator.geolocation.watchPosition(
-          (pos) => enviarPosicao(token, pos.coords.latitude, pos.coords.longitude),
-          (err) => console.warn('GPS indisponível:', err && err.message),
-          { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
-        );
-        rastreioAtivo = { token, servicoId, watchId };
-      } else {
-        rastreioAtivo = { token, servicoId, watchId: null };
-      }
-
-      return `${location.origin}/acompanhar/${token}`;
+      return `${location.origin}/acompanhar/${r.token}`;
     } catch (e) {
-      // Sem rastreio a mensagem ainda vale — so vai sem o link ao vivo.
-      // Melhor avisar o cliente sem acompanhamento do que nao avisar.
-      console.warn('Não consegui iniciar o rastreio:', e.message);
+      // Sem o link a mensagem ainda vale. Avisar sem acompanhamento e melhor
+      // do que nao avisar.
+      console.warn('Nao consegui criar o link:', e.message);
       return null;
     }
-  }
-
-  async function enviarPosicao(token, lat, lng) {
-    try {
-      await api(`/rastreio/${token}/posicao`, {
-        method: 'PUT',
-        body: JSON.stringify({ lat, lng }),
-      });
-    } catch { /* sem sinal: a proxima leitura do GPS tenta de novo */ }
-  }
-
-  function pararRastreio() {
-    if (rastreioAtivo && rastreioAtivo.watchId !== null && navigator.geolocation) {
-      navigator.geolocation.clearWatch(rastreioAtivo.watchId);
-    }
-    rastreioAtivo = null;
-  }
-
-  function urlWazeDe(s) {
-    const busca = encodeURIComponent(s.endereco_completo || s.cep || '');
-    return (s.lat && s.lng)
-      ? `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`
-      : `https://waze.com/ul?q=${busca}&navigate=yes`;
   }
 
   // Duas tentativas de disparar o WhatsApp automaticamente falharam no celular
@@ -316,8 +272,7 @@
     // O rastreio comeca ANTES de montar a mensagem, porque o link dele entra
     // no texto. Se falhar, segue sem o link — avisar o cliente sem
     // acompanhamento e melhor que nao avisar.
-    toast('Preparando o acompanhamento...');
-    const linkAcompanhar = await iniciarRastreio(servicoId);
+    const linkAcompanhar = await criarLinkAcompanhamento(servicoId);
 
     const texto = montarAviso(s, linkAcompanhar);
     const ehCelular = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -526,7 +481,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v16';
+  const VERSAO_TELA = 'v17';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

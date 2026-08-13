@@ -25,7 +25,8 @@
 // v14 = botão "A caminho" também no painel, na linha de cada cliente.
 // v15 = rastreio ao vivo: o cliente acompanha o técnico a caminho.
 // v16 = código do app passa a ser rede-primeiro (fim do JS velho no cache).
-const CACHE_VERSAO = 'portotec-roteiros-v16';
+// v17 = acompanhamento por previsão de chegada (sem GPS).
+const CACHE_VERSAO = 'portotec-roteiros-v17';
 
 const ARQUIVOS_CASCA = [
   '/',

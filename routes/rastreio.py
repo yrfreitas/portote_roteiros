@@ -1,16 +1,25 @@
 """Rastreio ao vivo: o cliente acompanha o técnico a caminho.
 
-O Waze tem "Compartilhar percurso", mas o link só nasce dentro do aplicativo
-depois que o motorista começou a navegar — não há API para gerá-lo de fora.
-Então o acompanhamento é nosso: o celular do técnico manda a posição, e uma
-página pública mostra onde ele está.
+ACOMPANHAMENTO POR PREVISÃO DE CHEGADA, não por GPS ao vivo.
 
-DECISÕES DE PRIVACIDADE, que aqui não são detalhe:
-- Guarda só a ÚLTIMA posição, nunca o trajeto. O cliente quer saber onde ele
-  está agora; histórico de deslocamento de funcionário é dado sensível que
-  ninguém pediu para ter.
-- O rastreio é por ATENDIMENTO, não por técnico. Começa quando ele sai para
-  aquele cliente e morre quando chega.
+A primeira versão tentou GPS: o celular do técnico mandaria a posição. Não
+funciona, e a limitação é do navegador. Assim que ele sai do site para o Waze,
+o sistema CONGELA a página e o watchPosition para de disparar. Página web não
+recebe localização em segundo plano, nem instalada como aplicativo, nem no
+Android nem no iPhone. O rastreio só reportaria enquanto ele estivesse olhando
+a tela — exatamente quando não está dirigindo.
+
+Então o acompanhamento responde a pergunta que o cliente de fato faz, que é
+"a que horas ele chega?", e não "onde ele está agora". A previsão sai da
+distância entre a parada anterior e o destino, com a mesma velocidade média
+que o otimizador de rotas já usa. Sem GPS, sem permissão, sem depender do
+técnico fazer nada além de tocar no botão ao sair.
+
+DECISÕES DE PRIVACIDADE:
+- Não guarda posição nenhuma do técnico. Some o problema inteiro de rastrear
+  funcionário: o que existe é o horário de saída e uma estimativa.
+- É por ATENDIMENTO, não por técnico. Começa quando ele sai para aquele
+  cliente e morre quando chega.
 - Expira sozinho depois de VALIDADE_HORAS mesmo se ninguém encerrar. Técnico
   que esquece o app aberto não vira rastreado o dia inteiro.
 - Concluir o ponto encerra o rastreio (ver aplicar_status_servico).
@@ -22,6 +31,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, render_template, request
 
 from database import IS_PG, db_conn, execute, fetch_all, fetch_one
+from services.otimizador import MINUTOS_PARADA, VELOCIDADE_KMH, haversine
 
 log = logging.getLogger("portotec.rastreio")
 
@@ -55,6 +65,40 @@ def encerrar_por_servico(conn, servico_id: int) -> None:
         UPDATE rastreios SET ativo = {'FALSE' if IS_PG else '0'}, encerrado_em = ?
          WHERE servico_id = ? AND {_ATIVO}
     """, (_agora(), servico_id))
+
+
+def _prever_minutos(conn, servico_id: int) -> int:
+    """Minutos até chegar, a partir da parada anterior da rota (ou da base).
+
+    Mesma velocidade média do otimizador, para que a previsão do cliente e o
+    tempo mostrado no painel não briguem entre si. Sem coordenada dá None: é
+    melhor não mostrar horário nenhum do que mostrar um chutado.
+    """
+    destino = fetch_one(conn, """
+        SELECT sv.lat, sv.lng, sv.ordem, sv.ficha_id,
+               f.ponto_partida_lat, f.ponto_partida_lng
+          FROM servicos sv JOIN fichas f ON f.id = sv.ficha_id
+         WHERE sv.id = ?
+    """, (servico_id,))
+    if not destino or destino.get("lat") is None:
+        return None
+
+    # De onde ele sai: a parada imediatamente anterior na ordem da rota; se
+    # este é o primeiro ponto do dia, a base.
+    anterior = fetch_one(conn, """
+        SELECT lat, lng FROM servicos
+         WHERE ficha_id = ? AND ordem < ? AND lat IS NOT NULL
+         ORDER BY ordem DESC
+    """, (destino["ficha_id"], destino.get("ordem") or 0))
+
+    origem = anterior or {"lat": destino.get("ponto_partida_lat"),
+                          "lng": destino.get("ponto_partida_lng")}
+    if origem.get("lat") is None:
+        return None
+
+    km = haversine(origem["lat"], origem["lng"], destino["lat"], destino["lng"])
+    # Mesmo fator de 1.3 que o otimizador aplica: linha reta não é rua.
+    return max(1, int(round((km * 1.3 / VELOCIDADE_KMH) * 60)))
 
 
 def _tecnico_por_token(conn, token):
@@ -93,37 +137,12 @@ def iniciar(token, servico_id):
 
         novo_token = secrets.token_urlsafe(16)
         execute(conn, """
-            INSERT INTO rastreios (token, servico_id, tecnico_id, criado_em)
-            VALUES (?, ?, ?, ?)
-        """, (novo_token, servico_id, tecnico["id"], _agora()))
+            INSERT INTO rastreios (token, servico_id, tecnico_id, criado_em, eta_minutos)
+            VALUES (?, ?, ?, ?, ?)
+        """, (novo_token, servico_id, tecnico["id"], _agora(),
+              _prever_minutos(conn, servico_id)))
 
     return jsonify({"token": novo_token, "reaproveitado": False}), 201
-
-
-@rastreio_bp.route("/t/<token>/rastreio/<rastreio_token>/posicao", methods=["PUT"])
-def atualizar_posicao(token, rastreio_token):
-    dados = request.get_json(silent=True) or {}
-    try:
-        lat = float(dados.get("lat"))
-        lng = float(dados.get("lng"))
-    except (TypeError, ValueError):
-        return jsonify({"erro": "Coordenadas inválidas"}), 400
-
-    with db_conn(commit=True) as conn:
-        tecnico = _tecnico_por_token(conn, token)
-        if not tecnico:
-            return jsonify({"erro": "Link inválido"}), 404
-
-        # O rastreio tem que ser DELE. Caso contrário um técnico poderia
-        # empurrar posição no rastreio de outro.
-        alteradas = execute(conn, f"""
-            UPDATE rastreios SET lat = ?, lng = ?, atualizado_em = ?
-             WHERE token = ? AND tecnico_id = ? AND {_ATIVO}
-        """, (lat, lng, _agora(), rastreio_token, tecnico["id"]))
-
-    if not alteradas:
-        return jsonify({"erro": "Rastreio não encontrado ou já encerrado"}), 404
-    return jsonify({"ok": True})
 
 
 @rastreio_bp.route("/t/<token>/rastreio/<rastreio_token>/encerrar", methods=["POST"])
@@ -139,6 +158,37 @@ def encerrar(token, rastreio_token):
         """, (_agora(), rastreio_token, tecnico["id"]))
 
     return jsonify({"ok": True})
+
+
+@rastreio_bp.route("/servicos/<int:servico_id>/rastreio", methods=["POST"])
+def iniciar_pelo_painel(servico_id):
+    """Mesma coisa, mas a partir do painel (sessão de admin).
+
+    Existe porque quem avisa o cliente muitas vezes é o escritório, não o
+    técnico. Sem isto o link de acompanhamento só nasceria pelo celular dele.
+    """
+    with db_conn(commit=True) as conn:
+        servico = fetch_one(conn, """
+            SELECT sv.id, f.tecnico_id FROM servicos sv
+              JOIN fichas f ON f.id = sv.ficha_id WHERE sv.id = ?
+        """, (servico_id,))
+        if not servico or not servico.get("tecnico_id"):
+            return jsonify({"erro": "Ponto sem técnico atribuído"}), 404
+
+        existente = fetch_one(conn, f"""
+            SELECT * FROM rastreios WHERE servico_id = ? AND {_ATIVO} ORDER BY id DESC
+        """, (servico_id,))
+        if existente and not _expirado(existente.get("criado_em")):
+            return jsonify({"token": existente["token"], "reaproveitado": True})
+
+        novo_token = secrets.token_urlsafe(16)
+        execute(conn, """
+            INSERT INTO rastreios (token, servico_id, tecnico_id, criado_em, eta_minutos)
+            VALUES (?, ?, ?, ?, ?)
+        """, (novo_token, servico_id, servico["tecnico_id"], _agora(),
+              _prever_minutos(conn, servico_id)))
+
+    return jsonify({"token": novo_token, "reaproveitado": False}), 201
 
 
 @rastreio_bp.route("/rastreio/<rastreio_token>", methods=["GET"])
@@ -166,16 +216,25 @@ def consultar(rastreio_token):
     encerrado = (not r.get("ativo")) or _expirado(r.get("criado_em"))
     primeiro_nome = (r.get("tecnico_nome") or "").split(" ")[0]
 
+    saiu_em = r.get("criado_em")
+    eta = r.get("eta_minutos")
+    chegada = None
+    if saiu_em and eta:
+        try:
+            base = datetime.strptime(str(saiu_em)[:19], "%Y-%m-%d %H:%M:%S")
+            chegada = (base + timedelta(minutes=int(eta))).strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            chegada = None
+
     return jsonify({
         "ativo":     not encerrado,
         "tecnico":   primeiro_nome,
         "cliente":   r.get("cliente") or "",
         "destino":   {"lat": r.get("destino_lat"), "lng": r.get("destino_lng"),
                       "endereco": r.get("endereco_completo") or ""},
-        # Só manda posição enquanto vale. Link vencido devolvendo a última
-        # coordenada conhecida mostraria o técnico parado onde ele já não está.
-        "posicao":   ({"lat": r["lat"], "lng": r["lng"], "em": r.get("atualizado_em")}
-                      if (not encerrado and r.get("lat") is not None) else None),
+        # Horários em UTC; a página converte para o fuso de quem está olhando.
+        "saiu_em":   saiu_em,
+        "chegada_prevista": chegada,
         "chegou":    r.get("servico_status") == "concluido",
     })
 

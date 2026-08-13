@@ -184,7 +184,8 @@ _SCHEMA_PG = [
         ativo         BOOLEAN DEFAULT TRUE,
         criado_em     TEXT DEFAULT CURRENT_TIMESTAMP,
         atualizado_em TEXT,
-        encerrado_em  TEXT
+        encerrado_em  TEXT,
+        eta_minutos   INTEGER
     )""",
 ]
 
@@ -271,6 +272,7 @@ _SCHEMA_SQLITE = """
         criado_em     TEXT DEFAULT CURRENT_TIMESTAMP,
         atualizado_em TEXT,
         encerrado_em  TEXT,
+        eta_minutos   INTEGER,
         FOREIGN KEY (servico_id) REFERENCES servicos(id) ON DELETE CASCADE,
         FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
     );
@@ -306,6 +308,7 @@ _MIGRACOES_PG = [
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS concluido_em TEXT",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS numero_os TEXT",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS setor_id INTEGER",
+    "ALTER TABLE rastreios ADD COLUMN IF NOT EXISTS eta_minutos INTEGER",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -320,6 +323,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE servicos ADD COLUMN concluido_em TEXT",
     "ALTER TABLE servicos ADD COLUMN numero_os TEXT",
     "ALTER TABLE servicos ADD COLUMN setor_id INTEGER",
+    "ALTER TABLE rastreios ADD COLUMN eta_minutos INTEGER",
 ]
 
 

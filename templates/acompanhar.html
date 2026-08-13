@@ -60,28 +60,30 @@
   <script>
     (function () {
       const TOKEN = {{ token | tojson }};
-      // 15s: um carro em cidade anda ~200m nesse tempo. Mais frequente gasta
-      // bateria e dados do cliente sem ele ver diferença no mapa.
-      const INTERVALO = 15000;
+      // A previsao so muda com o passar do tempo — 60s e de sobra e poupa
+      // bateria e dados de quem esta esperando.
+      const INTERVALO = 60000;
 
-      let mapa = null, marcadorTecnico = null, marcadorDestino = null, linha = null;
-      let primeiraCarga = true;
+      let mapa = null;
 
       function iniciarMapa(centro) {
-        // setView junto com a criação: adicionar camada antes de haver visão
+        // setView junto com a criacao: adicionar camada antes de haver visao
         // definida quebra o Leaflet com "undefined (reading 'intersects')".
-        mapa = L.map('mapa', { attributionControl: false }).setView(centro, 14);
+        mapa = L.map('mapa', { attributionControl: false }).setView(centro, 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(mapa);
       }
 
-      function pin(cor, texto) {
-        return L.divIcon({
-          className: '',
-          html: `<div style="width:30px;height:30px;border-radius:50%;background:${cor};
-                 border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;
-                 align-items:center;justify-content:center;font-size:14px;">${texto}</div>`,
-          iconSize: [30, 30], iconAnchor: [15, 15],
-        });
+      function hora(txtUtc) {
+        if (!txtUtc) return null;
+        // O servidor grava "AAAA-MM-DD HH:MM:SS" em UTC. O Z e o T explicitos
+        // fazem o navegador converter para o fuso de quem esta olhando; sem
+        // eles, o iPhone interpreta como hora local e mostra 3h a menos.
+        const d = new Date(String(txtUtc).replace(' ', 'T') + 'Z');
+        return isNaN(d) ? null : d;
+      }
+
+      function formatar(d) {
+        return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       }
 
       async function atualizar() {
@@ -89,26 +91,27 @@
         try {
           const resp = await fetch(`/api/rastreio/${TOKEN}`, { cache: 'no-store' });
           d = await resp.json();
-          if (!resp.ok) throw new Error(d.erro || 'Não foi possível carregar');
+          if (!resp.ok) throw new Error(d.erro || 'Nao foi possivel carregar');
         } catch (e) {
-          document.getElementById('estado-txt').textContent = 'Sem conexão';
+          document.getElementById('estado-txt').textContent = 'Sem conexao';
           document.getElementById('bolinha').className = 'bolinha parado';
-          return;
+          return false;
         }
 
         const destino = d.destino || {};
         const temDestino = destino.lat != null && destino.lng != null;
 
-        if (!mapa) {
-          const centro = d.posicao ? [d.posicao.lat, d.posicao.lng]
-                       : temDestino ? [destino.lat, destino.lng]
-                       : [-23.55, -46.63];
-          iniciarMapa(centro);
-        }
-
-        if (temDestino && !marcadorDestino) {
-          marcadorDestino = L.marker([destino.lat, destino.lng], { icon: pin('#e02020', '🏠') })
-            .addTo(mapa).bindTooltip('Seu endereço', { direction: 'top' });
+        if (!mapa && temDestino) {
+          iniciarMapa([destino.lat, destino.lng]);
+          L.marker([destino.lat, destino.lng], {
+            icon: L.divIcon({
+              className: '',
+              html: `<div style="width:32px;height:32px;border-radius:50%;background:#e02020;
+                     border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;
+                     align-items:center;justify-content:center;font-size:15px;">🏠</div>`,
+              iconSize: [32, 32], iconAnchor: [16, 16],
+            }),
+          }).addTo(mapa).bindTooltip('Seu endereco', { direction: 'top' });
         }
 
         const estadoTxt = document.getElementById('estado-txt');
@@ -117,56 +120,43 @@
         const caixa = document.getElementById('caixa-aviso');
 
         if (d.chegou) {
-          estadoTxt.textContent = 'Atendimento concluído';
+          estadoTxt.textContent = 'Atendimento concluido';
           bolinha.className = 'bolinha parado';
-          detalhe.textContent = 'O técnico já finalizou este atendimento.';
+          detalhe.textContent = `${d.tecnico} ja finalizou este atendimento.`;
           caixa.innerHTML = '<div class="aviso encerrado">Obrigado por acompanhar.</div>';
-          return true; // encerra o ciclo
+          return true;
         }
 
         if (!d.ativo) {
           estadoTxt.textContent = 'Acompanhamento encerrado';
           bolinha.className = 'bolinha parado';
-          detalhe.textContent = 'Este link não está mais ativo.';
+          detalhe.textContent = 'Este link nao esta mais ativo.';
           caixa.innerHTML = '<div class="aviso encerrado">Se ainda estiver aguardando, fale com a Porto Tec.</div>';
           return true;
         }
 
-        if (d.posicao) {
-          const p = [d.posicao.lat, d.posicao.lng];
-          if (!marcadorTecnico) {
-            marcadorTecnico = L.marker(p, { icon: pin('#1a6fd4', '🚗') })
-              .addTo(mapa).bindTooltip(`${d.tecnico}`, { direction: 'top' });
-          } else {
-            marcadorTecnico.setLatLng(p);
-          }
+        estadoTxt.textContent = `${d.tecnico} esta a caminho`;
+        bolinha.className = 'bolinha pulsa';
 
-          if (temDestino) {
-            const traco = [p, [destino.lat, destino.lng]];
-            if (!linha) linha = L.polyline(traco, { color: '#1a6fd4', weight: 3, opacity: .6, dashArray: '6,8' }).addTo(mapa);
-            else linha.setLatLngs(traco);
-          }
+        const saiu = hora(d.saiu_em);
+        const chega = hora(d.chegada_prevista);
 
-          // Só reenquadra na primeira vez: refazer o zoom a cada 15s tiraria o
-          // mapa do lugar bem na hora em que a pessoa está olhando.
-          if (primeiraCarga) {
-            const pontos = temDestino ? [p, [destino.lat, destino.lng]] : [p];
-            mapa.fitBounds(L.latLngBounds(pontos).pad(0.35));
-            primeiraCarga = false;
-          }
-
-          estadoTxt.textContent = `${d.tecnico} está a caminho`;
-          bolinha.className = 'bolinha pulsa';
-          const quando = d.posicao.em ? d.posicao.em.substring(11, 16) : '';
-          detalhe.textContent = destino.endereco
-            ? `Indo até ${destino.endereco}${quando ? ' · posição de ' + quando : ''}`
-            : 'Posição atualizada automaticamente';
-        } else {
-          estadoTxt.textContent = `${d.tecnico} vai sair em instantes`;
-          bolinha.className = 'bolinha pulsa';
-          detalhe.textContent = 'A localização aparece assim que ele iniciar o trajeto.';
+        if (chega) {
+          const faltam = Math.round((chega - new Date()) / 60000);
+          // Previsao vencida nao vira numero negativo: passa a "a qualquer
+          // momento", que e honesto e nao assusta quem esta esperando.
+          const restante = faltam > 0
+            ? `Chega em cerca de ${faltam} min`
+            : 'Deve chegar a qualquer momento';
+          caixa.innerHTML = `<div class="aviso"><strong>${restante}</strong><br>
+            Previsao: ${formatar(chega)}${saiu ? ' · saiu as ' + formatar(saiu) : ''}</div>`;
+        } else if (saiu) {
+          caixa.innerHTML = `<div class="aviso"><strong>Saiu as ${formatar(saiu)}</strong></div>`;
         }
 
+        detalhe.textContent = destino.endereco ? `Indo ate ${destino.endereco}` : '';
+
+        // Previsao muda pouco: 60s basta e poupa bateria e dados do cliente.
         return false;
       }
 
