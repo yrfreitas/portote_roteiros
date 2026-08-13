@@ -180,5 +180,41 @@ def consultar(rastreio_token):
     })
 
 
+@rastreio_bp.route("/rastreios/diagnostico", methods=["GET"])
+def diagnostico():
+    """Rastreios recentes, para saber o que de fato aconteceu no celular.
+
+    Fica atrás da sessão de admin (não tem prefixo público). Existe porque
+    "não funcionou" no aparelho de outra pessoa é impossível de investigar sem
+    ver se o rastreio nasceu e se alguma posição chegou.
+    """
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT ra.id, ra.token, ra.lat, ra.lng, ra.ativo,
+                   ra.criado_em, ra.atualizado_em, ra.encerrado_em,
+                   t.nome AS tecnico, sv.cliente
+              FROM rastreios ra
+              JOIN tecnicos t  ON t.id = ra.tecnico_id
+              JOIN servicos sv ON sv.id = ra.servico_id
+             ORDER BY ra.id DESC
+        """)
+
+    return jsonify({
+        "total": len(linhas),
+        "com_posicao": sum(1 for l in linhas if l.get("lat") is not None),
+        "rastreios": [{
+            "id": l["id"],
+            "tecnico": l["tecnico"],
+            "cliente": l["cliente"],
+            "criado_em": l["criado_em"],
+            # A pergunta que decide o diagnóstico: nasceu mas nunca recebeu
+            # posição? Então o problema é o GPS do aparelho, não a API.
+            "recebeu_posicao": l.get("lat") is not None,
+            "atualizado_em": l.get("atualizado_em"),
+            "ativo": bool(l.get("ativo")),
+        } for l in linhas[:20]],
+    })
+
+
 # A página em si (/acompanhar/<token>) fica no app.py, fora deste blueprint:
 # aqui tudo vive sob /api, e a página é HTML que o cliente abre no navegador.
