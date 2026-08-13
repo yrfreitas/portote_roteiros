@@ -20,7 +20,8 @@
 // v9 = simulação "como o dia fica" ao clicar num dia.
 // v10 = botão "A caminho" que avisa o grupo do WhatsApp.
 // v11 = o Waze abre logo depois do aviso, sem voltar à tela.
-const CACHE_VERSAO = 'portotec-roteiros-v11';
+// v12 = conserta o WhatsApp que não abria (o Waze atropelava).
+const CACHE_VERSAO = 'portotec-roteiros-v12';
 
 const ARQUIVOS_CASCA = [
   '/',

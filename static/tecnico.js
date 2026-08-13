@@ -254,40 +254,49 @@
     if (!s) { toast('Ponto não encontrado'); return; }
 
     const texto = montarAviso(s);
-    let avisou = false;
 
-    try {
-      if (navigator.share) {
+    // O Waze passa a ser oferecido ANTES de sair da tela, e nunca sozinho.
+    // Na versao anterior eu abria o WhatsApp e logo em seguida navegava para o
+    // Waze automaticamente — e a navegacao matava a aba do WhatsApp antes dela
+    // aparecer. Sintoma exato relatado pelo Kalebe: "abre so o waze".
+    // Agora o Waze e um alvo esperando o toque dele, nunca uma navegacao que
+    // atropela o passo anterior.
+    oferecerWaze(s);
+
+    if (navigator.share) {
+      try {
         await navigator.share({ text: texto });
-        avisou = true;
-      } else {
-        window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank', 'noopener,noreferrer');
-        avisou = true;
+        return;
+      } catch (e) {
+        // Desistiu da bandeja: nao insiste abrindo o WhatsApp por outro
+        // caminho, que seria forcar o que ele acabou de recusar.
+        if (e && e.name === 'AbortError') return;
+        // Qualquer outro erro cai no plano B abaixo.
       }
-    } catch (e) {
-      // Cancelar a bandeja dispara AbortError: e o usuario desistindo, nao
-      // falha. Nao cair no wa.me nem oferecer o Waze — ele nao avisou ninguem.
-      if (e && e.name === 'AbortError') return;
-      window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank', 'noopener,noreferrer');
-      avisou = true;
     }
 
-    if (avisou) oferecerWaze(s);
+    // Plano B: NAVEGACAO, nao window.open. Pop-up em aba nova e barrado por
+    // bloqueador na maioria dos celulares e some sem avisar — foi o que
+    // aconteceu. O esquema whatsapp:// abre o aplicativo direto e cai na tela
+    // de escolher conversa, onde o grupo esta entre as recentes.
+    const appUrl = `whatsapp://send?text=${encodeURIComponent(texto)}`;
+    const webUrl = `https://wa.me/?text=${encodeURIComponent(texto)}`;
+    const ehCelular = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+
+    window.location.href = ehCelular ? appUrl : webUrl;
   };
 
-  // Depois de avisar o grupo, o proximo passo e sempre o mesmo: dirigir. Sem
-  // isso o tecnico tinha que voltar para a tela e cacar o botao do Waze.
-  //
-  // A tentativa de navegacao automatica vem PRIMEIRO, mas a faixa e criada de
-  // qualquer jeito: fora do gesto original do usuario o navegador pode barrar
-  // a navegacao em silencio, e ficar sem plano B deixaria o tecnico parado.
+  // Deixa o Waze pronto no rodape para quando o tecnico voltar do WhatsApp.
+  // NAO navega sozinho: era isso que atropelava a abertura do WhatsApp. Duas
+  // saidas de tela disputando o mesmo toque sempre terminam com uma perdendo,
+  // e a que perdia era justamente o aviso ao grupo.
   function oferecerWaze(s) {
     const url = urlWazeDe(s);
 
-    let faixa = document.getElementById('t-abrir-waze');
-    if (faixa) faixa.remove();
+    const antiga = document.getElementById('t-abrir-waze');
+    if (antiga) antiga.remove();
 
-    faixa = document.createElement('a');
+    const faixa = document.createElement('a');
     faixa.id = 't-abrir-waze';
     faixa.className = 't-abrir-waze';
     faixa.href = url;
@@ -297,11 +306,12 @@
     faixa.addEventListener('click', () => faixa.remove());
     document.body.appendChild(faixa);
 
-    // Some sozinha depois de um tempo: faixa presa na tela vira lixo visual
-    // na proxima vez que ele abrir o app.
-    setTimeout(() => faixa && faixa.remove(), 45000);
-
-    try { window.location.href = url; } catch { /* a faixa cobre */ }
+    // 5 minutos: tempo de mandar a mensagem, escolher o grupo e voltar. Os 45s
+    // de antes sumiam antes do tecnico terminar de escrever no WhatsApp.
+    setTimeout(() => {
+      const atual = document.getElementById('t-abrir-waze');
+      if (atual === faixa) faixa.remove();
+    }, 300000);
   }
 
   window._tAbrirFicha = abrirFicha;
