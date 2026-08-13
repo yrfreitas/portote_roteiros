@@ -28,7 +28,8 @@
 // v17 = acompanhamento por previsão de chegada (sem GPS).
 // v18 = fichas na ordem da semana e destaque para a rota de hoje.
 // v19 = ordem de calendário de verdade (ano, mês, dia).
-const CACHE_VERSAO = 'portotec-roteiros-v19';
+// v20 = "HOJE" compara a data, não o nome do dia.
+const CACHE_VERSAO = 'portotec-roteiros-v20';
 
 const ARQUIVOS_CASCA = [
   '/',

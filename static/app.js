@@ -464,10 +464,13 @@ function lembrarSetor(id) {
   if (id) localStorage.setItem(CHAVE_ULTIMO_SETOR, String(id));
 }
 
-// Dia de hoje no mesmo formato que o banco guarda ("Segunda-feira").
-function diaDeHoje() {
-  const d = new Date().toLocaleDateString('pt-BR', { weekday: 'long' });
-  return d.charAt(0).toUpperCase() + d.slice(1);
+// Data de hoje como "AAAA-MM-DD" no fuso LOCAL. O toISOString devolveria UTC
+// e, das 21h em diante no Brasil, marcaria a ficha do dia seguinte como hoje.
+function dataDeHoje() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
 function preencherSelectSetor(idSelect, selecionado = null) {
@@ -679,7 +682,7 @@ async function carregarFichasTecnico(tecnicoId) {
         <button class="btn-del-ficha" onclick="deletarFicha(event,${f.id})">${icone('x', 'icone-11')}</button>
         <div class="ficha-item-dia">
           ${esc(f.dia_semana)}
-          ${f.dia_semana === diaDeHoje() ? '<span class="tag-hoje">hoje</span>' : ''}
+          ${f.data_referencia === dataDeHoje() ? '<span class="tag-hoje">hoje</span>' : ''}
           ${concluida ? `<span class="mini-check" title="Concluída">${icone('concluir', 'icone-10')}</span>` : ''}
         </div>
         <div class="ficha-item-meta">

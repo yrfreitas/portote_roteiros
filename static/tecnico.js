@@ -129,11 +129,13 @@
     }[c]));
   }
 
-  // Dia de hoje por extenso, no mesmo texto que o banco guarda. O toLocaleDateString
-  // devolve "segunda-feira" em minusculo — daí o ajuste da primeira letra.
-  function diaDeHoje() {
-    const d = new Date().toLocaleDateString('pt-BR', { weekday: 'long' });
-    return d.charAt(0).toUpperCase() + d.slice(1);
+  // Data de hoje como "AAAA-MM-DD" no fuso LOCAL. O toISOString devolveria UTC
+  // e, das 21h em diante no Brasil, marcaria a ficha do dia seguinte como hoje.
+  function dataDeHoje() {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
   }
 
   function fmtKm(v) {
@@ -152,12 +154,12 @@
         return;
       }
 
-      const hoje = diaDeHoje();
+      const hoje = dataDeHoje();
       container.innerHTML = fichas.map((f) => `
-        <div class="t-ficha-card ${f.status === 'concluida' ? 'concluida' : ''} ${f.dia_semana === hoje ? 'hoje' : ''}" onclick="window._tAbrirFicha(${f.id})">
+        <div class="t-ficha-card ${f.status === 'concluida' ? 'concluida' : ''} ${f.data_referencia === hoje ? 'hoje' : ''}" onclick="window._tAbrirFicha(${f.id})">
           <div class="t-ficha-titulo">
             ${esc(f.dia_semana)}
-            ${f.dia_semana === hoje ? '<span class="t-tag-hoje">HOJE</span>' : ''}
+            ${f.data_referencia === hoje ? '<span class="t-tag-hoje">HOJE</span>' : ''}
             ${f.status === 'concluida' ? '<span class="t-tag-ok">Concluída</span>' : ''}
           </div>
           <div class="t-ficha-meta">${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''} · ${fmtKm(f.distancia_total)} km</div>
@@ -490,7 +492,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v19';
+  const VERSAO_TELA = 'v20';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
