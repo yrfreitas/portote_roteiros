@@ -177,3 +177,16 @@ svg { width: 14px; height: 14px; }
   text-align: center;
   letter-spacing: 0.2px;
 }
+
+/* Botão "A caminho" — avisa o grupo antes de sair dirigindo.
+   Cor própria (verde do WhatsApp) para não se confundir com os links de
+   navegação ao lado: são ações diferentes e o toque é dado com pressa. */
+.t-ponto-link-aviso {
+  background: #128c7e;
+  color: #fff;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+.t-ponto-link-aviso:active { background: #0d6b60; }

@@ -18,7 +18,8 @@
 // v7 = verificador de encaixe com régua única, motivos e mapa.
 // v8 = correção do mapa (setView antes das camadas).
 // v9 = simulação "como o dia fica" ao clicar num dia.
-const CACHE_VERSAO = 'portotec-roteiros-v9';
+// v10 = botão "A caminho" que avisa o grupo do WhatsApp.
+const CACHE_VERSAO = 'portotec-roteiros-v10';
 
 const ARQUIVOS_CASCA = [
   '/',

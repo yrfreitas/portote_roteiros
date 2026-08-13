@@ -5,6 +5,13 @@
 
   let fichas = [];
   let fichaAbertaId = null;
+  // O nome do técnico vem junto com a lista de fichas e é usado no aviso de
+  // "a caminho". Guardar evita ter que buscar de novo — e faz o aviso
+  // funcionar mesmo quando a leitura veio do cache offline.
+  let tecnicoNome = '';
+  // Pontos da ficha que está aberta na tela. O aviso "a caminho" precisa do
+  // cliente e do endereço, e lê daqui em vez de bater no servidor de novo.
+  let servicosAbertos = [];
 
   function toast(msg) {
     const el = document.getElementById('toast');
@@ -131,6 +138,7 @@
     try {
       const dados = await api('/fichas');
       fichas = dados.fichas;
+      tecnicoNome = dados.tecnico?.nome || tecnicoNome;
 
       if (fichas.length === 0) {
         container.innerHTML = `<div class="t-vazio"><h1>Sem rotas por aqui</h1><p>Você ainda não tem nenhuma ficha atribuída.</p></div>`;
@@ -172,6 +180,7 @@
   }
 
   function renderDetalhe(ficha, servicos) {
+    servicosAbertos = servicos || [];
     const detalhe = document.getElementById('detalhe-ficha');
     const concluida = ficha.status === 'concluida';
 
@@ -193,6 +202,7 @@
             <div class="t-ponto-acoes">
               <a class="t-ponto-link" target="_blank" rel="noopener" href="${urlMaps}">Google Maps</a>
               <a class="t-ponto-link t-ponto-link-waze" target="_blank" rel="noopener" href="${urlWaze}">Waze</a>
+              <button class="t-ponto-link t-ponto-link-aviso" onclick="window._tAvisarACaminho(${s.id})">A caminho</button>
               <button class="t-ponto-check ${feito ? 'concluido' : ''}" onclick="window._tConcluirPonto(${s.id}, '${feito ? 'pendente' : 'concluido'}')">
                 ${feito ? 'Concluído' : 'Marcar feito'}
               </button>
@@ -209,6 +219,54 @@
       ${pontosHtml || '<div class="t-vazio"><p>Nenhum ponto nessa ficha ainda.</p></div>'}
     `;
   }
+
+  // ===== AVISO "A CAMINHO" NO GRUPO DO WHATSAPP =====
+  // A API oficial do WhatsApp (Cloud API da Meta) NAO envia mensagem para
+  // grupo — ela existe para conversa empresa/cliente, um a um. Nao e limite de
+  // plano, o recurso nao existe. Disparo automatico em grupo so por gateway
+  // nao-oficial (Z-API, Evolution), que custa mensalidade e arrisca banir o
+  // numero. Enquanto essa decisao nao for tomada, o caminho honesto e este:
+  // a mensagem sai pronta e o tecnico so escolhe o grupo e envia.
+  //
+  // navigator.share abre a bandeja nativa do celular, onde o grupo aparece
+  // entre as conversas recentes — um toque. O wa.me e o plano B para desktop,
+  // onde a bandeja nativa nao existe.
+  function montarAviso(s) {
+    const partes = [];
+    partes.push(`🚗 Técnico ${tecnicoNome || ''} a caminho do cliente ${s.cliente || 'sem nome'}`.trim());
+    if (s.endereco_completo) partes.push(`📍 ${s.endereco_completo}`);
+
+    const busca = encodeURIComponent(s.endereco_completo || s.cep || '');
+    const urlWaze = (s.lat && s.lng)
+      ? `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`
+      : `https://waze.com/ul?q=${busca}&navigate=yes`;
+    partes.push(urlWaze);
+
+    return partes.join('\n\n');
+  }
+
+  window._tAvisarACaminho = async function (servicoId) {
+    // Procura o ponto na ficha aberta. Os dados ja estao em memoria, entao o
+    // aviso funciona sem rede — inclusive quando a leitura veio do cache.
+    const s = servicosAbertos.find(x => x.id === servicoId);
+    if (!s) { toast('Ponto não encontrado'); return; }
+
+    const texto = montarAviso(s);
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: texto });
+        return;
+      }
+    } catch (e) {
+      // Cancelar a bandeja de compartilhamento dispara AbortError. Isso e o
+      // usuario desistindo, nao falha — cair no wa.me aqui abriria uma aba
+      // que ele acabou de recusar.
+      if (e && e.name === 'AbortError') return;
+    }
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank', 'noopener,noreferrer');
+  };
 
   window._tAbrirFicha = abrirFicha;
 
