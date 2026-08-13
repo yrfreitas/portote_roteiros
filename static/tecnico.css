@@ -190,3 +190,22 @@ svg { width: 14px; height: 14px; }
   cursor: pointer;
 }
 .t-ponto-link-aviso:active { background: #0d6b60; }
+
+/* Faixa "Abrir Waze" que aparece depois do aviso no grupo.
+   Fixa no rodape e do tamanho de um polegar: e tocada com o carro ligado,
+   muitas vezes com o celular no suporte. */
+.t-abrir-waze {
+  position: fixed;
+  left: 12px; right: 12px; bottom: 14px;
+  z-index: 200;
+  padding: 15px 16px;
+  border-radius: 10px;
+  background: #33ccff;
+  color: #06283d;
+  font-size: 15px; font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  display: block;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+}
+.t-abrir-waze:active { background: #22b8e6; }

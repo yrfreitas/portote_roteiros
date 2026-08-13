@@ -235,14 +235,16 @@
     const partes = [];
     partes.push(`🚗 Técnico ${tecnicoNome || ''} a caminho do cliente ${s.cliente || 'sem nome'}`.trim());
     if (s.endereco_completo) partes.push(`📍 ${s.endereco_completo}`);
-
-    const busca = encodeURIComponent(s.endereco_completo || s.cep || '');
-    const urlWaze = (s.lat && s.lng)
-      ? `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`
-      : `https://waze.com/ul?q=${busca}&navigate=yes`;
-    partes.push(urlWaze);
+    partes.push(urlWazeDe(s));
 
     return partes.join('\n\n');
+  }
+
+  function urlWazeDe(s) {
+    const busca = encodeURIComponent(s.endereco_completo || s.cep || '');
+    return (s.lat && s.lng)
+      ? `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`
+      : `https://waze.com/ul?q=${busca}&navigate=yes`;
   }
 
   window._tAvisarACaminho = async function (servicoId) {
@@ -252,21 +254,55 @@
     if (!s) { toast('Ponto não encontrado'); return; }
 
     const texto = montarAviso(s);
+    let avisou = false;
 
     try {
       if (navigator.share) {
         await navigator.share({ text: texto });
-        return;
+        avisou = true;
+      } else {
+        window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank', 'noopener,noreferrer');
+        avisou = true;
       }
     } catch (e) {
-      // Cancelar a bandeja de compartilhamento dispara AbortError. Isso e o
-      // usuario desistindo, nao falha — cair no wa.me aqui abriria uma aba
-      // que ele acabou de recusar.
+      // Cancelar a bandeja dispara AbortError: e o usuario desistindo, nao
+      // falha. Nao cair no wa.me nem oferecer o Waze — ele nao avisou ninguem.
       if (e && e.name === 'AbortError') return;
+      window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank', 'noopener,noreferrer');
+      avisou = true;
     }
 
-    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank', 'noopener,noreferrer');
+    if (avisou) oferecerWaze(s);
   };
+
+  // Depois de avisar o grupo, o proximo passo e sempre o mesmo: dirigir. Sem
+  // isso o tecnico tinha que voltar para a tela e cacar o botao do Waze.
+  //
+  // A tentativa de navegacao automatica vem PRIMEIRO, mas a faixa e criada de
+  // qualquer jeito: fora do gesto original do usuario o navegador pode barrar
+  // a navegacao em silencio, e ficar sem plano B deixaria o tecnico parado.
+  function oferecerWaze(s) {
+    const url = urlWazeDe(s);
+
+    let faixa = document.getElementById('t-abrir-waze');
+    if (faixa) faixa.remove();
+
+    faixa = document.createElement('a');
+    faixa.id = 't-abrir-waze';
+    faixa.className = 't-abrir-waze';
+    faixa.href = url;
+    faixa.target = '_blank';
+    faixa.rel = 'noopener';
+    faixa.innerHTML = `Abrir Waze para ${esc(s.cliente || 'o cliente')} &rarr;`;
+    faixa.addEventListener('click', () => faixa.remove());
+    document.body.appendChild(faixa);
+
+    // Some sozinha depois de um tempo: faixa presa na tela vira lixo visual
+    // na proxima vez que ele abrir o app.
+    setTimeout(() => faixa && faixa.remove(), 45000);
+
+    try { window.location.href = url; } catch { /* a faixa cobre */ }
+  }
 
   window._tAbrirFicha = abrirFicha;
 
