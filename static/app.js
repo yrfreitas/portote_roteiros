@@ -1694,20 +1694,27 @@ function _hexRgb(h) {
 // Única fonte de verdade pra "essa rota serve ou não" — usada no número,
 // na barra e no selo do card. Antes disso existiam duas escalas soltas
 // (cor por faixa + palavra por faixa) que podiam se contradizer.
-function _encaixeInfo(s, rank, isTop) {
+// A classificação vem PRONTA do servidor (campo `classificacao`). Esta função
+// só traduz para texto e cor. Antes ela tinha régua própria (100/50) que
+// divergia do SCORE_MINIMO_BOM = 30 do backend, e o mesmo card saía com selo
+// "Melhor encaixe" e nota de "Não recomendado" ao mesmo tempo.
+const ENCAIXE_ESTILO = {
+  bem:      { texto: 'Encaixa bem',   classe: 'bom',   cor: 'var(--success)' },
+  razoavel: { texto: 'Dá pra encaixar', classe: 'medio', cor: 'var(--gold)' },
+  fora:     { texto: 'Fora de mão',   classe: 'ruim',  cor: 'var(--danger)' },
+};
+
+// Escala FIXA da barra. Antes era `score / maior score da lista`, então a
+// primeira opção sempre aparecia com a barra cheia — mesmo quando todas eram
+// ruins. Um CEP na porta do técnico e um em Guarulhos davam a mesma barra.
+// Agora 100 (o corte de "encaixa bem") é a referência: opção ruim parece ruim.
+const ESCALA_BARRA = 150;
+
+function _encaixeInfo(s) {
   if (s.vazia) {
     return { texto: 'Rota vazia', classe: 'vazio', cor: 'var(--text-muted)' };
   }
-  if (isTop) {
-    return { texto: 'Melhor encaixe', classe: 'otimo', cor: 'var(--accent-light)' };
-  }
-  if (s.score >= 100) {
-    return { texto: 'Encaixa bem', classe: 'bom', cor: 'var(--success)' };
-  }
-  if (s.score >= 50) {
-    return { texto: 'Encaixa, mas não é ideal', classe: 'medio', cor: 'var(--gold)' };
-  }
-  return { texto: 'Não recomendado', classe: 'ruim', cor: 'var(--danger)' };
+  return ENCAIXE_ESTILO[s.classificacao] || ENCAIXE_ESTILO.fora;
 }
 
 function _motivos(s, rank) {
@@ -1978,6 +1985,10 @@ function _vcepRenderTab(r) {
   if (vcepTabAtual === 'add')     painel.innerHTML = _vcepAdd(r);
   if (vcepTabAtual === 'novo')    painel.innerHTML = _vcepNovoDia(r);
 
+  // O mapa só existe na aba de análise, e precisa ser montado DEPOIS do
+  // innerHTML — o container é criado ali dentro.
+  if (vcepTabAtual === 'analise') vcepRenderizarMapa(r);
+
   if (vcepTabAtual === 'analise' && vcepExpandido !== null) _vcepExpandir(vcepExpandido, r);
 
   if (vcepTabAtual === 'add' || vcepTabAtual === 'novo') {
@@ -1995,29 +2006,25 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
     return `<div class="vcep-empty"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><p>Nenhuma rota cadastrada.<br>Use "Novo dia" para criar a primeira.</p></div>`;
   }
 
-  const max = Math.max(...r.sugestoes.map(s => s.score), 1);
-
-  // Mesmo limite que o backend usa pra penalizar rota lotada na pontuação
-  // (CAPACIDADE_IDEAL em routes/tecnicos.py) — aqui só torna isso visível
-  // sem precisar expandir o card.
-  const CAPACIDADE_IDEAL_ROTA = 8;
-
-  const cards = r.sugestoes.map((s, i) => {
-    const sc    = Math.round(s.score);
-    const isTop = i === 0 && r.tem_boa_opcao;
-    const encaixe = _encaixeInfo(s, i, isTop);
-    const distTxt = (s.dist_minima !== null && s.dist_minima !== undefined)
-      ? `${fmtKm(s.dist_minima)} km` : '—';
-
+  const monta = (s, i) => {
+    const encaixe = _encaixeInfo(s);
     const dataTxt = s.data_referencia ? ' · ' + formatarData(s.data_referencia) : '';
     const ptsTxt  = s.vazia ? 'rota vazia' : `${s.total_pontos} pts`;
-    const lotada  = !s.vazia && s.total_pontos >= CAPACIDADE_IDEAL_ROTA;
 
     const idCard = `vcep-rc-${prefixo}${i}`;
     const idDet  = `vcep-det-${prefixo}${i}`;
+    const larguraBarra = Math.min(100, Math.round((s.score / ESCALA_BARRA) * 100));
+
+    // Os motivos vêm prontos do servidor e substituem o número solto: o score
+    // é uma soma sem unidade nem teto, "87" não diz nada. "3 dos 8 pontos na
+    // zona leste · 2,1 km do mais próximo" diz tudo.
+    const motivos = (s.motivos || []).map(m =>
+      `<span class="vcep-motivo">${esc(m)}</span>`).join('');
 
     return `
-      <div class="vcep-rota-card${isTop ? ' vcep-rota-top' : ''}" id="${idCard}"
+      <div class="vcep-rota-card vcep-card-${encaixe.classe}" id="${idCard}"
+           data-indice="${i}"
+           ${interativo ? `onmouseenter="vcepDestacarNoMapa(${i})" onmouseleave="vcepDestacarNoMapa(null)"` : ''}
            ${interativo ? `onclick="vcepToggleCard('${prefixo}',${i})"` : ''}>
         <div class="vcep-rota-inner">
           <div class="vcep-avatar" style="background:rgba(${_hexRgb(s.tecnico_cor)},.13);color:${escCor(s.tecnico_cor)}">
@@ -2025,16 +2032,17 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
             <span class="vcep-avatar-rank">${i + 1}</span>
           </div>
           <div class="vcep-rota-info">
-            <div class="vcep-rota-nome">${esc(s.tecnico_nome)}</div>
-            <div class="vcep-rota-dia">
-              ${esc(s.dia_semana)} · ${ptsTxt}${esc(dataTxt)}
-              ${lotada ? `<span class="vcep-tag-lotada" title="Rota com ${s.total_pontos} pontos — acima da capacidade ideal (${CAPACIDADE_IDEAL_ROTA})">${icone('alerta', 'icone-10')} cheia</span>` : ''}
+            <div class="vcep-rota-nome">
+              ${esc(s.tecnico_nome)}
+              ${s.lotada ? `<span class="vcep-tag-lotada" title="Acima da capacidade ideal">${icone('alerta', 'icone-10')} cheia</span>` : ''}
             </div>
-            <div class="vcep-rota-dist">${distTxt !== '—' ? `${distTxt} ${s.vazia ? 'da base' : 'do ponto mais próximo'}` : ''}</div>
+            <div class="vcep-rota-dia">${esc(s.dia_semana)} · ${ptsTxt}${esc(dataTxt)}</div>
+            <div class="vcep-motivos">${motivos}</div>
           </div>
           <div class="vcep-rota-score">
-            <div class="vcep-score-num" style="color:${encaixe.cor}">${sc}</div>
-            <div class="vcep-score-bar"><div class="vcep-score-fill" style="width:${Math.round((s.score/max)*100)}%;background:${encaixe.cor}"></div></div>
+            <div class="vcep-veredito" style="color:${encaixe.cor}">${esc(encaixe.texto)}</div>
+            <div class="vcep-score-bar"><div class="vcep-score-fill" style="width:${larguraBarra}%;background:${encaixe.cor}"></div></div>
+            <div class="vcep-score-num" title="Pontuação interna do cálculo de encaixe">${Math.round(s.score)}</div>
           </div>
           ${interativo ? `
           <button type="button" class="vcep-btn-add-rapido" title="Adicionar este CEP nessa rota"
@@ -2042,12 +2050,131 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
             ${icone('plus', 'icone-13')}
           </button>` : ''}
         </div>
-        <span class="vcep-badge-encaixe vcep-badge-${encaixe.classe}">${esc(encaixe.texto)}</span>
         ${interativo ? `<div class="vcep-rota-detalhe" id="${idDet}" style="display:none"></div>` : ''}
       </div>`;
-  }).join('');
+  };
 
-  return `<div class="vcep-analise-wrap"><div class="vcep-analise-label">${r.sugestoes.length} rota${r.sugestoes.length !== 1 ? 's' : ''} analisada${r.sugestoes.length !== 1 ? 's' : ''}</div>${cards}</div>`;
+  // Separa o que serve do que não serve. Antes as 10 rotas vinham numa lista
+  // só, com o mesmo peso visual — e a decisão ficava por conta do usuário
+  // comparar números. "Fora de mão" quase nunca interessa, então vai recolhido.
+  const servem    = [];
+  const naoServem = [];
+  r.sugestoes.forEach((s, i) => {
+    (s.classificacao === 'fora' && !s.vazia ? naoServem : servem).push(monta(s, i));
+  });
+
+  // Estado honesto: se nada passou da régua, dizer isso. A tela antiga sempre
+  // elegia um vencedor, mesmo quando não havia vencedor — e era isso que
+  // levava a botar ponto numa rota que não tinha nada a ver com o endereço.
+  const alerta = servem.length === 0 ? `
+    <div class="vcep-alerta-nenhuma">
+      ${icone('alerta', 'icone-13')}
+      <div>
+        <strong>Nenhuma rota atual atende bem esse endereço.</strong><br>
+        Todas ficam fora de mão. Considere criar um novo dia na aba "Novo dia"
+        em vez de forçar o encaixe.
+      </div>
+    </div>` : '';
+
+  const recolhidas = naoServem.length ? `
+    <button type="button" class="vcep-toggle-fora" onclick="vcepAlternarFora(this)">
+      Mostrar outras ${naoServem.length} rota${naoServem.length !== 1 ? 's' : ''} — fora de mão
+    </button>
+    <div class="vcep-fora-lista" style="display:none;">${naoServem.join('')}</div>` : '';
+
+  return `<div class="vcep-analise-wrap">
+    <div id="vcep-mapa-encaixe" class="vcep-mapa"></div>
+    ${alerta}
+    <div class="vcep-analise-label">${servem.length} rota${servem.length !== 1 ? 's' : ''} que ${servem.length !== 1 ? 'servem' : 'serve'}</div>
+    ${servem.join('')}
+    ${recolhidas}
+  </div>`;
+}
+
+// ─── Mapa do verificador de encaixe ─────────────────────────────────────
+// O número respondia "quanto encaixa". O mapa responde "onde", que é a
+// pergunta que a cabeça faz primeiro. Ver o CEP caindo no meio do aglomerado
+// de segunda do Pedro decide a questão sem ler nada.
+let vcepMapa = null;
+let vcepCamadas = [];   // uma camada por sugestão, para o destaque cruzado
+let vcepAlvoMarker = null;
+
+function vcepRenderizarMapa(r) {
+  const el = document.getElementById('vcep-mapa-encaixe');
+  if (!el || !r || r.lat == null || r.lng == null || typeof L === 'undefined') return;
+
+  // O Leaflet guarda estado no elemento; recriar sem destruir deixa o mapa
+  // cinza quando a tela é redesenhada (e ela é, a cada nova consulta).
+  if (vcepMapa) { vcepMapa.remove(); vcepMapa = null; }
+  vcepCamadas = [];
+
+  vcepMapa = L.map(el, { scrollWheelZoom: false, attributionControl: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(vcepMapa);
+
+  const limites = [[r.lat, r.lng]];
+
+  (r.sugestoes || []).forEach((s, i) => {
+    const camada = L.layerGroup().addTo(vcepMapa);
+    const cor = s.tecnico_cor || '#4f8dfb';
+    // "Fora de mão" entra apagado: continua no mapa para dar noção de onde as
+    // outras rotas passam, sem competir com o que de fato interessa.
+    const fraca = s.classificacao === 'fora' && !s.vazia;
+
+    (s.pontos || []).forEach(p => {
+      L.circleMarker([p.lat, p.lng], {
+        radius: fraca ? 3 : 5,
+        color: cor, fillColor: cor,
+        fillOpacity: fraca ? 0.25 : 0.85,
+        weight: fraca ? 1 : 2,
+        opacity: fraca ? 0.3 : 0.9,
+      }).addTo(camada);
+      if (!fraca) limites.push([p.lat, p.lng]);
+    });
+
+    // A linha até o ponto mais próximo é o que torna "2,1 km fora da rota"
+    // uma distância que se enxerga em vez de um número para acreditar.
+    if (s.ponto_proximo && !fraca) {
+      L.polyline([[r.lat, r.lng], [s.ponto_proximo.lat, s.ponto_proximo.lng]], {
+        color: cor, weight: 2, opacity: 0.5, dashArray: '4,6',
+      }).addTo(camada);
+    }
+
+    vcepCamadas[i] = { camada, cor };
+  });
+
+  // O alvo vai por último para ficar acima de tudo, e é visualmente diferente
+  // dos pontos de rota — é a pergunta, não uma das respostas.
+  vcepAlvoMarker = L.circleMarker([r.lat, r.lng], {
+    radius: 9, color: '#fff', fillColor: '#e02020', fillOpacity: 1, weight: 3,
+  }).addTo(vcepMapa).bindTooltip(
+    r.endereco || r.cep || 'Endereço consultado', { direction: 'top' }
+  );
+
+  vcepMapa.fitBounds(L.latLngBounds(limites).pad(0.2));
+
+  // O container nasce com display:none dentro da aba; sem isso o Leaflet
+  // calcula tamanho zero e o mapa aparece cortado.
+  setTimeout(() => vcepMapa && vcepMapa.invalidateSize(), 120);
+}
+
+// Passar o mouse no card acende a rota correspondente no mapa. É o que liga
+// as duas metades da tela: sem isso são duas listas que não se conversam.
+function vcepDestacarNoMapa(indice) {
+  if (!vcepMapa) return;
+  vcepCamadas.forEach((c, i) => {
+    if (!c) return;
+    const apagar = indice !== null && i !== indice;
+    c.camada.eachLayer(l => {
+      if (l.setStyle) l.setStyle({ opacity: apagar ? 0.12 : 0.9, fillOpacity: apagar ? 0.08 : 0.85 });
+    });
+  });
+}
+
+function vcepAlternarFora(btn) {
+  const lista = btn.nextElementSibling;
+  const escondida = lista.style.display === 'none';
+  lista.style.display = escondida ? '' : 'none';
+  btn.classList.toggle('aberto', escondida);
 }
 
 function vcepToggleCard(prefixo, i) {

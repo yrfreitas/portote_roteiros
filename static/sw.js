@@ -15,7 +15,8 @@
 //      e rota concluída saindo da sidebar (passa a viver só no Histórico).
 // v5 = setor obrigatório, classificação em lote e filtro de período.
 // v6 = modo offline de leitura do técnico + fila de sincronização.
-const CACHE_VERSAO = 'portotec-roteiros-v6';
+// v7 = verificador de encaixe com régua única, motivos e mapa.
+const CACHE_VERSAO = 'portotec-roteiros-v7';
 
 const ARQUIVOS_CASCA = [
   '/',

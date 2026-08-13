@@ -14,8 +14,58 @@ CORES_PADRAO = [
     "#d4a01a", "#2aaab8", "#d41a5c", "#5c7ad4",
 ]
 
-SCORE_MINIMO_BOM = 30
 CAPACIDADE_IDEAL = 8
+
+# ─── Régua única de encaixe ──────────────────────────────────────────────
+# Existia SCORE_MINIMO_BOM = 30 aqui e outros dois cortes (100 e 50) no
+# _encaixeInfo do app.js. Um CEP com score 35 saía marcado como "Melhor
+# encaixe" pelo backend e como "Não recomendado" pelo badge, no MESMO card.
+# Agora o corte mora num lugar só e a tela apenas exibe o que o servidor
+# decidiu — não há como as duas versões divergirem de novo.
+ENCAIXA_BEM = 100      # mesma zona e perto de pontos que já existem
+ENCAIXA_RAZOAVEL = 50  # mesma região, mas desvia a rota
+
+
+def _classificar(pontuacao: float) -> str:
+    if pontuacao >= ENCAIXA_BEM:
+        return "bem"
+    if pontuacao >= ENCAIXA_RAZOAVEL:
+        return "razoavel"
+    return "fora"
+
+
+def _motivos(f: dict, zona_alvo: str) -> list:
+    """Frases curtas explicando de onde veio a nota.
+
+    O score é uma soma de bônus de zona, distância, região e penalidade de
+    lotação — não tem unidade nem teto, então o número sozinho não informa
+    nada a quem olha. Estes motivos são o que transforma "87" em decisão.
+    """
+    motivos = []
+
+    if f["vazia"]:
+        motivos.append("Rota ainda sem pontos — cabe qualquer coisa")
+        if f.get("mesma_zona_base"):
+            motivos.append(f"A base de saída fica na zona {zona_alvo}")
+        return motivos
+
+    total = f["total_pontos"]
+    na_zona = f["pontos_mesma_zona"]
+
+    if na_zona == 0:
+        motivos.append(f"Nenhum dos {total} pontos está na zona {zona_alvo}")
+    elif na_zona == total:
+        motivos.append(f"Todos os {total} pontos já estão na zona {zona_alvo}")
+    else:
+        motivos.append(f"{na_zona} dos {total} pontos na zona {zona_alvo}")
+
+    if f["dist_minima"] is not None:
+        motivos.append(f"{f['dist_minima']:.1f} km do ponto mais próximo")
+
+    if total >= CAPACIDADE_IDEAL:
+        motivos.append(f"Rota já com {total} pontos — acima do ideal ({CAPACIDADE_IDEAL})")
+
+    return motivos
 
 
 def zona_sp(cep) -> str:
@@ -112,6 +162,8 @@ def verificar_cep():
 
     return jsonify({
         "cep": cep, "endereco": geo.endereco, "zona": zona_alvo, "preciso": geo.preciso,
+        # lat/lng do alvo: sem elas o mapa não tem onde cravar o marcador.
+        "lat": geo.lat, "lng": geo.lng,
         "tecnicos": lista_tecnicos, "sugestoes": sugestoes, "tem_boa_opcao": tem_boa_opcao,
     })
 
@@ -141,6 +193,7 @@ def verificar_endereco():
 
     return jsonify({
         "cep": geo.cep, "endereco": geo.endereco, "zona": zona_alvo, "preciso": geo.preciso,
+        "lat": geo.lat, "lng": geo.lng,
         "tecnicos": lista_tecnicos, "sugestoes": sugestoes, "tem_boa_opcao": tem_boa_opcao,
     })
 
@@ -184,6 +237,8 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
                 "total_pontos":      0,
                 "pontos_mesma_zona": 0,
                 "vazia":             True,
+                "pontos":            [],
+                "ponto_proximo":     None,
                 "_base_lat":         l.get("ponto_partida_lat"),
                 "_base_lng":         l.get("ponto_partida_lng"),
                 "_base_cep":         l.get("ponto_partida_cep"),
@@ -195,9 +250,16 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
         f = fichas[fid]
         f["vazia"] = False
         f["total_pontos"] += 1
+        # Coordenadas vão para o mapa da tela de encaixe. Sem elas o usuário
+        # via só um número e tinha que imaginar onde a rota passa.
+        f["pontos"].append({"lat": l["s_lat"], "lng": l["s_lng"]})
 
         dist = haversine(lat_alvo, lng_alvo, l["s_lat"], l["s_lng"])
         if f["dist_minima"] is None or dist < f["dist_minima"]:
+            # Guarda QUAL é o ponto mais próximo, não só a distância: o mapa
+            # traça a linha do CEP consultado até ele, que é o que torna
+            # "2,1 km fora da rota" uma coisa que se enxerga.
+            f["ponto_proximo"] = {"lat": l["s_lat"], "lng": l["s_lng"]}
             f["dist_minima"] = dist
 
         if zona_sp(l.get("s_cep")) == zona_alvo:
@@ -211,6 +273,10 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
                 lat_alvo, lng_alvo, f["_base_lat"], f["_base_lng"]
             )
             f["mesma_zona_base"] = zona_sp(f["_base_cep"]) == zona_alvo
+            # Rota vazia não tem ponto de serviço: a referência no mapa passa
+            # a ser a base de saída, que é de onde o técnico realmente parte.
+            f["ponto_proximo"] = {"lat": f["_base_lat"], "lng": f["_base_lng"],
+                                  "e_base": True}
         else:
             f["dist_minima"] = None
             f["mesma_zona_base"] = False
@@ -237,6 +303,7 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
     sugestoes = []
 
     for f in ordenadas[:10]:
+        pontuacao = max(0, round(score(f), 1))
         sugestoes.append({
             "ficha_id":          f["ficha_id"],
             "dia_semana":        f["dia_semana"],
@@ -250,9 +317,18 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
             "mesma_zona":        f["pontos_mesma_zona"] > 0 or f.get("mesma_zona_base", False),
             "zona_alvo":         zona_alvo,
             "vazia":             f["vazia"],
-            "score":             max(0, round(score(f), 1)),
+            "score":             pontuacao,
+            # Classificação e motivos saem do SERVIDOR, não da tela. Antes o
+            # backend dizia "boa opção" com score >= 30 e o badge do front
+            # chamava o mesmo card de "não recomendado" abaixo de 50 — o card
+            # se contradizia. Com uma régua só, isso não pode mais acontecer.
+            "classificacao":     _classificar(pontuacao),
+            "motivos":           _motivos(f, zona_alvo),
+            "pontos":            f["pontos"],
+            "ponto_proximo":     f["ponto_proximo"],
+            "lotada":            (not f["vazia"]) and f["total_pontos"] >= CAPACIDADE_IDEAL,
         })
 
-    tem_boa_opcao = bool(sugestoes) and sugestoes[0]["score"] >= SCORE_MINIMO_BOM
+    tem_boa_opcao = bool(sugestoes) and sugestoes[0]["classificacao"] == "bem"
 
     return sugestoes, tem_boa_opcao, lista_tecnicos
