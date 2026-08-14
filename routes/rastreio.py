@@ -160,6 +160,36 @@ def iniciar(token, servico_id):
     return jsonify({"token": novo_token, "reaproveitado": False}), 201
 
 
+@rastreio_bp.route("/t/<token>/rastreios/ativos", methods=["GET"])
+def ativos_do_tecnico(token):
+    """Rastreios ainda vivos deste técnico. Existe para RETOMAR o envio de GPS.
+
+    Sem isto o rastreio era um evento de uma vez só: o GPS ligava no toque do
+    "A caminho" e morria junto com a página. Fechar o app, o celular matar a
+    aba por memória, ou a tela travar já bastava para o cliente ficar olhando
+    um mapa parado pelo resto da viagem — sem ninguém perceber, porque não
+    havia erro nenhum, só silêncio.
+    """
+    with db_conn() as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+
+        linhas = fetch_all(conn, f"""
+            SELECT ra.token, ra.servico_id, ra.criado_em, sv.cliente
+              FROM rastreios ra
+              JOIN servicos sv ON sv.id = ra.servico_id
+             WHERE ra.tecnico_id = ? AND {_ATIVO} AND sv.status <> 'concluido'
+             ORDER BY ra.id DESC
+        """, (tecnico["id"],))
+
+    return jsonify({"rastreios": [
+        {"token": l["token"], "servico_id": l["servico_id"],
+         "cliente": l.get("cliente") or ""}
+        for l in linhas if not _expirado(l.get("criado_em"))
+    ]})
+
+
 @rastreio_bp.route("/t/<token>/rastreio/<rastreio_token>/posicao", methods=["POST"])
 def enviar_posicao(token, rastreio_token):
     """O celular do técnico reporta onde está. É o que faz o carrinho andar.

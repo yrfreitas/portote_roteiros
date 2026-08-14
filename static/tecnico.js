@@ -280,6 +280,46 @@
   const INTERVALO_ENVIO_MS = 20000;  // 20s: fluido no mapa sem torrar bateria
   const DISTANCIA_MINIMA_M = 40;     // parado no semaforo nao precisa reenviar
 
+  // ===== SELO DE GPS =====
+  // A primeira versao disto falhava em SILENCIO: permissao negada era engolida
+  // num catch vazio e ninguem no mundo ficava sabendo -- nem o tecnico, que
+  // achava estar sendo acompanhado, nem o cliente, que via um mapa parado.
+  // Este selo existe para que o estado do GPS seja sempre visivel na tela.
+  function selo() {
+    let el = document.getElementById('t-gps-selo');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 't-gps-selo';
+      el.className = 't-gps-selo';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  function mostrarGps(estado, texto) {
+    const el = selo();
+    if (!estado) { el.style.display = 'none'; return; }
+    el.style.display = 'flex';
+    el.className = `t-gps-selo ${estado}`;
+    el.textContent = texto;
+    // Bloqueado abre as instrucoes ao toque: mandar o tecnico "ir nas
+    // configuracoes" sem dizer onde nao resolve o problema de ninguem.
+    el.onclick = estado === 'bloqueado' ? explicarPermissao : null;
+  }
+
+  function explicarPermissao() {
+    const ehIphone = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    alert(
+      'O cliente nao consegue ver voce no mapa porque a localizacao esta '
+      + 'bloqueada para este site.\n\nComo liberar:\n\n'
+      + (ehIphone
+          ? 'Ajustes > Safari > Localizacao > Perguntar ou Permitir.\n'
+            + 'Depois feche e abra o app de novo.'
+          : 'Toque no cadeado ao lado do endereco > Permissoes > Localizacao > '
+            + 'Permitir.\nDepois recarregue a pagina.')
+    );
+  }
+
   function metrosEntre(a, b) {
     // Equirretangular em vez de haversine: em distancias de quarteirao o erro
     // e irrelevante e isso roda a cada leitura do GPS, no celular do tecnico.
@@ -290,10 +330,14 @@
   }
 
   async function iniciarEnvioDePosicao(rastreioToken) {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      mostrarGps('bloqueado', 'Este aparelho nao tem GPS');
+      return;
+    }
     pararEnvioDePosicao();  // nunca dois watch ao mesmo tempo
 
     rastreioAtivo = { token: rastreioToken, watchId: null, ultimo: null, ultimoEnvio: 0 };
+    mostrarGps('procurando', 'Procurando sinal de GPS...');
 
     // Segura a tela acesa enquanto ele esta a caminho. Nao resolve o
     // congelamento ao trocar de app, mas cobre o caso real de quem deixa o
@@ -306,8 +350,17 @@
     rastreioAtivo.watchId = navigator.geolocation.watchPosition(
       (pos) => enviarPosicao(pos.coords),
       (err) => {
-        // Permissao negada e decisao do tecnico, nao defeito: desliga quieto.
-        if (err.code === err.PERMISSION_DENIED) pararEnvioDePosicao();
+        if (err.code === err.PERMISSION_DENIED) {
+          // Nao e "desliga quieto" como eu tinha feito: sem permissao o
+          // acompanhamento simplesmente nao existe, e o tecnico precisa saber
+          // disso ANTES de dizer ao cliente que ele esta sendo acompanhado.
+          pararEnvioDePosicao();
+          mostrarGps('bloqueado', 'Localizacao bloqueada — toque para liberar');
+        } else {
+          // Sem sinal (tunel, predio) nao e erro definitivo: o watch continua
+          // tentando e volta sozinho quando o GPS pegar.
+          mostrarGps('procurando', 'Sem sinal de GPS no momento');
+        }
       },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }
     );
@@ -338,10 +391,13 @@
       // O servidor avisa quando o rastreio morreu (ponto concluido, link
       // expirado). Ai o GPS desliga sozinho em vez de ficar reportando para
       // um link que ninguem mais le.
-      if (r && r.gravado === false) pararEnvioDePosicao();
+      if (r && r.gravado === false) { pararEnvioDePosicao(); return; }
+      mostrarGps('enviando', 'Cliente vendo voce no mapa');
     } catch {
-      // Sem sinal agora, tenta na proxima leitura. Silencioso de proposito:
-      // quem esta dirigindo nao pode receber alerta de rede.
+      // Sem rede agora, tenta na proxima leitura. Nao vira alerta -- quem esta
+      // dirigindo nao pode receber pop-up -- mas o selo muda, porque o tecnico
+      // precisa poder olhar de relance e saber que parou de chegar.
+      mostrarGps('procurando', 'Sem conexao — vai retomar sozinho');
     }
   }
 
@@ -350,6 +406,22 @@
     if (rastreioAtivo.watchId != null) navigator.geolocation.clearWatch(rastreioAtivo.watchId);
     if (rastreioAtivo.wakeLock) { try { rastreioAtivo.wakeLock.release(); } catch {} }
     rastreioAtivo = null;
+    mostrarGps(null);
+  }
+
+  // Retoma o envio ao ABRIR o app. Sem isto o rastreio era um evento de uma
+  // vez so: morria com a pagina e o cliente ficava olhando mapa parado pelo
+  // resto da viagem. Fechar o app, o celular matar a aba por memoria ou a tela
+  // travar ja bastava -- e nao havia erro nenhum, so silencio.
+  async function retomarRastreioAtivo() {
+    try {
+      const r = await api('/rastreios/ativos');
+      const vivo = (r.rastreios || [])[0];
+      if (vivo) iniciarEnvioDePosicao(vivo.token);
+    } catch {
+      // App abrindo sem sinal: nao ha o que retomar agora. A volta da conexao
+      // dispara de novo (ver o listener de 'online' no fim do arquivo).
+    }
   }
 
   // Voltou para o app depois do Waze? o wake lock cai sozinho quando a pagina
@@ -609,6 +681,9 @@
 
   carregarFichas().then(atualizarAvisoTopo);
 
+  // Se o técnico já estava a caminho quando o app fechou, o envio volta aqui.
+  retomarRastreioAtivo();
+
   lerRevisao().then((r) => { revisaoConhecida = r; }).catch(() => {});
   setInterval(verificarRevisao, INTERVALO_REVISAO);
   document.addEventListener('visibilitychange', () => {
@@ -621,6 +696,10 @@
   window.addEventListener('online', async () => {
     await sincronizarFila();
     verificarRevisao();
+    // Voltou o sinal: se ele ainda está a caminho, o envio precisa retomar.
+    // Sem isto, um túnel no começo da viagem desligaria o acompanhamento até
+    // o fim dela.
+    if (!rastreioAtivo) retomarRastreioAtivo();
   });
   window.addEventListener('offline', atualizarAvisoTopo);
 

@@ -32,7 +32,8 @@
 // v21 = edição de ficha (dia e data) — antes não existia.
 // v22 = baixa da peça no AgoraOS ao vincular na aba Peças.
 // v23 = o cliente passa a ver o técnico ANDANDO no mapa, não só a casa dele.
-const CACHE_VERSAO = 'portotec-roteiros-v23';
+// v24 = GPS retoma ao abrir o app + selo visível de estado (era silêncio).
+const CACHE_VERSAO = 'portotec-roteiros-v24';
 
 const ARQUIVOS_CASCA = [
   '/',

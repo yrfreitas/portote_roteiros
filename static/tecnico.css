@@ -290,3 +290,29 @@ button.t-ponto-link-waze {
   padding: 2px 7px; border-radius: 4px; margin-left: 6px;
   vertical-align: middle;
 }
+
+/* Selo do GPS. Fica FIXO no rodape, acima de tudo, porque o tecnico precisa
+   conseguir olhar de relance e saber se o cliente esta ou nao vendo ele --
+   sem abrir menu, sem rolar a tela, com o celular no suporte do carro.
+   A versao anterior nao tinha nada disso: permissao negada era silencio
+   absoluto, e a primeira pessoa a descobrir era o cliente. */
+.t-gps-selo {
+  position: fixed; left: 10px; right: 10px; bottom: 10px;
+  z-index: 60;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 14px; border-radius: 10px;
+  font-size: 13px; font-weight: 700; text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.35);
+}
+.t-gps-selo::before {
+  content: ''; width: 9px; height: 9px; border-radius: 50%;
+  background: currentColor; flex: none;
+}
+/* Verde = o cliente ve. E a unica situacao em que esta tudo certo. */
+.t-gps-selo.enviando   { background: #123d26; color: #56d98b; }
+/* Amarelo = tentando. Nao e falha, mas tambem nao esta indo ainda. */
+.t-gps-selo.procurando { background: #3d3312; color: #e0c14d; }
+/* Vermelho = nao vai funcionar ate alguem agir. Clicavel de proposito. */
+.t-gps-selo.bloqueado  { background: #4a1616; color: #ff8a8a; cursor: pointer; }
+.t-gps-selo.enviando::before { animation: t-gps-pulso 2s ease-in-out infinite; }
+@keyframes t-gps-pulso { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
