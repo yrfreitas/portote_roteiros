@@ -252,13 +252,19 @@
   }
 
   // ===== LINK DE ACOMPANHAMENTO =====
-  // Sem GPS, de proposito: pagina web nao recebe localizacao em segundo plano.
-  // Assim que o tecnico sai para o Waze o sistema congela a pagina e o
-  // watchPosition para. O acompanhamento e por PREVISAO de chegada, calculada
-  // no servidor — nao depende de permissao nem de o app ficar aberto.
+  // O acompanhamento tem duas pernas: a PREVISAO de chegada, que o servidor
+  // calcula sozinho e nunca falha, e a POSICAO no mapa, que depende do GPS
+  // deste aparelho e so anda enquanto esta tela estiver aberta.
+  //
+  // A limitacao vale a pena repetir aqui, porque ela e a razao do desenho:
+  // quando o tecnico sai para o Waze, o navegador CONGELA esta pagina e o
+  // watchPosition para de disparar. Nao ha jeito de contornar isso em web —
+  // nem instalado como aplicativo. Por isso a pagina do cliente sempre mostra
+  // ha quanto tempo aquela posicao foi vista, em vez de fingir que e agora.
   async function criarLinkAcompanhamento(servicoId) {
     try {
       const r = await api(`/servicos/${servicoId}/rastreio`, { method: 'POST' });
+      iniciarEnvioDePosicao(r.token);
       return `${location.origin}/acompanhar/${r.token}`;
     } catch (e) {
       // Sem o link a mensagem ainda vale. Avisar sem acompanhamento e melhor
@@ -267,6 +273,101 @@
       return null;
     }
   }
+
+  // ===== ENVIO DA POSICAO =====
+  let rastreioAtivo = null;   // { token, watchId, ultimoEnvio, wakeLock }
+
+  const INTERVALO_ENVIO_MS = 20000;  // 20s: fluido no mapa sem torrar bateria
+  const DISTANCIA_MINIMA_M = 40;     // parado no semaforo nao precisa reenviar
+
+  function metrosEntre(a, b) {
+    // Equirretangular em vez de haversine: em distancias de quarteirao o erro
+    // e irrelevante e isso roda a cada leitura do GPS, no celular do tecnico.
+    const R = 6371000, rad = Math.PI / 180;
+    const x = (b.lng - a.lng) * rad * Math.cos((a.lat + b.lat) * rad / 2);
+    const y = (b.lat - a.lat) * rad;
+    return Math.sqrt(x * x + y * y) * R;
+  }
+
+  async function iniciarEnvioDePosicao(rastreioToken) {
+    if (!navigator.geolocation) return;
+    pararEnvioDePosicao();  // nunca dois watch ao mesmo tempo
+
+    rastreioAtivo = { token: rastreioToken, watchId: null, ultimo: null, ultimoEnvio: 0 };
+
+    // Segura a tela acesa enquanto ele esta a caminho. Nao resolve o
+    // congelamento ao trocar de app, mas cobre o caso real de quem deixa o
+    // celular no suporte com o site aberto: sem isso a tela apaga em 30s e o
+    // navegador comeca a estrangular o GPS.
+    try {
+      if ('wakeLock' in navigator) rastreioAtivo.wakeLock = await navigator.wakeLock.request('screen');
+    } catch { /* negado ou sem suporte: segue sem, nao e essencial */ }
+
+    rastreioAtivo.watchId = navigator.geolocation.watchPosition(
+      (pos) => enviarPosicao(pos.coords),
+      (err) => {
+        // Permissao negada e decisao do tecnico, nao defeito: desliga quieto.
+        if (err.code === err.PERMISSION_DENIED) pararEnvioDePosicao();
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }
+    );
+  }
+
+  async function enviarPosicao(coords) {
+    if (!rastreioAtivo) return;
+
+    const agora = Date.now();
+    const ponto = { lat: coords.latitude, lng: coords.longitude };
+
+    // Duas travas juntas: nao envia antes do intervalo E nao envia se nao
+    // andou. O GPS dispara varias vezes por segundo em movimento; sem isso
+    // seriam centenas de requisicoes por corrida.
+    const cedo = agora - rastreioAtivo.ultimoEnvio < INTERVALO_ENVIO_MS;
+    const parado = rastreioAtivo.ultimo &&
+                   metrosEntre(rastreioAtivo.ultimo, ponto) < DISTANCIA_MINIMA_M;
+    if (cedo || parado) return;
+
+    rastreioAtivo.ultimoEnvio = agora;
+    rastreioAtivo.ultimo = ponto;
+
+    try {
+      const r = await api(`/rastreio/${rastreioAtivo.token}/posicao`, {
+        method: 'POST',
+        body: JSON.stringify(ponto),
+      });
+      // O servidor avisa quando o rastreio morreu (ponto concluido, link
+      // expirado). Ai o GPS desliga sozinho em vez de ficar reportando para
+      // um link que ninguem mais le.
+      if (r && r.gravado === false) pararEnvioDePosicao();
+    } catch {
+      // Sem sinal agora, tenta na proxima leitura. Silencioso de proposito:
+      // quem esta dirigindo nao pode receber alerta de rede.
+    }
+  }
+
+  function pararEnvioDePosicao() {
+    if (!rastreioAtivo) return;
+    if (rastreioAtivo.watchId != null) navigator.geolocation.clearWatch(rastreioAtivo.watchId);
+    if (rastreioAtivo.wakeLock) { try { rastreioAtivo.wakeLock.release(); } catch {} }
+    rastreioAtivo = null;
+  }
+
+  // Voltou para o app depois do Waze? o wake lock cai sozinho quando a pagina
+  // e escondida e NAO volta sozinho — sem isto, o resto da viagem ficaria com
+  // a tela apagando de novo. Tambem forca um envio imediato, que e o momento
+  // mais valioso: e a posicao mais nova desde que ele saiu da tela.
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !rastreioAtivo) return;
+    try {
+      if ('wakeLock' in navigator && !rastreioAtivo.wakeLock) {
+        rastreioAtivo.wakeLock = await navigator.wakeLock.request('screen');
+      }
+    } catch { /* segue sem */ }
+    rastreioAtivo.ultimoEnvio = 0;
+    rastreioAtivo.ultimo = null;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => enviarPosicao(pos.coords), () => {}, { enableHighAccuracy: true });
+  });
 
   // Duas tentativas de disparar o WhatsApp automaticamente falharam no celular
   // do Kalebe — pop-up barrado numa, navegacao atropelada na outra. O problema
@@ -358,6 +459,11 @@
 
   window._tConcluirPonto = async function (servicoId, novoStatus) {
     const opts = { method: 'PUT', body: JSON.stringify({ status: novoStatus }) };
+    // Chegou: desliga o GPS na hora. O servidor tambem encerra o rastreio ao
+    // concluir o ponto, mas esperar a proxima leitura responder "gravado:
+    // false" gastaria bateria a toa depois de o trabalho ter acabado.
+    if (novoStatus === 'concluido') pararEnvioDePosicao();
+
     try {
       await api(`/servicos/${servicoId}/status`, opts);
       toast(novoStatus === 'concluido' ? 'Ponto marcado como feito' : 'Ponto reaberto');

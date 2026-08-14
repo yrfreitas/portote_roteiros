@@ -1,23 +1,31 @@
 """Rastreio ao vivo: o cliente acompanha o técnico a caminho.
 
-ACOMPANHAMENTO POR PREVISÃO DE CHEGADA, não por GPS ao vivo.
+PREVISÃO DE CHEGADA **E** POSIÇÃO NO MAPA — os dois, cada um cobrindo o buraco
+do outro.
 
-A primeira versão tentou GPS: o celular do técnico mandaria a posição. Não
-funciona, e a limitação é do navegador. Assim que ele sai do site para o Waze,
-o sistema CONGELA a página e o watchPosition para de disparar. Página web não
-recebe localização em segundo plano, nem instalada como aplicativo, nem no
-Android nem no iPhone. O rastreio só reportaria enquanto ele estivesse olhando
-a tela — exatamente quando não está dirigindo.
+A primeira versão era só previsão, e o motivo está registrado aqui embaixo
+porque continua verdadeiro. O Kalebe reclamou em 2026-08-14 do resultado
+prático: "no link só aparece a casa do cliente, mas não mostra o técnico indo
+até ele". Reclamação correta — o mapa mostrava um alfinete parado.
 
-Então o acompanhamento responde a pergunta que o cliente de fato faz, que é
-"a que horas ele chega?", e não "onde ele está agora". A previsão sai da
-distância entre a parada anterior e o destino, com a mesma velocidade média
-que o otimizador de rotas já usa. Sem GPS, sem permissão, sem depender do
-técnico fazer nada além de tocar no botão ao sair.
+O QUE MUDOU: o celular do técnico agora manda a posição enquanto o app está na
+tela, e o cliente vê o carrinho andando. O que NÃO mudou é a limitação do
+navegador que gerou a decisão original:
 
-DECISÕES DE PRIVACIDADE:
-- Não guarda posição nenhuma do técnico. Some o problema inteiro de rastrear
-  funcionário: o que existe é o horário de saída e uma estimativa.
+    Assim que o técnico sai do site para o Waze, o sistema CONGELA a página e
+    o watchPosition para de disparar. Página web não recebe localização em
+    segundo plano, nem instalada como aplicativo, nem no Android nem no iPhone.
+
+Ou seja: a posição é real quando chega, mas ENVELHECE durante a navegação. Por
+isso a página do cliente sempre diz há quanto tempo aquele ponto foi visto, e
+volta a destacar a previsão quando o dado passa de POSICAO_FRESCA_SEG. Mostrar
+alfinete velho como se fosse "agora" seria pior que não mostrar nada — o
+cliente olharia um carro parado e concluiria que o técnico não saiu do lugar.
+
+DECISÕES DE PRIVACIDADE (o motivo de guardar tão pouco):
+- Guarda só a ÚLTIMA posição, sobrescrevendo. Não existe histórico de trajeto:
+  o cliente quer saber onde ele está agora, e trajeto de funcionário é dado
+  sensível que ninguém pediu para ter.
 - É por ATENDIMENTO, não por técnico. Começa quando ele sai para aquele
   cliente e morre quando chega.
 - Expira sozinho depois de VALIDADE_HORAS mesmo se ninguém encerrar. Técnico
@@ -40,6 +48,13 @@ rastreio_bp = Blueprint("rastreio", __name__)
 # Depois disso o link para de mostrar posição, encerrado ou não. Uma visita
 # não passa de algumas horas; o que passar disso é app esquecido aberto.
 VALIDADE_HORAS = 6
+
+# Acima disso a posição deixa de ser tratada como "ao vivo" e a página do
+# cliente passa a dizer há quanto tempo foi vista. 3 min cobre o intervalo
+# normal de envio (20s) com folga larga para túnel, sinal ruim e a tela do
+# técnico apagando por um instante — sem deixar passar o caso real, que é ele
+# ter ido para o Waze e o navegador ter congelado a página.
+POSICAO_FRESCA_SEG = 180
 
 _ATIVO = "ativo IS TRUE" if IS_PG else "ativo = 1"
 
@@ -145,6 +160,52 @@ def iniciar(token, servico_id):
     return jsonify({"token": novo_token, "reaproveitado": False}), 201
 
 
+@rastreio_bp.route("/t/<token>/rastreio/<rastreio_token>/posicao", methods=["POST"])
+def enviar_posicao(token, rastreio_token):
+    """O celular do técnico reporta onde está. É o que faz o carrinho andar.
+
+    Silencioso de propósito: esta rota é chamada de 20 em 20 segundos e nenhum
+    erro dela pode virar alerta na tela de quem está dirigindo. Devolve 200 com
+    `gravado: false` em vez de erro quando o rastreio já morreu — o app lê isso
+    e desliga o GPS sozinho, que é o comportamento certo (parar de gastar
+    bateria) e não uma falha a reportar.
+    """
+    try:
+        dados = request.get_json(silent=True) or {}
+        lat = float(dados["lat"])
+        lng = float(dados["lng"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"erro": "Envie lat e lng numéricos"}), 400
+
+    # Coordenada fora do planeta é erro de leitura do aparelho, não posição.
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        return jsonify({"erro": "Coordenada inválida"}), 400
+
+    with db_conn(commit=True) as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+
+        # O rastreio tem que ser DESTE técnico. Sem esta checagem, quem tivesse
+        # um link de técnico moveria o carrinho de qualquer atendimento.
+        r = fetch_one(conn, f"""
+            SELECT * FROM rastreios
+             WHERE token = ? AND tecnico_id = ? AND {_ATIVO}
+        """, (rastreio_token, tecnico["id"]))
+
+        if not r or _expirado(r.get("criado_em")):
+            return jsonify({"gravado": False, "motivo": "rastreio encerrado"})
+
+        # UPDATE e não INSERT: uma linha por rastreio, sobrescrita. É o que
+        # mantém a promessa de não guardar trajeto de funcionário.
+        execute(conn, """
+            UPDATE rastreios SET lat = ?, lng = ?, atualizado_em = ?
+             WHERE id = ?
+        """, (lat, lng, _agora(), r["id"]))
+
+    return jsonify({"gravado": True})
+
+
 @rastreio_bp.route("/t/<token>/rastreio/<rastreio_token>/encerrar", methods=["POST"])
 def encerrar(token, rastreio_token):
     with db_conn(commit=True) as conn:
@@ -226,12 +287,36 @@ def consultar(rastreio_token):
         except ValueError:
             chegada = None
 
+    # Posição do técnico, com a IDADE calculada no servidor. Mandar a idade em
+    # segundos, e não só o horário, evita que o relógio errado do celular do
+    # cliente transforme uma posição de agora em "vista há 3 horas" — erro que
+    # já aconteceu com data em outro ponto do sistema.
+    posicao = None
+    if r.get("lat") is not None and r.get("lng") is not None:
+        idade = None
+        try:
+            visto = datetime.strptime(str(r.get("atualizado_em"))[:19],
+                                      "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            idade = int((datetime.now(timezone.utc) - visto).total_seconds())
+        except (ValueError, TypeError):
+            idade = None
+
+        posicao = {
+            "lat": r["lat"], "lng": r["lng"],
+            "visto_em": r.get("atualizado_em"),
+            "idade_seg": idade,
+            # Quem decide se é "ao vivo" é o servidor, não a página: assim a
+            # regra é uma só e não depende do relógio de ninguém.
+            "ao_vivo": idade is not None and idade <= POSICAO_FRESCA_SEG,
+        }
+
     return jsonify({
         "ativo":     not encerrado,
         "tecnico":   primeiro_nome,
         "cliente":   r.get("cliente") or "",
         "destino":   {"lat": r.get("destino_lat"), "lng": r.get("destino_lng"),
                       "endereco": r.get("endereco_completo") or ""},
+        "posicao":   posicao,
         # Horários em UTC; a página converte para o fuso de quem está olhando.
         "saiu_em":   saiu_em,
         "chegada_prevista": chegada,

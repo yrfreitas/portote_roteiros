@@ -60,11 +60,16 @@
   <script>
     (function () {
       const TOKEN = {{ token | tojson }};
-      // A previsao so muda com o passar do tempo — 60s e de sobra e poupa
-      // bateria e dados de quem esta esperando.
-      const INTERVALO = 60000;
+      // Dois ritmos. Com o tecnico se movendo no mapa, 20s acompanha o
+      // carrinho de perto. Sem posicao ao vivo so ha a previsao, que muda com
+      // o relogio: 60s basta e poupa bateria e dados de quem esta esperando.
+      const INTERVALO_AO_VIVO = 20000;
+      const INTERVALO_PREVISAO = 60000;
 
       let mapa = null;
+      let marcadorTecnico = null;
+      let linhaRota = null;
+      let jaEnquadrou = false;
 
       function iniciarMapa(centro) {
         // setView junto com a criacao: adicionar camada antes de haver visao
@@ -86,6 +91,65 @@
         return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       }
 
+      function haQuantoTempo(seg) {
+        if (seg == null) return '';
+        if (seg < 60) return 'agora mesmo';
+        const min = Math.round(seg / 60);
+        if (min < 60) return `ha ${min} min`;
+        return `ha ${Math.round(min / 60)} h`;
+      }
+
+      // Desenha (ou move) o carrinho do tecnico e o tracejado ate a casa.
+      // Pino cinza e opaco quando a posicao envelheceu: o cliente precisa
+      // enxergar a diferenca entre "esta aqui" e "foi visto aqui ha 8 min",
+      // senao interpreta carro parado como tecnico que nao saiu do lugar.
+      function desenharTecnico(pos, destino) {
+        if (!mapa || !pos) return;
+        const aoVivo = pos.ao_vivo;
+        const cor = aoVivo ? '#1a6fd4' : '#8b95a3';
+        const ponto = [pos.lat, pos.lng];
+
+        const icone = L.divIcon({
+          className: '',
+          html: `<div style="width:34px;height:34px;border-radius:50%;background:${cor};
+                 border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.45);display:flex;
+                 align-items:center;justify-content:center;font-size:16px;
+                 opacity:${aoVivo ? 1 : .72};">🚗</div>`,
+          iconSize: [34, 34], iconAnchor: [17, 17],
+        });
+
+        const rotulo = aoVivo ? 'Tecnico agora' : `Visto ${haQuantoTempo(pos.idade_seg)}`;
+
+        if (marcadorTecnico) {
+          marcadorTecnico.setLatLng(ponto);
+          marcadorTecnico.setIcon(icone);
+          marcadorTecnico.setTooltipContent(rotulo);
+        } else {
+          marcadorTecnico = L.marker(ponto, { icon: icone })
+            .addTo(mapa).bindTooltip(rotulo, { direction: 'top' });
+        }
+
+        // Linha reta e nao rota de rua: o servidor nao calcula trajeto, e
+        // fingir um caminho que o tecnico nao vai fazer engana mais do que
+        // ajuda. A reta comunica direcao e distancia, que e o que importa.
+        const temDestino = destino && destino.lat != null && destino.lng != null;
+        if (temDestino) {
+          const traco = [ponto, [destino.lat, destino.lng]];
+          if (linhaRota) linhaRota.setLatLngs(traco);
+          else linhaRota = L.polyline(traco, {
+            color: cor, weight: 3, opacity: .6, dashArray: '8 8',
+          }).addTo(mapa);
+          linhaRota.setStyle({ color: cor });
+
+          // Enquadra os dois UMA vez. Reenquadrar a cada 20s tiraria o mapa do
+          // lugar toda hora, justo quando o cliente esta tentando olhar.
+          if (!jaEnquadrou) {
+            mapa.fitBounds(L.latLngBounds(traco).pad(0.35));
+            jaEnquadrou = true;
+          }
+        }
+      }
+
       async function atualizar() {
         let d;
         try {
@@ -100,6 +164,15 @@
 
         const destino = d.destino || {};
         const temDestino = destino.lat != null && destino.lng != null;
+
+        // O mapa nasce no destino quando ele existe; se o CEP nao foi
+        // geocodificado, nasce na posicao do tecnico. Antes, sem destino nao
+        // havia mapa nenhum — e o cliente ficava sem ver nada, mesmo com o
+        // tecnico reportando posicao.
+        if (!mapa && !temDestino && d.posicao) {
+          iniciarMapa([d.posicao.lat, d.posicao.lng]);
+          jaEnquadrou = true;  // sem destino nao ha o que enquadrar junto
+        }
 
         if (!mapa && temDestino) {
           iniciarMapa([destino.lat, destino.lng]);
@@ -135,7 +208,12 @@
           return true;
         }
 
-        estadoTxt.textContent = `${d.tecnico} esta a caminho`;
+        const pos = d.posicao;
+        if (pos) desenharTecnico(pos, destino);
+
+        estadoTxt.textContent = pos && pos.ao_vivo
+          ? `${d.tecnico} esta a caminho`
+          : `${d.tecnico} saiu para o atendimento`;
         bolinha.className = 'bolinha pulsa';
 
         const saiu = hora(d.saiu_em);
@@ -154,15 +232,25 @@
           caixa.innerHTML = `<div class="aviso"><strong>Saiu as ${formatar(saiu)}</strong></div>`;
         }
 
-        detalhe.textContent = destino.endereco ? `Indo ate ${destino.endereco}` : '';
+        // A idade da posicao entra no texto de baixo, nao no titulo: quem
+        // espera quer primeiro o "quando chega", e depois o "onde esta".
+        const ondeEsta = pos
+          ? (pos.ao_vivo ? ' · no mapa em tempo real'
+                         : ` · ultima posicao ${haQuantoTempo(pos.idade_seg)}`)
+          : '';
+        detalhe.textContent =
+          (destino.endereco ? `Indo ate ${destino.endereco}` : '') + ondeEsta;
 
-        // Previsao muda pouco: 60s basta e poupa bateria e dados do cliente.
-        return false;
+        // Devolve o ritmo: so acelera para 20s quando ha de fato carrinho
+        // andando no mapa. Sem isso o celular do cliente faria 3x mais
+        // requisicoes para ver um numero de previsao que nem mudou.
+        return pos && pos.ao_vivo ? 'aovivo' : false;
       }
 
       async function ciclo() {
-        const acabou = await atualizar();
-        if (!acabou) setTimeout(ciclo, INTERVALO);
+        const r = await atualizar();
+        if (r === true) return;  // acabou: chegou ou link encerrado
+        setTimeout(ciclo, r === 'aovivo' ? INTERVALO_AO_VIVO : INTERVALO_PREVISAO);
       }
       ciclo();
     })();
