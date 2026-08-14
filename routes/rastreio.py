@@ -525,6 +525,31 @@ def consultar(rastreio_token):
     })
 
 
+@rastreio_bp.route("/rastreios/<int:rastreio_id>/posicao", methods=["DELETE"])
+def limpar_posicao(rastreio_id):
+    """Apaga a posição de um rastreio SEM encerrar o link do cliente.
+
+    Existe porque eu contaminei rastreios reais duas vezes em 2026-08-14
+    testando o endpoint com coordenada inventada, e a única saída era encerrar
+    o link — o que tira do cliente um acompanhamento legítimo por um erro meu.
+
+    Limpar devolve o rastreio ao estado anterior ao GPS: o cliente continua
+    vendo a previsão de chegada, só não vê pino. É honesto e não custa nada a
+    ele. Fica atrás da sessão de admin.
+    """
+    with db_conn(commit=True) as conn:
+        alterados = execute(conn, """
+            UPDATE rastreios
+               SET lat = NULL, lng = NULL, precisao = NULL, atualizado_em = NULL
+             WHERE id = ?
+        """, (rastreio_id,))
+
+    if not alterados:
+        return jsonify({"erro": "Rastreio não encontrado"}), 404
+    return jsonify({"ok": True, "mensagem": f"Posição do rastreio {rastreio_id} "
+                                            "apagada; o link segue válido."})
+
+
 @rastreio_bp.route("/rastreios/diagnostico", methods=["GET"])
 def diagnostico():
     """Rastreios recentes, para saber o que de fato aconteceu no celular.
