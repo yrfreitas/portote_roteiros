@@ -403,7 +403,44 @@ def diagnostico():
              ORDER BY ra.id DESC
         """)
 
+        # Estado real do celular de cada técnico, reportado pelo ping de versão.
+        # É a metade que faltava do diagnóstico: saber que o rastreio nasceu e
+        # não recebeu posição não diz SE o aparelho tem o código novo nem se a
+        # localização está liberada — e sem isso o resto é adivinhação.
+        aparelhos = fetch_all(conn, """
+            SELECT t.id, t.nome, ts.app_versao, ts.gps_estado, ts.gps_erro,
+                   ts.visto_em
+              FROM tecnicos t
+              LEFT JOIN tecnico_status ts ON ts.tecnico_id = t.id
+             ORDER BY t.nome
+        """)
+
+    from extensions import VERSAO_APP
+
+    def _resumo_aparelho(a):
+        versao = a.get("app_versao")
+        if not versao:
+            situacao = "nunca reportou (app antigo, anterior à v26)"
+        elif versao != VERSAO_APP:
+            situacao = f"código VELHO ({versao}) — precisa recarregar"
+        elif a.get("gps_estado") == "denied":
+            situacao = "código atual, mas LOCALIZAÇÃO BLOQUEADA no aparelho"
+        elif a.get("gps_estado") == "granted":
+            situacao = "tudo certo"
+        else:
+            situacao = f"código atual, GPS: {a.get('gps_estado') or 'desconhecido'}"
+        return {
+            "tecnico": a["nome"],
+            "app_versao": versao,
+            "gps": a.get("gps_estado"),
+            "gps_erro": a.get("gps_erro"),
+            "visto_em": a.get("visto_em"),
+            "situacao": situacao,
+        }
+
     return jsonify({
+        "servidor_versao": VERSAO_APP,
+        "aparelhos": [_resumo_aparelho(a) for a in aparelhos],
         "total": len(linhas),
         "com_posicao": sum(1 for l in linhas if l.get("lat") is not None),
         "rastreios": [{

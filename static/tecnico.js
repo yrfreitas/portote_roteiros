@@ -359,9 +359,17 @@
     } catch { /* negado ou sem suporte: segue sem, nao e essencial */ }
 
     rastreioAtivo.watchId = navigator.geolocation.watchPosition(
-      (pos) => enviarPosicao(pos.coords),
+      (pos) => {
+        // Chegou leitura: a permissao existe, qualquer que fosse o palpite.
+        gpsEstado = 'granted'; gpsErro = '';
+        enviarPosicao(pos.coords);
+      },
       (err) => {
+        // Registra para o ping contar ao servidor. "Nao esta indo" precisa vir
+        // com o motivo, senao o diagnostico volta a ser adivinhacao.
+        gpsErro = `${err.code}:${(err.message || '').slice(0, 100)}`;
         if (err.code === err.PERMISSION_DENIED) {
+          gpsEstado = 'denied';
           // Nao e "desliga quieto" como eu tinha feito: sem permissao o
           // acompanhamento simplesmente nao existe, e o tecnico precisa saber
           // disso ANTES de dizer ao cliente que ele esta sendo acompanhado.
@@ -659,8 +667,28 @@
   const INTERVALO_REVISAO = 20000;
   let revisaoConhecida = null;
 
+  // O que este aparelho vai contar sobre si mesmo no ping de versao. Sem isto
+  // nao ha como saber, do servidor, que versao o celular do tecnico roda nem se
+  // a localizacao esta liberada -- e diagnosticar as cegas custou tres rodadas
+  // de deploy em 2026-08-14.
+  let gpsEstado = 'desconhecido';
+  let gpsErro = '';
+
+  // A Permissions API responde SEM pedir permissao nem acordar o GPS, entao da
+  // para saber que esta negado antes de qualquer tentativa. Safari antigo nao
+  // tem: nesse caso o estado so muda quando o watchPosition responde.
+  (async function observarPermissao() {
+    try {
+      const st = await navigator.permissions.query({ name: 'geolocation' });
+      gpsEstado = st.state;                       // granted | denied | prompt
+      st.onchange = () => { gpsEstado = st.state; };
+    } catch { /* sem Permissions API: fica 'desconhecido' ate o GPS responder */ }
+  })();
+
   async function lerRevisao() {
-    const resp = await fetch(`${API}/versao`, { cache: 'no-store' });
+    const q = new URLSearchParams({ app: VERSAO_TELA, gps: gpsEstado });
+    if (gpsErro) q.set('gps_erro', gpsErro);
+    const resp = await fetch(`${API}/versao?${q}`, { cache: 'no-store' });
     if (!resp.ok) throw new Error('revisão indisponível');
     const d = await resp.json();
     // O servidor diz qual versão do código ele serve. Se for outra, este app
@@ -724,7 +752,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v25';
+  const VERSAO_TELA = 'v26';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

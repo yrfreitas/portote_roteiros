@@ -196,6 +196,24 @@ _SCHEMA_PG = [
     # 2. AUDITORIA. Como não dá pra apagar pela API, quem precisar corrigir vai
     #    ter que abrir a OS no AgoraOS e remover na mão — e pra isso precisa
     #    saber exatamente qual item foi criado (id_item) e em qual OS.
+    # O que o celular do técnico está REALMENTE rodando.
+    #
+    # Existe porque em 2026-08-14 eu passei três rodadas de deploy diagnosticando
+    # por dedução: o app do Pedro parecia funcionar, o servidor tinha o código
+    # certo, e nada indicava que o celular dele estava três versões atrás com o
+    # GPS possivelmente negado. Sem enxergar o aparelho, todo diagnóstico vira
+    # chute — e chute custou tempo do Kalebe e de um técnico em campo.
+    #
+    # Alimentado pelo ping de versão que o app já faz a cada 20s: zero
+    # requisição nova. Uma linha por técnico, sobrescrita — é estado atual,
+    # não histórico.
+    """CREATE TABLE IF NOT EXISTS tecnico_status (
+        tecnico_id   INTEGER PRIMARY KEY REFERENCES tecnicos(id) ON DELETE CASCADE,
+        app_versao   TEXT,
+        gps_estado   TEXT,
+        gps_erro     TEXT,
+        visto_em     TEXT
+    )""",
     """CREATE TABLE IF NOT EXISTS pecas_agoraos (
         id                   SERIAL PRIMARY KEY,
         linha_planilha       INTEGER NOT NULL UNIQUE,
@@ -295,6 +313,14 @@ _SCHEMA_SQLITE = """
         encerrado_em  TEXT,
         eta_minutos   INTEGER,
         FOREIGN KEY (servico_id) REFERENCES servicos(id) ON DELETE CASCADE,
+        FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS tecnico_status (
+        tecnico_id   INTEGER PRIMARY KEY,
+        app_versao   TEXT,
+        gps_estado   TEXT,
+        gps_erro     TEXT,
+        visto_em     TEXT,
         FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS pecas_agoraos (

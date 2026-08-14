@@ -27,11 +27,46 @@ def _ficha_do_tecnico(conn, ficha_id, tecnico_id):
 # link inválido não recebe nem o número da revisão.
 @tecnico_api_bp.route("/<token>/versao", methods=["GET"])
 def versao_tecnico(token):
+    """Ping de 20 em 20 segundos. Serve a três coisas ao mesmo tempo.
+
+    Além de dizer se os dados e o código mudaram, ele REGISTRA o que o celular
+    respondeu sobre si mesmo (`?app=` e `?gps=`). Isso existe porque diagnosticar
+    o app do técnico às cegas custou três rodadas de deploy em 2026-08-14: o
+    aparelho rodava código de três versões atrás e nada no servidor revelava
+    isso. Aproveitar um ping que já acontece custa zero requisição nova.
+    """
+    from datetime import datetime, timezone
+
     from extensions import VERSAO_APP
 
-    with db_conn() as conn:
-        if not _tecnico_por_token(conn, token):
+    with db_conn(commit=True) as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
             return jsonify({"erro": "Link inválido"}), 404
+
+        # Truncado: é campo alimentado pelo cliente e não pode virar porta de
+        # entrada para texto arbitrário grande no banco.
+        app_versao = (request.args.get("app") or "")[:20] or None
+        gps_estado = (request.args.get("gps") or "")[:20] or None
+        gps_erro = (request.args.get("gps_erro") or "")[:120] or None
+
+        if app_versao or gps_estado or gps_erro:
+            agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            # UPDATE-e-só-se-preciso-INSERT em vez de upsert com ON CONFLICT:
+            # o dialeto diverge entre SQLite e Postgres (mesma razão do
+            # bump_revisao, que já mordeu antes).
+            mudou = execute(conn, """
+                UPDATE tecnico_status
+                   SET app_versao = ?, gps_estado = ?, gps_erro = ?, visto_em = ?
+                 WHERE tecnico_id = ?
+            """, (app_versao, gps_estado, gps_erro, agora, tecnico["id"]))
+            if not mudou:
+                execute(conn, """
+                    INSERT INTO tecnico_status
+                        (tecnico_id, app_versao, gps_estado, gps_erro, visto_em)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (tecnico["id"], app_versao, gps_estado, gps_erro, agora))
+
         # `revisao` diz que os DADOS mudaram; `app` diz que o CÓDIGO mudou.
         # São perguntas diferentes e o app reage a cada uma de um jeito:
         # recarregar a rota na primeira, recarregar a página na segunda.

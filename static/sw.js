@@ -34,7 +34,8 @@
 // v23 = o cliente passa a ver o técnico ANDANDO no mapa, não só a casa dele.
 // v24 = GPS retoma ao abrir o app + selo visível de estado (era silêncio).
 // v25 = recusa leitura de GPS imprecisa (era ela a "localização aleatória").
-const CACHE_VERSAO = 'portotec-roteiros-v25';
+// v26 = o celular reporta versão e estado do GPS (fim do diagnóstico às cegas).
+const CACHE_VERSAO = 'portotec-roteiros-v26';
 
 const ARQUIVOS_CASCA = [
   '/',
