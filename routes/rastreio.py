@@ -255,8 +255,6 @@ def rastreador_externo(token):
         return None
 
     lat, lng = num("lat", "latitude"), num("lon", "lng", "longitude")
-    if lat is None or lng is None:
-        return jsonify({"ok": False, "motivo": "sem coordenada"}), 200
     if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
         return jsonify({"ok": False, "motivo": "coordenada inválida"}), 200
 
@@ -268,7 +266,25 @@ def rastreador_externo(token):
             # 404 aqui é intencional, ao contrário dos outros casos: URL errada
             # na configuração do aplicativo TEM que falhar de forma visível,
             # senão o técnico configura errado e ninguém descobre.
-            return jsonify({"erro": "Link inválido"}), 404
+            return jsonify({"erro": "URL do rastreador inválida — confira o "
+                                    "endereço colado no aplicativo"}), 404
+
+        # SEM COORDENADA = alguém abriu a URL no navegador para conferir.
+        # Vira teste de configuração, e não erro: é o jeito mais rápido de o
+        # técnico provar, do próprio celular, que a URL e a internet estão
+        # certas — restando só a permissão do aplicativo. Registra a visita,
+        # então o painel também confirma que o aparelho alcançou o servidor.
+        if lat is None or lng is None:
+            _marcar_visto(conn, tecnico["id"], gps_estado="url-testada")
+            return jsonify({
+                "ok": True,
+                "url_correta": True,
+                "tecnico": tecnico["nome"],
+                "mensagem": (f"URL correta, para o técnico {tecnico['nome']}. "
+                             "Se você está vendo isto no celular, o endereço e a "
+                             "internet funcionam — falta o aplicativo de GPS ter "
+                             "permissão de localização O TEMPO TODO."),
+            }), 200
 
         # Mesma régua do GPS do navegador: leitura ruim não é posição, é chute.
         if precisao is not None and precisao > PRECISAO_MAXIMA_M:
@@ -542,6 +558,9 @@ def diagnostico():
         # reporta com o app fechado, que é justamente o que o navegador não faz.
         if a.get("gps_estado") == "traccar":
             situacao = "Traccar configurado — reporta em segundo plano"
+        elif a.get("gps_estado") == "url-testada":
+            situacao = ("URL testada pelo navegador e correta — falta o "
+                        "aplicativo de GPS enviar (permissão/bateria)")
         elif not versao:
             situacao = "nunca reportou (app antigo, anterior à v26)"
         elif versao != VERSAO_APP:
