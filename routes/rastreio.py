@@ -255,8 +255,14 @@ def rastreador_externo(token):
         return None
 
     lat, lng = num("lat", "latitude"), num("lon", "lng", "longitude")
-    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-        return jsonify({"ok": False, "motivo": "coordenada inválida"}), 200
+
+    # A checagem de faixa só pode rodar DEPOIS de saber que há coordenada:
+    # comparar None com número estoura em TypeError e vira 500. Foi exatamente
+    # o que quebrou a URL de teste aberta no navegador em 2026-08-14 — sem
+    # coordenada, o caminho mais inofensivo do endpoint era o único que caía.
+    if lat is not None and lng is not None:
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            return jsonify({"ok": False, "motivo": "coordenada inválida"}), 200
 
     precisao = num("accuracy", "acc", "hdop")
 
