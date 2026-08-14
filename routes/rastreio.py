@@ -244,6 +244,22 @@ def rastreador_externo(token):
     dados = request.get_json(silent=True) or {}
     fonte = {**request.args.to_dict(), **(dados if isinstance(dados, dict) else {})}
 
+    # ----- particularidades do OwnTracks -----
+    # Ele identifica o tipo da mensagem em `_type` e NEM TODA carrega posição
+    # atual: "waypoint" (ponto salvo pelo usuário) e "transition" (entrou/saiu
+    # de uma área) também trazem lat/lon. Gravar essas colocaria o técnico num
+    # lugar onde ele não está — só "location" vale.
+    tipo = fonte.get("_type")
+    eh_owntracks = tipo is not None
+    if eh_owntracks and tipo != "location":
+        return jsonify([]), 200
+
+    # O OwnTracks espera um ARRAY na resposta (é onde o servidor devolveria
+    # comandos para o aparelho). Objeto JSON faz o aplicativo registrar erro a
+    # cada envio e assustar quem for olhar o log dele.
+    def responder(corpo, status=200):
+        return (jsonify([]) if eh_owntracks else jsonify(corpo)), status
+
     def num(*nomes):
         for n in nomes:
             v = fonte.get(n)
@@ -262,7 +278,7 @@ def rastreador_externo(token):
     # coordenada, o caminho mais inofensivo do endpoint era o único que caía.
     if lat is not None and lng is not None:
         if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-            return jsonify({"ok": False, "motivo": "coordenada inválida"}), 200
+            return responder({"ok": False, "motivo": "coordenada inválida"})
 
     precisao = num("accuracy", "acc", "hdop")
 
@@ -294,8 +310,8 @@ def rastreador_externo(token):
 
         # Mesma régua do GPS do navegador: leitura ruim não é posição, é chute.
         if precisao is not None and precisao > PRECISAO_MAXIMA_M:
-            return jsonify({"ok": True, "gravado": False,
-                            "motivo": "posição imprecisa"}), 200
+            return responder({"ok": True, "gravado": False,
+                              "motivo": "posição imprecisa"})
 
         gravados = _gravar_posicao(conn, tecnico["id"], lat, lng, precisao)
 
@@ -304,8 +320,8 @@ def rastreador_externo(token):
         # haver um atendimento em andamento na hora do teste.
         _marcar_visto(conn, tecnico["id"], gps_estado="traccar")
 
-    return jsonify({"ok": True, "gravado": gravados > 0,
-                    "rastreios": gravados}), 200
+    return responder({"ok": True, "gravado": gravados > 0,
+                      "rastreios": gravados})
 
 
 @rastreio_bp.route("/t/<token>/rastreios/ativos", methods=["GET"])
