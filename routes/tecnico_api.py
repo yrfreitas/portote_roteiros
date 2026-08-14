@@ -27,10 +27,15 @@ def _ficha_do_tecnico(conn, ficha_id, tecnico_id):
 # link inválido não recebe nem o número da revisão.
 @tecnico_api_bp.route("/<token>/versao", methods=["GET"])
 def versao_tecnico(token):
+    from extensions import VERSAO_APP
+
     with db_conn() as conn:
         if not _tecnico_por_token(conn, token):
             return jsonify({"erro": "Link inválido"}), 404
-        return jsonify(ler_revisao(conn))
+        # `revisao` diz que os DADOS mudaram; `app` diz que o CÓDIGO mudou.
+        # São perguntas diferentes e o app reage a cada uma de um jeito:
+        # recarregar a rota na primeira, recarregar a página na segunda.
+        return jsonify({**ler_revisao(conn), "app": VERSAO_APP})
 
 
 @tecnico_api_bp.route("/<token>/fichas", methods=["GET"])

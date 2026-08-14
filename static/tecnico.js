@@ -636,7 +636,35 @@
   async function lerRevisao() {
     const resp = await fetch(`${API}/versao`, { cache: 'no-store' });
     if (!resp.ok) throw new Error('revisão indisponível');
-    return (await resp.json()).revisao;
+    const d = await resp.json();
+    // O servidor diz qual versão do código ele serve. Se for outra, este app
+    // está velho e precisa recarregar — ver conferirVersaoDoApp().
+    conferirVersaoDoApp(d.app);
+    return d.revisao;
+  }
+
+  // Recarrega a PÁGINA quando o código do servidor é mais novo que este.
+  //
+  // Por que isto existe: o técnico deixa o app aberto o dia inteiro. O service
+  // worker é rede-primeiro para .js, mas isso só vale quando há um novo
+  // carregamento de página — e não há. Em 2026-08-14 o Pedro tocou "A caminho"
+  // quatro vezes seguidas rodando código de três versões atrás; o cliente não
+  // via nada e ninguém tinha como perceber, porque o app parecia funcionar.
+  //
+  // A recarga espera a tela estar OCIOSA, mesma disciplina do auto-refresh do
+  // painel: recarregar com um campo preenchido ou uma folha aberta jogaria
+  // fora o que o técnico estava fazendo, e ele está no meio da rua.
+  function conferirVersaoDoApp(versaoServidor) {
+    if (!versaoServidor || versaoServidor === VERSAO_TELA) return;
+
+    const ocupado = document.querySelector('.t-folha-fundo')
+      || (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));
+    if (ocupado) return;  // tenta de novo no próximo ciclo, daqui a 20s
+
+    // Marca antes de recarregar: se algo der errado no reload, o selo na tela
+    // continua mostrando a versão velha e o diagnóstico não mente.
+    toast('Atualizando o aplicativo...');
+    setTimeout(() => location.reload(), 600);
   }
 
   async function verificarRevisao() {
@@ -670,7 +698,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v20';
+  const VERSAO_TELA = 'v24';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
