@@ -187,6 +187,27 @@ _SCHEMA_PG = [
         encerrado_em  TEXT,
         eta_minutos   INTEGER
     )""",
+    # Peças lançadas na OS do AgoraOS. Existe por dois motivos, ambos sérios:
+    #
+    # 1. IDEMPOTÊNCIA. A API do AgoraOS não tem DELETE de item de OS — só POST
+    #    e PUT. Um duplo clique ou um retry lançaria a mesma placa duas vezes
+    #    e ninguém conseguiria desfazer pelo sistema. A UNIQUE em
+    #    linha_planilha é a trava: a mesma linha da planilha só vai uma vez.
+    # 2. AUDITORIA. Como não dá pra apagar pela API, quem precisar corrigir vai
+    #    ter que abrir a OS no AgoraOS e remover na mão — e pra isso precisa
+    #    saber exatamente qual item foi criado (id_item) e em qual OS.
+    """CREATE TABLE IF NOT EXISTS pecas_agoraos (
+        id                   SERIAL PRIMARY KEY,
+        linha_planilha       INTEGER NOT NULL UNIQUE,
+        id_os                INTEGER NOT NULL,
+        id_produto_extensao  INTEGER NOT NULL,
+        id_item              TEXT,
+        cliente              TEXT,
+        peca                 TEXT,
+        qtd                  DOUBLE PRECISION DEFAULT 1,
+        forca                TEXT,
+        criado_em            TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 
 _SCHEMA_SQLITE = """
@@ -275,6 +296,18 @@ _SCHEMA_SQLITE = """
         eta_minutos   INTEGER,
         FOREIGN KEY (servico_id) REFERENCES servicos(id) ON DELETE CASCADE,
         FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS pecas_agoraos (
+        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+        linha_planilha       INTEGER NOT NULL UNIQUE,
+        id_os                INTEGER NOT NULL,
+        id_produto_extensao  INTEGER NOT NULL,
+        id_item              TEXT,
+        cliente              TEXT,
+        peca                 TEXT,
+        qtd                  REAL DEFAULT 1,
+        forca                TEXT,
+        criado_em            TEXT DEFAULT CURRENT_TIMESTAMP
     );
 """
 

@@ -487,6 +487,26 @@
   </div>
 </div>
 
+<!--
+  Só aparece quando o site NÃO conseguiu decidir sozinho onde lançar a peça no
+  AgoraOS. Casamento exato lança direto, sem interromper ninguém — este modal
+  é o caminho da dúvida, porque a API do AgoraOS não apaga item de OS: item
+  lançado errado só sai na mão, por lá.
+-->
+<div class="modal-overlay" id="modal-agoraos" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-title">Lançar a peça no AgoraOS</div>
+    <p style="font-size:12px;color:var(--text-muted);margin:-6px 0 16px;" id="agoraos-motivo"></p>
+
+    <div id="agoraos-corpo" style="max-height:52vh;overflow-y:auto;"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Deixar pra depois</button>
+      <button type="button" class="btn btn-primary" id="btn-lancar-agoraos">Lançar na OS</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

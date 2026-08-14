@@ -30,7 +30,7 @@
 // v19 = ordem de calendário de verdade (ano, mês, dia).
 // v20 = "HOJE" compara a data, não o nome do dia.
 // v21 = edição de ficha (dia e data) — antes não existia.
-const CACHE_VERSAO = 'portotec-roteiros-v21';
+const CACHE_VERSAO = 'portotec-roteiros-v22';
 
 const ARQUIVOS_CASCA = [
   '/',

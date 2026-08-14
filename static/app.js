@@ -1182,6 +1182,10 @@ async function salvarPecasEmLote() {
     });
     toast(r.mensagem, (r.falhas || []).length ? 'error' : 'success');
     (r.falhas || []).forEach(f => toast(`Linha ${f.linha}: ${f.erro}`, 'error'));
+    // Em lote não abre modal por linha — seriam N interrupções seguidas. As
+    // duvidosas viram aviso e ficam pra resolver uma a uma pelo vínculo normal.
+    (r.revisar_agoraos || []).forEach(x =>
+      toast(`Linha ${x.linha} não foi pro AgoraOS: ${x.motivo}`, 'error'));
     await carregarPecas();
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -1198,16 +1202,126 @@ async function salvarPeca(linha) {
   btn.innerHTML = '<div class="spinner"></div> Gravando...';
 
   try {
-    await api(`/pedidos/${linha}`, {
+    const r = await api(`/pedidos/${linha}`, {
       method: 'PUT',
       body: JSON.stringify({ cliente, peca }),
     });
     toast(`Peça vinculada a ${cliente}`, 'success');
+    // A resposta do AgoraOS é lida ANTES do reload: carregarPecas() tira o
+    // card da lista (a peça deixou de estar pendente) e levaria a prévia junto.
+    const ag = r.agoraos;
     await carregarPecas();
+    tratarRetornoAgoraOS(linha, cliente, peca, ag);
   } catch (e) {
     toast(e.message, 'error');
     btn.disabled = false;
     btn.textContent = 'Vincular';
+  }
+}
+
+// ─── Baixa no AgoraOS ───────────────────────────────────────────────
+//
+// O site lança a peça na OS do cliente no AgoraOS. Lançar item na OS É a baixa
+// de estoque de lá: quem consome o saldo é a finalização da OS, não existe
+// endpoint de "dar baixa" avulso.
+
+function tratarRetornoAgoraOS(linha, cliente, peca, ag) {
+  if (!ag || !ag.ativo) return;
+
+  if (ag.estado === 'lancada' || ag.estado === 'ja_lancada') {
+    toast(ag.mensagem, 'success');
+    // O aviso de "sem controle de estoque" vai separado e sem sumir junto:
+    // é o tipo de coisa que, ignorada, faz alguém confiar num saldo que não existe.
+    if (ag.aviso) toast(ag.aviso, 'error');
+    return;
+  }
+
+  if (ag.estado === 'erro') { toast(`AgoraOS: ${ag.mensagem}`, 'error'); return; }
+
+  if (ag.estado === 'revisar') abrirModalAgoraOS(linha, cliente, peca, ag.previa, ag.mensagem);
+}
+
+function abrirModalAgoraOS(linha, cliente, peca, previa, motivo) {
+  const corpo = document.getElementById('agoraos-corpo');
+  document.getElementById('agoraos-motivo').textContent =
+    `${cliente} · ${peca || 'sem peça'} — ${motivo || 'confirme onde lançar'}`;
+
+  const os = previa.os ? [previa.os] : (previa.os_candidatas || []);
+  const prods = previa.produto ? [previa.produto] : (previa.produto_candidatos || []);
+
+  if (os.length === 0) {
+    corpo.innerHTML = `<div class="vcep-erro" style="margin:0;">
+      Esse cliente não tem OS em aberto no AgoraOS. Abra a OS por lá primeiro —
+      o site não cria OS de propósito, pra não encher o sistema de ordem duplicada.
+    </div>`;
+    document.getElementById('btn-lancar-agoraos').style.display = 'none';
+    document.getElementById('modal-agoraos').classList.add('open');
+    return;
+  }
+  document.getElementById('btn-lancar-agoraos').style.display = '';
+
+  corpo.innerHTML = `
+    <div class="conc-titulo">Em qual OS?</div>
+    ${os.map((o, i) => `
+      <label class="conc-item" style="cursor:pointer;">
+        <input type="radio" name="ag-os" value="${o.id}" ${i === 0 ? 'checked' : ''}>
+        <div style="flex:1;min-width:0;">
+          <div class="conc-cliente">OS ${o.id} · ${esc(o.status || '')}</div>
+          <div class="conc-meta">${esc(o.data || '')}${o.aparelhos && o.aparelhos.length
+            ? ' · ' + esc(o.aparelhos.join(', ')) : ''}</div>
+        </div>
+      </label>`).join('')}
+
+    <div class="conc-titulo" style="margin-top:14px;">Qual peça do catálogo?</div>
+    ${prods.length === 0
+      ? `<div class="conc-alerta" style="margin:0;">Essa peça não existe no catálogo do
+           AgoraOS. Cadastre por lá e vincule de novo.</div>`
+      : prods.map((p, i) => `
+      <label class="conc-item" style="cursor:pointer;">
+        <input type="radio" name="ag-prod" value="${p.id_produto_extensao}" ${i === 0 ? 'checked' : ''}>
+        <div style="flex:1;min-width:0;">
+          <div class="conc-cliente">${esc(p.nome)}</div>
+          <div class="conc-meta">R$ ${esc(p.preco || '0')}${p.controla_estoque
+            ? '' : ' · sem controle de estoque no AgoraOS'}</div>
+        </div>
+      </label>`).join('')}
+
+    <div class="conc-titulo" style="margin-top:14px;">Quantidade</div>
+    <input type="number" id="ag-qtd" class="input" min="1" step="1" value="${previa.qtd || 1}"
+           style="max-width:110px;">
+  `;
+
+  const btn = document.getElementById('btn-lancar-agoraos');
+  btn.disabled = prods.length === 0;
+  btn.onclick = () => lancarNoAgoraOS(linha, cliente, peca);
+  document.getElementById('modal-agoraos').classList.add('open');
+}
+
+async function lancarNoAgoraOS(linha, cliente, peca) {
+  const idOs = document.querySelector('input[name="ag-os"]:checked')?.value;
+  const idProd = document.querySelector('input[name="ag-prod"]:checked')?.value;
+  const qtd = parseFloat(document.getElementById('ag-qtd')?.value || '1');
+
+  if (!idOs || !idProd) { toast('Escolha a OS e a peça', 'error'); return; }
+
+  const btn = document.getElementById('btn-lancar-agoraos');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Lançando...';
+
+  try {
+    const r = await api(`/pedidos/${linha}/agoraos`, {
+      method: 'POST',
+      body: JSON.stringify({ id_os: idOs, id_produto_extensao: idProd,
+                             qtd, cliente, peca }),
+    });
+    fecharModais();
+    toast(r.mensagem, 'success');
+    if (r.aviso) toast(r.aviso, 'error');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Lançar na OS';
   }
 }
 
