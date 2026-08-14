@@ -68,6 +68,7 @@
 
       let mapa = null;
       let marcadorTecnico = null;
+      let circuloPrecisao = null;
       let linhaRota = null;
       let jaEnquadrou = false;
 
@@ -127,6 +128,28 @@
         } else {
           marcadorTecnico = L.marker(ponto, { icon: icone })
             .addTo(mapa).bindTooltip(rotulo, { direction: 'top' });
+        }
+
+        // Circulo de incerteza. Um ponto seco no mapa afirma uma precisao que
+        // o aparelho nao tem: com 300m de erro, o tecnico pode estar em
+        // qualquer lugar dentro do circulo. Desenhar isso e mais honesto e
+        // evita o cliente concluir "ele esta na rua de tras" quando nao esta.
+        // Abaixo de 60m nao desenha: circulo minusculo so polui a tela.
+        const raio = pos.precisao || 0;
+        if (raio > 60) {
+          if (circuloPrecisao) {
+            circuloPrecisao.setLatLng(ponto);
+            circuloPrecisao.setRadius(raio);
+            circuloPrecisao.setStyle({ color: cor, fillColor: cor });
+          } else {
+            circuloPrecisao = L.circle(ponto, {
+              radius: raio, color: cor, fillColor: cor,
+              fillOpacity: .12, weight: 1, opacity: .4,
+            }).addTo(mapa);
+          }
+        } else if (circuloPrecisao) {
+          mapa.removeLayer(circuloPrecisao);
+          circuloPrecisao = null;
         }
 
         // Linha reta e nao rota de rua: o servidor nao calcula trajeto, e

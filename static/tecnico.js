@@ -280,6 +280,17 @@
   const INTERVALO_ENVIO_MS = 20000;  // 20s: fluido no mapa sem torrar bateria
   const DISTANCIA_MINIMA_M = 40;     // parado no semaforo nao precisa reenviar
 
+  // Leitura pior que isto NAO e posicao, e chute -- e vira "localizacao
+  // aleatoria" na tela do cliente.
+  //
+  // O navegador so usa GPS de verdade quando ele tem sinal. Sem isso, ele
+  // responde por Wi-Fi ou por IP, e um cliente que ve o tecnico a 8 km de
+  // distancia perde a confianca no acompanhamento inteiro. Pior: no iPhone,
+  // com "Localizacao Precisa" desligada, TODA leitura vem com erro de 1 a 3 km
+  // e nada no aparelho avisa. 500m e o limite do que ainda ajuda alguem que
+  // esta esperando na porta de casa.
+  const PRECISAO_MAXIMA_M = 500;
+
   // ===== SELO DE GPS =====
   // A primeira versao disto falhava em SILENCIO: permissao negada era engolida
   // num catch vazio e ninguem no mundo ficava sabendo -- nem o tecnico, que
@@ -371,6 +382,16 @@
 
     const agora = Date.now();
     const ponto = { lat: coords.latitude, lng: coords.longitude };
+    const precisao = Math.round(coords.accuracy || 0);
+
+    // TRAVA DE QUALIDADE, antes de qualquer outra: nao mandar e melhor que
+    // mandar errado. Posicao ruim nao e "melhor que nada" -- ela faz o cliente
+    // ver o tecnico num bairro onde ele nao esta.
+    if (precisao > PRECISAO_MAXIMA_M) {
+      mostrarGps('procurando',
+        `Localizacao imprecisa (${precisao} m) — nao enviada`);
+      return;
+    }
 
     // Duas travas juntas: nao envia antes do intervalo E nao envia se nao
     // andou. O GPS dispara varias vezes por segundo em movimento; sem isso
@@ -386,13 +407,18 @@
     try {
       const r = await api(`/rastreio/${rastreioAtivo.token}/posicao`, {
         method: 'POST',
-        body: JSON.stringify(ponto),
+        body: JSON.stringify({ ...ponto, precisao }),
       });
-      // O servidor avisa quando o rastreio morreu (ponto concluido, link
-      // expirado). Ai o GPS desliga sozinho em vez de ficar reportando para
-      // um link que ninguem mais le.
-      if (r && r.gravado === false) { pararEnvioDePosicao(); return; }
-      mostrarGps('enviando', 'Cliente vendo voce no mapa');
+      // Desligar so quando o rastreio MORREU (ponto concluido, link expirado).
+      // `gravado: false` sozinho nao serve: o servidor tambem recusa leitura
+      // imprecisa, e desligar por causa disso mataria o acompanhamento na
+      // primeira garagem ou tunel do trajeto.
+      if (r && r.encerrado) { pararEnvioDePosicao(); return; }
+      if (r && r.gravado === false) {
+        mostrarGps('procurando', 'Localizacao imprecisa — aguardando GPS');
+        return;
+      }
+      mostrarGps('enviando', `Cliente vendo voce no mapa (${precisao} m)`);
     } catch {
       // Sem rede agora, tenta na proxima leitura. Nao vira alerta -- quem esta
       // dirigindo nao pode receber pop-up -- mas o selo muda, porque o tecnico
@@ -698,7 +724,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v24';
+  const VERSAO_TELA = 'v25';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

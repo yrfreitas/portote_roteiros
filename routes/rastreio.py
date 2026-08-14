@@ -56,6 +56,13 @@ VALIDADE_HORAS = 6
 # ter ido para o Waze e o navegador ter congelado a página.
 POSICAO_FRESCA_SEG = 180
 
+# Leitura pior que isto é recusada: não é posição, é chute. Sem GPS com sinal,
+# o navegador responde por Wi-Fi ou por IP e erra por quilômetros — no iPhone
+# com "Localização Precisa" desligada, TODA leitura erra de 1 a 3 km. Ver a
+# mesma constante em tecnico.js: o app filtra antes de mandar, e aqui é a
+# barreira de quem grava, porque um app velho em cache não filtraria nada.
+PRECISAO_MAXIMA_M = 500
+
 _ATIVO = "ativo IS TRUE" if IS_PG else "ativo = 1"
 
 
@@ -211,6 +218,23 @@ def enviar_posicao(token, rastreio_token):
     if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
         return jsonify({"erro": "Coordenada inválida"}), 400
 
+    try:
+        precisao = float(dados.get("precisao") or 0) or None
+    except (TypeError, ValueError):
+        precisao = None
+
+    # Segunda barreira, do lado do servidor. O app já descarta leitura ruim,
+    # mas quem grava no banco não pode confiar em quem manda: um app velho em
+    # cache (que foi exatamente o problema de 2026-08-14) continuaria mandando
+    # posição de Wi-Fi sem precisão nenhuma e o cliente veria bairro errado.
+    # `encerrado: False` é essencial aqui: diz ao app "descartei ESTA leitura,
+    # continue mandando". Sem essa distinção o app desligaria o GPS de vez na
+    # primeira leitura ruim — e leitura ruim acontece o tempo todo, em túnel,
+    # garagem e prédio alto.
+    if precisao is not None and precisao > PRECISAO_MAXIMA_M:
+        return jsonify({"gravado": False, "encerrado": False,
+                        "motivo": "posição imprecisa demais"})
+
     with db_conn(commit=True) as conn:
         tecnico = _tecnico_por_token(conn, token)
         if not tecnico:
@@ -224,14 +248,16 @@ def enviar_posicao(token, rastreio_token):
         """, (rastreio_token, tecnico["id"]))
 
         if not r or _expirado(r.get("criado_em")):
-            return jsonify({"gravado": False, "motivo": "rastreio encerrado"})
+            # Aqui sim é definitivo: o app deve desligar o GPS.
+            return jsonify({"gravado": False, "encerrado": True,
+                            "motivo": "rastreio encerrado"})
 
         # UPDATE e não INSERT: uma linha por rastreio, sobrescrita. É o que
         # mantém a promessa de não guardar trajeto de funcionário.
         execute(conn, """
-            UPDATE rastreios SET lat = ?, lng = ?, atualizado_em = ?
+            UPDATE rastreios SET lat = ?, lng = ?, precisao = ?, atualizado_em = ?
              WHERE id = ?
-        """, (lat, lng, _agora(), r["id"]))
+        """, (lat, lng, precisao, _agora(), r["id"]))
 
     return jsonify({"gravado": True})
 
@@ -335,6 +361,10 @@ def consultar(rastreio_token):
             "lat": r["lat"], "lng": r["lng"],
             "visto_em": r.get("atualizado_em"),
             "idade_seg": idade,
+            # A página desenha um círculo com este raio. Mostrar um ponto seco
+            # onde há 300m de incerteza é dizer ao cliente uma precisão que o
+            # aparelho não tem.
+            "precisao": r.get("precisao"),
             # Quem decide se é "ao vivo" é o servidor, não a página: assim a
             # regra é uma só e não depende do relógio de ninguém.
             "ao_vivo": idade is not None and idade <= POSICAO_FRESCA_SEG,

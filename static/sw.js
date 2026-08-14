@@ -33,7 +33,8 @@
 // v22 = baixa da peça no AgoraOS ao vincular na aba Peças.
 // v23 = o cliente passa a ver o técnico ANDANDO no mapa, não só a casa dele.
 // v24 = GPS retoma ao abrir o app + selo visível de estado (era silêncio).
-const CACHE_VERSAO = 'portotec-roteiros-v24';
+// v25 = recusa leitura de GPS imprecisa (era ela a "localização aleatória").
+const CACHE_VERSAO = 'portotec-roteiros-v25';
 
 const ARQUIVOS_CASCA = [
   '/',
