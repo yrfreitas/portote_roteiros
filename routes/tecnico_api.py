@@ -35,8 +35,6 @@ def versao_tecnico(token):
     aparelho rodava código de três versões atrás e nada no servidor revelava
     isso. Aproveitar um ping que já acontece custa zero requisição nova.
     """
-    from datetime import datetime, timezone
-
     from extensions import VERSAO_APP
 
     with db_conn(commit=True) as conn:
@@ -51,21 +49,11 @@ def versao_tecnico(token):
         gps_erro = (request.args.get("gps_erro") or "")[:120] or None
 
         if app_versao or gps_estado or gps_erro:
-            agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-            # UPDATE-e-só-se-preciso-INSERT em vez de upsert com ON CONFLICT:
-            # o dialeto diverge entre SQLite e Postgres (mesma razão do
-            # bump_revisao, que já mordeu antes).
-            mudou = execute(conn, """
-                UPDATE tecnico_status
-                   SET app_versao = ?, gps_estado = ?, gps_erro = ?, visto_em = ?
-                 WHERE tecnico_id = ?
-            """, (app_versao, gps_estado, gps_erro, agora, tecnico["id"]))
-            if not mudou:
-                execute(conn, """
-                    INSERT INTO tecnico_status
-                        (tecnico_id, app_versao, gps_estado, gps_erro, visto_em)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (tecnico["id"], app_versao, gps_estado, gps_erro, agora))
+            # Mesma função que o rastreador externo usa — uma só regra de
+            # gravação para as duas origens.
+            from routes.rastreio import _marcar_visto
+            _marcar_visto(conn, tecnico["id"], gps_estado=gps_estado,
+                          app_versao=app_versao, gps_erro=gps_erro)
 
         # `revisao` diz que os DADOS mudaram; `app` diz que o CÓDIGO mudou.
         # São perguntas diferentes e o app reage a cada uma de um jeito:

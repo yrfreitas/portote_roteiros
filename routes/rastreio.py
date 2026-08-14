@@ -167,6 +167,125 @@ def iniciar(token, servico_id):
     return jsonify({"token": novo_token, "reaproveitado": False}), 201
 
 
+def _marcar_visto(conn, tecnico_id, gps_estado=None, app_versao=None, gps_erro=None):
+    """Atualiza o estado do aparelho do técnico (tabela tecnico_status).
+
+    UPDATE-e-só-se-preciso-INSERT em vez de upsert com ON CONFLICT: o dialeto
+    diverge entre SQLite e Postgres — a mesma armadilha que já mordeu no
+    bump_revisao. Campos None não apagam o que já se sabia.
+    """
+    mudou = execute(conn, """
+        UPDATE tecnico_status
+           SET app_versao = COALESCE(?, app_versao),
+               gps_estado = COALESCE(?, gps_estado),
+               gps_erro   = COALESCE(?, gps_erro),
+               visto_em   = ?
+         WHERE tecnico_id = ?
+    """, (app_versao, gps_estado, gps_erro, _agora(), tecnico_id))
+    if not mudou:
+        execute(conn, """
+            INSERT INTO tecnico_status
+                (tecnico_id, app_versao, gps_estado, gps_erro, visto_em)
+            VALUES (?, ?, ?, ?, ?)
+        """, (tecnico_id, app_versao, gps_estado, gps_erro, _agora()))
+
+
+def _gravar_posicao(conn, tecnico_id, lat, lng, precisao):
+    """Grava a posição nos rastreios ABERTOS deste técnico. Devolve quantos.
+
+    Escreve em todos os abertos de propósito: se o técnico tem dois links
+    vivos (saiu para um cliente e o anterior não foi fechado), os dois mostram
+    onde ele está — que é a verdade. Escolher um só faria o outro cliente
+    olhar posição congelada.
+
+    Zero rastreios abertos = NÃO GRAVA NADA. É esta linha que sustenta a
+    promessa de não rastrear funcionário o dia inteiro: fora do atendimento,
+    a posição que chega é descartada, mesmo que o aplicativo continue ligado.
+    """
+    abertos = fetch_all(conn, f"""
+        SELECT ra.id, ra.criado_em FROM rastreios ra
+          JOIN servicos sv ON sv.id = ra.servico_id
+         WHERE ra.tecnico_id = ? AND {_ATIVO} AND sv.status <> 'concluido'
+    """, (tecnico_id,))
+
+    vivos = [r for r in abertos if not _expirado(r.get("criado_em"))]
+    for r in vivos:
+        execute(conn, """
+            UPDATE rastreios SET lat = ?, lng = ?, precisao = ?, atualizado_em = ?
+             WHERE id = ?
+        """, (lat, lng, precisao, _agora(), r["id"]))
+    return len(vivos)
+
+
+@rastreio_bp.route("/t/<token>/rastreador", methods=["GET", "POST"])
+def rastreador_externo(token):
+    """Recebe a posição de um APLICATIVO DE GPS nativo (Traccar Client).
+
+    POR QUE ISTO EXISTE — e por que substitui o GPS do navegador:
+    página web não recebe localização em segundo plano. Assim que o técnico
+    abre o Waze, o navegador congela a página e o envio para. Isso não é bug
+    do nosso código e não tem contorno em web; foi o que fez o acompanhamento
+    "não ir" nas tentativas de 2026-08-14.
+
+    Um aplicativo nativo de GPS não tem essa limitação: continua reportando
+    com a tela apagada e com o Waze na frente. O Traccar Client é gratuito,
+    existe para Android e iPhone, e manda a posição para uma URL qualquer —
+    esta. O mapa do cliente não muda; muda só quem alimenta a posição.
+
+    Aceita GET e POST porque as versões do aplicativo divergem, e lê tanto de
+    query string quanto de JSON. `lon` e `lng` são o mesmo campo com nomes
+    diferentes conforme o app.
+
+    SEMPRE devolve 200, inclusive quando descarta. O Traccar reenfileira e
+    repete o que falha: responder erro para uma posição fora de atendimento
+    faria o aplicativo insistir a viagem inteira, gastando bateria e dados do
+    técnico por um dado que nunca vamos guardar.
+    """
+    dados = request.get_json(silent=True) or {}
+    fonte = {**request.args.to_dict(), **(dados if isinstance(dados, dict) else {})}
+
+    def num(*nomes):
+        for n in nomes:
+            v = fonte.get(n)
+            if v not in (None, ""):
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    continue
+        return None
+
+    lat, lng = num("lat", "latitude"), num("lon", "lng", "longitude")
+    if lat is None or lng is None:
+        return jsonify({"ok": False, "motivo": "sem coordenada"}), 200
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        return jsonify({"ok": False, "motivo": "coordenada inválida"}), 200
+
+    precisao = num("accuracy", "acc", "hdop")
+
+    with db_conn(commit=True) as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            # 404 aqui é intencional, ao contrário dos outros casos: URL errada
+            # na configuração do aplicativo TEM que falhar de forma visível,
+            # senão o técnico configura errado e ninguém descobre.
+            return jsonify({"erro": "Link inválido"}), 404
+
+        # Mesma régua do GPS do navegador: leitura ruim não é posição, é chute.
+        if precisao is not None and precisao > PRECISAO_MAXIMA_M:
+            return jsonify({"ok": True, "gravado": False,
+                            "motivo": "posição imprecisa"}), 200
+
+        gravados = _gravar_posicao(conn, tecnico["id"], lat, lng, precisao)
+
+        # Registra que o aparelho está vivo mesmo quando a posição é descartada.
+        # É o que responde "o Traccar está configurado certo?" sem depender de
+        # haver um atendimento em andamento na hora do teste.
+        _marcar_visto(conn, tecnico["id"], gps_estado="traccar")
+
+    return jsonify({"ok": True, "gravado": gravados > 0,
+                    "rastreios": gravados}), 200
+
+
 @rastreio_bp.route("/t/<token>/rastreios/ativos", methods=["GET"])
 def ativos_do_tecnico(token):
     """Rastreios ainda vivos deste técnico. Existe para RETOMAR o envio de GPS.
@@ -408,8 +527,8 @@ def diagnostico():
         # não recebeu posição não diz SE o aparelho tem o código novo nem se a
         # localização está liberada — e sem isso o resto é adivinhação.
         aparelhos = fetch_all(conn, """
-            SELECT t.id, t.nome, ts.app_versao, ts.gps_estado, ts.gps_erro,
-                   ts.visto_em
+            SELECT t.id, t.nome, t.token, ts.app_versao, ts.gps_estado,
+                   ts.gps_erro, ts.visto_em
               FROM tecnicos t
               LEFT JOIN tecnico_status ts ON ts.tecnico_id = t.id
              ORDER BY t.nome
@@ -419,7 +538,11 @@ def diagnostico():
 
     def _resumo_aparelho(a):
         versao = a.get("app_versao")
-        if not versao:
+        # O rastreador nativo torna a versão do navegador irrelevante: ele
+        # reporta com o app fechado, que é justamente o que o navegador não faz.
+        if a.get("gps_estado") == "traccar":
+            situacao = "Traccar configurado — reporta em segundo plano"
+        elif not versao:
             situacao = "nunca reportou (app antigo, anterior à v26)"
         elif versao != VERSAO_APP:
             situacao = f"código VELHO ({versao}) — precisa recarregar"
@@ -436,6 +559,11 @@ def diagnostico():
             "gps_erro": a.get("gps_erro"),
             "visto_em": a.get("visto_em"),
             "situacao": situacao,
+            # URL pronta para colar no Traccar Client. Sai daqui e não de um
+            # papel porque o token é longo e digitar errado é o jeito mais
+            # fácil de a configuração falhar em silêncio.
+            "url_rastreador": (request.host_url.rstrip("/")
+                               + f"/api/t/{a['token']}/rastreador"),
         }
 
     return jsonify({
