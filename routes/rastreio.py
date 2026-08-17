@@ -157,6 +157,8 @@ def iniciar(token, servico_id):
         if existente and not _expirado(existente.get("criado_em")):
             return jsonify({"token": existente["token"], "reaproveitado": True})
 
+        _encerrar_outros_do_tecnico(conn, tecnico["id"], servico_id)
+
         novo_token = secrets.token_urlsafe(16)
         execute(conn, """
             INSERT INTO rastreios (token, servico_id, tecnico_id, criado_em, eta_minutos)
@@ -165,6 +167,25 @@ def iniciar(token, servico_id):
               _prever_minutos(conn, servico_id)))
 
     return jsonify({"token": novo_token, "reaproveitado": False}), 201
+
+
+def _encerrar_outros_do_tecnico(conn, tecnico_id, servico_id_novo) -> int:
+    """Fecha os rastreios anteriores deste técnico ao começar um novo.
+
+    NINGUÉM ESTÁ A CAMINHO DE DOIS LUGARES AO MESMO TEMPO. Sem isto, cada
+    "a caminho" abria mais um link vivo e TODOS recebiam a mesma posição:
+    encontrado em produção em 2026-08-17, com o Pedro alimentando dois
+    clientes ao mesmo tempo. Na prática, o cliente anterior via o técnico se
+    AFASTANDO e concluía que ele estava indo embora — pior do que não ter
+    acompanhamento nenhum.
+
+    O link antigo não some: passa a mostrar "acompanhamento encerrado", que é
+    a verdade. Quem ficou para depois será avisado de novo quando ele sair.
+    """
+    return execute(conn, f"""
+        UPDATE rastreios SET ativo = {'FALSE' if IS_PG else '0'}, encerrado_em = ?
+         WHERE tecnico_id = ? AND servico_id <> ? AND {_ATIVO}
+    """, (_agora(), tecnico_id, servico_id_novo))
 
 
 def _marcar_visto(conn, tecnico_id, gps_estado=None, app_versao=None, gps_erro=None):
@@ -361,7 +382,9 @@ def rastreador_externo(token):
         # Registra que o aparelho está vivo mesmo quando a posição é descartada.
         # É o que responde "o Traccar está configurado certo?" sem depender de
         # haver um atendimento em andamento na hora do teste.
-        _marcar_visto(conn, tecnico["id"], gps_estado="traccar", gps_erro=_retrato)
+        _marcar_visto(conn, tecnico["id"],
+                      gps_estado="owntracks" if eh_owntracks else "rastreador",
+                      gps_erro=_retrato)
 
     return responder({"ok": True, "gravado": gravados > 0,
                       "rastreios": gravados})
@@ -497,6 +520,11 @@ def iniciar_pelo_painel(servico_id):
         """, (servico_id,))
         if existente and not _expirado(existente.get("criado_em")):
             return jsonify({"token": existente["token"], "reaproveitado": True})
+
+        # Mesma trava do caminho do técnico: abrir daqui também encerra os
+        # anteriores dele. Se valesse só num dos dois, o painel reintroduziria
+        # o problema que o app acabou de resolver.
+        _encerrar_outros_do_tecnico(conn, servico["tecnico_id"], servico_id)
 
         novo_token = secrets.token_urlsafe(16)
         execute(conn, """
@@ -651,8 +679,12 @@ def diagnostico():
         versao = a.get("app_versao")
         # O rastreador nativo torna a versão do navegador irrelevante: ele
         # reporta com o app fechado, que é justamente o que o navegador não faz.
-        if a.get("gps_estado") == "traccar":
-            situacao = "Traccar configurado — reporta em segundo plano"
+        # "traccar" continua sendo lido porque pode haver registro antigo no
+        # banco gravado antes desta separação.
+        if a.get("gps_estado") in ("owntracks", "rastreador", "traccar"):
+            nome_app = {"owntracks": "OwnTracks"}.get(a.get("gps_estado"),
+                                                      "Rastreador")
+            situacao = f"{nome_app} enviando — reporta em segundo plano"
         elif a.get("gps_estado") == "url-testada":
             situacao = ("URL testada pelo navegador e correta — falta o "
                         "aplicativo de GPS enviar (permissão/bateria)")
