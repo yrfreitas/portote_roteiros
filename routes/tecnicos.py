@@ -164,6 +164,44 @@ def criar_tecnico():
     return jsonify({"id": tecnico_id, "nome": nome, "cor": cor, "token": token}), 201
 
 
+# Teto do que cabe no banco por foto. O navegador já reduz para 256x256 JPEG
+# antes de enviar (ver app.js), o que dá ~20-40 KB; 300 KB é folga larga para
+# aparelho que gere uma imagem mais pesada, sem virar porta para alguém
+# despejar arquivo grande no Postgres.
+FOTO_MAXIMA_BYTES = 300 * 1024
+FOTO_PREFIXOS = ("data:image/jpeg;base64,", "data:image/png;base64,",
+                 "data:image/webp;base64,")
+
+
+@tecnicos_bp.route("/tecnicos/<int:tecnico_id>/foto", methods=["PUT"])
+def foto_tecnico(tecnico_id):
+    """Grava a foto de perfil como data URI no próprio banco.
+
+    POR QUE NO BANCO E NÃO EM ARQUIVO: o disco do Railway é efêmero — some a
+    cada deploy. Foto salva em pasta desapareceria sem aviso na próxima
+    atualização do sistema, e ninguém ligaria uma coisa à outra. No Postgres
+    ela sobrevive a deploy, e o backup do banco já a leva junto.
+
+    Enviar string vazia REMOVE a foto (o botão "remover" da tela usa isso).
+    """
+    data = request.get_json(silent=True) or {}
+    foto = (data.get("foto") or "").strip()
+
+    if foto:
+        if not foto.startswith(FOTO_PREFIXOS):
+            return jsonify({"erro": "Formato inválido. Envie JPEG, PNG ou WebP."}), 400
+        if len(foto) > FOTO_MAXIMA_BYTES:
+            return jsonify({"erro": "Imagem muito grande. Escolha outra foto."}), 413
+
+    with db_conn(commit=True) as conn:
+        alterados = execute(conn, "UPDATE tecnicos SET foto = ? WHERE id = ?",
+                            (foto or None, tecnico_id))
+
+    if not alterados:
+        return jsonify({"erro": "Técnico não encontrado"}), 404
+    return jsonify({"mensagem": "Foto atualizada" if foto else "Foto removida"})
+
+
 @tecnicos_bp.route("/tecnicos/<int:tecnico_id>", methods=["DELETE"])
 def deletar_tecnico(tecnico_id):
     with db_conn(commit=True) as conn:

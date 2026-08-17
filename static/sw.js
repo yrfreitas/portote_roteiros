@@ -36,7 +36,8 @@
 // v25 = recusa leitura de GPS imprecisa (era ela a "localização aleatória").
 // v26 = o celular reporta versão e estado do GPS (fim do diagnóstico às cegas).
 // v27 = rastreador nativo (Traccar Client) no lugar do GPS do navegador.
-const CACHE_VERSAO = 'portotec-roteiros-v27';
+// v28 = foto de perfil do técnico + rastreador separado por técnico.
+const CACHE_VERSAO = 'portotec-roteiros-v28';
 
 const ARQUIVOS_CASCA = [
   '/',

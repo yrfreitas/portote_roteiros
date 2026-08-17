@@ -34,6 +34,25 @@
       font-size: 12.5px; line-height: 1.55;
     }
     .aviso.encerrado { background: rgba(139,151,163,.12); border-color: rgba(139,151,163,.3); }
+    /* Cartão do técnico: quem espera em casa quer saber quem vai chegar.
+       Fica ACIMA do mapa de propósito — é a primeira coisa que o cliente lê. */
+    .tec-cartao {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; border-bottom: 1px solid #1e252d;
+      background: #10151a;
+    }
+    .tec-cartao:empty { display: none; }
+    .avatar {
+      width: 46px; height: 46px; border-radius: 50%; object-fit: cover;
+      flex: none; border: 2px solid #2a333d;
+    }
+    .avatar.sem-foto {
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 700; font-size: 19px; border-color: transparent;
+    }
+    .tec-nome { font-size: 15px; font-weight: 700; }
+    .tec-papel { font-size: 11.5px; color: #7f8d9b; margin-top: 2px; }
+
     /* Leaflet injeta estilo inline nos tiles; sem isso o mapa fica claro
        demais ao lado do resto da página. */
     .leaflet-tile { filter: brightness(.85) saturate(.9); }
@@ -44,6 +63,8 @@
     <div class="marca">Porto Tec Assistência Técnica</div>
     <h1 id="titulo">Acompanhe seu atendimento</h1>
   </header>
+
+  <div class="tec-cartao" id="cabecalho-tecnico"></div>
 
   <div id="mapa"></div>
 
@@ -67,6 +88,9 @@
       const INTERVALO_PREVISAO = 60000;
 
       let mapa = null;
+      // Guardada fora do desenho porque desenharTecnico() roda a cada ciclo e
+      // a foto vem uma vez só, junto com o resto da resposta.
+      let fotoTecnico = null;
       let marcadorTecnico = null;
       let circuloPrecisao = null;
       let linhaRota = null;
@@ -92,6 +116,25 @@
         return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       }
 
+      // Cartão com a cara e o nome de quem vai chegar, acima do mapa.
+      function mostrarCabecalhoTecnico(d) {
+        const alvo = document.getElementById('cabecalho-tecnico');
+        if (!alvo || alvo.dataset.pronto === '1') return;
+
+        const cor = d.tecnico_cor || '#1a6fd4';
+        const inicial = (d.tecnico || '?').trim().charAt(0).toUpperCase();
+        const avatar = d.tecnico_foto
+          ? `<img src="${d.tecnico_foto}" alt="" class="avatar">`
+          : `<div class="avatar sem-foto" style="background:${cor}">${inicial}</div>`;
+
+        alvo.innerHTML = `${avatar}
+          <div>
+            <div class="tec-nome">${d.tecnico || 'Técnico'}</div>
+            <div class="tec-papel">Técnico da Porto Tec a caminho</div>
+          </div>`;
+        alvo.dataset.pronto = '1';   // não redesenha a cada ciclo
+      }
+
       function haQuantoTempo(seg) {
         if (seg == null) return '';
         if (seg < 60) return 'agora mesmo';
@@ -110,13 +153,22 @@
         const cor = aoVivo ? '#1a6fd4' : '#8b95a3';
         const ponto = [pos.lat, pos.lng];
 
+        // Com foto, o pino É o rosto do técnico — mesma ideia do aplicativo de
+        // corrida: quem espera em casa quer saber QUEM vai bater na porta.
+        // Sem foto, volta ao carrinho. O anel colorido mantém a leitura de
+        // "ao vivo" (cor) x "posição antiga" (cinza) nos dois casos.
+        const miolo = fotoTecnico
+          ? `<img src="${fotoTecnico}" alt="" style="width:100%;height:100%;
+               border-radius:50%;object-fit:cover;display:block;">`
+          : '<span style="font-size:16px;line-height:1">🚗</span>';
+
         const icone = L.divIcon({
           className: '',
-          html: `<div style="width:34px;height:34px;border-radius:50%;background:${cor};
-                 border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.45);display:flex;
-                 align-items:center;justify-content:center;font-size:16px;
-                 opacity:${aoVivo ? 1 : .72};">🚗</div>`,
-          iconSize: [34, 34], iconAnchor: [17, 17],
+          html: `<div style="width:42px;height:42px;border-radius:50%;background:${cor};
+                 border:3px solid ${cor};box-shadow:0 2px 10px rgba(0,0,0,.45);
+                 display:flex;align-items:center;justify-content:center;overflow:hidden;
+                 opacity:${aoVivo ? 1 : .72};">${miolo}</div>`,
+          iconSize: [42, 42], iconAnchor: [21, 21],
         });
 
         const rotulo = aoVivo ? 'Tecnico agora' : `Visto ${haQuantoTempo(pos.idade_seg)}`;
@@ -230,6 +282,9 @@
           caixa.innerHTML = '<div class="aviso encerrado">Se ainda estiver aguardando, fale com a Porto Tec.</div>';
           return true;
         }
+
+        fotoTecnico = d.tecnico_foto || null;
+        mostrarCabecalhoTecnico(d);
 
         const pos = d.posicao;
         if (pos) desenharTecnico(pos, destino);

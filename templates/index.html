@@ -507,6 +507,18 @@
   </div>
 </div>
 
+<!-- Configuração do rastreio, um por técnico. O endereço carrega o token
+     individual: é o que separa a posição do Pedro da do Igor. -->
+<div class="modal-overlay" id="modal-rastreador" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title">Rastreio de localização</div>
+    <div id="rastreador-corpo" style="max-height:60vh;overflow-y:auto;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

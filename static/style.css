@@ -2816,3 +2816,17 @@ select:focus-visible,
   padding: 1px 5px; border-radius: 3px; margin-left: 5px;
   vertical-align: middle;
 }
+
+/* Foto do técnico na barra lateral. Clicar troca a imagem — sem botão
+   separado, porque a própria foto é o alvo óbvio. */
+.tec-avatar {
+  width: 26px; height: 26px; border-radius: 50%; object-fit: cover;
+  flex: none; cursor: pointer; margin-right: 8px;
+  border: 2px solid rgba(255,255,255,.12);
+  transition: transform .12s ease, border-color .12s ease;
+}
+.tec-avatar:hover { transform: scale(1.08); border-color: rgba(255,255,255,.35); }
+.tec-avatar.sem-foto {
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 12px; border-color: transparent;
+}

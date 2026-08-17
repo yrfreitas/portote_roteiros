@@ -369,6 +369,7 @@ _MIGRACOES_PG = [
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS setor_id INTEGER",
     "ALTER TABLE rastreios ADD COLUMN IF NOT EXISTS eta_minutos INTEGER",
     "ALTER TABLE rastreios ADD COLUMN IF NOT EXISTS precisao DOUBLE PRECISION",
+    "ALTER TABLE tecnicos ADD COLUMN IF NOT EXISTS foto TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -385,6 +386,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE servicos ADD COLUMN setor_id INTEGER",
     "ALTER TABLE rastreios ADD COLUMN eta_minutos INTEGER",
     "ALTER TABLE rastreios ADD COLUMN precisao REAL",
+    "ALTER TABLE tecnicos ADD COLUMN foto TEXT",
 ]
 
 

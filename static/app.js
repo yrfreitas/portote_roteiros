@@ -616,6 +616,129 @@ function copiarLinkTecnico(token) {
     .catch(() => toast(link, 'info'));
 }
 
+// ─── Foto de perfil do técnico ──────────────────────────────────────
+//
+// A foto vai para o BANCO como data URI, não para uma pasta: o disco do
+// Railway é apagado a cada deploy e a foto sumiria sem ninguém ligar uma
+// coisa à outra. Para caber, o navegador reduz a imagem ANTES de enviar —
+// foto de celular tem 4 MB e chegaria como 5,5 MB em base64.
+
+function avatarTecnico(t) {
+  const inicial = (t.nome || '?').trim().charAt(0).toUpperCase();
+  return t.foto
+    ? `<img src="${t.foto}" class="tec-avatar" alt="" onclick="escolherFotoTecnico(${t.id})" title="Trocar foto">`
+    : `<div class="tec-avatar sem-foto" style="background:${escCor(t.cor)}"
+         onclick="escolherFotoTecnico(${t.id})" title="Adicionar foto">${esc(inicial)}</div>`;
+}
+
+// Reduz para um quadrado de 256px em JPEG. O recorte é central e mantém a
+// proporção: esticar rosto para caber num quadrado fica ruim em qualquer foto.
+function reduzirImagem(arquivo, lado = 256, qualidade = 0.82) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onerror = () => reject(new Error('Não consegui ler o arquivo'));
+    leitor.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Arquivo não é uma imagem válida'));
+      img.onload = () => {
+        const corte = Math.min(img.width, img.height);
+        const cv = document.createElement('canvas');
+        cv.width = cv.height = lado;
+        cv.getContext('2d').drawImage(
+          img, (img.width - corte) / 2, (img.height - corte) / 2, corte, corte,
+          0, 0, lado, lado);
+        resolve(cv.toDataURL('image/jpeg', qualidade));
+      };
+      img.src = leitor.result;
+    };
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
+function escolherFotoTecnico(tecnicoId) {
+  const entrada = document.createElement('input');
+  entrada.type = 'file';
+  entrada.accept = 'image/*';
+  entrada.onchange = async () => {
+    const arquivo = entrada.files && entrada.files[0];
+    if (!arquivo) return;
+    try {
+      const foto = await reduzirImagem(arquivo);
+      await api(`/tecnicos/${tecnicoId}/foto`, {
+        method: 'PUT', body: JSON.stringify({ foto }),
+      });
+      toast('Foto atualizada', 'success');
+      await carregarTecnicos();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  entrada.click();
+}
+
+async function removerFotoTecnico(tecnicoId) {
+  if (!confirm('Remover a foto deste técnico?')) return;
+  try {
+    await api(`/tecnicos/${tecnicoId}/foto`, {
+      method: 'PUT', body: JSON.stringify({ foto: '' }),
+    });
+    toast('Foto removida', 'success');
+    await carregarTecnicos();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Rastreador por técnico ─────────────────────────────────────────
+// Cada técnico tem o SEU endereço, com o próprio token: é isso que separa a
+// posição do Pedro da do Igor. Colar o endereço errado no aparelho faria um
+// aparecer no lugar do outro, então a tela entrega o endereço pronto para
+// copiar em vez de deixar alguém montar na mão.
+function abrirRastreadorTecnico(tecnicoId) {
+  const t = (tecnicos || []).find(x => x.id === tecnicoId);
+  if (!t) return;
+
+  const url = `${location.origin}/api/t/${t.token}/rastreador`;
+  const corpo = document.getElementById('rastreador-corpo');
+
+  corpo.innerHTML = `
+    <div class="conc-item" style="align-items:center;">
+      ${avatarTecnico(t)}
+      <div style="flex:1;min-width:0;">
+        <div class="conc-cliente">${esc(t.nome)}</div>
+        <div class="conc-meta">Endereço exclusivo deste técnico</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="removerFotoTecnico(${t.id})"
+              ${t.foto ? '' : 'disabled'}>Remover foto</button>
+    </div>
+
+    <div class="conc-titulo" style="margin-top:14px;">Endereço para o OwnTracks</div>
+    <input class="input" id="rastreador-url" readonly value="${esc(url)}"
+           style="font-size:11px;" onclick="this.select()">
+    <button class="btn btn-primary btn-sm" style="margin-top:8px;"
+            onclick="copiarTexto('${esc(url)}')">Copiar endereço</button>
+
+    <div class="conc-titulo" style="margin-top:16px;">No aplicativo do celular</div>
+    <div class="conc-meta" style="line-height:1.7;">
+      <b>Preferences → Connection → Mode:</b> HTTP<br>
+      <b>Host/URL:</b> o endereço acima<br>
+      <b>Username e Password:</b> <b>${esc((t.nome || 'tec').split(' ')[0].toLowerCase())}</b>
+      — preencha os dois, o app não envia com eles vazios<br>
+      <b>Device ID:</b> ${esc((t.nome || 'tec').split(' ')[0].toLowerCase())}<br>
+      <b>Advanced:</b> intervalo 30s · deslocamento 50m · modo <b>Move</b><br>
+      Permissão de localização: <b>o tempo todo</b>. No Android, não dispense
+      a notificação fixa do aplicativo — é ela que o mantém vivo.
+    </div>`;
+
+  document.getElementById('modal-rastreador').classList.add('open');
+}
+
+async function copiarTexto(txt) {
+  try {
+    await navigator.clipboard.writeText(txt);
+    toast('Endereço copiado', 'success');
+  } catch {
+    const campo = document.getElementById('rastreador-url');
+    if (campo) { campo.select(); document.execCommand('copy'); toast('Endereço copiado', 'success'); }
+  }
+}
+
 async function carregarTecnicos() {
   const list = document.getElementById('sidebar-list');
   try {
@@ -630,9 +753,11 @@ async function carregarTecnicos() {
     list.innerHTML = tecnicos.map(t => `
       <div class="tecnico-section" id="tecnico-section-${t.id}">
         <div class="tecnico-header" style="border-left:3px solid ${escCor(t.cor)}">
+          ${avatarTecnico(t)}
           <div class="tecnico-nome" style="color:${escCor(t.cor)}">${esc(t.nome)}</div>
           <div class="tecnico-actions">
             <button class="btn-add-ficha" onclick="abrirModalNovaFicha(${t.id})" title="Nova ficha">+ Ficha</button>
+            <button class="btn-link-tecnico" onclick="abrirRastreadorTecnico(${t.id})" title="Configurar rastreio de localização">${icone('mapa', 'icone-11') || '📍'}</button>
             <button class="btn-link-tecnico" onclick="copiarLinkTecnico('${t.token || ''}')" title="Copiar link de acesso do técnico">${icone('externo', 'icone-11')}</button>
             <button class="btn-del-tecnico" onclick="deletarTecnico(event,${t.id})" title="Remover técnico">${icone('x', 'icone-11')}</button>
           </div>

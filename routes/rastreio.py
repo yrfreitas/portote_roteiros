@@ -520,7 +520,7 @@ def consultar(rastreio_token):
         r = fetch_one(conn, """
             SELECT ra.*, sv.cliente, sv.endereco_completo,
                    sv.lat AS destino_lat, sv.lng AS destino_lng, sv.status AS servico_status,
-                   t.nome AS tecnico_nome
+                   t.nome AS tecnico_nome, t.foto AS tecnico_foto, t.cor AS tecnico_cor
               FROM rastreios ra
               JOIN servicos sv ON sv.id = ra.servico_id
               JOIN tecnicos t  ON t.id = ra.tecnico_id
@@ -573,6 +573,11 @@ def consultar(rastreio_token):
     return jsonify({
         "ativo":     not encerrado,
         "tecnico":   primeiro_nome,
+        # A foto do técnico vai para a página do cliente: quem espera em casa
+        # abre a porta com mais tranquilidade sabendo QUEM vai chegar. É o
+        # mesmo motivo pelo qual aplicativo de corrida mostra o motorista.
+        "tecnico_foto": r.get("tecnico_foto"),
+        "tecnico_cor":  r.get("tecnico_cor") or "#1a6fd4",
         "cliente":   r.get("cliente") or "",
         "destino":   {"lat": r.get("destino_lat"), "lng": r.get("destino_lng"),
                       "endereco": r.get("endereco_completo") or ""},
