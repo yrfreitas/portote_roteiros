@@ -224,18 +224,39 @@ def _gravar_posicao(conn, tecnico_id, lat, lng, precisao):
     a posição que chega é descartada, mesmo que o aplicativo continue ligado.
     """
     abertos = fetch_all(conn, f"""
-        SELECT ra.id, ra.criado_em FROM rastreios ra
+        SELECT ra.id, ra.criado_em, ra.servico_id FROM rastreios ra
           JOIN servicos sv ON sv.id = ra.servico_id
          WHERE ra.tecnico_id = ? AND {_ATIVO} AND sv.status <> 'concluido'
     """, (tecnico_id,))
 
     vivos = [r for r in abertos if not _expirado(r.get("criado_em"))]
     for r in vivos:
+        # A previsão é REFEITA a cada posição, a partir de onde o técnico está
+        # de verdade. Antes ela era calculada uma única vez, na saída, medindo
+        # da parada ANTERIOR da rota até o destino — o que produzia coisas como
+        # "saiu 15:11, chega 15:14" com o técnico a quilômetros dali (relatado
+        # pelo Kalebe em 2026-08-17). Com GPS real, estimar por tabela deixou
+        # de ter desculpa.
+        eta = _minutos_ate(conn, r["servico_id"], lat, lng)
         execute(conn, """
-            UPDATE rastreios SET lat = ?, lng = ?, precisao = ?, atualizado_em = ?
+            UPDATE rastreios
+               SET lat = ?, lng = ?, precisao = ?, atualizado_em = ?,
+                   eta_minutos = COALESCE(?, eta_minutos)
              WHERE id = ?
-        """, (lat, lng, precisao, _agora(), r["id"]))
+        """, (lat, lng, precisao, _agora(), eta, r["id"]))
     return len(vivos)
+
+
+def _minutos_ate(conn, servico_id, lat, lng):
+    """Minutos da posição informada até o destino. None sem coordenada."""
+    destino = fetch_one(conn, "SELECT lat, lng FROM servicos WHERE id = ?",
+                        (servico_id,))
+    if not destino or destino.get("lat") is None or lat is None:
+        return None
+
+    km = haversine(lat, lng, destino["lat"], destino["lng"])
+    # Mesmo fator 1.3 do otimizador: linha reta não é rua.
+    return max(1, int(round((km * 1.3 / VELOCIDADE_KMH) * 60)))
 
 
 @rastreio_bp.route("/t/<token>/rastreador", methods=["GET", "POST"])
@@ -563,10 +584,16 @@ def consultar(rastreio_token):
 
     saiu_em = r.get("criado_em")
     eta = r.get("eta_minutos")
+
+    # A contagem começa na ÚLTIMA POSIÇÃO quando existe uma, e só cai na hora
+    # da saída quando não há GPS nenhum. Somar o tempo restante ao horário de
+    # saída era o que fazia a previsão vencer sozinha enquanto o técnico ainda
+    # estava na estrada.
+    referencia = r.get("atualizado_em") if r.get("lat") is not None else saiu_em
     chegada = None
-    if saiu_em and eta:
+    if referencia and eta:
         try:
-            base = datetime.strptime(str(saiu_em)[:19], "%Y-%m-%d %H:%M:%S")
+            base = datetime.strptime(str(referencia)[:19], "%Y-%m-%d %H:%M:%S")
             chegada = (base + timedelta(minutes=int(eta))).strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             chegada = None

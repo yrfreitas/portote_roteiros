@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v30';
+const VERSAO_PAINEL = 'v31';
 
 async function _lerRevisao() {
   const resp = await fetch(`${BASE}/api/versao`, { cache: 'no-store' });

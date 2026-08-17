@@ -39,7 +39,8 @@
 // v28 = foto de perfil do técnico + rastreador separado por técnico.
 // v29 = foto aceita HEIC/iPhone + painel se atualiza sozinho.
 // v30 = fichas de cada técnico podem ser recolhidas na barra lateral.
-const CACHE_VERSAO = 'portotec-roteiros-v30';
+// v31 = previsão de chegada calculada da posição REAL do técnico.
+const CACHE_VERSAO = 'portotec-roteiros-v31';
 
 const ARQUIVOS_CASCA = [
   '/',
