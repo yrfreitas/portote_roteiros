@@ -241,8 +241,30 @@ def rastreador_externo(token):
     faria o aplicativo insistir a viagem inteira, gastando bateria e dados do
     técnico por um dado que nunca vamos guardar.
     """
-    dados = request.get_json(silent=True) or {}
-    fonte = {**request.args.to_dict(), **(dados if isinstance(dados, dict) else {})}
+    # force=True: alguns aplicativos mandam JSON sem o cabeçalho
+    # Content-Type correto, e sem isto o corpo seria ignorado em silêncio.
+    dados = request.get_json(silent=True, force=True)
+
+    # O OwnTracks pode mandar uma LISTA de mensagens, não um objeto solto —
+    # é o que acontece quando ele acumulou fila sem sinal e despeja tudo de
+    # uma vez. A versão anterior descartava a lista inteira: a requisição
+    # chegava, nenhuma coordenada era lida, e o painel registrava só
+    # "url-testada". Foi exatamente o que aconteceu com o Pedro em 2026-08-17.
+    #
+    # Da lista interessa a posição MAIS RECENTE: as antigas já não dizem onde
+    # ele está, e gravar a última da fila como se fosse agora seria mentira.
+    if isinstance(dados, list):
+        posicoes = [d for d in dados
+                    if isinstance(d, dict) and d.get("_type") in (None, "location")]
+        # `tst` é o carimbo de tempo do OwnTracks (epoch). Sem ele, mantém a
+        # ordem em que vieram, que já costuma ser cronológica.
+        posicoes.sort(key=lambda d: d.get("tst") or 0)
+        dados = posicoes[-1] if posicoes else {}
+
+    if not isinstance(dados, dict):
+        dados = {}
+
+    fonte = {**request.args.to_dict(), **dados}
 
     # ----- particularidades do OwnTracks -----
     # Ele identifica o tipo da mensagem em `_type` e NEM TODA carrega posição
@@ -297,7 +319,14 @@ def rastreador_externo(token):
         # certas — restando só a permissão do aplicativo. Registra a visita,
         # então o painel também confirma que o aparelho alcançou o servidor.
         if lat is None or lng is None:
-            _marcar_visto(conn, tecnico["id"], gps_estado="url-testada")
+            # Distingue "alguém abriu a URL no navegador" de "o aplicativo de
+            # GPS falou aqui mas sem posição". Os dois chegam sem coordenada e
+            # eu já confundi um com o outro uma vez: o painel dizia
+            # "URL testada" enquanto era o OwnTracks mandando um lote que eu
+            # não sabia ler.
+            veio_de_app = eh_owntracks or bool(request.get_data(cache=True))
+            _marcar_visto(conn, tecnico["id"],
+                          gps_estado="app-sem-posicao" if veio_de_app else "url-testada")
             return jsonify({
                 "ok": True,
                 "url_correta": True,
@@ -608,6 +637,9 @@ def diagnostico():
         elif a.get("gps_estado") == "url-testada":
             situacao = ("URL testada pelo navegador e correta — falta o "
                         "aplicativo de GPS enviar (permissão/bateria)")
+        elif a.get("gps_estado") == "app-sem-posicao":
+            situacao = ("O aplicativo de GPS chegou até aqui, mas sem posição "
+                        "utilizável — verifique a permissão de localização")
         elif not versao:
             situacao = "nunca reportou (app antigo, anterior à v26)"
         elif versao != VERSAO_APP:
