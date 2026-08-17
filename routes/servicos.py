@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 
-from database import IS_PG, db_conn, execute, fetch_all, fetch_one
+from database import (IS_PG, db_conn, execute, fetch_all, fetch_one,
+                      insert_returning_id)
 from extensions import limiter
 from routes.fichas import recalcular_rota
 from services.geo import geocode_cep
@@ -238,6 +239,100 @@ def remover_servico(servico_id):
 # passado: a base já tinha 32 pontos sem classificação. Sem uma forma de
 # atribuir em lote, a única saída seria abrir ponto por ponto — que é
 # exatamente o atrito que fez ninguém preencher em primeiro lugar.
+
+
+@servicos_bp.route("/servicos/<int:servico_id>/tecnico", methods=["PUT"])
+def transferir_servico(servico_id):
+    """Move UM ponto para outro técnico, no mesmo dia.
+
+    Diferente de transferir a ficha inteira: aqui só um cliente muda de mãos,
+    que é o caso real da Porto Tec — a rota do dia é do Pedro e um atendimento
+    específico vai com o Igor.
+
+    O ponto precisa cair numa ficha DO DESTINO, porque é a ficha que carrega o
+    técnico. Se ele já tem ficha aberta no mesmo dia, o ponto entra nela; se
+    não tem, uma é criada copiando dia, data e ponto de partida da origem —
+    sem isso o Kalebe teria que criar a ficha na mão antes de cada
+    transferência, e ninguém faria isso no meio da correria.
+
+    As DUAS rotas são recalculadas: a de origem perdeu uma parada e a de
+    destino ganhou. Deixar a quilometragem velha faria o painel mentir sobre
+    o dia dos dois.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        novo_tecnico = int(data.get("tecnico_id"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Informe o técnico de destino"}), 400
+
+    with db_conn(commit=True) as conn:
+        servico = fetch_one(conn, """
+            SELECT sv.*, f.id AS f_id, f.tecnico_id, f.dia_semana,
+                   f.data_referencia, f.ponto_partida, f.ponto_partida_cep,
+                   f.ponto_partida_lat, f.ponto_partida_lng
+              FROM servicos sv JOIN fichas f ON f.id = sv.ficha_id
+             WHERE sv.id = ?
+        """, (servico_id,))
+        if not servico:
+            return jsonify({"erro": "Ponto não encontrado"}), 404
+
+        destino = fetch_one(conn, "SELECT id, nome FROM tecnicos WHERE id = ?",
+                            (novo_tecnico,))
+        if not destino:
+            return jsonify({"erro": "Técnico de destino não encontrado"}), 404
+
+        if servico.get("tecnico_id") == novo_tecnico:
+            return jsonify({"mensagem": f"O ponto já é do {destino['nome']}"})
+
+        ficha_origem = servico["f_id"]
+
+        # Ficha do destino no MESMO dia. Só reaproveita a que está em aberto:
+        # jogar ponto novo dentro de rota já concluída mexeria em número de
+        # dia fechado.
+        alvo = fetch_one(conn, """
+            SELECT id FROM fichas
+             WHERE tecnico_id = ? AND dia_semana = ?
+               AND COALESCE(data_referencia, '') = COALESCE(?, '')
+               AND status <> 'concluida'
+             ORDER BY id DESC
+        """, (novo_tecnico, servico["dia_semana"], servico.get("data_referencia")))
+
+        if alvo:
+            ficha_destino = alvo["id"]
+            criou_ficha = False
+        else:
+            ficha_destino = insert_returning_id(conn, """
+                INSERT INTO fichas (tecnico_id, dia_semana, data_referencia,
+                                    ponto_partida, ponto_partida_cep,
+                                    ponto_partida_lat, ponto_partida_lng)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (novo_tecnico, servico["dia_semana"], servico.get("data_referencia"),
+                  servico.get("ponto_partida"), servico.get("ponto_partida_cep"),
+                  servico.get("ponto_partida_lat"), servico.get("ponto_partida_lng")))
+            criou_ficha = True
+
+        # Rastreio aberto some junto: quem vai ao cliente mudou, e a posição
+        # do técnico antigo não diz mais nada sobre esse atendimento.
+        from routes.rastreio import encerrar_por_servico
+        encerrar_por_servico(conn, servico_id)
+
+        # Entra no fim da rota do destino; a otimização abaixo põe no lugar.
+        ultima = fetch_one(conn, "SELECT MAX(ordem) AS m FROM servicos WHERE ficha_id = ?",
+                           (ficha_destino,))
+        execute(conn, "UPDATE servicos SET ficha_id = ?, ordem = ? WHERE id = ?",
+                (ficha_destino, (ultima or {}).get("m") or 0, servico_id))
+
+        for fid in (ficha_origem, ficha_destino):
+            f = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (fid,))
+            recalcular_rota(conn, fid, f)
+
+    return jsonify({
+        "mensagem": f"{servico.get('cliente') or 'Ponto'} transferido para {destino['nome']}"
+                    + (" (ficha nova criada)" if criou_ficha else ""),
+        "ficha_destino": ficha_destino,
+        "ficha_origem": ficha_origem,
+        "ficha_criada": criou_ficha,
+    })
 
 
 @servicos_bp.route("/servicos/sem-setor", methods=["GET"])

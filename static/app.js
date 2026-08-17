@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v31';
+const VERSAO_PAINEL = 'v32';
 
 async function _lerRevisao() {
   const resp = await fetch(`${BASE}/api/versao`, { cache: 'no-store' });
@@ -642,6 +642,68 @@ function copiarLinkTecnico(token) {
     .then(() => toast('Link do técnico copiado — mande por WhatsApp', 'success'))
     .catch(() => toast(link, 'info'));
 }
+
+// ─── Transferir trabalho entre técnicos ─────────────────────────────
+//
+// Nasceu de um caso real: a Porto Tec passou a ter dois técnicos e TODAS as
+// fichas estavam no nome de um só. O Igor saiu para atender, mandou o "a
+// caminho", e o cliente não via ninguém — porque o rastreio é por técnico e o
+// atendimento pertencia ao Pedro. Sem transferência, a única saída era
+// refazer a rota do zero no outro nome.
+
+function _escolherTecnico(excetoId, titulo) {
+  const opcoes = (tecnicos || []).filter(t => t.id !== excetoId);
+  if (opcoes.length === 0) {
+    toast('Não há outro técnico cadastrado para receber', 'error');
+    return null;
+  }
+  // prompt numerado em vez de modal: são dois ou três técnicos, e uma janela
+  // inteira para escolher entre dois nomes é mais atrito do que ajuda.
+  const lista = opcoes.map((t, i) => `${i + 1}) ${t.nome}`).join('\n');
+  const resp = prompt(`${titulo}\n\n${lista}\n\nDigite o número:`);
+  if (resp === null) return null;
+
+  const idx = parseInt(resp, 10) - 1;
+  if (!(idx >= 0 && idx < opcoes.length)) {
+    toast('Escolha inválida', 'error');
+    return null;
+  }
+  return opcoes[idx];
+}
+
+async function transferirPonto(servicoId, nomeCliente) {
+  const ponto = (fichaAtiva?.servicos || []).find(s => s.id === servicoId);
+  const donoAtual = fichaAtiva?.ficha?.tecnico_id;
+  const destino = _escolherTecnico(donoAtual, `Passar "${nomeCliente}" para qual técnico?`);
+  if (!destino) return;
+
+  try {
+    const r = await api(`/servicos/${servicoId}/tecnico`, {
+      method: 'PUT', body: JSON.stringify({ tecnico_id: destino.id }),
+    });
+    toast(r.mensagem, 'success');
+    await carregarTecnicos();
+    if (fichaAtiva) await renderFichaDetalhe(fichaAtiva);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function transferirFicha(fichaId) {
+  const donoAtual = fichaAtiva?.ficha?.tecnico_id;
+  const destino = _escolherTecnico(donoAtual, 'Passar a rota inteira para qual técnico?');
+  if (!destino) return;
+
+  if (!confirm(`Transferir a rota inteira para ${destino.nome}?`)) return;
+
+  try {
+    const r = await api(`/fichas/${fichaId}/tecnico`, {
+      method: 'PUT', body: JSON.stringify({ tecnico_id: destino.id }),
+    });
+    toast(r.mensagem, 'success');
+    await carregarTecnicos();
+    if (fichaAtiva) await renderFichaDetalhe(fichaAtiva);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 
 // ─── Recolher a lista de fichas de cada técnico ─────────────────────
 //
@@ -1670,6 +1732,9 @@ async function renderFichaDetalhe(id) {
       </div>
       <div class="ficha-acoes">
         <button class="btn btn-primary" onclick="abrirModalAddServico(${ficha.id})">+ Adicionar Ponto</button>
+        <button class="btn btn-ghost" onclick="transferirFicha(${ficha.id})"
+                title="Passar a rota inteira para outro técnico"
+                style="display:flex;align-items:center;gap:6px;">${icone('usuario', 'icone-13')} Transferir rota</button>
         <button class="btn btn-ghost" id="btn-abrir-maps" style="display:flex;align-items:center;gap:6px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
           Abrir no Google Maps
@@ -1829,6 +1894,7 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
           ${(s.lat && s.lng) ? `<a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16" target="_blank" rel="noopener" title="Ver no mapa" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('externo', 'icone-13')}</a>` : ''}
           ${(s.lat && s.lng) ? `<a href="https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes" target="_blank" rel="noopener" title="Navegar com Waze" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('navegacao', 'icone-13')}</a>` : ''}
           <button class="btn-a-caminho" onclick="avisarACaminho(${s.id})" title="Avisar no WhatsApp que está a caminho deste cliente">A caminho</button>
+          <button class="btn-editar" onclick="transferirPonto(${s.id}, '${esc(s.cliente || 'este ponto').replace(/'/g, "\'")}')" title="Passar este ponto para outro técnico">${icone('usuario', 'icone-12')}</button>
           <button class="btn-editar" onclick="abrirModalEditarServico(${s.id})" title="Editar ponto">${icone('editar', 'icone-12')}</button>
           <button class="btn-remove" onclick="removerServico(${s.id},${ficha.id})">${icone('x', 'icone-11')}</button>
         </div>

@@ -523,6 +523,55 @@ def reordenar_servicos(ficha_id):
     return jsonify({"mensagem": "Ordem atualizada manualmente", **resultado})
 
 
+@fichas_bp.route("/fichas/<int:ficha_id>/tecnico", methods=["PUT"])
+def transferir_ficha(ficha_id):
+    """Passa a ficha inteira para outro técnico.
+
+    Existe porque em 2026-08-17 a Porto Tec passou a ter dois técnicos em
+    campo e TODAS as fichas estavam no nome de um só. Sem isto, a única saída
+    era refazer a rota do zero no outro nome — e o rastreio, que é por
+    técnico, nunca casava com quem de fato estava indo.
+
+    A rota em si não muda: os pontos, a ordem e o ponto de partida são da
+    FICHA, não de quem a executa. Só troca o dono.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        novo_tecnico = int(data.get("tecnico_id"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Informe o técnico de destino"}), 400
+
+    with db_conn(commit=True) as conn:
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+        if not ficha:
+            return jsonify({"erro": "Ficha não encontrada"}), 404
+
+        destino = fetch_one(conn, "SELECT id, nome FROM tecnicos WHERE id = ?",
+                            (novo_tecnico,))
+        if not destino:
+            return jsonify({"erro": "Técnico de destino não encontrado"}), 404
+
+        if ficha.get("tecnico_id") == novo_tecnico:
+            return jsonify({"mensagem": f"A ficha já é do {destino['nome']}"})
+
+        # Rastreio é POR TÉCNICO: um link aberto pelo antigo dono continuaria
+        # esperando a posição dele, que não vai mais àquele cliente. Encerrar
+        # é mais honesto do que deixar o cliente olhando um mapa que nunca
+        # mais se move.
+        from routes.rastreio import encerrar_por_servico
+        for sv in fetch_all(conn, "SELECT id FROM servicos WHERE ficha_id = ?",
+                            (ficha_id,)):
+            encerrar_por_servico(conn, sv["id"])
+
+        execute(conn, """
+            UPDATE fichas SET tecnico_id = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?
+        """, (novo_tecnico, ficha_id))
+
+    return jsonify({"mensagem": f"Ficha transferida para {destino['nome']}",
+                    "tecnico_id": novo_tecnico})
+
+
 def recalcular_rota(conn, ficha_id, ficha) -> dict:
     servicos = fetch_all(
         conn, "SELECT id, lat, lng FROM servicos WHERE ficha_id = ?", (ficha_id,)

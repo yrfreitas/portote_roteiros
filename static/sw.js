@@ -40,7 +40,8 @@
 // v29 = foto aceita HEIC/iPhone + painel se atualiza sozinho.
 // v30 = fichas de cada técnico podem ser recolhidas na barra lateral.
 // v31 = previsão de chegada calculada da posição REAL do técnico.
-const CACHE_VERSAO = 'portotec-roteiros-v31';
+// v32 = transferir rota inteira ou ponto avulso entre técnicos.
+const CACHE_VERSAO = 'portotec-roteiros-v32';
 
 const ARQUIVOS_CASCA = [
   '/',
