@@ -2875,3 +2875,70 @@ select:focus-visible,
   transition: color .15s ease, border-color .15s ease;
 }
 .btn-recolher-todos:hover { color: var(--text-primary); border-color: var(--accent); }
+
+/* ─── Aba Diagnóstico ─────────────────────────────────────────────────
+   Traduz sinal técnico para linguagem de gente. Cor faz o trabalho: verde
+   dispensa leitura, vermelho exige ação. */
+.diag-versao {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-muted); margin-bottom: 12px;
+}
+.diag-secao {
+  font-family: var(--font-display); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.1px;
+  color: var(--text-secondary);
+  margin: 18px 0 8px; padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.diag-item {
+  display: grid; grid-template-columns: 1fr auto; gap: 6px 12px;
+  align-items: center; padding: 9px 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.diag-titulo { font-size: 12.5px; font-weight: 600; }
+.diag-detalhe {
+  grid-column: 1 / -1; font-size: 11px; color: var(--text-muted);
+  line-height: 1.55;
+}
+.diag-selo {
+  display: inline-block; font-size: 10.5px; font-weight: 700;
+  padding: 3px 9px; border-radius: 99px; white-space: nowrap;
+}
+.diag-selo.ok    { background: rgba(42,160,92,.16);  color: #6ee7a0; }
+.diag-selo.aviso { background: rgba(224,168,42,.16); color: #f0c65a; }
+.diag-selo.ruim  { background: rgba(224,60,60,.16);  color: #ff8a8a; }
+
+.diag-erro {
+  padding: 8px 10px; margin-bottom: 6px;
+  background: rgba(224,60,60,.07);
+  border-left: 2px solid rgba(224,60,60,.5); border-radius: 4px;
+}
+.diag-erro-msg { font-family: var(--font-mono); font-size: 11px; word-break: break-word; }
+
+/* Aviso de pontos sem setor: fica no topo do painel porque ninguém
+   classifica o que não aparece na frente. */
+.aviso-sem-setor {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; margin-bottom: 12px;
+  background: rgba(224,168,42,.10);
+  border: 1px solid rgba(224,168,42,.30); border-radius: var(--radius);
+  font-size: 12.5px;
+}
+
+/* ─── Comparativo entre técnicos ─────────────────────────────────── */
+.comp-grade { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.comp-card {
+  padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: rgba(255,255,255,.02);
+}
+.comp-topo { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.comp-nome { font-weight: 700; font-size: 13px; flex: 1; }
+.comp-fatia { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+.comp-numeros {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 6px; margin-bottom: 10px;
+}
+.comp-numeros div { display: flex; flex-direction: column; }
+.comp-numeros b { font-family: var(--font-mono); font-size: 15px; line-height: 1.1; }
+.comp-numeros span { font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+.comp-barra { height: 4px; background: rgba(255,255,255,.06); border-radius: 99px; overflow: hidden; }
+.comp-barra span { display: block; height: 100%; border-radius: 99px; }

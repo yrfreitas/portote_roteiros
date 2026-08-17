@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v33';
+const VERSAO_PAINEL = 'v34';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -422,17 +422,20 @@ function switchMainTab(tab) {
   const isCep       = tab === 'cep';
   const isHistorico = tab === 'historico';
   const isPecas     = tab === 'pecas';
+  const isDiag      = tab === 'diagnostico';
 
   document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
   document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
   document.getElementById('panel-cep').style.display = isCep ? 'block' : 'none';
   document.getElementById('panel-historico').style.display = isHistorico ? 'block' : 'none';
   document.getElementById('panel-pecas').style.display = isPecas ? 'block' : 'none';
+  document.getElementById('panel-diagnostico').style.display = isDiag ? 'block' : 'none';
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
   document.getElementById('mtab-historico').classList.toggle('active', isHistorico);
   document.getElementById('mtab-pecas').classList.toggle('active', isPecas);
+  document.getElementById('mtab-diagnostico').classList.toggle('active', isDiag);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
@@ -440,6 +443,10 @@ function switchMainTab(tab) {
   }
   if (isHistorico) {
     carregarHistorico();
+    carregarComparativoTecnicos();
+  }
+  if (isDiag) {
+    carregarDiagnostico();
   }
   if (isPecas) {
     carregarPecas();
@@ -688,6 +695,186 @@ function copiarLinkTecnico(token) {
     .then(() => toast('Link do técnico copiado — mande por WhatsApp', 'success'))
     .catch(() => toast(link, 'info'));
 }
+
+// ─── Aba Diagnóstico: saúde do sistema numa tela ────────────────────
+//
+// Existe para o Kalebe parar de me perguntar "está funcionando?". Cada um
+// destes sinais já existia como endereço solto de JSON; o que faltava era
+// juntar e traduzir para linguagem de gente.
+
+function _selo(estado, texto) {
+  return `<span class="diag-selo ${estado}">${esc(texto)}</span>`;
+}
+
+function _linhaDiag(titulo, estado, texto, detalhe = '') {
+  return `
+    <div class="diag-item">
+      <div class="diag-titulo">${esc(titulo)}</div>
+      <div>${_selo(estado, texto)}</div>
+      ${detalhe ? `<div class="diag-detalhe">${detalhe}</div>` : ''}
+    </div>`;
+}
+
+async function carregarDiagnostico() {
+  const alvo = document.getElementById('diagnostico-corpo');
+  if (!alvo) return;
+  alvo.innerHTML = `<div class="loading-row" style="display:flex;gap:10px;padding:20px;"><div class="spinner"></div> Conferindo tudo...</div>`;
+
+  let d;
+  try {
+    d = await api('/diagnostico/geral', {}, 90000);
+  } catch (e) {
+    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const partes = [];
+
+  // ── Aparelhos dos técnicos (é o que mais deu trabalho até hoje)
+  const ap = (d.rastreio && d.rastreio.aparelhos) || [];
+  partes.push(`<div class="diag-secao">Celular dos técnicos</div>`);
+  if (ap.length === 0) {
+    partes.push(_linhaDiag('Nenhum técnico', 'aviso', 'sem cadastro'));
+  } else {
+    ap.forEach(a => {
+      const ok = /enviando|tudo certo/i.test(a.situacao || '');
+      const grave = /BLOQUEADA|VELHO|nunca reportou/i.test(a.situacao || '');
+      partes.push(_linhaDiag(
+        a.tecnico,
+        ok ? 'ok' : (grave ? 'ruim' : 'aviso'),
+        a.situacao || '—',
+        a.visto_em ? `visto em ${esc(a.visto_em)} · versão ${esc(a.app_versao || '—')}` : ''));
+    });
+  }
+
+  // ── Integrações
+  partes.push(`<div class="diag-secao">Integrações</div>`);
+
+  const ag = d.agoraos || {};
+  if (ag.erro) {
+    partes.push(_linhaDiag('AgoraOS', 'ruim', 'falhou', esc(ag.erro)));
+  } else if (!ag.configurada) {
+    partes.push(_linhaDiag('AgoraOS', 'aviso', 'não configurado',
+      'Falta: ' + esc((ag.faltando || []).join(', ') || 'credenciais')));
+  } else if (!ag.conectou) {
+    partes.push(_linhaDiag('AgoraOS', 'ruim', 'não conectou', esc(ag.erro || '')));
+  } else {
+    partes.push(_linhaDiag('AgoraOS', ag.estoque_efetivo ? 'ok' : 'aviso',
+      ag.estoque_efetivo ? 'baixa de estoque ativa' : 'conectado, mas sem controle de estoque',
+      `${ag.produtos} produtos · ${ag.os} OS · ${ag.produtos_com_estoque_ligado} com estoque ligado`));
+  }
+
+  const pl = (d.planilha && d.planilha.planilha) || {};
+  const em = (d.planilha && d.planilha.email) || {};
+  partes.push(_linhaDiag('Planilha de peças',
+    pl.configurada ? 'ok' : 'aviso',
+    pl.configurada ? 'configurada' : 'faltam variáveis',
+    esc((pl.faltando || []).join(', '))));
+  partes.push(_linhaDiag('Leitura das notas (e-mail)',
+    em.configurado ? 'ok' : 'aviso',
+    em.configurado ? 'configurada' : 'não configurada'));
+
+  // ── Higiene dos dados
+  partes.push(`<div class="diag-secao">Dados</div>`);
+  const semSetor = (d.setores && d.setores.sem_setor) || 0;
+  partes.push(_linhaDiag('Pontos sem setor',
+    semSetor === 0 ? 'ok' : 'aviso',
+    semSetor === 0 ? 'todos classificados' : `${semSetor} sem classificação`,
+    semSetor ? `<button class="btn btn-primary btn-sm" onclick="abrirClassificacaoEmLote()">Classificar agora</button>` : ''));
+
+  partes.push(_linhaDiag('Chave de sessão',
+    d.secret_fixa ? 'ok' : 'ruim',
+    d.secret_fixa ? 'fixa (sessão sobrevive a atualização)' : 'temporária — todo deploy desloga',
+    d.secret_fixa ? '' : 'Defina SECRET_KEY nas variáveis do Railway.'));
+
+  // ── Erros de navegador
+  const er = d.erros || {};
+  partes.push(`<div class="diag-secao">Erros na tela (últimos)</div>`);
+  if (!er.total) {
+    partes.push(_linhaDiag('Nenhum erro registrado', 'ok', 'limpo'));
+  } else {
+    partes.push((er.ultimos || []).map(e => `
+      <div class="diag-erro">
+        <div class="diag-erro-msg">${esc(e.mensagem)}</div>
+        <div class="diag-detalhe">${esc(e.quando)} · ${esc(e.origem)} · ${esc(e.versao)} · ${esc(e.url)}</div>
+      </div>`).join(''));
+  }
+
+  alvo.innerHTML = `<div class="diag-versao">Sistema na versão ${esc(d.app || '—')}</div>` + partes.join('');
+}
+
+
+// ─── Aviso de pontos sem setor ──────────────────────────────────────
+// O relatório por setor é o número que serve para cobrar a fabricante. Com
+// 60% dos pontos sem classificação ele não vale nada — e ninguém classifica
+// o que não aparece na frente.
+async function verificarPontosSemSetor() {
+  let d;
+  try { d = await api('/setores/resumo'); } catch { return; }
+
+  const total = d.sem_setor || 0;
+  let faixa = document.getElementById('aviso-sem-setor');
+
+  if (!total) { if (faixa) faixa.remove(); return; }
+
+  if (!faixa) {
+    faixa = document.createElement('div');
+    faixa.id = 'aviso-sem-setor';
+    faixa.className = 'aviso-sem-setor';
+    const main = document.getElementById('panel-roteiros-main');
+    if (main) main.prepend(faixa); else return;
+  }
+
+  faixa.innerHTML = `
+    <span><b>${total}</b> ponto${total !== 1 ? 's' : ''} sem setor —
+      o relatório por frente fica incompleto enquanto isso.</span>
+    <button class="btn btn-primary btn-sm" onclick="abrirClassificacaoEmLote()">Classificar</button>`;
+}
+
+
+// ─── Comparativo entre técnicos ─────────────────────────────────────
+// Passou a fazer sentido com dois técnicos em campo: mostra quem está
+// sobrecarregado e quanto cada rota custa em estrada.
+async function carregarComparativoTecnicos() {
+  const alvo = document.getElementById('comparativo-tecnicos');
+  if (!alvo) return;
+
+  let d;
+  try { d = await api('/relatorios/tecnicos'); }
+  catch (e) { alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`; return; }
+
+  const ts = d.tecnicos || [];
+  if (ts.length === 0) { alvo.innerHTML = ''; return; }
+
+  alvo.innerHTML = `
+    <div class="conc-titulo" style="margin-bottom:10px;">Comparativo entre técnicos (${d.dias} dias)</div>
+    <div class="comp-grade">
+      ${ts.map(t => `
+        <div class="comp-card" style="border-left:3px solid ${escCor(t.cor)}">
+          <div class="comp-topo">
+            ${t.foto ? `<img src="${t.foto}" class="tec-avatar" alt="">`
+                     : `<div class="tec-avatar sem-foto" style="background:${escCor(t.cor)}">${esc((t.nome||'?').charAt(0).toUpperCase())}</div>`}
+            <div class="comp-nome">${esc(t.nome)}</div>
+            <div class="comp-fatia">${t.fatia}% da carga</div>
+          </div>
+          <div class="comp-numeros">
+            <div><b>${t.pontos}</b><span>pontos</span></div>
+            <div><b>${t.pendentes}</b><span>a fazer</span></div>
+            <div><b>${t.km}</b><span>km</span></div>
+            <div><b>${t.km_por_ponto}</b><span>km/ponto</span></div>
+            <div><b>${t.taxa_conclusao}%</b><span>concluído</span></div>
+            <div><b>${t.rotas}</b><span>rotas</span></div>
+          </div>
+          <div class="comp-barra"><span style="width:${Math.min(100, t.fatia)}%;background:${escCor(t.cor)}"></span></div>
+        </div>`).join('')}
+    </div>
+    <div class="diag-detalhe" style="margin-top:8px;">
+      <b>km/ponto</b> é o número que compara de verdade: quilometragem alta com
+      muitos pontos é rota cheia; alta com poucos é rota espalhada, que é a que
+      pesa no combustível.
+    </div>`;
+}
+
 
 // ─── Transferir trabalho entre técnicos ─────────────────────────────
 //
@@ -1016,6 +1203,7 @@ async function carregarTecnicos() {
     `).join('');
 
     await Promise.all(tecnicos.map(t => carregarFichasTecnico(t.id)));
+    verificarPontosSemSetor(); // sem await: aviso não pode atrasar a sidebar
 
   } catch (e) {
     if (list) {

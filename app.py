@@ -171,6 +171,68 @@ def registrar_erro_cliente():
     return jsonify({"ok": True}), 200
 
 
+@app.route("/api/diagnostico/geral", methods=["GET"])
+def diagnostico_geral():
+    """TUDO que responde "está funcionando?" numa resposta só.
+
+    Existe para o Kalebe parar de depender de mim para saber se o GPS do
+    técnico está chegando, se a peça foi para o AgoraOS ou se a planilha
+    sincronizou. Cada um desses diagnósticos já existia como endereço solto de
+    JSON — o que faltava era juntar e mostrar numa tela.
+
+    Cada bloco vai dentro de try: um serviço externo fora do ar (AgoraOS,
+    Google Sheets) não pode derrubar o painel inteiro de saúde, senão a tela
+    de diagnóstico quebra justamente quando ela é mais necessária.
+    """
+    from database import fetch_all
+
+    saida = {"app": VERSAO_APP, "secret_fixa": SECRET_DO_AMBIENTE}
+
+    def bloco(nome, fn):
+        try:
+            saida[nome] = fn()
+        except Exception as exc:
+            saida[nome] = {"erro": str(exc)[:200]}
+
+    def _rastreio():
+        from routes.rastreio import diagnostico as diag_rastreio
+        return diag_rastreio().get_json()
+
+    def _agoraos():
+        from services import agoraos
+        return agoraos.diagnostico()
+
+    def _planilha():
+        from services.nfe import diagnostico_imap
+        from services.planilha import diagnostico as diag_planilha
+        return {"planilha": diag_planilha(), "email": diagnostico_imap()}
+
+    def _setores():
+        with db_conn() as conn:
+            orfaos = fetch_all(conn, """
+                SELECT COUNT(*) AS total FROM servicos sv
+                  JOIN fichas f ON f.id = sv.ficha_id
+                 WHERE sv.setor_id IS NULL AND f.status <> 'concluida'
+            """)
+        return {"sem_setor": (orfaos[0] if orfaos else {}).get("total", 0)}
+
+    def _erros():
+        with db_conn() as conn:
+            linhas = fetch_all(conn, """
+                SELECT quando, origem, versao, url, mensagem
+                  FROM erros_cliente ORDER BY id DESC
+            """)
+        return {"total": len(linhas), "ultimos": linhas[:15]}
+
+    bloco("rastreio", _rastreio)
+    bloco("agoraos", _agoraos)
+    bloco("planilha", _planilha)
+    bloco("setores", _setores)
+    bloco("erros", _erros)
+
+    return jsonify(saida)
+
+
 @app.route("/api/erros-cliente", methods=["GET"])
 def listar_erros_cliente():
     """Os últimos erros de navegador. Atrás da sessão de admin."""

@@ -42,7 +42,8 @@
 // v31 = previsão de chegada calculada da posição REAL do técnico.
 // v32 = transferir rota inteira ou ponto avulso entre técnicos.
 // v33 = sessão expirada leva ao login + erros do navegador viram registro.
-const CACHE_VERSAO = 'portotec-roteiros-v33';
+// v34 = aba Diagnóstico, aviso de pontos sem setor e comparativo de técnicos.
+const CACHE_VERSAO = 'portotec-roteiros-v34';
 
 const ARQUIVOS_CASCA = [
   '/',
