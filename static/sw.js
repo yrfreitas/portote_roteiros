@@ -38,7 +38,8 @@
 // v27 = rastreador nativo (Traccar Client) no lugar do GPS do navegador.
 // v28 = foto de perfil do técnico + rastreador separado por técnico.
 // v29 = foto aceita HEIC/iPhone + painel se atualiza sozinho.
-const CACHE_VERSAO = 'portotec-roteiros-v29';
+// v30 = fichas de cada técnico podem ser recolhidas na barra lateral.
+const CACHE_VERSAO = 'portotec-roteiros-v30';
 
 const ARQUIVOS_CASCA = [
   '/',

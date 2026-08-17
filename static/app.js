@@ -8,6 +8,8 @@ let tecnicos     = [];
 // stroke, sem preenchimento) resolve isso de vez — mesma linguagem visual
 // em toda a tela, em vez de depender da fonte de emoji do sistema.
 const ICONES = {
+  chevron:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+  recolher:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/></svg>',
   mapa:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>',
   pin:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   usuario:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
@@ -244,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v29';
+const VERSAO_PAINEL = 'v30';
 
 async function _lerRevisao() {
   const resp = await fetch(`${BASE}/api/versao`, { cache: 'no-store' });
@@ -641,6 +643,64 @@ function copiarLinkTecnico(token) {
     .catch(() => toast(link, 'info'));
 }
 
+// ─── Recolher a lista de fichas de cada técnico ─────────────────────
+//
+// Com três ou quatro técnicos e uma ficha por dia da semana, a barra lateral
+// vira uma coluna sem fim e ninguém acha nada. Recolhido, o técnico continua
+// visível — some só a lista de dias dele.
+//
+// O estado fica no localStorage, POR TÉCNICO: a sidebar é redesenhada a cada
+// auto-refresh (a cada 10s) e, sem guardar, tudo o que o Kalebe recolhesse
+// voltaria a abrir sozinho no ciclo seguinte.
+const CHAVE_RECOLHIDOS = 'portotec:tecnicos-recolhidos';
+
+function _lerRecolhidos() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHAVE_RECOLHIDOS)) || []); }
+  catch { return new Set(); }
+}
+
+function tecnicoRecolhido(id) {
+  return _lerRecolhidos().has(String(id));
+}
+
+function alternarTecnico(id) {
+  const secao = document.getElementById(`tecnico-section-${id}`);
+  if (!secao) return;
+
+  const recolhidos = _lerRecolhidos();
+  const virouRecolhido = !secao.classList.contains('recolhido');
+
+  secao.classList.toggle('recolhido', virouRecolhido);
+  if (virouRecolhido) recolhidos.add(String(id));
+  else recolhidos.delete(String(id));
+
+  localStorage.setItem(CHAVE_RECOLHIDOS, JSON.stringify([...recolhidos]));
+}
+
+// Recolher ou abrir todos de uma vez — útil no começo do dia, quando só
+// interessa o técnico que está em rota.
+function alternarTodosTecnicos() {
+  const todos = (tecnicos || []).map(t => String(t.id));
+  const algumAberto = todos.some(id => !tecnicoRecolhido(id));
+
+  localStorage.setItem(CHAVE_RECOLHIDOS, JSON.stringify(algumAberto ? todos : []));
+  todos.forEach(id => {
+    const secao = document.getElementById(`tecnico-section-${id}`);
+    if (secao) secao.classList.toggle('recolhido', algumAberto);
+  });
+
+  const btn = document.getElementById('btn-recolher-todos');
+  if (btn) btn.title = algumAberto ? 'Abrir todos' : 'Recolher todos';
+}
+
+// Quantas fichas o técnico tem, mostrado no cabeçalho. Recolher não pode
+// esconder informação: o número diz o que ficou escondido ali dentro.
+function atualizarContagemTecnico(tecnicoId, quantas) {
+  const alvo = document.getElementById(`tec-contagem-${tecnicoId}`);
+  if (alvo) alvo.textContent = quantas ? `${quantas}` : '';
+}
+
+
 // ─── Foto de perfil do técnico ──────────────────────────────────────
 //
 // A foto vai para o BANCO como data URI, não para uma pasta: o disco do
@@ -827,13 +887,16 @@ async function carregarTecnicos() {
     }
 
     list.innerHTML = tecnicos.map(t => `
-      <div class="tecnico-section" id="tecnico-section-${t.id}">
-        <div class="tecnico-header" style="border-left:3px solid ${escCor(t.cor)}">
+      <div class="tecnico-section ${tecnicoRecolhido(t.id) ? 'recolhido' : ''}" id="tecnico-section-${t.id}">
+        <div class="tecnico-header" style="border-left:3px solid ${escCor(t.cor)}"
+             onclick="alternarTecnico(${t.id})" title="Clique para recolher ou abrir">
+          <span class="tec-seta">${icone('chevron', 'icone-11')}</span>
           ${avatarTecnico(t)}
           <div class="tecnico-nome" style="color:${escCor(t.cor)}">${esc(t.nome)}</div>
-          <div class="tecnico-actions">
+          <span class="tec-contagem" id="tec-contagem-${t.id}"></span>
+          <div class="tecnico-actions" onclick="event.stopPropagation()">
             <button class="btn-add-ficha" onclick="abrirModalNovaFicha(${t.id})" title="Nova ficha">+ Ficha</button>
-            <button class="btn-link-tecnico" onclick="abrirRastreadorTecnico(${t.id})" title="Configurar rastreio de localização">${icone('mapa', 'icone-11') || '📍'}</button>
+            <button class="btn-link-tecnico" onclick="abrirRastreadorTecnico(${t.id})" title="Configurar rastreio de localização">${icone('mapa', 'icone-11')}</button>
             <button class="btn-link-tecnico" onclick="copiarLinkTecnico('${t.token || ''}')" title="Copiar link de acesso do técnico">${icone('externo', 'icone-11')}</button>
             <button class="btn-del-tecnico" onclick="deletarTecnico(event,${t.id})" title="Remover técnico">${icone('x', 'icone-11')}</button>
           </div>
@@ -864,6 +927,7 @@ async function carregarFichasTecnico(tecnicoId) {
     // para baixo o que ainda precisa de atenção. Não vira beco sem saída: o
     // Histórico abre a ficha e o botão "Reabrir Rota" continua na tela dela.
     const fichas = await api(`/fichas?tecnico_id=${tecnicoId}&abertas=true`);
+    atualizarContagemTecnico(tecnicoId, fichas.length);
 
     if (fichas.length === 0) {
       container.innerHTML = `<div style="padding:8px 14px;color:var(--text-muted);font-size:11px;">Nenhuma rota em aberto.</div>`;

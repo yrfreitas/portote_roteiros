@@ -2830,3 +2830,48 @@ select:focus-visible,
   display: flex; align-items: center; justify-content: center;
   color: #fff; font-weight: 700; font-size: 12px; border-color: transparent;
 }
+
+/* ─── Técnico recolhido ───────────────────────────────────────────────
+   A barra lateral com 4 técnicos × 5 dias vira uma coluna sem fim.
+   Recolhido, o técnico continua visível — some só a lista de dias. */
+.tecnico-header { cursor: pointer; user-select: none; }
+.tecnico-header:hover { border-color: var(--border-bright); }
+
+.tec-seta {
+  display: inline-flex; align-items: center; flex: none;
+  color: var(--text-muted); font-size: 11px; line-height: 1;
+  transition: transform .18s ease;
+}
+.tecnico-section.recolhido .tec-seta { transform: rotate(-90deg); }
+
+/* Recolher não pode esconder informação: o número diz quantas fichas
+   ficaram ali dentro. Só aparece quando está fechado. */
+.tec-contagem {
+  display: none; flex: none;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  color: var(--text-secondary);
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--border);
+  border-radius: 99px; padding: 1px 7px;
+}
+.tecnico-section.recolhido .tec-contagem:not(:empty) { display: inline-flex; }
+
+/* max-height em vez de display:none para a transição existir. 1400px é teto
+   folgado: nenhum técnico tem tanta ficha aberta, e altura fixa é o preço de
+   poder animar (o navegador não anima até 'auto'). */
+.fichas-do-tecnico {
+  max-height: 1400px; overflow: hidden;
+  transition: max-height .22s ease, opacity .18s ease;
+}
+.tecnico-section.recolhido .fichas-do-tecnico {
+  max-height: 0; opacity: 0; margin: 0;
+}
+.tecnico-section.recolhido { margin-bottom: 6px; }
+
+.btn-recolher-todos {
+  background: none; border: 1px solid var(--border-bright);
+  border-radius: 6px; color: var(--text-secondary);
+  font-size: 12px; line-height: 1; padding: 3px 7px; cursor: pointer;
+  transition: color .15s ease, border-color .15s ease;
+}
+.btn-recolher-todos:hover { color: var(--text-primary); border-color: var(--accent); }
