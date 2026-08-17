@@ -43,7 +43,8 @@
 // v32 = transferir rota inteira ou ponto avulso entre técnicos.
 // v33 = sessão expirada leva ao login + erros do navegador viram registro.
 // v34 = aba Diagnóstico, aviso de pontos sem setor e comparativo de técnicos.
-const CACHE_VERSAO = 'portotec-roteiros-v34';
+// v35 = deploy de verificação (nenhuma mudança de comportamento).
+const CACHE_VERSAO = 'portotec-roteiros-v35';
 
 const ARQUIVOS_CASCA = [
   '/',
