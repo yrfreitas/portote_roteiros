@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v37';
+const VERSAO_PAINEL = 'v38';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -585,7 +585,7 @@ async function abrirClassificacaoEmLote() {
   const btn   = document.getElementById('btn-aplicar-lote');
 
   modal.classList.add('open');
-  corpo.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:20px;"><div class="spinner"></div> Procurando pontos sem setor...</div>`;
+  corpo.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:20px;"><div class="spinner"></div> Procurando atendimentos sem setor...</div>`;
   preencherSelectSetor('lote-setor');
 
   let r;
@@ -598,7 +598,7 @@ async function abrirClassificacaoEmLote() {
 
   const servicos = r.servicos || [];
   if (servicos.length === 0) {
-    corpo.innerHTML = `<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:12px;">Nenhum ponto sem setor. Tudo classificado.</div>`;
+    corpo.innerHTML = `<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:12px;">Nenhum atendimento sem setor. Tudo classificado.</div>`;
     btn.style.display = 'none';
     return;
   }
@@ -665,7 +665,7 @@ async function aplicarClassificacaoEmLote() {
   if (!setorId) { toast('Escolha o setor a aplicar.', 'error'); return; }
 
   const ids = [...document.querySelectorAll('.lote-check:checked')].map(c => parseInt(c.value, 10));
-  if (ids.length === 0) { toast('Marque ao menos um ponto.', 'error'); return; }
+  if (ids.length === 0) { toast('Marque ao menos um atendimento.', 'error'); return; }
 
   const btn = document.getElementById('btn-aplicar-lote');
   btn.disabled = true;
@@ -1079,7 +1079,7 @@ async function carregarDiagnostico() {
   // ── Higiene dos dados
   partes.push(`<div class="diag-secao">Dados</div>`);
   const semSetor = (d.setores && d.setores.sem_setor) || 0;
-  partes.push(_linhaDiag('Pontos sem setor',
+  partes.push(_linhaDiag('Atendimentos sem setor',
     semSetor === 0 ? 'ok' : 'aviso',
     semSetor === 0 ? 'todos classificados' : `${semSetor} sem classificação`,
     semSetor ? `<button class="btn btn-primary btn-sm" onclick="abrirClassificacaoEmLote()">Classificar agora</button>` : ''));
@@ -1131,7 +1131,7 @@ async function verificarPontosSemSetor() {
   }
 
   faixa.innerHTML = `
-    <span><b>${total}</b> ponto${total !== 1 ? 's' : ''} sem setor —
+    <span><b>${total}</b> atendimento${total !== 1 ? 's' : ''} sem setor —
       o relatório por frente fica incompleto enquanto isso.</span>
     <button class="btn btn-primary btn-sm" onclick="abrirClassificacaoEmLote()">Classificar</button>`;
 }
@@ -1163,10 +1163,10 @@ async function carregarComparativoTecnicos() {
             <div class="comp-fatia">${t.fatia}% da carga</div>
           </div>
           <div class="comp-numeros">
-            <div><b>${t.pontos}</b><span>pontos</span></div>
+            <div><b>${t.pontos}</b><span>atendimentos</span></div>
             <div><b>${t.pendentes}</b><span>a fazer</span></div>
             <div><b>${t.km}</b><span>km</span></div>
-            <div><b>${t.km_por_ponto}</b><span>km/ponto</span></div>
+            <div><b>${t.km_por_ponto}</b><span>km por atend.</span></div>
             <div><b>${t.taxa_conclusao}%</b><span>concluído</span></div>
             <div><b>${t.rotas}</b><span>rotas</span></div>
           </div>
@@ -1174,7 +1174,7 @@ async function carregarComparativoTecnicos() {
         </div>`).join('')}
     </div>
     <div class="diag-detalhe" style="margin-top:8px;">
-      <b>km/ponto</b> é o número que compara de verdade: quilometragem alta com
+      <b>km por atendimento</b> é o número que compara de verdade: quilometragem alta com
       muitos pontos é rota cheia; alta com poucos é rota espalhada, que é a que
       pesa no combustível.
     </div>`;
@@ -1553,7 +1553,7 @@ async function carregarFichasTecnico(tecnicoId) {
         </div>
         <div class="ficha-item-meta">
           ${f.data_referencia ? `<span>${esc(formatarData(f.data_referencia))}</span>` : ''}
-          <span class="badge ${f.total_servicos > 0 ? 'accent' : ''}">${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''}</span>
+          <span class="badge ${f.total_servicos > 0 ? 'accent' : ''}">${f.total_servicos} atendimento${f.total_servicos !== 1 ? 's' : ''}</span>
           ${f.distancia_total > 0 ? `<span class="badge">${fmtKm(f.distancia_total)} km</span>` : ''}
         </div>
       </div>`;
@@ -1638,7 +1638,7 @@ async function carregarResumoSetores() {
 
     const linhaSemSetor = semSetor > 0 ? `
         <div class="vg-setor-row vg-setor-row--sem" onclick="abrirClassificacaoEmLote()"
-             title="Clique para classificar estes pontos">
+             title="Clique para classificar estes atendimentos">
           <span class="vg-tecnico-dot" style="background:var(--text-muted)"></span>
           <span class="vg-tecnico-nome" style="color:var(--text-muted)">Sem setor</span>
           <div class="vg-setor-barra">
@@ -1710,7 +1710,7 @@ async function carregarHistorico() {
       </div>
       <div class="vg-stat">
         <div class="vg-valor">${totalPontos}</div>
-        <div class="vg-label">Ponto${totalPontos !== 1 ? 's' : ''} Atendido${totalPontos !== 1 ? 's' : ''}</div>
+        <div class="vg-label">Atendimento${totalPontos !== 1 ? 's' : ''} Atendido${totalPontos !== 1 ? 's' : ''}</div>
       </div>
       <div class="vg-stat">
         <div class="vg-valor">${fmtKm(totalKm)}</div>
@@ -1736,7 +1736,7 @@ async function carregarHistorico() {
           <div class="historico-item-titulo">${esc(f.dia_semana)} <span class="historico-item-tecnico">· ${esc(f.tecnico_nome || '')}</span></div>
           <div class="historico-item-meta">
             ${f.concluida_em ? `<span>${icone('calendario', 'icone-11')} ${formatarDataHora(f.concluida_em)}</span>` : ''}
-            <span>${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''}</span>
+            <span>${f.total_servicos} atendimento${f.total_servicos !== 1 ? 's' : ''}</span>
             <span>${fmtKm(f.distancia_total)} km</span>
             ${f.conciliada_em ? `<span class="conc-tag ok" style="font-size:8px;padding:2px 6px;">planilha ok</span>` : ''}
           </div>
@@ -2270,7 +2270,7 @@ async function renderFichaDetalhe(id) {
         <div class="ficha-sub">${ficha.data_referencia ? `<span style="display:inline-flex;align-items:center;gap:4px;">${icone('calendario', 'icone-12')} ${esc(formatarData(ficha.data_referencia))}</span> · ` : ''}Criado em ${esc(formatarDataHora(ficha.created_at))}</div>
       </div>
       <div class="ficha-acoes">
-        <button class="btn btn-primary" onclick="abrirModalAddServico(${ficha.id})">+ Adicionar Ponto</button>
+        <button class="btn btn-primary" onclick="abrirModalAddServico(${ficha.id})">+ Adicionar Atendimento</button>
         <button class="btn btn-ghost" onclick="transferirFicha(${ficha.id})"
                 title="Passar a rota inteira para outro técnico"
                 style="display:flex;align-items:center;gap:6px;">${icone('usuario', 'icone-13')} Transferir rota</button>
@@ -2289,10 +2289,10 @@ async function renderFichaDetalhe(id) {
       </div>
     </div>
 
-    ${semCoord > 0 ? `<div class="vcep-aviso" style="margin-bottom:18px;">${semCoord} ponto${semCoord > 1 ? 's' : ''} sem coordenada — não entra${semCoord > 1 ? 'm' : ''} no cálculo da rota. Remova e cadastre de novo para corrigir.</div>` : ''}
+    ${semCoord > 0 ? `<div class="vcep-aviso" style="margin-bottom:18px;">${semCoord} atendimento${semCoord > 1 ? 's' : ''} sem coordenada — não entra${semCoord > 1 ? 'm' : ''} no cálculo da rota. Remova e cadastre de novo para corrigir.</div>` : ''}
 
     <div class="stats-strip">
-      <div class="stat-card"><div class="stat-label">Pontos de Serviço</div><div class="stat-value" style="color:${cor}"><span class="stat-num" id="stat-num-pontos">0</span><span class="stat-unit">pts</span></div></div>
+      <div class="stat-card"><div class="stat-label">Atendimentos Técnicos</div><div class="stat-value" style="color:${cor}"><span class="stat-num" id="stat-num-pontos">0</span><span class="stat-unit">pts</span></div></div>
       <div class="stat-card"><div class="stat-label">Distância Estimada</div><div class="stat-value" style="color:${cor}"><span class="stat-num" id="stat-num-dist">${distKm > 0 ? '0,0' : '—'}</span><span class="stat-unit">km</span></div></div>
       <div class="stat-card"><div class="stat-label">Tempo Total (c/ serviços)</div><div class="stat-value" style="color:${cor}"><span class="stat-num" id="stat-num-tempo">${tempo > 0 ? '0min' : '—'}</span><span class="stat-unit"></span></div></div>
     </div>
@@ -2314,7 +2314,7 @@ async function renderFichaDetalhe(id) {
             <div class="panel-header"><div class="panel-icon">${icone('raio', 'icone-15')}</div><span class="panel-title">Otimização de Rota</span></div>
             <div class="panel-body">
               ${temPartida
-                ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">Nearest Neighbor + refinamento <strong>2-opt</strong>, recalculado ao adicionar ou remover pontos.<br><br><span style="color:var(--text-muted);font-size:11px;display:inline-flex;align-items:center;gap:4px;">${icone('info', 'icone-11')} Distância por ruas (linha reta × 1.4) · 40 km/h médios · 20 min por parada</span></div>
+                ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">Nearest Neighbor + refinamento <strong>2-opt</strong>, recalculado ao adicionar ou remover atendimentos.<br><br><span style="color:var(--text-muted);font-size:11px;display:inline-flex;align-items:center;gap:4px;">${icone('info', 'icone-11')} Distância por ruas (linha reta × 1.4) · 40 km/h médios · 20 min por parada</span></div>
                    <button class="btn btn-ghost btn-full" onclick="forcarOtimizacao(${ficha.id})">${icone('atualizar', 'icone-13')} Recalcular Rota Agora</button>`
                 : `<div style="font-size:12px;color:var(--text-muted);">Adicione um CEP de partida para ativar a otimização.</div>`}
             </div>
@@ -2333,10 +2333,10 @@ async function renderFichaDetalhe(id) {
           <div class="mapa-header">
             <div class="panel-icon">${icone('mapa', 'icone-15')}</div>
             <span class="panel-title">Mapa do Roteiro</span>
-            ${temCoordenadas ? `<span class="badge accent" style="margin-left:auto;">${servicos.length} ponto${servicos.length !== 1 ? 's' : ''}</span>` : ''}
+            ${temCoordenadas ? `<span class="badge accent" style="margin-left:auto;">${servicos.length} atendimento${servicos.length !== 1 ? 's' : ''}</span>` : ''}
           </div>
           <div id="mapa-roteiro" class="mapa-container">
-            ${!temCoordenadas ? `<div class="mapa-empty"><div style="margin-bottom:8px;">${icone('pin', 'icone-28')}</div><div style="font-size:12px;color:var(--text-muted);">Adicione pontos com<br>coordenadas para ver o mapa</div></div>` : ''}
+            ${!temCoordenadas ? `<div class="mapa-empty"><div style="margin-bottom:8px;">${icone('pin', 'icone-28')}</div><div style="font-size:12px;color:var(--text-muted);">Adicione atendimentos com<br>coordenadas para ver o mapa</div></div>` : ''}
           </div>
           ${renderClientesRota(servicos)}
         </div>
@@ -2394,7 +2394,7 @@ function animarNumero(el, valorFinal, opcoes = {}) {
 
 function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
   if (servicos.length === 0) {
-    return `<div class="loading-row" style="padding:40px;text-align:center;"><div style="margin-bottom:8px;">${icone('pin', 'icone-24')}</div><div>Nenhum ponto adicionado ainda.</div><div style="font-size:11px;margin-top:4px;color:var(--text-muted);">Clique em "+ Adicionar Ponto" para montar o roteiro.</div></div>`;
+    return `<div class="loading-row" style="padding:40px;text-align:center;"><div style="margin-bottom:8px;">${icone('pin', 'icone-24')}</div><div>Nenhum atendimento adicionado ainda.</div><div style="font-size:11px;margin-top:4px;color:var(--text-muted);">Clique em "+ Adicionar Atendimento" para montar o roteiro.</div></div>`;
   }
 
   const partida = ficha.ponto_partida
@@ -2433,8 +2433,8 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
           ${(s.lat && s.lng) ? `<a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16" target="_blank" rel="noopener" title="Ver no mapa" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('externo', 'icone-13')}</a>` : ''}
           ${(s.lat && s.lng) ? `<a href="https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes" target="_blank" rel="noopener" title="Navegar com Waze" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('navegacao', 'icone-13')}</a>` : ''}
           <button class="btn-a-caminho" onclick="avisarACaminho(${s.id})" title="Avisar no WhatsApp que está a caminho deste cliente">A caminho</button>
-          <button class="btn-editar" onclick="transferirPonto(${s.id}, '${esc(s.cliente || 'este ponto').replace(/'/g, "\'")}')" title="Passar este ponto para outro técnico">${icone('usuario', 'icone-12')}</button>
-          <button class="btn-editar" onclick="abrirModalEditarServico(${s.id})" title="Editar ponto">${icone('editar', 'icone-12')}</button>
+          <button class="btn-editar" onclick="transferirPonto(${s.id}, '${esc(s.cliente || 'este atendimento').replace(/'/g, "\'")}')" title="Passar este atendimento para outro técnico">${icone('usuario', 'icone-12')}</button>
+          <button class="btn-editar" onclick="abrirModalEditarServico(${s.id})" title="Editar atendimento">${icone('editar', 'icone-12')}</button>
           <button class="btn-remove" onclick="removerServico(${s.id},${ficha.id})">${icone('x', 'icone-11')}</button>
         </div>
       </div>`;
@@ -2468,7 +2468,7 @@ ${linkAcompanhar}`);
 
 async function avisarACaminho(servicoId) {
   const s = servicosAtuais.find(x => x.id === servicoId);
-  if (!s) { toast('Ponto não encontrado', 'error'); return; }
+  if (!s) { toast('Atendimento não encontrado', 'error'); return; }
 
   const tecnico = tecnicos.find(t => t.id === fichaAtiva?.tecnico_id);
 
@@ -2655,7 +2655,7 @@ function enviarRotaWhatsApp(ficha, servicos) {
   const ordenados = [...servicos].sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
 
   if (ordenados.length === 0) {
-    toast('Nenhum ponto na rota ainda', 'error');
+    toast('Nenhum atendimento na rota ainda', 'error');
     return;
   }
 
@@ -2688,7 +2688,7 @@ function abrirRotaGoogleMaps(ficha, servicos) {
     .sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999))
     .filter(s => s.endereco_completo);
 
-  if (ordenados.length === 0) { toast('Nenhum ponto com endereço válido', 'error'); return; }
+  if (ordenados.length === 0) { toast('Nenhum atendimento com endereço válido', 'error'); return; }
 
   if (ordenados.length > 11) {
     toast(`Rota com ${ordenados.length} paradas — o Google Maps só aceita 11 por link. Abrindo as 11 primeiras.`, 'info');
@@ -2786,7 +2786,7 @@ function _motivos(s, rank) {
 
   if (s.vazia) {
     m.push({ tipo:'pos', titulo:'Rota ainda vazia',
-             desc:'Nenhum ponto marcado — este CEP definiria o trajeto do dia' });
+             desc:'Nenhum atendimento marcado — este CEP definiria o trajeto do dia' });
     if (d === null || d === undefined) {
       m.push({ tipo:'neg', titulo:'Sem ponto de partida',
                desc:'Cadastre o CEP de partida para a rota ser otimizada' });
@@ -2803,7 +2803,7 @@ function _motivos(s, rank) {
              desc:`${s.pontos_mesma_zona} de ${s.total_pontos} pts já na ${ZONA_LABEL[s.zona_alvo] || 'mesma zona'}` });
   }
 
-  if (d <= 10)      m.push({ tipo:'pos', titulo:'Ponto muito próximo', desc:`${fmtKm(d)} km do ponto mais próximo nessa rota` });
+  if (d <= 10)      m.push({ tipo:'pos', titulo:'Atendimento muito próximo', desc:`${fmtKm(d)} km do atendimento mais próximo nessa rota` });
   else if (d <= 20) m.push({ tipo:'neu', titulo:'Distância moderada',   desc:`${fmtKm(d)} km — aceitável, mas aumenta o trajeto` });
   else              m.push({ tipo:'neg', titulo:'Distância alta',       desc:`${fmtKm(d)} km — pode desviar bastante a rota` });
 
@@ -3425,7 +3425,7 @@ function _vcepExpandir(i, r, prefixo = '') {
       <div class="vcep-metricas">
         <div class="vcep-metrica"><div class="vcep-met-val">${fmtKm(s.dist_minima)}</div><div class="vcep-met-lbl">km do mais próximo</div></div>
         <div class="vcep-metrica"><div class="vcep-met-val">${s.pontos_mesma_zona}</div><div class="vcep-met-lbl">pts mesma zona</div></div>
-        <div class="vcep-metrica"><div class="vcep-met-val">${s.total_pontos || 0}</div><div class="vcep-met-lbl">pontos total</div></div>
+        <div class="vcep-metrica"><div class="vcep-met-val">${s.total_pontos || 0}</div><div class="vcep-met-lbl">atendimentos no total</div></div>
       </div>
       <button class="vcep-btn-add" onclick="event.stopPropagation();vcepSelecionarRota(${s.ficha_id})">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -3570,7 +3570,7 @@ async function vcepAdicionarServico() {
       }),
     });
 
-    toast(`Ponto adicionado! ${fmtKm(r.distancia_total)} km`, 'success');
+    toast(`Atendimento adicionado! ${fmtKm(r.distancia_total)} km`, 'success');
     if (r.aviso) toast(r.aviso, 'info');
 
     mostrarDetalhe();
@@ -3583,7 +3583,7 @@ async function vcepAdicionarServico() {
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = 'Adicionar ponto + otimizar rota'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = 'Adicionar atendimento + otimizar rota'; }
   }
 }
 
@@ -3707,7 +3707,7 @@ async function adicionarServico() {
     lembrarSetor(setorEscolhido);
 
     fecharModais();
-    toast(`Ponto adicionado! Distância estimada: ${fmtKm(r.distancia_total)} km`, 'success');
+    toast(`Atendimento adicionado! Distância estimada: ${fmtKm(r.distancia_total)} km`, 'success');
     if (r.aviso) toast(r.aviso, 'info');
 
     mostrarDetalhe();
@@ -3723,14 +3723,14 @@ async function adicionarServico() {
 }
 
 async function removerServico(servicoId, fichaId) {
-  if (!confirm('Remover este ponto do roteiro?')) return;
+  if (!confirm('Remover este atendimento do roteiro?')) return;
 
   const row = document.getElementById('svc-' + servicoId);
   if (row) row.style.opacity = '0.4';
 
   try {
     const r = await api(`/servicos/${servicoId}`, { method: 'DELETE' });
-    toast(`Ponto removido. ${fmtKm(r.distancia_total)} km`, 'success');
+    toast(`Atendimento removido. ${fmtKm(r.distancia_total)} km`, 'success');
     await renderFichaDetalhe(fichaId);
     await carregarTecnicos();
   } catch (e) {
@@ -3960,7 +3960,7 @@ async function alternarStatusServico(servicoId, novoStatus, fichaId) {
       method: 'PUT',
       body: JSON.stringify({ status: novoStatus }),
     });
-    toast(novoStatus === 'concluido' ? 'Ponto marcado como feito' : 'Ponto reaberto', 'success');
+    toast(novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto', 'success');
     await renderFichaDetalhe(fichaId);
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -3992,7 +3992,7 @@ function abrirModalAddServico(fichaId) {
 
 function abrirModalEditarServico(servicoId) {
   const s = servicosAtuais.find(x => x.id === servicoId);
-  if (!s) { toast('Ponto não encontrado — recarregue a ficha', 'error'); return; }
+  if (!s) { toast('Atendimento não encontrado — recarregue a ficha', 'error'); return; }
 
   document.getElementById('edit-servico-id').value = servicoId;
   document.getElementById('edit-ficha-id').value = fichaAtiva?.id || '';
@@ -4045,7 +4045,7 @@ async function salvarEdicaoServico() {
     lembrarSetor(setorEditado);
 
     fecharModais();
-    toast('Ponto atualizado', 'success');
+    toast('Atendimento atualizado', 'success');
     await renderFichaDetalhe(parseInt(fichaId, 10));
     await carregarTecnicos();
   } catch (e) {

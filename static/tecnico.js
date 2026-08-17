@@ -162,7 +162,7 @@
             ${f.data_referencia === hoje ? '<span class="t-tag-hoje">HOJE</span>' : ''}
             ${f.status === 'concluida' ? '<span class="t-tag-ok">Concluída</span>' : ''}
           </div>
-          <div class="t-ficha-meta">${f.total_servicos} ponto${f.total_servicos !== 1 ? 's' : ''} · ${fmtKm(f.distancia_total)} km</div>
+          <div class="t-ficha-meta">${f.total_servicos} atendimento${f.total_servicos !== 1 ? 's' : ''} · ${fmtKm(f.distancia_total)} km</div>
         </div>
       `).join('');
     } catch (e) {
@@ -224,7 +224,7 @@
       <button class="t-acao-rota ${concluida ? 'reabrir' : ''}" onclick="window._tConcluirRota(${ficha.id}, '${ficha.status || 'pendente'}')">
         ${concluida ? 'Reabrir rota' : 'Concluir rota'}
       </button>
-      ${pontosHtml || '<div class="t-vazio"><p>Nenhum ponto nessa ficha ainda.</p></div>'}
+      ${pontosHtml || '<div class="t-vazio"><p>Nenhum atendimento nessa ficha ainda.</p></div>'}
     `;
   }
 
@@ -485,7 +485,7 @@
   // qualquer aparelho. Custa um toque a mais e nunca falha calada.
   window._tAvisarACaminho = async function (servicoId) {
     const s = servicosAbertos.find(x => x.id === servicoId);
-    if (!s) { toast('Ponto não encontrado'); return; }
+    if (!s) { toast('Atendimento não encontrado'); return; }
 
     // O rastreio comeca ANTES de montar a mensagem, porque o link dele entra
     // no texto. Se falhar, segue sem o link — avisar o cliente sem
@@ -572,7 +572,7 @@
 
     try {
       await api(`/servicos/${servicoId}/status`, opts);
-      toast(novoStatus === 'concluido' ? 'Ponto marcado como feito' : 'Ponto reaberto');
+      toast(novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto');
       if (fichaAbertaId) abrirFicha(fichaAbertaId);
     } catch (e) {
       // TypeError do fetch = não saiu do aparelho. Erro do servidor (regra de
@@ -752,7 +752,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v37';
+  const VERSAO_TELA = 'v38';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

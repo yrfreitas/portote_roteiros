@@ -46,7 +46,8 @@
 // v35 = deploy de verificação (nenhuma mudança de comportamento).
 // v36 = login por pessoa com papéis + chat flutuante com o cliente.
 // v37 = chat da equipe + apagar conversa de cliente.
-const CACHE_VERSAO = 'portotec-roteiros-v37';
+// v38 = "ponto de serviço" vira "atendimento técnico" na tela.
+const CACHE_VERSAO = 'portotec-roteiros-v38';
 
 const ARQUIVOS_CASCA = [
   '/',
