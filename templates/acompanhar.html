@@ -403,6 +403,11 @@
       // cada conexao aberta prenderia uma thread. Oito clientes com o chat
       // aberto travariam a aplicacao. 8s e o meio termo entre parecer vivo e
       // nao torrar dados de quem esta no celular.
+      // Set dos ids ja desenhados: duas buscas concorrentes (o ciclo de 8s
+      // e a disparada logo apos enviar) liam o mesmo chatUltimoId antes de
+      // qualquer uma atualizar, e as duas desenhavam a MESMA mensagem.
+      const chatVistos = new Set();
+      let chatOcupado = false;
       let chatUltimoId = 0;
       let chatAberto = false;
       let chatNaoLidas = 0;
@@ -415,6 +420,8 @@
       function chatDesenhar(msgs) {
         const corpo = document.getElementById('chat-corpo');
         msgs.forEach(m => {
+          if (chatVistos.has(m.id)) return;
+          chatVistos.add(m.id);
           const div = document.createElement('div');
           const tipo = m.autor_tipo === 'cliente' ? 'minha'
                      : (m.autor_tipo === 'sistema' ? 'sistema' : 'deles');
@@ -437,12 +444,15 @@
       }
 
       async function chatBuscar() {
+        if (chatOcupado) return;
+        chatOcupado = true;
         try {
           const r = await fetch(`/api/chat/${TOKEN}?desde=${chatUltimoId}`, { cache: 'no-store' });
           if (!r.ok) return;
           const d = await r.json();
           if (d.mensagens && d.mensagens.length) chatDesenhar(d.mensagens);
         } catch { /* sem sinal: tenta no proximo ciclo */ }
+        finally { chatOcupado = false; }
       }
 
       document.getElementById('chat-bolha').addEventListener('click', () => {

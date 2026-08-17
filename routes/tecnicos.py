@@ -125,14 +125,41 @@ def zona_sp(cep) -> str:
 @tecnicos_bp.route("/tecnicos", methods=["GET"])
 def listar_tecnicos():
     with db_conn() as conn:
+        # A FOTO fica de fora da listagem de propósito.
+        #
+        # Ela é um data URI de ~30 KB por técnico e esta rota é rebaixada a
+        # cada auto-refresh do painel: com dois técnicos eram 62 KB de rede a
+        # cada ciclo, para uma imagem que não muda. Agora vai em rota própria,
+        # com cache longo no navegador — o painel baixa uma vez por sessão.
         tecnicos = fetch_all(conn, """
-            SELECT t.*, COUNT(f.id) AS total_fichas
+            SELECT t.id, t.nome, t.cor, t.token, t.created_at,
+                   CASE WHEN t.foto IS NULL THEN 0 ELSE 1 END AS tem_foto,
+                   COUNT(f.id) AS total_fichas
             FROM tecnicos t
             LEFT JOIN fichas f ON f.tecnico_id = t.id
             GROUP BY t.id
             ORDER BY t.nome
         """)
     return jsonify(tecnicos)
+
+
+@tecnicos_bp.route("/tecnicos/<int:tecnico_id>/foto", methods=["GET"])
+def obter_foto(tecnico_id):
+    """A foto, separada da listagem. Cache longo: imagem de perfil muda uma
+    vez por ano, e sem cache o painel rebaixaria 30 KB a cada ciclo."""
+    from flask import Response
+
+    with db_conn() as conn:
+        linha = fetch_one(conn, "SELECT foto FROM tecnicos WHERE id = ?", (tecnico_id,))
+
+    if not linha or not linha.get("foto"):
+        return jsonify({"erro": "Sem foto"}), 404
+
+    resp = jsonify({"foto": linha["foto"]})
+    # 1 hora no navegador. Trocar a foto recarrega o painel, então o usuário
+    # vê a nova na hora; quem não trocou não paga a rede de novo.
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
 
 
 @tecnicos_bp.route("/tecnicos", methods=["POST"])

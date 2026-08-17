@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 IS_PG = bool(DATABASE_URL)
@@ -15,8 +16,44 @@ SQLITE_PATH = os.environ.get(
 )
 
 
+# POOL DE CONEXÕES.
+#
+# Antes, cada requisição abria uma conexão nova com o Postgres do Railway —
+# e abrir conexão com banco remoto custa MAIS que a consulta em si (handshake
+# TCP + TLS + autenticação). Com o painel pedindo de 10 em 10 segundos, dois
+# técnicos em campo e o rastreador enviando posição, isso virou a maior parte
+# do tempo de resposta: em 2026-08-17 o /api/versao, que lê UMA linha e
+# devolve 0,1 KB, levava 5 segundos.
+#
+# maxconn=10 casa com o Procfile (`--threads 8`) e sobra folga para as duas
+# conexões que algumas rotas abrem em sequência. Mais que isso só ocuparia
+# slot no servidor de banco sem ninguém para usar.
+_pool = None
+
+if IS_PG:
+    try:
+        _pool = psycopg2.pool.ThreadedConnectionPool(
+            1, 10, DATABASE_URL,
+            cursor_factory=psycopg2.extras.RealDictCursor,
+            connect_timeout=10,
+        )
+    except Exception:
+        # Sem pool o sistema continua funcionando, só mais devagar. Preferível
+        # a não subir de jeito nenhum por causa de uma otimização.
+        _pool = None
+
+
 def _connect():
     if IS_PG:
+        if _pool is not None:
+            conn = _pool.getconn()
+            # Conexão reaproveitada pode voltar suja de uma transação abortada.
+            # O rollback aqui garante que quem pega recebe folha limpa.
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return conn
         return psycopg2.connect(
             DATABASE_URL,
             cursor_factory=psycopg2.extras.RealDictCursor,
@@ -48,8 +85,13 @@ def db_conn(commit: bool = False):
             pass
         raise
     finally:
+        # Com pool, "fechar" é DEVOLVER: fechar de verdade jogaria fora a
+        # conexão que acabamos de pagar para abrir, e o pool ficaria inútil.
         try:
-            conn.close()
+            if IS_PG and _pool is not None:
+                _pool.putconn(conn)
+            else:
+                conn.close()
         except Exception:
             pass
 

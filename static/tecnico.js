@@ -752,7 +752,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v38';
+  const VERSAO_TELA = 'v39';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
@@ -766,6 +766,8 @@
   // O tecnico em campo nao tem conta: ele se identifica pelo TOKEN do proprio
   // link, igual ao resto do app dele. A sala e a mesma do painel, entao o que
   // o Kalebe escreve aparece aqui e vice-versa.
+  const equipeVistos = new Set();   // trava contra mensagem duplicada
+  let equipeOcupado = false;
   let equipeUltimoId = 0;
   let equipeAberto = false;
   let equipeNaoLidas = 0;
@@ -818,11 +820,15 @@
   }
 
   async function equipeBuscar() {
+    if (equipeOcupado) return;
+    equipeOcupado = true;
     try {
       const d = await api(`/equipe?desde=${equipeUltimoId}`);
       const corpo = document.getElementById('t-chat-corpo');
       if (!corpo) return;
       (d.mensagens || []).forEach((m) => {
+        if (equipeVistos.has(m.id)) return;
+        equipeVistos.add(m.id);
         const minha = m.autor_nome === d.eu;
         const tipo = m.autor_tipo === 'sistema' ? 'sistema' : (minha ? 'minha' : 'deles');
         const nome = tipo === 'deles' ? `<b>${esc(m.autor_nome || '')}</b><br>` : '';
@@ -839,6 +845,7 @@
         badge.classList.toggle('tem', equipeNaoLidas > 0);
       }
     } catch { /* sem sinal: proximo ciclo */ }
+    finally { equipeOcupado = false; }
   }
 
   equipeMontar();

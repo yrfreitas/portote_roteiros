@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v38';
+const VERSAO_PAINEL = 'v39';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -288,6 +288,7 @@ async function _lerRevisao() {
   if (!resp.ok) throw new Error('revisão indisponível');
   const dados = await resp.json();
   _conferirVersaoDoPainel(dados.app);
+  if (typeof pintarBadgeChat === 'function') pintarBadgeChat(dados.chat_nao_lidas);
   return dados.revisao;
 }
 
@@ -708,6 +709,8 @@ function copiarLinkTecnico(token) {
 let chatSalaAberta = null;
 let chatUltimoIdPainel = 0;
 let chatModo = 'clientes';   // 'clientes' | 'equipe'
+const chatIdsVistos = new Set();   // trava contra desenhar a mesma mensagem 2x
+let chatBuscando = false;          // trava contra duas buscas ao mesmo tempo
 
 // Apagar conversa some com o registro do que foi combinado com o cliente —
 // por isso confirma, e por isso o servidor só deixa admin fazer.
@@ -732,6 +735,7 @@ async function abrirChatEquipe() {
   chatModo = 'equipe';
   chatSalaAberta = null;
   chatUltimoIdPainel = 0;
+  chatIdsVistos.clear();
 
   const corpo = document.getElementById('painel-chat-corpo');
   const form = document.getElementById('painel-chat-form');
@@ -750,10 +754,13 @@ async function abrirChatEquipe() {
 
 async function atualizarChatEquipe() {
   const corpo = document.getElementById('painel-chat-corpo');
-  if (!corpo || chatModo !== 'equipe') return;
+  if (!corpo || chatModo !== 'equipe' || chatBuscando) return;
+  chatBuscando = true;
   try {
     const d = await api(`/equipe/mensagens?desde=${chatUltimoIdPainel}`);
     (d.mensagens || []).forEach(m => {
+      if (chatIdsVistos.has(m.id)) return;
+      chatIdsVistos.add(m.id);
       // "minha" é a mensagem de quem está com a tela aberta.
       const minha = m.autor_nome === (usuarioLogado.nome || '');
       const tipo = m.autor_tipo === 'sistema' ? 'sistema' : (minha ? 'minha' : 'deles');
@@ -765,6 +772,10 @@ async function atualizarChatEquipe() {
     });
     if ((d.mensagens || []).length) corpo.scrollTop = corpo.scrollHeight;
   } catch { /* sem rede: próximo ciclo */ }
+  // finally é obrigatório: sem ele a trava ficaria presa para sempre na
+  // primeira falha de rede, e o chat da equipe pararia de atualizar em
+  // silêncio — que é o pior tipo de defeito neste sistema.
+  finally { chatBuscando = false; }
 }
 
 function _msgHtml(m) {
@@ -815,6 +826,7 @@ async function carregarConversas() {
 async function abrirConversa(sala, cliente) {
   chatSalaAberta = sala;
   chatUltimoIdPainel = 0;
+  chatIdsVistos.clear();   // conversa nova, tela limpa
 
   const corpo = document.getElementById('painel-chat-corpo');
   const form = document.getElementById('painel-chat-form');
@@ -830,32 +842,41 @@ async function abrirConversa(sala, cliente) {
 }
 
 async function atualizarConversaAberta() {
-  if (!chatSalaAberta) return;
+  if (!chatSalaAberta || chatBuscando) return;
+  chatBuscando = true;
   const corpo = document.getElementById('painel-chat-corpo');
   try {
     const r = await fetch(`${BASE}/api/chat/${chatSalaAberta}?desde=${chatUltimoIdPainel}`,
                           { cache: 'no-store' });
     if (!r.ok) return;
     const d = await r.json();
+    let novas = 0;
     (d.mensagens || []).forEach(m => {
+      if (chatIdsVistos.has(m.id)) return;   // ja esta na tela
+      chatIdsVistos.add(m.id);
       corpo.insertAdjacentHTML('beforeend', _msgHtml(m));
       chatUltimoIdPainel = Math.max(chatUltimoIdPainel, m.id);
+      novas++;
     });
-    if ((d.mensagens || []).length) corpo.scrollTop = corpo.scrollHeight;
+    if (novas) corpo.scrollTop = corpo.scrollHeight;
   } catch { /* sem rede: próximo ciclo */ }
+  finally { chatBuscando = false; }
 }
 
 // O contador vermelho é o que faz alguém abrir a janela. Sem ele, mensagem de
 // cliente ficaria esperando alguém lembrar de olhar.
-async function atualizarBadgeChat() {
+// O numero vem DE CARONA no /api/versao (ver _lerRevisao). Tinha polling
+// proprio de 10s: com o painel aberto eram 12 pedidos por minuto por aba,
+// num servidor de um worker so.
+function pintarBadgeChat(n) {
   const badge = document.getElementById('painel-chat-badge');
   if (!badge) return;
-  try {
-    const d = await api('/chat/conversas');
-    const n = d.nao_lidas || 0;
-    badge.textContent = n;
-    badge.classList.toggle('tem', n > 0);
-  } catch { /* silencioso: badge não pode gerar erro na tela */ }
+  badge.textContent = n || 0;
+  badge.classList.toggle('tem', (n || 0) > 0);
+}
+
+async function atualizarBadgeChat() {
+  try { pintarBadgeChat((await api('/chat/conversas')).nao_lidas); } catch {}
 }
 
 function iniciarChatPainel() {
@@ -893,12 +914,12 @@ function iniciarChatPainel() {
     }
   });
 
-  atualizarBadgeChat();
+  // Sem polling proprio: com a janela FECHADA o contador chega pelo
+  // /api/versao, que ja roda de 10 em 10 segundos.
   setInterval(() => {
-    const aberta = janela.classList.contains('aberto');
-    if (aberta && chatModo === 'equipe') atualizarChatEquipe();
-    else if (aberta && chatSalaAberta) atualizarConversaAberta();
-    else atualizarBadgeChat();
+    if (!janela.classList.contains('aberto')) return;
+    if (chatModo === 'equipe') atualizarChatEquipe();
+    else if (chatSalaAberta) atualizarConversaAberta();
   }, 10000);
 }
 
@@ -1308,12 +1329,52 @@ function atualizarContagemTecnico(tecnicoId, quantas) {
 // coisa à outra. Para caber, o navegador reduz a imagem ANTES de enviar —
 // foto de celular tem 4 MB e chegaria como 5,5 MB em base64.
 
+// A foto NÃO vem mais na listagem de técnicos: era um data URI de ~30 KB por
+// pessoa, e a listagem é rebaixada a cada auto-refresh — 62 KB de rede a cada
+// ciclo para uma imagem que não muda. Agora vem de rota própria, com cache de
+// 1 hora no navegador, e fica guardada aqui para o resto da sessão.
+const _fotosCache = {};
+
 function avatarTecnico(t) {
   const inicial = (t.nome || '?').trim().charAt(0).toUpperCase();
-  return t.foto
-    ? `<img src="${t.foto}" class="tec-avatar" alt="" onclick="escolherFotoTecnico(${t.id})" title="Trocar foto">`
-    : `<div class="tec-avatar sem-foto" style="background:${escCor(t.cor)}"
-         onclick="escolherFotoTecnico(${t.id})" title="Adicionar foto">${esc(inicial)}</div>`;
+  const src = t.foto || _fotosCache[t.id];
+
+  if (src) {
+    return `<img src="${src}" class="tec-avatar" alt=""
+              onclick="escolherFotoTecnico(${t.id})" title="Trocar foto">`;
+  }
+
+  // Sem a foto em mãos, desenha a inicial AGORA e busca a imagem em paralelo —
+  // esperar a foto para desenhar a barra lateral deixaria a tela em branco por
+  // causa de um enfeite.
+  if (t.tem_foto) carregarFotoTecnico(t.id);
+
+  return `<div class="tec-avatar sem-foto" data-tecnico="${t.id}"
+            style="background:${escCor(t.cor)}"
+            onclick="escolherFotoTecnico(${t.id})"
+            title="${t.tem_foto ? 'Carregando foto...' : 'Adicionar foto'}">${esc(inicial)}</div>`;
+}
+
+async function carregarFotoTecnico(id) {
+  if (_fotosCache[id] === undefined) _fotosCache[id] = null;  // evita buscar 2x
+  else return;
+
+  try {
+    const d = await api(`/tecnicos/${id}/foto`);
+    _fotosCache[id] = d.foto;
+    // Troca só os avatares daquele técnico que já estão na tela, sem
+    // redesenhar a barra lateral inteira.
+    document.querySelectorAll(`.tec-avatar[data-tecnico="${id}"]`).forEach(el => {
+      const img = document.createElement('img');
+      img.src = d.foto;
+      img.className = 'tec-avatar';
+      img.title = 'Trocar foto';
+      img.onclick = () => escolherFotoTecnico(id);
+      el.replaceWith(img);
+    });
+  } catch {
+    _fotosCache[id] = null;   // sem foto: fica a inicial colorida
+  }
 }
 
 // Reduz para um quadrado de 256px em JPEG. O recorte é central e mantém a
@@ -1403,6 +1464,7 @@ function escolherFotoTecnico(tecnicoId) {
       return;
     }
 
+    delete _fotosCache[tecnicoId];
     toast('Foto atualizada', 'success');
     await carregarTecnicos();
   };
@@ -1416,6 +1478,7 @@ async function removerFotoTecnico(tecnicoId) {
     await api(`/tecnicos/${tecnicoId}/foto`, {
       method: 'PUT', body: JSON.stringify({ foto: '' }),
     });
+    delete _fotosCache[tecnicoId];
     toast('Foto removida', 'success');
     await carregarTecnicos();
   } catch (e) { toast(e.message, 'error'); }

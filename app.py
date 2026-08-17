@@ -11,7 +11,7 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from database import bump_revisao, db_conn, init_db, ler_revisao
+from database import IS_PG, bump_revisao, db_conn, init_db, ler_revisao
 from extensions import VERSAO_APP, limiter
 from routes.auth import auth_bp
 from routes.chat import chat_bp
@@ -327,10 +327,29 @@ def versao():
     PÁGINA recarrega — que era o problema do app do técnico e voltou a morder
     aqui: o Kalebe tentou subir foto rodando a versão anterior.
     """
+    from database import fetch_one
     from extensions import VERSAO_APP
 
+    # O contador de mensagens não lidas PEGA CARONA aqui.
+    #
+    # Ele tinha polling próprio de 10s: com o painel aberto eram 12 pedidos por
+    # minuto por aba, num servidor de UM worker. Como esta rota já é chamada no
+    # mesmo ritmo, mandar o número junto custa uma consulta barata e elimina
+    # metade do tráfego do painel.
     with db_conn() as conn:
-        return jsonify({**ler_revisao(conn), "app": VERSAO_APP})
+        dados = {**ler_revisao(conn), "app": VERSAO_APP}
+        try:
+            nl = fetch_one(conn, """
+                SELECT COUNT(*) AS n FROM mensagens
+                 WHERE autor_tipo = 'cliente' AND lida = FALSE
+            """ if IS_PG else """
+                SELECT COUNT(*) AS n FROM mensagens
+                 WHERE autor_tipo = 'cliente' AND lida = 0
+            """)
+            dados["chat_nao_lidas"] = (nl or {}).get("n", 0)
+        except Exception:
+            dados["chat_nao_lidas"] = 0
+        return jsonify(dados)
 
 
 # 'unsafe-inline' em script-src é uma concessão consciente: index.html e app.js

@@ -47,7 +47,8 @@
 // v36 = login por pessoa com papéis + chat flutuante com o cliente.
 // v37 = chat da equipe + apagar conversa de cliente.
 // v38 = "ponto de serviço" vira "atendimento técnico" na tela.
-const CACHE_VERSAO = 'portotec-roteiros-v38';
+// v39 = fim das mensagens duplicadas + site mais rápido (pool, menos tráfego).
+const CACHE_VERSAO = 'portotec-roteiros-v39';
 
 const ARQUIVOS_CASCA = [
   '/',
