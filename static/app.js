@@ -242,11 +242,36 @@ const INTERVALO_REVISAO = 10000;
 let _revisaoConhecida = null;
 let _recarregandoAuto = false;
 
+// Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
+// do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
+const VERSAO_PAINEL = 'v29';
+
 async function _lerRevisao() {
   const resp = await fetch(`${BASE}/api/versao`, { cache: 'no-store' });
   if (!resp.ok) throw new Error('revisão indisponível');
   const dados = await resp.json();
+  _conferirVersaoDoPainel(dados.app);
   return dados.revisao;
+}
+
+// Recarrega a página quando o servidor já serve código mais novo.
+//
+// O painel fica aberto o dia inteiro; sem isto, correção nenhuma chega até
+// alguém lembrar de apertar F5. Foi o que aconteceu com a subida de foto: o
+// código novo estava no ar e a tela do Kalebe rodava o antigo.
+//
+// Só recarrega com a tela OCIOSA — mesma disciplina do auto-refresh: jogar
+// fora um formulário meio preenchido seria pior que esperar o próximo ciclo.
+function _conferirVersaoDoPainel(versaoServidor) {
+  if (!versaoServidor || versaoServidor === VERSAO_PAINEL) return;
+
+  const ocupado = document.querySelector('.modal-overlay.open')
+    || (document.activeElement
+        && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));
+  if (ocupado) return;
+
+  toast('Atualizando o sistema...', 'info');
+  setTimeout(() => location.reload(), 700);
 }
 
 // Chamado depois das escrituras do próprio usuário: a tela dele já se
@@ -633,25 +658,54 @@ function avatarTecnico(t) {
 
 // Reduz para um quadrado de 256px em JPEG. O recorte é central e mantém a
 // proporção: esticar rosto para caber num quadrado fica ruim em qualquer foto.
-function reduzirImagem(arquivo, lado = 256, qualidade = 0.82) {
+//
+// DUAS TENTATIVAS, e a segunda é o que faz foto de iPhone funcionar:
+// o iPhone salva em HEIC por padrão, e a maioria dos navegadores NÃO decodifica
+// HEIC pela tag <img> — a imagem simplesmente não carrega e o erro morre calado.
+// O createImageBitmap aceita mais formatos e serve de rede de segurança.
+// Quando os dois falham, a mensagem diz o que fazer, em vez de sumir.
+async function reduzirImagem(arquivo, lado = 256, qualidade = 0.82) {
+  const desenhar = (fonte, largura, altura) => {
+    const corte = Math.min(largura, altura);
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = lado;
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(fonte, (largura - corte) / 2, (altura - corte) / 2,
+                  corte, corte, 0, 0, lado, lado);
+    return cv.toDataURL('image/jpeg', qualidade);
+  };
+
+  // Caminho 1: createImageBitmap — mais tolerante a formato.
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bmp = await createImageBitmap(arquivo);
+      const url = desenhar(bmp, bmp.width, bmp.height);
+      bmp.close && bmp.close();
+      return url;
+    } catch { /* cai para o caminho 2 */ }
+  }
+
+  // Caminho 2: <img> com objectURL. Funciona onde o de cima não existe.
   return new Promise((resolve, reject) => {
-    const leitor = new FileReader();
-    leitor.onerror = () => reject(new Error('Não consegui ler o arquivo'));
-    leitor.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Arquivo não é uma imagem válida'));
-      img.onload = () => {
-        const corte = Math.min(img.width, img.height);
-        const cv = document.createElement('canvas');
-        cv.width = cv.height = lado;
-        cv.getContext('2d').drawImage(
-          img, (img.width - corte) / 2, (img.height - corte) / 2, corte, corte,
-          0, 0, lado, lado);
-        resolve(cv.toDataURL('image/jpeg', qualidade));
-      };
-      img.src = leitor.result;
+    const url = URL.createObjectURL(arquivo);
+    const img = new Image();
+    img.onload = () => {
+      try { resolve(desenhar(img, img.naturalWidth, img.naturalHeight)); }
+      catch (e) { reject(new Error('Não consegui processar a imagem: ' + e.message)); }
+      finally { URL.revokeObjectURL(url); }
     };
-    leitor.readAsDataURL(arquivo);
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      const nome = (arquivo.name || '').toLowerCase();
+      reject(new Error(
+        nome.endsWith('.heic') || nome.endsWith('.heif')
+          ? 'Foto em HEIC (formato do iPhone) — o navegador não abre esse tipo. '
+            + 'No iPhone: Ajustes > Câmera > Formatos > "Mais compatível". '
+            + 'Ou tire um print da foto e envie o print.'
+          : 'Esse arquivo não é uma imagem que o navegador consiga abrir.'));
+    };
+    img.src = url;
   });
 }
 
@@ -659,18 +713,40 @@ function escolherFotoTecnico(tecnicoId) {
   const entrada = document.createElement('input');
   entrada.type = 'file';
   entrada.accept = 'image/*';
+  // Fora do documento, alguns navegadores descartam o elemento antes do
+  // change disparar e a escolha do arquivo se perde sem erro nenhum.
+  entrada.style.display = 'none';
+  document.body.appendChild(entrada);
+
   entrada.onchange = async () => {
     const arquivo = entrada.files && entrada.files[0];
+    entrada.remove();
     if (!arquivo) return;
+
+    // Cada etapa avisa. Antes, qualquer falha aqui era silêncio absoluto —
+    // o Kalebe escolhia a foto e "não dava em nada".
+    toast('Preparando a foto...', 'info');
+    let foto;
     try {
-      const foto = await reduzirImagem(arquivo);
+      foto = await reduzirImagem(arquivo);
+    } catch (e) {
+      toast(e.message, 'error');
+      return;
+    }
+
+    try {
       await api(`/tecnicos/${tecnicoId}/foto`, {
         method: 'PUT', body: JSON.stringify({ foto }),
       });
-      toast('Foto atualizada', 'success');
-      await carregarTecnicos();
-    } catch (e) { toast(e.message, 'error'); }
+    } catch (e) {
+      toast('Falha ao gravar: ' + e.message, 'error');
+      return;
+    }
+
+    toast('Foto atualizada', 'success');
+    await carregarTecnicos();
   };
+
   entrada.click();
 }
 

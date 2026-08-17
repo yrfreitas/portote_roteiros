@@ -166,8 +166,16 @@ def _marcar_revisao(resp):
 
 @app.route("/api/versao")
 def versao():
+    """`revisao` = os DADOS mudaram. `app` = o CÓDIGO mudou.
+
+    O painel fica aberto o dia inteiro e o JS só é buscado da rede quando a
+    PÁGINA recarrega — que era o problema do app do técnico e voltou a morder
+    aqui: o Kalebe tentou subir foto rodando a versão anterior.
+    """
+    from extensions import VERSAO_APP
+
     with db_conn() as conn:
-        return jsonify(ler_revisao(conn))
+        return jsonify({**ler_revisao(conn), "app": VERSAO_APP})
 
 
 # 'unsafe-inline' em script-src é uma concessão consciente: index.html e app.js

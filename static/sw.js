@@ -37,7 +37,8 @@
 // v26 = o celular reporta versão e estado do GPS (fim do diagnóstico às cegas).
 // v27 = rastreador nativo (Traccar Client) no lugar do GPS do navegador.
 // v28 = foto de perfil do técnico + rastreador separado por técnico.
-const CACHE_VERSAO = 'portotec-roteiros-v28';
+// v29 = foto aceita HEIC/iPhone + painel se atualiza sozinho.
+const CACHE_VERSAO = 'portotec-roteiros-v29';
 
 const ARQUIVOS_CASCA = [
   '/',
