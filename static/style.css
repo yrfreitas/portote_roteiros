@@ -2993,3 +2993,20 @@ select:focus-visible,
 .conversa-item.nova { border-color: #e04c4c; background: rgba(224,76,76,.06); }
 .conversa-nome { font-size: 12.5px; font-weight: 700; }
 .conversa-previa { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Abas dentro da janela de chat: clientes x equipe */
+.chat-abas { display: flex; gap: 6px; }
+.chat-aba {
+  background: none; border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text-secondary); font-size: 11px; font-weight: 600;
+  padding: 4px 10px; cursor: pointer; font-family: inherit;
+}
+.chat-aba.ativa { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.conversa-item { display: flex; align-items: flex-start; gap: 8px; }
+.conversa-item > div:first-child { flex: 1; min-width: 0; }
+.conversa-apagar {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; padding: 2px 4px; flex: none; border-radius: 5px;
+}
+.conversa-apagar:hover { color: #ff8a8a; background: rgba(224,76,76,.12); }

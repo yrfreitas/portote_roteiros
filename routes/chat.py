@@ -173,3 +173,106 @@ def marcar_lida(sala):
              WHERE sala = ? AND autor_tipo = 'cliente'
         """, (sala,))
     return jsonify({"ok": True})
+
+
+# ─── Apagar conversa (só admin) ─────────────────────────────────────────
+@chat_bp.route("/chat/<sala>", methods=["DELETE"])
+def apagar_conversa(sala):
+    """Remove a conversa inteira de um atendimento.
+
+    Só admin: apagar conversa é destruir registro do que foi combinado com o
+    cliente. O rastreio e o atendimento continuam — some a conversa, não o
+    trabalho.
+    """
+    from routes.auth import e_admin
+    if not e_admin():
+        return jsonify({"erro": "Só o administrador pode apagar conversas"}), 403
+
+    with db_conn(commit=True) as conn:
+        apagadas = execute(conn, "DELETE FROM mensagens WHERE sala = ?", (sala,))
+
+    return jsonify({"mensagem": f"{apagadas} mensagem(ns) apagada(s)",
+                    "apagadas": apagadas})
+
+
+# ─── Chat da EQUIPE ─────────────────────────────────────────────────────
+#
+# Sala fixa 'equipe'. Fica em rotas PRÓPRIAS, e não em /chat/<sala>, por um
+# motivo de segurança: o caminho /api/chat/ é público (o link do cliente é a
+# credencial dele). Se a conversa interna morasse lá, qualquer pessoa de fora
+# leria o que a equipe combina só digitando o endereço.
+#
+# Aqui há duas portas para a MESMA sala, porque as duas pontas se identificam
+# de jeitos diferentes: o painel pela sessão, o técnico em campo pelo token do
+# link dele — ele não tem conta.
+SALA_EQUIPE = "equipe"
+
+
+def _mensagens_equipe(desde: int):
+    with db_conn() as conn:
+        return fetch_all(conn, """
+            SELECT id, autor_tipo, autor_nome, texto, criado_em
+              FROM mensagens WHERE sala = ? AND id > ?
+             ORDER BY id
+        """, (SALA_EQUIPE, desde))
+
+
+def _desde():
+    try:
+        return int(request.args.get("desde") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+@chat_bp.route("/equipe/mensagens", methods=["GET"])
+def equipe_ler():
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    linhas = _mensagens_equipe(_desde())
+    return jsonify({"mensagens": linhas,
+                    "ultimo_id": linhas[-1]["id"] if linhas else _desde()})
+
+
+@chat_bp.route("/equipe/mensagens", methods=["POST"])
+def equipe_escrever():
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+
+    texto = ((request.get_json(silent=True) or {}).get("texto") or "").strip()
+    if not texto:
+        return jsonify({"erro": "Escreva alguma coisa"}), 400
+
+    with db_conn(commit=True) as conn:
+        publicar(conn, SALA_EQUIPE, texto,
+                 autor_tipo=session.get("papel") or "admin",
+                 autor_nome=session.get("usuario_nome") or "Administrador")
+    return jsonify({"ok": True}), 201
+
+
+@chat_bp.route("/t/<token>/equipe", methods=["GET"])
+def equipe_ler_tecnico(token):
+    """Mesma conversa, pela porta do técnico em campo (identificado pelo token)."""
+    with db_conn() as conn:
+        tecnico = fetch_one(conn, "SELECT nome FROM tecnicos WHERE token = ?", (token,))
+    if not tecnico:
+        return jsonify({"erro": "Link inválido"}), 404
+
+    linhas = _mensagens_equipe(_desde())
+    return jsonify({"mensagens": linhas, "eu": tecnico["nome"],
+                    "ultimo_id": linhas[-1]["id"] if linhas else _desde()})
+
+
+@chat_bp.route("/t/<token>/equipe", methods=["POST"])
+def equipe_escrever_tecnico(token):
+    texto = ((request.get_json(silent=True) or {}).get("texto") or "").strip()
+    if not texto:
+        return jsonify({"erro": "Escreva alguma coisa"}), 400
+
+    with db_conn(commit=True) as conn:
+        tecnico = fetch_one(conn, "SELECT nome FROM tecnicos WHERE token = ?", (token,))
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+        publicar(conn, SALA_EQUIPE, texto,
+                 autor_tipo="tecnico", autor_nome=tecnico["nome"])
+
+    return jsonify({"ok": True}), 201

@@ -45,7 +45,8 @@
 // v34 = aba Diagnóstico, aviso de pontos sem setor e comparativo de técnicos.
 // v35 = deploy de verificação (nenhuma mudança de comportamento).
 // v36 = login por pessoa com papéis + chat flutuante com o cliente.
-const CACHE_VERSAO = 'portotec-roteiros-v36';
+// v37 = chat da equipe + apagar conversa de cliente.
+const CACHE_VERSAO = 'portotec-roteiros-v37';
 
 const ARQUIVOS_CASCA = [
   '/',

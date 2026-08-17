@@ -752,7 +752,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v36';
+  const VERSAO_TELA = 'v37';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
@@ -760,6 +760,90 @@
     selo.textContent = VERSAO_TELA;
     document.body.appendChild(selo);
   })();
+
+
+  // ===== CHAT DA EQUIPE =====
+  // O tecnico em campo nao tem conta: ele se identifica pelo TOKEN do proprio
+  // link, igual ao resto do app dele. A sala e a mesma do painel, entao o que
+  // o Kalebe escreve aparece aqui e vice-versa.
+  let equipeUltimoId = 0;
+  let equipeAberto = false;
+  let equipeNaoLidas = 0;
+
+  function equipeMontar() {
+    if (document.getElementById('t-chat-bolha')) return;
+
+    const bolha = document.createElement('button');
+    bolha.id = 't-chat-bolha';
+    bolha.className = 't-chat-bolha';
+    bolha.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="t-chat-badge" id="t-chat-badge"></span>`;
+    document.body.appendChild(bolha);
+
+    const janela = document.createElement('div');
+    janela.id = 't-chat-janela';
+    janela.className = 't-chat-janela';
+    janela.innerHTML = `
+      <div class="t-chat-topo">Equipe<small>Conversa interna — o cliente não vê</small></div>
+      <div class="t-chat-corpo" id="t-chat-corpo"></div>
+      <form class="t-chat-envio" id="t-chat-form">
+        <input id="t-chat-texto" placeholder="Mensagem..." autocomplete="off" maxlength="1000">
+        <button type="submit">↑</button>
+      </form>`;
+    document.body.appendChild(janela);
+
+    bolha.addEventListener('click', () => {
+      equipeAberto = !equipeAberto;
+      janela.classList.toggle('aberto', equipeAberto);
+      if (equipeAberto) {
+        equipeNaoLidas = 0;
+        document.getElementById('t-chat-badge').classList.remove('tem');
+        document.getElementById('t-chat-corpo').scrollTop = 1e6;
+      }
+    });
+
+    document.getElementById('t-chat-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const campo = document.getElementById('t-chat-texto');
+      const texto = campo.value.trim();
+      if (!texto) return;
+      campo.value = '';
+      try {
+        await api('/equipe', { method: 'POST', body: JSON.stringify({ texto }) });
+        equipeBuscar();
+      } catch (err) {
+        campo.value = texto;   // devolve: perder mensagem sem avisar e pior
+        toast('Sem conexão — tente de novo');
+      }
+    });
+  }
+
+  async function equipeBuscar() {
+    try {
+      const d = await api(`/equipe?desde=${equipeUltimoId}`);
+      const corpo = document.getElementById('t-chat-corpo');
+      if (!corpo) return;
+      (d.mensagens || []).forEach((m) => {
+        const minha = m.autor_nome === d.eu;
+        const tipo = m.autor_tipo === 'sistema' ? 'sistema' : (minha ? 'minha' : 'deles');
+        const nome = tipo === 'deles' ? `<b>${esc(m.autor_nome || '')}</b><br>` : '';
+        corpo.insertAdjacentHTML('beforeend',
+          `<div class="t-msg ${tipo}">${nome}${esc(m.texto)}</div>`);
+        equipeUltimoId = Math.max(equipeUltimoId, m.id);
+        if (!equipeAberto && !minha) equipeNaoLidas++;
+      });
+      if ((d.mensagens || []).length) corpo.scrollTop = corpo.scrollHeight;
+
+      const badge = document.getElementById('t-chat-badge');
+      if (badge) {
+        badge.textContent = equipeNaoLidas;
+        badge.classList.toggle('tem', equipeNaoLidas > 0);
+      }
+    } catch { /* sem sinal: proximo ciclo */ }
+  }
+
+  equipeMontar();
+  equipeBuscar();
+  setInterval(equipeBuscar, 15000);   // 15s: rede movel, mais espacado que o painel
 
   carregarFichas().then(atualizarAvisoTopo);
 

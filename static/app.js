@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v36';
+const VERSAO_PAINEL = 'v37';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -707,6 +707,65 @@ function copiarLinkTecnico(token) {
 // cada conexão aberta prenderia uma thread (mesma razão do auto-refresh).
 let chatSalaAberta = null;
 let chatUltimoIdPainel = 0;
+let chatModo = 'clientes';   // 'clientes' | 'equipe'
+
+// Apagar conversa some com o registro do que foi combinado com o cliente —
+// por isso confirma, e por isso o servidor só deixa admin fazer.
+async function apagarConversa(ev, sala, cliente) {
+  ev.stopPropagation();
+  if (!confirm(`Apagar a conversa com ${cliente || 'este cliente'}?
+
+As mensagens somem para os dois lados. O atendimento e o link continuam.`)) return;
+  try {
+    const r = await api(`/chat/${sala}`, { method: 'DELETE' });
+    toast(r.mensagem, 'success');
+    carregarConversas();
+    atualizarBadgeChat();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Chat da equipe ─────────────────────────────────────────────────
+// Mesma janela, outra sala. Fica em rota PRÓPRIA no servidor (/api/equipe),
+// e não em /api/chat/<sala>, porque aquele caminho é público — a conversa
+// interna lá seria legível por qualquer um que digitasse o endereço.
+async function abrirChatEquipe() {
+  chatModo = 'equipe';
+  chatSalaAberta = null;
+  chatUltimoIdPainel = 0;
+
+  const corpo = document.getElementById('painel-chat-corpo');
+  const form = document.getElementById('painel-chat-form');
+  document.getElementById('painel-chat-topo').innerHTML = `
+    <div class="chat-abas">
+      <button class="chat-aba" onclick="carregarConversas()">Clientes</button>
+      <button class="chat-aba ativa" onclick="abrirChatEquipe()">Equipe</button>
+    </div>
+    <small>Conversa interna — o cliente não vê isto</small>`;
+  corpo.innerHTML = '';
+  form.style.display = 'flex';
+  document.getElementById('painel-chat-texto').placeholder = 'Mensagem para a equipe...';
+
+  await atualizarChatEquipe();
+}
+
+async function atualizarChatEquipe() {
+  const corpo = document.getElementById('painel-chat-corpo');
+  if (!corpo || chatModo !== 'equipe') return;
+  try {
+    const d = await api(`/equipe/mensagens?desde=${chatUltimoIdPainel}`);
+    (d.mensagens || []).forEach(m => {
+      // "minha" é a mensagem de quem está com a tela aberta.
+      const minha = m.autor_nome === (usuarioLogado.nome || '');
+      const tipo = m.autor_tipo === 'sistema' ? 'sistema' : (minha ? 'minha' : 'deles');
+      const nome = tipo === 'deles' ? `<b>${esc(m.autor_nome || '')}</b><br>` : '';
+      corpo.insertAdjacentHTML('beforeend',
+        `<div class="msg ${tipo}">${nome}${esc(m.texto)}
+           <span class="hora">${esc((m.criado_em || '').slice(11, 16))}</span></div>`);
+      chatUltimoIdPainel = Math.max(chatUltimoIdPainel, m.id);
+    });
+    if ((d.mensagens || []).length) corpo.scrollTop = corpo.scrollHeight;
+  } catch { /* sem rede: próximo ciclo */ }
+}
 
 function _msgHtml(m) {
   const tipo = m.autor_tipo === 'cliente' ? 'deles'
@@ -723,8 +782,13 @@ async function carregarConversas() {
   if (!corpo) return;
 
   chatSalaAberta = null;
+  chatModo = 'clientes';
   form.style.display = 'none';
-  topo.innerHTML = 'Conversas<small>Clientes que escreveram pelo link de acompanhamento</small>';
+  topo.innerHTML = `
+    <div class="chat-abas">
+      <button class="chat-aba ativa" onclick="carregarConversas()">Clientes</button>
+      <button class="chat-aba" onclick="abrirChatEquipe()">Equipe</button>
+    </div>`;
 
   let d;
   try { d = await api('/chat/conversas'); }
@@ -734,12 +798,17 @@ async function carregarConversas() {
   corpo.innerHTML = cs.length === 0
     ? `<div class="conversa-previa">Nenhuma conversa ainda. Elas aparecem quando o cliente escreve pelo link de acompanhamento.</div>`
     : cs.map(c => `
-      <div class="conversa-item ${c.nao_lidas > 0 ? 'nova' : ''}"
-           onclick="abrirConversa('${esc(c.sala)}', '${esc(c.cliente || '')}')">
-        <div class="conversa-nome">${esc(c.cliente || 'Cliente')}
-          ${c.nao_lidas > 0 ? `<span style="color:#ff8a8a">· ${c.nao_lidas} nova(s)</span>` : ''}</div>
-        <div class="conversa-previa">${esc((c.ultima || {}).texto || '')}</div>
-        <div class="conversa-previa">técnico ${esc(c.tecnico || '')}${c.ativo ? '' : ' · atendimento encerrado'}</div>
+      <div class="conversa-item ${c.nao_lidas > 0 ? 'nova' : ''}">
+        <div onclick="abrirConversa('${esc(c.sala)}', '${esc(c.cliente || '')}')">
+          <div class="conversa-nome">${esc(c.cliente || 'Cliente')}
+            ${c.nao_lidas > 0 ? `<span style="color:#ff8a8a">· ${c.nao_lidas} nova(s)</span>` : ''}</div>
+          <div class="conversa-previa">${esc((c.ultima || {}).texto || '')}</div>
+          <div class="conversa-previa">técnico ${esc(c.tecnico || '')}${c.ativo ? '' : ' · atendimento encerrado'}</div>
+        </div>
+        <button class="conversa-apagar" title="Apagar esta conversa"
+                onclick="apagarConversa(event, '${esc(c.sala)}', '${esc(c.cliente || '')}')">
+          ${icone('x', 'icone-11')}
+        </button>
       </div>`).join('');
 }
 
@@ -805,13 +874,19 @@ function iniciarChatPainel() {
     e.preventDefault();
     const campo = document.getElementById('painel-chat-texto');
     const texto = campo.value.trim();
-    if (!texto || !chatSalaAberta) return;
+    if (!texto) return;
+    if (chatModo !== 'equipe' && !chatSalaAberta) return;
     campo.value = '';
     try {
-      await api(`/chat/${chatSalaAberta}/responder`, {
-        method: 'POST', body: JSON.stringify({ texto }),
-      });
-      atualizarConversaAberta();
+      if (chatModo === 'equipe') {
+        await api('/equipe/mensagens', { method: 'POST', body: JSON.stringify({ texto }) });
+        await atualizarChatEquipe();
+      } else {
+        await api(`/chat/${chatSalaAberta}/responder`, {
+          method: 'POST', body: JSON.stringify({ texto }),
+        });
+        atualizarConversaAberta();
+      }
     } catch (err) {
       campo.value = texto;  // devolve o texto: perder mensagem sem avisar é pior
       toast(err.message, 'error');
@@ -820,7 +895,9 @@ function iniciarChatPainel() {
 
   atualizarBadgeChat();
   setInterval(() => {
-    if (janela.classList.contains('aberto') && chatSalaAberta) atualizarConversaAberta();
+    const aberta = janela.classList.contains('aberto');
+    if (aberta && chatModo === 'equipe') atualizarChatEquipe();
+    else if (aberta && chatSalaAberta) atualizarConversaAberta();
     else atualizarBadgeChat();
   }, 10000);
 }
