@@ -44,7 +44,8 @@
 // v33 = sessão expirada leva ao login + erros do navegador viram registro.
 // v34 = aba Diagnóstico, aviso de pontos sem setor e comparativo de técnicos.
 // v35 = deploy de verificação (nenhuma mudança de comportamento).
-const CACHE_VERSAO = 'portotec-roteiros-v35';
+// v36 = login por pessoa com papéis + chat flutuante com o cliente.
+const CACHE_VERSAO = 'portotec-roteiros-v36';
 
 const ARQUIVOS_CASCA = [
   '/',

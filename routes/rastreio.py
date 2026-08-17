@@ -166,6 +166,15 @@ def iniciar(token, servico_id):
         """, (novo_token, servico_id, tecnico["id"], _agora(),
               _prever_minutos(conn, servico_id)))
 
+        # O aviso cai na conversa do cliente sozinho. É o que o Kalebe pediu:
+        # a pessoa abre o link, vê o mapa E já encontra a mensagem dizendo que
+        # o técnico saiu — sem ninguém precisar digitar.
+        from routes.chat import publicar
+        publicar(conn, novo_token,
+                 f"{tecnico['nome'].split(' ')[0]} saiu e está a caminho. "
+                 "Acompanhe pelo mapa acima — se precisar, é só escrever aqui.",
+                 autor_tipo="sistema", autor_nome="Porto Tec")
+
     return jsonify({"token": novo_token, "reaproveitado": False}), 201
 
 

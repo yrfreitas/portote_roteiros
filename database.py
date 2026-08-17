@@ -214,6 +214,38 @@ _SCHEMA_PG = [
         gps_erro     TEXT,
         visto_em     TEXT
     )""",
+    # Pessoas que entram no sistema, com o papel de cada uma.
+    #
+    # Até 2026-08-17 havia UMA senha de admin para todo mundo: o sistema sabia
+    # que "alguém logado" agiu, nunca QUEM. Com dois técnicos em campo isso
+    # deixou de servir — e o Kalebe pediu que o técnico não veja o diagnóstico
+    # nem o resto do que é de desenvolvedor.
+    #
+    # `tecnico_id` liga a pessoa ao técnico das rotas, para o painel dele já
+    # abrir no que é dele.
+    """CREATE TABLE IF NOT EXISTS usuarios (
+        id          SERIAL PRIMARY KEY,
+        nome        TEXT NOT NULL,
+        login       TEXT NOT NULL UNIQUE,
+        senha_hash  TEXT NOT NULL,
+        papel       TEXT NOT NULL DEFAULT 'tecnico',
+        tecnico_id  INTEGER REFERENCES tecnicos(id) ON DELETE SET NULL,
+        ativo       BOOLEAN DEFAULT TRUE,
+        criado_em   TEXT DEFAULT CURRENT_TIMESTAMP,
+        ultimo_acesso TEXT
+    )""",
+    # Mensagens do chat. Uma SALA por conversa: o token do rastreio quando é
+    # com o cliente daquele atendimento, e 'equipe' para a conversa interna.
+    # Assim o cliente só enxerga a própria conversa, sem precisar de conta.
+    """CREATE TABLE IF NOT EXISTS mensagens (
+        id         SERIAL PRIMARY KEY,
+        sala       TEXT NOT NULL,
+        autor_tipo TEXT NOT NULL,
+        autor_nome TEXT,
+        texto      TEXT NOT NULL,
+        criado_em  TEXT,
+        lida       BOOLEAN DEFAULT FALSE
+    )""",
     # Erros que acontecem no NAVEGADOR de quem usa o sistema.
     #
     # Existe porque "o site fica dando erro toda hora" é impossível de
@@ -340,6 +372,27 @@ _SCHEMA_SQLITE = """
         visto_em     TEXT,
         FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome        TEXT NOT NULL,
+        login       TEXT NOT NULL UNIQUE,
+        senha_hash  TEXT NOT NULL,
+        papel       TEXT NOT NULL DEFAULT 'tecnico',
+        tecnico_id  INTEGER,
+        ativo       INTEGER DEFAULT 1,
+        criado_em   TEXT DEFAULT CURRENT_TIMESTAMP,
+        ultimo_acesso TEXT,
+        FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS mensagens (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        sala       TEXT NOT NULL,
+        autor_tipo TEXT NOT NULL,
+        autor_nome TEXT,
+        texto      TEXT NOT NULL,
+        criado_em  TEXT,
+        lida       INTEGER DEFAULT 0
+    );
     CREATE TABLE IF NOT EXISTS erros_cliente (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
         quando    TEXT,
@@ -370,6 +423,7 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_servicos_setor   ON servicos(setor_id)",
     "CREATE INDEX IF NOT EXISTS idx_rastreios_servico ON rastreios(servico_id)",
     "CREATE INDEX IF NOT EXISTS idx_rastreios_ativo   ON rastreios(ativo)",
+    "CREATE INDEX IF NOT EXISTS idx_mensagens_sala    ON mensagens(sala, id)",
 ]
 
 _MIGRACOES_PG = [

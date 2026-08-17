@@ -68,16 +68,21 @@
 <body>
   <div class="login-card">
     <div class="login-titulo">Portotec — Roteiros</div>
-    <div class="login-sub">Acesso restrito. Informe a senha de administrador.</div>
+    <div class="login-sub">Entre com o seu usuário e senha.</div>
 
     {% if erro %}
     <div class="login-erro">{{ erro }}</div>
     {% endif %}
 
     <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
+      <label class="login-label" for="usuario">Usuário</label>
+      <input class="form-input" type="text" id="usuario" name="usuario" autofocus
+             autocomplete="username" autocapitalize="none" spellcheck="false"
+             style="margin-bottom:14px;">
+
       <label class="login-label" for="senha">Senha</label>
-      <input class="form-input" type="password" id="senha" name="senha" autofocus required
-             style="margin-bottom:18px;">
+      <input class="form-input" type="password" id="senha" name="senha" required
+             autocomplete="current-password" style="margin-bottom:18px;">
       <button class="btn btn-primary btn-full" type="submit">Entrar</button>
     </form>
   </div>

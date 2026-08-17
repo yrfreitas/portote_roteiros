@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v35';
+const VERSAO_PAINEL = 'v36';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -400,6 +400,8 @@ document.addEventListener('DOMContentLoaded', () => {
   iniciarMonitorSaude();
   iniciarAutoRefresh();
   iniciarFiltroHistorico();
+  carregarUsuarioLogado();
+  iniciarChatPainel();
   carregarTecnicos();
   _vcepRenderHistorico();
   carregarSeloPecas();
@@ -696,6 +698,229 @@ function copiarLinkTecnico(token) {
     .catch(() => toast(link, 'info'));
 }
 
+// ─── Conversas com clientes (lado da empresa) ───────────────────────
+//
+// A mesma bolinha que o cliente vê, do outro lado do balcão. Duas telas
+// dentro da mesma janela: a lista de conversas e a conversa aberta.
+//
+// Polling de 10s, não websocket: o servidor roda com 1 worker e 8 threads e
+// cada conexão aberta prenderia uma thread (mesma razão do auto-refresh).
+let chatSalaAberta = null;
+let chatUltimoIdPainel = 0;
+
+function _msgHtml(m) {
+  const tipo = m.autor_tipo === 'cliente' ? 'deles'
+             : (m.autor_tipo === 'sistema' ? 'sistema' : 'minha');
+  const nome = tipo === 'deles' && m.autor_nome ? `<b>${esc(m.autor_nome)}</b><br>` : '';
+  return `<div class="msg ${tipo}">${nome}${esc(m.texto)}
+            <span class="hora">${esc((m.criado_em || '').slice(11, 16))}</span></div>`;
+}
+
+async function carregarConversas() {
+  const corpo = document.getElementById('painel-chat-corpo');
+  const form = document.getElementById('painel-chat-form');
+  const topo = document.getElementById('painel-chat-topo');
+  if (!corpo) return;
+
+  chatSalaAberta = null;
+  form.style.display = 'none';
+  topo.innerHTML = 'Conversas<small>Clientes que escreveram pelo link de acompanhamento</small>';
+
+  let d;
+  try { d = await api('/chat/conversas'); }
+  catch (e) { corpo.innerHTML = `<div class="conversa-previa">${esc(e.message)}</div>`; return; }
+
+  const cs = d.conversas || [];
+  corpo.innerHTML = cs.length === 0
+    ? `<div class="conversa-previa">Nenhuma conversa ainda. Elas aparecem quando o cliente escreve pelo link de acompanhamento.</div>`
+    : cs.map(c => `
+      <div class="conversa-item ${c.nao_lidas > 0 ? 'nova' : ''}"
+           onclick="abrirConversa('${esc(c.sala)}', '${esc(c.cliente || '')}')">
+        <div class="conversa-nome">${esc(c.cliente || 'Cliente')}
+          ${c.nao_lidas > 0 ? `<span style="color:#ff8a8a">· ${c.nao_lidas} nova(s)</span>` : ''}</div>
+        <div class="conversa-previa">${esc((c.ultima || {}).texto || '')}</div>
+        <div class="conversa-previa">técnico ${esc(c.tecnico || '')}${c.ativo ? '' : ' · atendimento encerrado'}</div>
+      </div>`).join('');
+}
+
+async function abrirConversa(sala, cliente) {
+  chatSalaAberta = sala;
+  chatUltimoIdPainel = 0;
+
+  const corpo = document.getElementById('painel-chat-corpo');
+  const form = document.getElementById('painel-chat-form');
+  document.getElementById('painel-chat-topo').innerHTML =
+    `<span style="cursor:pointer" onclick="carregarConversas()">← ${esc(cliente || 'Cliente')}</span>
+     <small>Responder como Porto Tec</small>`;
+  corpo.innerHTML = '';
+  form.style.display = 'flex';
+
+  await atualizarConversaAberta();
+  try { await api(`/chat/${sala}/lida`, { method: 'PUT' }); } catch {}
+  atualizarBadgeChat();
+}
+
+async function atualizarConversaAberta() {
+  if (!chatSalaAberta) return;
+  const corpo = document.getElementById('painel-chat-corpo');
+  try {
+    const r = await fetch(`${BASE}/api/chat/${chatSalaAberta}?desde=${chatUltimoIdPainel}`,
+                          { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    (d.mensagens || []).forEach(m => {
+      corpo.insertAdjacentHTML('beforeend', _msgHtml(m));
+      chatUltimoIdPainel = Math.max(chatUltimoIdPainel, m.id);
+    });
+    if ((d.mensagens || []).length) corpo.scrollTop = corpo.scrollHeight;
+  } catch { /* sem rede: próximo ciclo */ }
+}
+
+// O contador vermelho é o que faz alguém abrir a janela. Sem ele, mensagem de
+// cliente ficaria esperando alguém lembrar de olhar.
+async function atualizarBadgeChat() {
+  const badge = document.getElementById('painel-chat-badge');
+  if (!badge) return;
+  try {
+    const d = await api('/chat/conversas');
+    const n = d.nao_lidas || 0;
+    badge.textContent = n;
+    badge.classList.toggle('tem', n > 0);
+  } catch { /* silencioso: badge não pode gerar erro na tela */ }
+}
+
+function iniciarChatPainel() {
+  const bolha = document.getElementById('painel-chat-bolha');
+  const janela = document.getElementById('painel-chat-janela');
+  const form = document.getElementById('painel-chat-form');
+  if (!bolha) return;
+
+  bolha.addEventListener('click', () => {
+    const abrindo = !janela.classList.contains('aberto');
+    janela.classList.toggle('aberto', abrindo);
+    if (abrindo) carregarConversas();
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const campo = document.getElementById('painel-chat-texto');
+    const texto = campo.value.trim();
+    if (!texto || !chatSalaAberta) return;
+    campo.value = '';
+    try {
+      await api(`/chat/${chatSalaAberta}/responder`, {
+        method: 'POST', body: JSON.stringify({ texto }),
+      });
+      atualizarConversaAberta();
+    } catch (err) {
+      campo.value = texto;  // devolve o texto: perder mensagem sem avisar é pior
+      toast(err.message, 'error');
+    }
+  });
+
+  atualizarBadgeChat();
+  setInterval(() => {
+    if (janela.classList.contains('aberto') && chatSalaAberta) atualizarConversaAberta();
+    else atualizarBadgeChat();
+  }, 10000);
+}
+
+// ─── Quem está logado, e o que essa pessoa pode ver ─────────────────
+//
+// O servidor JÁ bloqueia as rotas de administrador (ver _PREFIXOS_SO_ADMIN em
+// app.py). Esconder aqui é sobre não oferecer o que a pessoa não pode usar —
+// menu escondido sozinho seria decoração, porque quem souber o endereço entra
+// do mesmo jeito.
+let usuarioLogado = { papel: 'admin', nome: '' };
+
+async function carregarUsuarioLogado() {
+  try { usuarioLogado = await api('/eu'); } catch { return; }
+
+  const admin = usuarioLogado.papel === 'admin';
+  const aba = document.getElementById('mtab-diagnostico');
+  if (aba) aba.style.display = admin ? '' : 'none';
+
+  const marca = document.getElementById('usuario-logado');
+  if (marca) {
+    marca.textContent = usuarioLogado.nome || '';
+    marca.title = admin ? 'Administrador' : 'Técnico';
+  }
+}
+
+// ─── Acessos (só admin, dentro da aba Diagnóstico) ──────────────────
+async function carregarAcessos() {
+  const alvo = document.getElementById('acessos-corpo');
+  if (!alvo) return;
+
+  let d;
+  try { d = await api('/usuarios'); }
+  catch (e) { alvo.innerHTML = `<div class="diag-detalhe">${esc(e.message)}</div>`; return; }
+
+  const us = d.usuarios || [];
+  alvo.innerHTML = `
+    ${us.map(u => `
+      <div class="diag-item">
+        <div class="diag-titulo">${esc(u.nome)}
+          <span class="diag-detalhe" style="grid-column:auto;">${esc(u.login)}</span>
+        </div>
+        <div>
+          ${_selo(u.papel === 'admin' ? 'ok' : 'aviso',
+                  u.papel === 'admin' ? 'administrador' : 'técnico')}
+          <button class="btn btn-ghost btn-sm" onclick="trocarSenhaUsuario(${u.id}, '${esc(u.nome)}')">Trocar senha</button>
+          <button class="btn btn-ghost btn-sm" onclick="removerUsuario(${u.id}, '${esc(u.nome)}')">Remover</button>
+        </div>
+        <div class="diag-detalhe">
+          ${u.tecnico_nome ? 'ligado ao técnico ' + esc(u.tecnico_nome) + ' · ' : ''}
+          ${u.ultimo_acesso ? 'último acesso ' + esc(u.ultimo_acesso) : 'nunca entrou'}
+        </div>
+      </div>`).join('')}
+    <button class="btn btn-primary btn-sm" style="margin-top:10px;"
+            onclick="criarUsuario()">+ Novo acesso</button>`;
+}
+
+async function criarUsuario() {
+  const nome = prompt('Nome da pessoa:');
+  if (!nome) return;
+  const login = prompt('Usuário para entrar (sem espaço):');
+  if (!login) return;
+  const senha = prompt('Senha (mínimo 6 caracteres):');
+  if (!senha) return;
+  const ehAdmin = confirm('Este acesso é de ADMINISTRADOR?\n\nOK = administrador (vê tudo)\nCancelar = técnico (não vê diagnóstico)');
+
+  let tecnico_id = null;
+  if (!ehAdmin && (tecnicos || []).length) {
+    const lista = tecnicos.map((t, i) => `${i + 1}) ${t.nome}`).join('\n');
+    const r = prompt(`Ligar a qual técnico das rotas? (deixe vazio para nenhum)\n\n${lista}`);
+    const idx = parseInt(r, 10) - 1;
+    if (idx >= 0 && idx < tecnicos.length) tecnico_id = tecnicos[idx].id;
+  }
+
+  try {
+    await api('/usuarios', { method: 'POST', body: JSON.stringify({
+      nome, login, senha, papel: ehAdmin ? 'admin' : 'tecnico', tecnico_id }) });
+    toast('Acesso criado', 'success');
+    carregarAcessos();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function trocarSenhaUsuario(id, nome) {
+  const senha = prompt(`Nova senha para ${nome} (mínimo 6 caracteres):`);
+  if (!senha) return;
+  try {
+    await api(`/usuarios/${id}`, { method: 'PUT', body: JSON.stringify({ senha }) });
+    toast('Senha trocada', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function removerUsuario(id, nome) {
+  if (!confirm(`Remover o acesso de ${nome}?`)) return;
+  try {
+    await api(`/usuarios/${id}`, { method: 'DELETE' });
+    toast('Acesso removido', 'success');
+    carregarAcessos();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 // ─── Aba Diagnóstico: saúde do sistema numa tela ────────────────────
 //
 // Existe para o Kalebe parar de me perguntar "está funcionando?". Cada um
@@ -800,7 +1025,10 @@ async function carregarDiagnostico() {
       </div>`).join(''));
   }
 
-  alvo.innerHTML = `<div class="diag-versao">Sistema na versão ${esc(d.app || '—')}</div>` + partes.join('');
+  alvo.innerHTML = `<div class="diag-versao">Sistema na versão ${esc(d.app || '—')}</div>`
+    + partes.join('')
+    + `<div class="diag-secao">Acessos ao sistema</div><div id="acessos-corpo"></div>`;
+  carregarAcessos();
 }
 
 

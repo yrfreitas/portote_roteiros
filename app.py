@@ -14,6 +14,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from database import bump_revisao, db_conn, init_db, ler_revisao
 from extensions import VERSAO_APP, limiter
 from routes.auth import auth_bp
+from routes.chat import chat_bp
 from routes.fichas import fichas_bp
 from routes.pedidos import pedidos_bp
 from routes.rastreio import rastreio_bp
@@ -85,6 +86,7 @@ app.register_blueprint(setores_bp, url_prefix="/api")
 app.register_blueprint(tecnico_api_bp, url_prefix="/api/t")
 app.register_blueprint(tecnico_view_bp)
 app.register_blueprint(rastreio_bp, url_prefix="/api")
+app.register_blueprint(chat_bp, url_prefix="/api")
 
 
 def _e_api() -> bool:
@@ -96,7 +98,29 @@ _CAMINHOS_PUBLICOS = {"/login", "/api/health", "/api/erro-cliente"}
 # não tem conta no sistema. O link de 16 bytes é a credencial — mesmo modelo do
 # link do técnico. Só expõem posição e destino daquele atendimento.
 _PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
-                      "/acompanhar/", "/api/rastreio/")
+                      "/acompanhar/", "/api/rastreio/", "/api/chat/")
+
+
+# Rotas que só o ADMIN vê. É o pedido do Kalebe: o técnico entra no sistema,
+# mas não enxerga diagnóstico, erro de servidor nem cadastro de gente — o que
+# ele chamou de "coisa de desenvolvedor".
+#
+# Bloquear no SERVIDOR e não só escondendo o botão: menu escondido é
+# decoração, quem souber o endereço entra do mesmo jeito.
+_PREFIXOS_SO_ADMIN = (
+    "/api/diagnostico", "/api/erros-cliente", "/api/rastreios/diagnostico",
+    "/api/pedidos/agoraos", "/api/pedidos/diagnostico", "/api/usuarios",
+)
+
+
+@app.before_request
+def _exigir_papel():
+    if not request.path.startswith(_PREFIXOS_SO_ADMIN):
+        return
+    if not session.get("admin"):
+        return  # o _exigir_autenticacao abaixo trata quem nem logado está
+    if (session.get("papel") or "admin") != "admin":
+        return jsonify({"erro": "Esta área é só do administrador"}), 403
 
 
 @app.before_request

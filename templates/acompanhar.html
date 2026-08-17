@@ -53,6 +53,57 @@
     .tec-nome { font-size: 15px; font-weight: 700; }
     .tec-papel { font-size: 11.5px; color: #7f8d9b; margin-top: 2px; }
 
+
+    /* ─── Chat flutuante ────────────────────────────────────────────
+       Bolinha no canto direito. O cliente nao tem conta e nao vai criar uma
+       para perguntar "que horas ele chega?" -- o link dele JA e a credencial,
+       entao a conversa vive dentro da propria pagina de acompanhamento. */
+    .chat-bolha {
+      position: fixed; right: 16px; bottom: 16px; z-index: 900;
+      width: 56px; height: 56px; border-radius: 50%;
+      background: #1a6fd4; color: #fff; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 20px rgba(0,0,0,.45);
+      transition: transform .15s ease;
+    }
+    .chat-bolha:hover { transform: scale(1.06); }
+    .chat-bolha .badge-chat {
+      position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px;
+      border-radius: 99px; background: #e04c4c; color: #fff;
+      font-size: 11px; font-weight: 700; display: none;
+      align-items: center; justify-content: center; padding: 0 5px;
+    }
+    .chat-bolha .badge-chat.tem { display: flex; }
+
+    .chat-janela {
+      position: fixed; right: 16px; bottom: 82px; z-index: 900;
+      width: min(340px, calc(100vw - 32px)); max-height: min(460px, 70vh);
+      display: none; flex-direction: column;
+      background: #10161c; border: 1px solid #1e252d; border-radius: 14px;
+      box-shadow: 0 10px 34px rgba(0,0,0,.55); overflow: hidden;
+    }
+    .chat-janela.aberto { display: flex; }
+    .chat-topo {
+      padding: 12px 14px; border-bottom: 1px solid #1e252d;
+      font-size: 13px; font-weight: 700;
+    }
+    .chat-topo small { display: block; font-weight: 400; font-size: 11px; color: #7f8d9b; margin-top: 2px; }
+    .chat-corpo { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .msg { max-width: 82%; padding: 8px 11px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
+    .msg .hora { display: block; font-size: 10px; opacity: .6; margin-top: 3px; }
+    .msg.deles { align-self: flex-start; background: #1b2530; border-bottom-left-radius: 4px; }
+    .msg.minha { align-self: flex-end; background: #1a6fd4; border-bottom-right-radius: 4px; }
+    .msg.sistema { align-self: center; background: rgba(42,160,92,.14); color: #9fe3ba; font-size: 12px; text-align: center; }
+    .chat-envio { display: flex; gap: 6px; padding: 10px; border-top: 1px solid #1e252d; }
+    .chat-envio input {
+      flex: 1; background: #0c1116; border: 1px solid #1e252d; border-radius: 9px;
+      color: #e8edf3; padding: 9px 11px; font-size: 13px; font-family: inherit;
+    }
+    .chat-envio button {
+      background: #1a6fd4; color: #fff; border: none; border-radius: 9px;
+      padding: 0 14px; cursor: pointer; font-weight: 600;
+    }
+
     /* Leaflet injeta estilo inline nos tiles; sem isso o mapa fica claro
        demais ao lado do resto da página. */
     .leaflet-tile { filter: brightness(.85) saturate(.9); }
@@ -75,6 +126,23 @@
     </div>
     <div class="detalhe" id="detalhe"></div>
     <div id="caixa-aviso"></div>
+  </div>
+
+
+  <button class="chat-bolha" id="chat-bolha" aria-label="Falar com a Porto Tec">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+    <span class="badge-chat" id="chat-badge"></span>
+  </button>
+
+  <div class="chat-janela" id="chat-janela" role="dialog" aria-label="Conversa com a Porto Tec">
+    <div class="chat-topo">Falar com a Porto Tec
+      <small>Dúvida sobre o atendimento? Escreva aqui.</small>
+    </div>
+    <div class="chat-corpo" id="chat-corpo"></div>
+    <form class="chat-envio" id="chat-form">
+      <input id="chat-texto" placeholder="Escreva sua mensagem..." autocomplete="off" maxlength="1000">
+      <button type="submit" aria-label="Enviar">↑</button>
+    </form>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -324,6 +392,92 @@
         // requisicoes para ver um numero de previsao que nem mudou.
         return pos && pos.ao_vivo ? 'aovivo' : false;
       }
+
+
+      // ─── Chat com a Porto Tec ─────────────────────────────────────
+      // A SALA e o proprio token do link: quem tem o link fala nesta conversa
+      // e em nenhuma outra. Isso da identidade, escopo e validade de graca --
+      // um chat generico teria que construir os tres.
+      //
+      // Polling e nao websocket: o servidor roda com 1 worker e 8 threads, e
+      // cada conexao aberta prenderia uma thread. Oito clientes com o chat
+      // aberto travariam a aplicacao. 8s e o meio termo entre parecer vivo e
+      // nao torrar dados de quem esta no celular.
+      let chatUltimoId = 0;
+      let chatAberto = false;
+      let chatNaoLidas = 0;
+
+      function chatHora(txt) {
+        const d = hora(txt);
+        return d ? formatar(d) : '';
+      }
+
+      function chatDesenhar(msgs) {
+        const corpo = document.getElementById('chat-corpo');
+        msgs.forEach(m => {
+          const div = document.createElement('div');
+          const tipo = m.autor_tipo === 'cliente' ? 'minha'
+                     : (m.autor_tipo === 'sistema' ? 'sistema' : 'deles');
+          div.className = 'msg ' + tipo;
+          const nome = (tipo === 'deles' && m.autor_nome) ? `<b>${m.autor_nome}</b><br>` : '';
+          div.innerHTML = `${nome}${String(m.texto).replace(/[<>&]/g, c => (
+            { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}
+            <span class="hora">${chatHora(m.criado_em)}</span>`;
+          corpo.appendChild(div);
+          chatUltimoId = Math.max(chatUltimoId, m.id);
+
+          // So conta como nao lida o que veio DELES com a janela fechada.
+          if (!chatAberto && tipo !== 'minha') chatNaoLidas++;
+        });
+        if (msgs.length) corpo.scrollTop = corpo.scrollHeight;
+
+        const badge = document.getElementById('chat-badge');
+        badge.textContent = chatNaoLidas;
+        badge.classList.toggle('tem', chatNaoLidas > 0);
+      }
+
+      async function chatBuscar() {
+        try {
+          const r = await fetch(`/api/chat/${TOKEN}?desde=${chatUltimoId}`, { cache: 'no-store' });
+          if (!r.ok) return;
+          const d = await r.json();
+          if (d.mensagens && d.mensagens.length) chatDesenhar(d.mensagens);
+        } catch { /* sem sinal: tenta no proximo ciclo */ }
+      }
+
+      document.getElementById('chat-bolha').addEventListener('click', () => {
+        chatAberto = !chatAberto;
+        document.getElementById('chat-janela').classList.toggle('aberto', chatAberto);
+        if (chatAberto) {
+          chatNaoLidas = 0;
+          document.getElementById('chat-badge').classList.remove('tem');
+          document.getElementById('chat-texto').focus();
+          document.getElementById('chat-corpo').scrollTop = 1e6;
+        }
+      });
+
+      document.getElementById('chat-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const campo = document.getElementById('chat-texto');
+        const texto = campo.value.trim();
+        if (!texto) return;
+        campo.value = '';
+        try {
+          await fetch(`/api/chat/${TOKEN}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ texto }),
+          });
+          chatBuscar();
+        } catch {
+          // Devolve o texto: perder a mensagem sem avisar seria pior.
+          campo.value = texto;
+          alert('Sem conexao agora. Tente de novo em instantes.');
+        }
+      });
+
+      chatBuscar();
+      setInterval(chatBuscar, 8000);
 
       async function ciclo() {
         const r = await atualizar();
