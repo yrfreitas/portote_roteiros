@@ -243,6 +243,17 @@ def rastreador_externo(token):
     """
     # force=True: alguns aplicativos mandam JSON sem o cabeçalho
     # Content-Type correto, e sem isto o corpo seria ignorado em silêncio.
+    # Retrato do que chegou, guardado ANTES de qualquer interpretação.
+    #
+    # Existe porque diagnosticar aplicativo de celular às cegas já custou
+    # várias rodadas: eu sabia que "chegou algo sem posição", mas não O QUE
+    # chegou. Com o corpo cru registrado, uma única tentativa do técnico basta
+    # para saber se o app manda lista, objeto, campo com outro nome, ou nada.
+    # Truncado em 300 caracteres: é diagnóstico, não histórico.
+    _cru = (request.get_data(cache=True) or b"")[:300].decode("utf-8", "replace")
+    _retrato = (f"{request.method} ct={request.content_type or '-'} "
+                f"args={dict(request.args) or '-'} corpo={_cru or '-'}")[:300]
+
     dados = request.get_json(silent=True, force=True)
 
     # O OwnTracks pode mandar uma LISTA de mensagens, não um objeto solto —
@@ -326,7 +337,8 @@ def rastreador_externo(token):
             # não sabia ler.
             veio_de_app = eh_owntracks or bool(request.get_data(cache=True))
             _marcar_visto(conn, tecnico["id"],
-                          gps_estado="app-sem-posicao" if veio_de_app else "url-testada")
+                          gps_estado="app-sem-posicao" if veio_de_app else "url-testada",
+                          gps_erro=_retrato)
             return jsonify({
                 "ok": True,
                 "url_correta": True,
@@ -339,6 +351,8 @@ def rastreador_externo(token):
 
         # Mesma régua do GPS do navegador: leitura ruim não é posição, é chute.
         if precisao is not None and precisao > PRECISAO_MAXIMA_M:
+            _marcar_visto(conn, tecnico["id"], gps_estado="app-impreciso",
+                          gps_erro=_retrato)
             return responder({"ok": True, "gravado": False,
                               "motivo": "posição imprecisa"})
 
@@ -347,7 +361,7 @@ def rastreador_externo(token):
         # Registra que o aparelho está vivo mesmo quando a posição é descartada.
         # É o que responde "o Traccar está configurado certo?" sem depender de
         # haver um atendimento em andamento na hora do teste.
-        _marcar_visto(conn, tecnico["id"], gps_estado="traccar")
+        _marcar_visto(conn, tecnico["id"], gps_estado="traccar", gps_erro=_retrato)
 
     return responder({"ok": True, "gravado": gravados > 0,
                       "rastreios": gravados})
@@ -637,6 +651,9 @@ def diagnostico():
         elif a.get("gps_estado") == "url-testada":
             situacao = ("URL testada pelo navegador e correta — falta o "
                         "aplicativo de GPS enviar (permissão/bateria)")
+        elif a.get("gps_estado") == "app-impreciso":
+            situacao = ("O aplicativo está enviando, mas com precisão pior que "
+                        f"{PRECISAO_MAXIMA_M} m — ligue a localização precisa")
         elif a.get("gps_estado") == "app-sem-posicao":
             situacao = ("O aplicativo de GPS chegou até aqui, mas sem posição "
                         "utilizável — verifique a permissão de localização")
