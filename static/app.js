@@ -246,7 +246,42 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v32';
+const VERSAO_PAINEL = 'v33';
+
+// ─── Erros do navegador chegam ao servidor ──────────────────────────
+// "O site fica dando erro" e impossivel de investigar do servidor: as rotas
+// respondem 200 em 0,2s e o defeito mora na tela de outra pessoa. Com isto o
+// erro real fica registrado e visivel em /api/erros-cliente.
+let _ultimoErroEnviado = '';
+let _ultimoEnvioErro = 0;
+
+function reportarErro(origem, mensagem) {
+  try {
+    const texto = String(mensagem || '').slice(0, 500);
+    const agora = Date.now();
+    // Nao repete o mesmo erro nem manda mais de um a cada 5s: um erro dentro
+    // de laco de render viraria centenas de requisicoes.
+    if (texto === _ultimoErroEnviado && agora - _ultimoEnvioErro < 30000) return;
+    if (agora - _ultimoEnvioErro < 5000) return;
+    _ultimoErroEnviado = texto; _ultimoEnvioErro = agora;
+
+    fetch('/api/erro-cliente', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origem, mensagem: texto,
+                             versao: VERSAO_PAINEL, url: location.pathname }),
+      keepalive: true,   // sobrevive se a pagina fechar logo depois
+    }).catch(() => {});
+  } catch { /* reportar erro nao pode gerar erro */ }
+}
+
+window.addEventListener('error', (e) => {
+  reportarErro('window.onerror',
+    `${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  reportarErro('promise', String(e.reason && e.reason.message || e.reason));
+});
 
 async function _lerRevisao() {
   const resp = await fetch(`${BASE}/api/versao`, { cache: 'no-store' });
@@ -430,6 +465,17 @@ async function api(path, options = {}, timeoutMs = TIMEOUT_PADRAO) {
     if (texto) {
       try { data = JSON.parse(texto); }
       catch { throw new Error(`Resposta inválida do servidor (HTTP ${res.status}).`); }
+    }
+
+    // Sessao caida tem tratamento PROPRIO, e nao vira "erro ao carregar".
+    //
+    // Sem isto, perder a sessao fazia TODA tela mostrar "nao foi possivel
+    // carregar" -- o "site dando erro toda hora" que o Kalebe relatou em
+    // 2026-08-17. O usuario nao tem como adivinhar que precisa logar de novo.
+    if (res.status === 401) {
+      reportarErro('sessao-expirada', `401 em ${path}`);
+      location.href = '/login?next=' + encodeURIComponent(location.pathname);
+      throw new Error('Sessão expirada — abrindo a tela de login');
     }
 
     if (!res.ok) throw new Error(data.erro || `Erro ${res.status}`);

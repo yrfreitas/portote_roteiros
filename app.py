@@ -12,7 +12,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from database import bump_revisao, db_conn, init_db, ler_revisao
-from extensions import limiter
+from extensions import VERSAO_APP, limiter
 from routes.auth import auth_bp
 from routes.fichas import fichas_bp
 from routes.pedidos import pedidos_bp
@@ -41,6 +41,11 @@ app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 _secret = os.environ.get("SECRET_KEY")
+# Guardado para o /api/health poder denunciar o problema sem expor o valor:
+# sem SECRET_KEY fixa, CADA DEPLOY gera outra chave e derruba a sessão de
+# todo mundo. O sintoma é o site "dando erro toda hora" logo depois de uma
+# atualização — e ninguém liga uma coisa à outra.
+SECRET_DO_AMBIENTE = bool(_secret)
 if not _secret:
     _secret = secrets.token_hex(32)
     log.warning(
@@ -86,7 +91,7 @@ def _e_api() -> bool:
     return request.path.startswith("/api")
 
 
-_CAMINHOS_PUBLICOS = {"/login", "/api/health"}
+_CAMINHOS_PUBLICOS = {"/login", "/api/health", "/api/erro-cliente"}
 # /acompanhar/ e /api/rastreio/ são públicos porque quem abre é o CLIENTE, que
 # não tem conta no sistema. O link de 16 bytes é a credencial — mesmo modelo do
 # link do técnico. Só expõem posição e destino daquele atendimento.
@@ -112,7 +117,71 @@ def index():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "ok"})
+    """Sinais que explicam falha silenciosa, sem expor nenhum segredo."""
+    return jsonify({
+        "status": "ok",
+        "app": VERSAO_APP,
+        # False aqui significa: cada deploy troca a chave e derruba a sessão de
+        # todo mundo. É a causa mais provável de "o site fica dando erro toda
+        # hora" logo depois de uma atualização.
+        "secret_fixa": SECRET_DO_AMBIENTE,
+    })
+
+
+@app.route("/api/erro-cliente", methods=["POST"])
+def registrar_erro_cliente():
+    """Recebe erro de JavaScript acontecido no navegador de quem usa o sistema.
+
+    Existe porque "o site fica dando erro" é impossível de investigar do
+    servidor: as rotas respondem 200 em 0,2s e o defeito mora na tela de outra
+    pessoa. Aqui o erro real chega com mensagem, tela e versão do código.
+
+    Público de propósito: erro pode acontecer ANTES ou DEPOIS de a sessão
+    valer, e justamente o caso de sessão expirada é o que mais interessa
+    registrar. Não grava nada de cliente — só mensagem, origem e versão.
+    """
+    dados = request.get_json(silent=True) or {}
+    mensagem = str(dados.get("mensagem") or "")[:500]
+    if not mensagem:
+        return jsonify({"ok": False}), 200
+
+    from datetime import datetime, timezone
+    from database import execute
+
+    try:
+        with db_conn(commit=True) as conn:
+            execute(conn, """
+                INSERT INTO erros_cliente (quando, origem, versao, url, mensagem)
+                VALUES (?, ?, ?, ?, ?)
+            """, (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                  str(dados.get("origem") or "")[:40],
+                  str(dados.get("versao") or "")[:20],
+                  str(dados.get("url") or "")[:200],
+                  mensagem))
+            # Mantém só os 200 mais recentes: isto é diagnóstico, não histórico,
+            # e tabela de log sem poda cresce para sempre.
+            execute(conn, """
+                DELETE FROM erros_cliente
+                 WHERE id < (SELECT MAX(id) - 200 FROM erros_cliente)
+            """)
+    except Exception:
+        log.exception("Falha ao registrar erro de cliente")
+        return jsonify({"ok": False}), 200
+
+    return jsonify({"ok": True}), 200
+
+
+@app.route("/api/erros-cliente", methods=["GET"])
+def listar_erros_cliente():
+    """Os últimos erros de navegador. Atrás da sessão de admin."""
+    from database import fetch_all
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT quando, origem, versao, url, mensagem
+              FROM erros_cliente ORDER BY id DESC
+        """)
+    return jsonify({"total": len(linhas), "erros": linhas[:50]})
 
 
 @app.route("/acompanhar/<token>")

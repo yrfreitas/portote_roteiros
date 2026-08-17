@@ -214,6 +214,23 @@ _SCHEMA_PG = [
         gps_erro     TEXT,
         visto_em     TEXT
     )""",
+    # Erros que acontecem no NAVEGADOR de quem usa o sistema.
+    #
+    # Existe porque "o site fica dando erro toda hora" é impossível de
+    # investigar do servidor: as rotas respondem 200 em 0,2s e o defeito mora
+    # na tela de outra pessoa. Sem isto, todo diagnóstico de front vira
+    # dedução — que neste projeto já custou várias rodadas de deploy.
+    #
+    # Guarda pouco e por pouco tempo: mensagem, origem e versão. Nada de dado
+    # de cliente.
+    """CREATE TABLE IF NOT EXISTS erros_cliente (
+        id        SERIAL PRIMARY KEY,
+        quando    TEXT,
+        origem    TEXT,
+        versao    TEXT,
+        url       TEXT,
+        mensagem  TEXT
+    )""",
     """CREATE TABLE IF NOT EXISTS pecas_agoraos (
         id                   SERIAL PRIMARY KEY,
         linha_planilha       INTEGER NOT NULL UNIQUE,
@@ -322,6 +339,14 @@ _SCHEMA_SQLITE = """
         gps_erro     TEXT,
         visto_em     TEXT,
         FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS erros_cliente (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        quando    TEXT,
+        origem    TEXT,
+        versao    TEXT,
+        url       TEXT,
+        mensagem  TEXT
     );
     CREATE TABLE IF NOT EXISTS pecas_agoraos (
         id                   INTEGER PRIMARY KEY AUTOINCREMENT,

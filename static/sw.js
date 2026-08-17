@@ -41,7 +41,8 @@
 // v30 = fichas de cada técnico podem ser recolhidas na barra lateral.
 // v31 = previsão de chegada calculada da posição REAL do técnico.
 // v32 = transferir rota inteira ou ponto avulso entre técnicos.
-const CACHE_VERSAO = 'portotec-roteiros-v32';
+// v33 = sessão expirada leva ao login + erros do navegador viram registro.
+const CACHE_VERSAO = 'portotec-roteiros-v33';
 
 const ARQUIVOS_CASCA = [
   '/',
