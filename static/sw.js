@@ -48,7 +48,8 @@
 // v37 = chat da equipe + apagar conversa de cliente.
 // v38 = "ponto de serviço" vira "atendimento técnico" na tela.
 // v39 = fim das mensagens duplicadas + site mais rápido (pool, menos tráfego).
-const CACHE_VERSAO = 'portotec-roteiros-v39';
+// v40 = corrige o 404 que travava a ficha a cada auto-refresh.
+const CACHE_VERSAO = 'portotec-roteiros-v40';
 
 const ARQUIVOS_CASCA = [
   '/',

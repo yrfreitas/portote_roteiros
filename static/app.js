@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v39';
+const VERSAO_PAINEL = 'v40';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2296,14 +2296,34 @@ async function selecionarFicha(id) {
 }
 
 async function renderFichaDetalhe(id) {
+  // Aceita o ID ou a FICHA INTEIRA.
+  //
+  // `fichaAtiva` guarda o objeto da ficha, e quatro pontos do código chamam
+  // `renderFichaDetalhe(fichaAtiva)` — inclusive o auto-refresh. Com o objeto,
+  // a URL virava `/api/fichas/[object Object]`, que não casa com rota nenhuma
+  // e devolvia o 404 GENÉRICO do servidor: "The requested URL was not found".
+  // Como o auto-refresh roda a cada 10s, o erro reaparecia sem parar e a tela
+  // vivia recarregando — foi o "site travando" relatado pelo Kalebe em
+  // 2026-08-18.
+  //
+  // Normalizar aqui conserta os quatro pontos de uma vez e deixa a função à
+  // prova do próximo lugar que chamar do jeito errado.
+  const fichaId = (id && typeof id === 'object') ? id.id : id;
+
   const detail = document.getElementById('ficha-detail');
+
+  if (fichaId === undefined || fichaId === null || fichaId === '') {
+    detail.innerHTML = `<div class="vcep-erro" style="margin:0;">Ficha não identificada. Escolha uma rota na barra lateral.</div>`;
+    return;
+  }
+
   detail.innerHTML = `<div class="loading-row" style="height:200px;display:flex;align-items:center;justify-content:center;gap:10px;"><div class="spinner"></div><span style="color:var(--text-muted);">Carregando roteiro...</span></div>`;
 
   if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
 
   let ficha, servicos, resumo;
   try {
-    ({ ficha, servicos, resumo } = await api(`/fichas/${id}`));
+    ({ ficha, servicos, resumo } = await api(`/fichas/${fichaId}`));
   } catch (e) {
     detail.innerHTML = `<div class="vcep-erro" style="margin:0;">Não foi possível carregar esta ficha: ${esc(e.message)}</div>`;
     toast(e.message, 'error');
