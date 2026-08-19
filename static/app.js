@@ -1652,7 +1652,12 @@ async function carregarTecnicos() {
           <div class="tecnico-nome" style="color:${escCor(t.cor)}">${esc(t.nome)}</div>
           <span class="tec-contagem" id="tec-contagem-${t.id}"></span>
           <div class="tecnico-actions" onclick="event.stopPropagation()">
-            <button class="btn-add-ficha" onclick="abrirModalNovaFicha(${t.id})" title="Nova ficha">+ Ficha</button>
+            <!-- Só o "+", não "+ Ficha": o texto consumia ~45px e empurrava o
+                 nome do técnico para as reticências ("JOAO PAUL…"). Nome de
+                 pessoa cortado é pior que um rótulo a menos, e os outros três
+                 botões da linha já são só ícone — agora os quatro combinam. -->
+            <button class="btn-add-ficha" onclick="abrirModalNovaFicha(${t.id})"
+                    title="Nova ficha" aria-label="Nova ficha">+</button>
             <button class="btn-link-tecnico" onclick="abrirRastreadorTecnico(${t.id})" title="Configurar rastreio de localização">${icone('mapa', 'icone-11')}</button>
             <button class="btn-link-tecnico" onclick="copiarLinkTecnico('${t.token || ''}')" title="Copiar link de acesso do técnico">${icone('externo', 'icone-11')}</button>
             <button class="btn-del-tecnico" onclick="deletarTecnico(event,${t.id})" title="Remover técnico">${icone('x', 'icone-11')}</button>
