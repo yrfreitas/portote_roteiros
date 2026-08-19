@@ -3331,3 +3331,27 @@ select:focus-visible,
 }
 .df-motivo.ativa { border-color: var(--accent); background: var(--accent-dim); color: var(--accent-text); }
 #df-extra:not(:empty) { margin-top: 14px; }
+
+/* ─── Foto da etiqueta, vista no painel ─────────────────────────────
+   Miniatura no item do roteiro; clique abre em tamanho cheio, que é como
+   se lê o número de série para pedir a peça. */
+.roteiro-fotos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+.roteiro-foto {
+  width: 62px; height: 62px; object-fit: cover; cursor: zoom-in;
+  border-radius: 9px; border: 1px solid var(--border-bright);
+  transition: transform .15s, border-color .15s;
+}
+.roteiro-foto:hover { transform: scale(1.05); border-color: var(--accent); }
+
+.lupa-fundo {
+  position: fixed; inset: 0; z-index: 4000; display: grid; place-items: center;
+  background: rgba(0,0,0,.82); padding: 24px; cursor: zoom-out;
+}
+.lupa-fundo img {
+  max-width: 96vw; max-height: 92vh; border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.6);
+}
+.lupa-dica {
+  position: fixed; bottom: 18px; left: 0; right: 0; text-align: center;
+  color: var(--text-muted); font-size: 12px; pointer-events: none;
+}

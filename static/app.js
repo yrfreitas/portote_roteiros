@@ -2315,6 +2315,40 @@ async function salvarPecaInline(linha) {
   }
 }
 
+// ─── Fotos da etiqueta ──────────────────────────────────────────────
+//
+// Carregadas DEPOIS da lista, por atendimento: cada foto é uma imagem em
+// base64, e trazê-las junto do roteiro deixaria pesada toda abertura de
+// rota para um dado que se olha de um ponto por vez.
+async function carregarFotosDoRoteiro(servicoIds) {
+  for (const id of servicoIds) {
+    try {
+      const r = await api(`/servicos/${id}/fotos`);
+      const slot = document.getElementById(`fotos-${id}`);
+      if (!slot || !(r.fotos || []).length) continue;
+      slot.innerHTML = r.fotos.map(f => `
+        <img class="roteiro-foto" src="${f.foto}" loading="lazy"
+             alt="Etiqueta enviada pelo técnico"
+             title="${esc(f.legenda || 'foto')} · ${esc(f.criado_em || '')}"
+             onclick="ampliarFoto(this.src)">`).join('');
+    } catch { /* foto é apoio: falhar aqui não pode atrapalhar a rota */ }
+  }
+}
+
+// Clique amplia. É lendo o número de série ampliado que se pede a peça —
+// miniatura de 62px não serve para isso.
+function ampliarFoto(src) {
+  const lupa = document.createElement('div');
+  lupa.className = 'lupa-fundo';
+  lupa.innerHTML = `<img src="${src}" alt="Etiqueta ampliada">
+                    <div class="lupa-dica">clique para fechar</div>`;
+  lupa.onclick = () => lupa.remove();
+  document.addEventListener('keydown', function fechar(ev) {
+    if (ev.key === 'Escape') { lupa.remove(); document.removeEventListener('keydown', fechar); }
+  });
+  document.body.appendChild(lupa);
+}
+
 // ─── Desfecho do atendimento (visto do escritório) ──────────────────
 //
 // O técnico registra em campo o que aconteceu; sem mostrar aqui, o dado
@@ -2757,6 +2791,10 @@ async function renderFichaDetalhe(id) {
 
   if (servicos.length > 1) inicializarDragRoteiro(ficha.id);
 
+  // Fotos vêm depois e sem await: a rota já está na tela, e esperar as
+  // imagens para mostrar o roteiro seria trocar velocidade por nada.
+  carregarFotosDoRoteiro(servicos.map(s => s.id));
+
   animarNumero(document.getElementById('stat-num-pontos'), servicos.length);
   if (distKm > 0) {
     animarNumero(document.getElementById('stat-num-dist'), distKm, {
@@ -2835,6 +2873,7 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
             return (os || marca) ? `<div class="roteiro-etiquetas">${marca}${os}</div>` : '';
           })()}
           ${seloDesfecho(s)}
+          <div class="roteiro-fotos" id="fotos-${s.id}"></div>
           ${(!s.lat || !s.lng) ? `<div class="roteiro-cliente" style="color:var(--danger-text);display:flex;align-items:center;gap:4px;">${icone('alerta', 'icone-11')} sem coordenada — fora do cálculo</div>` : ''}
         </div>
         <div class="roteiro-actions">

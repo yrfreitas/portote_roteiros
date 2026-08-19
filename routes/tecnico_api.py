@@ -1,6 +1,9 @@
+import logging
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
+
+log = logging.getLogger("portotec.tecnico_api")
 
 from database import db_conn, execute, fetch_all, fetch_one, ler_revisao, sql
 from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
@@ -180,6 +183,33 @@ def status_servico_tecnico(token, servico_id):
 # alimenta contagem e filtro, e texto livre não soma nem filtra.
 DESFECHOS_VALIDOS = {"resolvido", "precisa_peca", "volto_depois", "nao_atendido"}
 
+# Teto por foto. O navegador já reduz para 1280px de lado maior em JPEG antes
+# de enviar (ver tecnico.js), o que dá 150–350 KB em base64. 900 KB é folga
+# larga para um aparelho que produza imagem mais pesada, sem virar porta para
+# despejarem arquivo grande no banco.
+FOTO_MAXIMA = 900 * 1024
+PREFIXOS_FOTO = ("data:image/jpeg;base64,", "data:image/png;base64,",
+                 "data:image/webp;base64,")
+
+
+def _gravar_foto(conn, servico_id, foto, quem, agora):
+    """Guarda a foto da etiqueta do aparelho.
+
+    Existe porque para pedir a peça é preciso o modelo e o número de série,
+    que estão na etiqueta — e ditar isso por telefone ou digitar no celular na
+    casa do cliente troca caractere. A foto é a fonte.
+    """
+    if not isinstance(foto, str) or not foto.startswith(PREFIXOS_FOTO):
+        return
+    if len(foto) > FOTO_MAXIMA:
+        log.warning("Foto do serviço %s recusada: %d bytes", servico_id, len(foto))
+        return
+
+    execute(conn, sql(
+        "INSERT INTO servico_foto (servico_id, foto, legenda, criado_em, "
+        "enviado_por) VALUES (?, ?, ?, ?, ?)"),
+        (servico_id, foto, "etiqueta", agora, quem))
+
 
 def _gravar_desfecho(conn, servico_id, novo_status, desfecho, quem):
     """Guarda o que aconteceu no atendimento, junto com a conclusão.
@@ -207,6 +237,8 @@ def _gravar_desfecho(conn, servico_id, novo_status, desfecho, quem):
     motivo = (desfecho.get("motivo") or "").strip()[:120]
     peca = (desfecho.get("peca") or "").strip()[:200]
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    _gravar_foto(conn, servico_id, desfecho.get("foto"), quem, agora)
 
     execute(conn, sql("DELETE FROM servico_desfecho WHERE servico_id = ?"),
             (servico_id,))

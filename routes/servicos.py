@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, session
 
 from database import (IS_PG, db_conn, execute, fetch_all, fetch_one,
-                      insert_returning_id)
+                      insert_returning_id, sql)
 from extensions import limiter
 from routes.fichas import recalcular_rota
 from services.geo import geocode_cep
@@ -401,3 +401,17 @@ def definir_setor_em_lote():
                     f"{'s' if alteradas != 1 else ''}.",
         "atualizados": alteradas,
     })
+
+@servicos_bp.route("/servicos/<int:servico_id>/fotos", methods=["GET"])
+def fotos_do_servico(servico_id):
+    """Fotos enviadas pelo técnico neste atendimento.
+
+    Endpoint separado, e não junto da listagem da ficha: uma imagem em base64
+    por atendimento tornaria pesada toda abertura de rota, quando na prática
+    só se olha a foto de um ponto por vez.
+    """
+    with db_conn() as conn:
+        fotos = fetch_all(conn, sql(
+            "SELECT id, foto, legenda, criado_em, enviado_por "
+            "FROM servico_foto WHERE servico_id = ? ORDER BY id"), (servico_id,))
+    return jsonify({"fotos": fotos})

@@ -481,3 +481,30 @@ button.t-ponto-link-waze {
 .t-df-precisa_peca { background: rgba(245,181,68,.15); color: #fbd38d; }
 .t-df-volto_depois { background: rgba(34,211,238,.15); color: #7de3f4; }
 .t-df-nao_atendido { background: rgba(248,113,113,.15); color: #fca5a5; }
+
+/* ─── Foto da etiqueta ──────────────────────────────────────────────
+   `capture="environment"` abre a câmera traseira direto, sem passar pela
+   galeria: o técnico está com o aparelho na frente e vai fotografar agora. */
+.t-df-ajuda {
+  margin: 0 0 9px; font-size: 12px; color: #8fa3bf; line-height: 1.45;
+}
+.t-df-foto-botao {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 52px; border-radius: 12px; cursor: pointer;
+  background: #19202b; border: 1px dashed rgba(255,255,255,.22);
+  color: #cfdaea; font-size: 14.5px; font-weight: 600;
+}
+.t-df-foto-botao:active { background: #202836; }
+.t-df-previa:not(:empty) { margin-top: 10px; }
+.t-df-thumb {
+  width: 100%; max-height: 220px; object-fit: contain;
+  border-radius: 11px; background: #0a0e15;
+  border: 1px solid rgba(255,255,255,.10); display: block;
+}
+.t-df-remover-foto {
+  margin-top: 7px; padding: 7px 12px; border-radius: 9px;
+  background: transparent; border: 1px solid rgba(248,113,113,.35);
+  color: #fca5a5; font-size: 12.5px; font-family: inherit; cursor: pointer;
+}
+.t-df-processando { font-size: 13px; color: #8fa3bf; }
+.t-df-erro { font-size: 13px; color: #fca5a5; line-height: 1.45; }

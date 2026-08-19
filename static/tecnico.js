@@ -612,10 +612,102 @@
 
   let _desfechoServicoId = null;
   let _desfechoTipo = null;
+  let _desfechoFoto = null;
+
+  // Reduz mantendo a imagem INTEIRA — sem recorte.
+  //
+  // O redutor de foto de perfil corta um quadrado central; numa etiqueta isso
+  // decepa justamente o número de série, que é o dado pelo qual a peça é
+  // pedida. Aqui a proporção é preservada e só o tamanho cai.
+  //
+  // 1280px no lado maior: é o que mantém legível um código impresso pequeno.
+  // Abaixo disso a etiqueta começa a embaralhar no zoom, e o objetivo da foto
+  // é justamente ser lida.
+  //
+  // Duas tentativas de decodificação porque o iPhone salva em HEIC por padrão
+  // e a maioria dos navegadores não abre HEIC pela tag <img>: a imagem não
+  // carrega e o erro morre calado.
+  async function reduzirFoto(arquivo, ladoMaximo = 1280, qualidade = 0.72) {
+    const desenhar = (fonte, largura, altura) => {
+      const escala = Math.min(1, ladoMaximo / Math.max(largura, altura));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(largura * escala);
+      cv.height = Math.round(altura * escala);
+      const ctx = cv.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(fonte, 0, 0, cv.width, cv.height);
+      return cv.toDataURL('image/jpeg', qualidade);
+    };
+
+    if (typeof createImageBitmap === 'function') {
+      try {
+        const bmp = await createImageBitmap(arquivo);
+        const url = desenhar(bmp, bmp.width, bmp.height);
+        bmp.close && bmp.close();
+        return url;
+      } catch { /* cai para o caminho 2 */ }
+    }
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(arquivo);
+      const img = new Image();
+      img.onload = () => {
+        try { resolve(desenhar(img, img.naturalWidth, img.naturalHeight)); }
+        catch (e) { reject(new Error('Não consegui processar a foto: ' + e.message)); }
+        finally { URL.revokeObjectURL(url); }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        const nome = (arquivo.name || '').toLowerCase();
+        reject(new Error(
+          nome.endsWith('.heic') || nome.endsWith('.heif')
+            ? 'Foto em HEIC (formato do iPhone). Ajustes > Câmera > Formatos > "Mais compatível". Ou envie um print da foto.'
+            : 'Não consegui abrir essa foto.'));
+      };
+      img.src = url;
+    });
+  }
+
+  window._tEscolherFoto = async function (input) {
+    const arquivo = input.files && input.files[0];
+    if (!arquivo) return;
+    const previa = document.getElementById('t-df-previa');
+    previa.innerHTML = '<span class="t-df-processando">preparando a foto...</span>';
+    try {
+      _desfechoFoto = await reduzirFoto(arquivo);
+      previa.innerHTML = `
+        <img class="t-df-thumb" src="${_desfechoFoto}" alt="Etiqueta do aparelho">
+        <button type="button" class="t-df-remover-foto"
+                onclick="window._tRemoverFoto()">remover</button>`;
+    } catch (e) {
+      _desfechoFoto = null;
+      previa.innerHTML = `<span class="t-df-erro">${esc(e.message)}</span>`;
+    } finally {
+      input.value = '';   // permite escolher a MESMA foto de novo depois de remover
+    }
+  };
+
+  window._tRemoverFoto = function () {
+    _desfechoFoto = null;
+    const previa = document.getElementById('t-df-previa');
+    if (previa) previa.innerHTML = '';
+  };
+
+  function blocoFoto(destaque) {
+    return `
+      <label class="t-df-rotulo">Foto da etiqueta ${destaque ? '' : '(opcional)'}</label>
+      ${destaque ? '<p class="t-df-ajuda">É dela que sai o modelo e o número de série para pedir a peça.</p>' : ''}
+      <label class="t-df-foto-botao">
+        Tirar foto
+        <input type="file" accept="image/*" capture="environment"
+               onchange="window._tEscolherFoto(this)" hidden>
+      </label>
+      <div id="t-df-previa" class="t-df-previa"></div>`;
+  }
 
   window._tAbrirDesfecho = function (servicoId) {
     _desfechoServicoId = servicoId;
     _desfechoTipo = null;
+    _desfechoFoto = null;
     const folha = document.getElementById('t-folha-desfecho');
     if (!folha) return;
     folha.querySelector('.t-folha-corpo').innerHTML = `
@@ -649,7 +741,8 @@
       extra.innerHTML = `
         <label class="t-df-rotulo" for="t-df-peca">Qual peça?</label>
         <input class="t-df-input" id="t-df-peca" autocomplete="off"
-               placeholder="Código ou nome da peça">`;
+               placeholder="Código ou nome da peça">
+        ${blocoFoto(true)}`;
       // Sem foco automático: abrir o teclado por cima da folha esconde o
       // botão de confirmar, e o técnico fica sem saber o que fazer.
     } else if (tipo === 'nao_atendido') {
@@ -659,9 +752,10 @@
           ${MOTIVOS.map(m => `
             <button class="t-df-motivo" data-motivo="${esc(m)}"
                     onclick="window._tEscolherMotivo(this)">${esc(m)}</button>`).join('')}
-        </div>`;
+        </div>
+        ${blocoFoto(false)}`;
     } else {
-      extra.innerHTML = '';
+      extra.innerHTML = blocoFoto(false);
     }
     document.getElementById('t-df-confirmar').disabled = false;
   };
@@ -680,6 +774,7 @@
     if (_desfechoTipo === 'nao_atendido') {
       desfecho.motivo = document.querySelector('.t-df-motivo.ativa')?.dataset.motivo || '';
     }
+    if (_desfechoFoto) desfecho.foto = _desfechoFoto;
     const id = _desfechoServicoId;
     window._tFecharDesfecho();
     window._tConcluirPonto(id, 'concluido', desfecho);

@@ -357,6 +357,25 @@ _SCHEMA_PG = [
         registrado_em   TEXT,
         registrado_por  TEXT
     )""",
+
+    # FOTO DA ETIQUETA DO APARELHO.
+    #
+    # Para pedir peça é preciso o modelo e o número de série, que estão na
+    # etiqueta — e ditar isso por telefone ou digitar no celular na casa do
+    # cliente erra caractere. A foto é a fonte, e quem pede lê dela.
+    #
+    # Tabela própria, e não coluna no desfecho, porque um atendimento rende
+    # mais de uma foto (etiqueta, defeito, local) e porque uma imagem em
+    # base64 numa linha que é lida em toda listagem tornaria a listagem lenta
+    # sem necessidade.
+    """CREATE TABLE IF NOT EXISTS servico_foto (
+        id           SERIAL PRIMARY KEY,
+        servico_id   INTEGER NOT NULL,
+        foto         TEXT NOT NULL,
+        legenda      TEXT,
+        criado_em    TEXT,
+        enviado_por  TEXT
+    )""",
 ]
 
 _SCHEMA_SQLITE = """
@@ -508,6 +527,14 @@ _SCHEMA_SQLITE = """
         peca            TEXT,
         registrado_em   TEXT,
         registrado_por  TEXT
+    );
+    CREATE TABLE IF NOT EXISTS servico_foto (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        servico_id   INTEGER NOT NULL,
+        foto         TEXT NOT NULL,
+        legenda      TEXT,
+        criado_em    TEXT,
+        enviado_por  TEXT
     );
 """
 
