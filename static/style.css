@@ -3355,3 +3355,27 @@ select:focus-visible,
   position: fixed; bottom: 18px; left: 0; right: 0; text-align: center;
   color: var(--text-muted); font-size: 12px; pointer-events: none;
 }
+
+/* Área da foto dentro da folha de desfecho (painel) */
+.df-ajuda { margin: 0 0 9px; font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+.df-foto-botao {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 46px; border-radius: 11px; cursor: pointer;
+  background: var(--bg-card); border: 1px dashed var(--border-bright);
+  color: var(--text-secondary); font-size: 13.5px; font-weight: 600;
+  transition: background .15s, border-color .15s;
+}
+.df-foto-botao:hover { background: var(--bg-hover); border-color: var(--accent); color: var(--accent-text); }
+.df-previa:not(:empty) { margin-top: 10px; }
+.df-thumb {
+  width: 100%; max-height: 200px; object-fit: contain; display: block;
+  border-radius: 10px; background: var(--bg-input);
+  border: 1px solid var(--border-bright);
+}
+.df-remover-foto {
+  margin-top: 7px; padding: 6px 11px; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid rgba(248,113,113,.35);
+  color: var(--danger-text); font-size: 12px; font-family: inherit;
+}
+.df-processando { font-size: 12.5px; color: var(--text-muted); }
+.df-erro { font-size: 12.5px; color: var(--danger-text); line-height: 1.45; }
