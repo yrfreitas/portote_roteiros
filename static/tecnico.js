@@ -597,7 +597,7 @@
     { tipo: 'resolvido',    rotulo: 'Resolvido',        sub: 'consertado na hora',    icone: '✓' },
     { tipo: 'precisa_peca', rotulo: 'Precisa de peça',  sub: 'diagnosticado, falta peça', icone: '🔧' },
     { tipo: 'volto_depois', rotulo: 'Volto depois',     sub: 'preciso retornar',      icone: '↻' },
-    { tipo: 'nao_atendido', rotulo: 'Não atendido',     sub: 'não deu para fazer',    icone: '!' },
+    { tipo: 'nao_atendido', rotulo: 'Reagendar',        sub: 'não deu, precisa remarcar', icone: '!' },
   ];
   const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                    'Aparelho sem defeito', 'Sem acesso ao local'];
@@ -607,7 +607,8 @@
     if (!d) return '';
     const extra = s.desfecho_peca ? ' · ' + esc(s.desfecho_peca)
                 : s.desfecho_motivo ? ' · ' + esc(s.desfecho_motivo) : '';
-    return `<div class="t-desfecho-selo t-df-${s.desfecho}">${d.icone} ${d.rotulo}${extra}</div>`;
+    return `<div class="t-desfecho-selo t-df-${s.desfecho}">${d.icone} ${d.rotulo}${extra}</div>${
+      s.desfecho_obs ? `<div class="t-desfecho-obs">${esc(s.desfecho_obs)}</div>` : ''}`;
   }
 
   let _desfechoServicoId = null;
@@ -757,6 +758,10 @@
     } else {
       extra.innerHTML = blocoFoto(false);
     }
+    extra.insertAdjacentHTML('beforeend', `
+      <label class="t-df-rotulo" for="t-df-obs">Observação</label>
+      <textarea class="t-df-input t-df-obs" id="t-df-obs" rows="3"
+                placeholder="Algo que a equipe precisa saber (opcional)"></textarea>`);
     document.getElementById('t-df-confirmar').disabled = false;
   };
 
@@ -774,6 +779,8 @@
     if (_desfechoTipo === 'nao_atendido') {
       desfecho.motivo = document.querySelector('.t-df-motivo.ativa')?.dataset.motivo || '';
     }
+    const obs = document.getElementById('t-df-obs')?.value.trim();
+    if (obs) desfecho.observacao = obs;
     if (_desfechoFoto) desfecho.foto = _desfechoFoto;
     const id = _desfechoServicoId;
     window._tFecharDesfecho();

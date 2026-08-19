@@ -10,6 +10,7 @@ site), o que garante que o nome gravado é idêntico ao do site — e aí a
 conciliação ao finalizar a rota casa exato em vez de aproximado.
 """
 import logging
+import re
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request, session
@@ -93,6 +94,78 @@ def diagnostico_planilha():
     })
 
 
+
+# ─── Casamento entre a compra e quem pediu a peça ──────────────────────
+#
+# Fecha o circuito. O técnico registra "precisa da peça X para o cliente Y";
+# dias depois a Panasonic avisa a compra por e-mail e o robô grava na aba
+# Pedidos com a descrição da peça. Até aqui alguém tinha que lembrar de qual
+# cliente era aquela compra e digitar o nome à mão.
+#
+# O casamento é pelo CÓDIGO da peça, não pela descrição: código é exato
+# ("ARBPC1A12880"), descrição varia entre o que o técnico digita e o que vem
+# na nota fiscal.
+#
+# SUGERE, NÃO GRAVA SOZINHO. Duas pessoas podem precisar da mesma peça na
+# mesma semana, e este projeto já documenta (services/agoraos.py) que
+# casamento automático de cliente produziu erro real em produção — escreveu
+# na OS de outra pessoa e a API não tinha como desfazer. Quando há uma
+# solicitação só, é um clique para aplicar; quando há mais de uma, a tela
+# mostra as opções em vez de escolher no lugar de quem sabe.
+RE_CODIGO_PECA = re.compile(r"([A-Z][A-Z0-9]{2,}(?:-[A-Z0-9]+)?)")
+
+
+def _codigos_da_peca(texto: str) -> set:
+    """Códigos de peça encontrados num texto. Exige dígito: sem isso
+    palavras da descrição ("PLACA", "CONJ") virariam código."""
+    return {c for c in RE_CODIGO_PECA.findall((texto or "").upper())
+            if any(ch.isdigit() for ch in c)}
+
+
+def _solicitacoes_abertas(conn):
+    """Peças que o técnico pediu e que ainda não foram ligadas a uma compra."""
+    return fetch_all(conn, sql("""
+        SELECT d.servico_id, d.peca, d.pedido_em, s.cliente,
+               s.tipo_aparelho, s.modelo, s.numero_os
+          FROM servico_desfecho d
+          JOIN servicos s ON s.id = d.servico_id
+         WHERE d.desfecho = 'precisa_peca'
+           AND s.cliente IS NOT NULL AND TRIM(s.cliente) <> ''
+    """))
+
+
+def _sugerir_cliente(pedidos, solicitacoes):
+    """Anota em cada compra qual cliente pediu aquela peça."""
+    indice = []
+    for s in solicitacoes:
+        for codigo in _codigos_da_peca(s.get("peca")):
+            indice.append((codigo, s))
+
+    for p in pedidos:
+        if p.get("cliente_final"):
+            continue
+        codigos = _codigos_da_peca(p.get("peca"))
+        if not codigos:
+            continue
+
+        achados, vistos = [], set()
+        for codigo, s in indice:
+            if codigo in codigos and s["servico_id"] not in vistos:
+                vistos.add(s["servico_id"])
+                achados.append({
+                    "servico_id": s["servico_id"],
+                    "cliente": s["cliente"],
+                    "peca": s["peca"],
+                    "codigo": codigo,
+                    "numero_os": s.get("numero_os") or "",
+                    "aparelho": " ".join(x for x in [s.get("tipo_aparelho"),
+                                                     s.get("modelo")] if x),
+                    "ja_pedida": bool(s.get("pedido_em")),
+                })
+        if achados:
+            p["sugestao_cliente"] = achados
+
+
 @pedidos_bp.route("/pedidos", methods=["GET"])
 def listar():
     """Compras de peça. ?todos=true traz também as já vinculadas."""
@@ -144,6 +217,10 @@ def listar():
         p["chave"] = chave
         p["chegou_em"] = (registro or {}).get("chegou_em") or ""
         p["chegou_obs"] = (registro or {}).get("observacao") or ""
+
+    # Liga cada compra a quem pediu aquela peça em campo.
+    with db_conn() as conn:
+        _sugerir_cliente(pedidos, _solicitacoes_abertas(conn))
 
     # Clientes já cadastrados no site, pra oferecer como lista de escolha —
     # escolher em vez de digitar é o que faz a conciliação casar exato depois.

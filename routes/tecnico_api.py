@@ -106,7 +106,8 @@ def detalhe_ficha_tecnico(token, ficha_id):
         # app antes), e sumir da lista por isso seria pior que a falta do dado.
         servicos = fetch_all(conn, sql("""
             SELECT s.*, d.desfecho, d.motivo AS desfecho_motivo,
-                   d.peca AS desfecho_peca
+                   d.peca AS desfecho_peca,
+                          d.observacao AS desfecho_obs
               FROM servicos s
               LEFT JOIN servico_desfecho d ON d.servico_id = s.id
              WHERE s.ficha_id = ?
@@ -236,6 +237,10 @@ def _gravar_desfecho(conn, servico_id, novo_status, desfecho, quem):
 
     motivo = (desfecho.get("motivo") or "").strip()[:120]
     peca = (desfecho.get("peca") or "").strip()[:200]
+    # Observação é COMPLEMENTO das opções, não substituta: as opções dão o
+    # número que dá para somar, a observação dá o contexto que só quem esteve
+    # lá conhece ("cliente pediu para voltar de manhã", "tomada queimada").
+    observacao = (desfecho.get("observacao") or "").strip()[:600]
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     _gravar_foto(conn, servico_id, desfecho.get("foto"), quem, agora)
@@ -244,10 +249,10 @@ def _gravar_desfecho(conn, servico_id, novo_status, desfecho, quem):
             (servico_id,))
     execute(conn, sql(
         "INSERT INTO servico_desfecho (servico_id, desfecho, motivo, peca, "
-        "registrado_em, registrado_por) VALUES (?, ?, ?, ?, ?, ?)"),
-        (servico_id, tipo, motivo, peca, agora, quem))
+        "observacao, registrado_em, registrado_por) VALUES (?, ?, ?, ?, ?, ?, ?)"),
+        (servico_id, tipo, motivo, peca, observacao, agora, quem))
 
-    return {"tipo": tipo, "motivo": motivo, "peca": peca}
+    return {"tipo": tipo, "motivo": motivo, "peca": peca, "observacao": observacao}
 
 
 @tecnico_api_bp.route("/<token>/fichas/<int:ficha_id>/reordenar", methods=["PUT"])

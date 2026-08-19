@@ -508,3 +508,9 @@ button.t-ponto-link-waze {
 }
 .t-df-processando { font-size: 13px; color: #8fa3bf; }
 .t-df-erro { font-size: 13px; color: #fca5a5; line-height: 1.45; }
+
+.t-df-obs { resize: vertical; min-height: 70px; line-height: 1.45; }
+.t-desfecho-obs {
+  margin-top: 6px; padding-left: 9px; font-size: 12px; line-height: 1.45;
+  color: #9aacc6; border-left: 2px solid rgba(255,255,255,.14);
+}

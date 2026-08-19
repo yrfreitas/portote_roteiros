@@ -202,7 +202,8 @@ def obter_ficha(ficha_id):
             # campo ficava preso no aplicativo dele e o escritório continuava
             # sem saber por que o atendimento fechou.
             sql("""SELECT s.*, d.desfecho, d.motivo AS desfecho_motivo,
-                          d.peca AS desfecho_peca
+                          d.peca AS desfecho_peca,
+                          d.observacao AS desfecho_obs
                      FROM servicos s
                      LEFT JOIN servico_desfecho d ON d.servico_id = s.id
                     WHERE s.ficha_id = ? ORDER BY s.ordem, s.id"""),

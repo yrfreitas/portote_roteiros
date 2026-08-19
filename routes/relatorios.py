@@ -1,4 +1,5 @@
 import io
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -6,9 +7,11 @@ from flask import Blueprint, jsonify, request, send_file
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-from database import db_conn, fetch_all, sql
+from database import db_conn, execute, fetch_all, fetch_one, sql
 
 relatorios_bp = Blueprint("relatorios", __name__)
+
+log = logging.getLogger("portotec.relatorios")
 
 
 def _parse_dt(valor):
@@ -252,7 +255,8 @@ def listar_desfechos():
 
     with db_conn() as conn:
         linhas = fetch_all(conn, sql("""
-            SELECT d.servico_id, d.desfecho, d.motivo, d.peca,
+            SELECT d.servico_id, d.desfecho, d.motivo, d.peca, d.observacao,
+                   d.pedido_em, d.pedido_por,
                    d.registrado_em, d.registrado_por,
                    s.cliente, s.endereco_completo, s.tipo_aparelho, s.modelo,
                    s.numero_os, s.ficha_id,
@@ -285,3 +289,66 @@ def listar_desfechos():
         "contagem": contagem,
         "atendimentos": linhas,
     })
+
+
+@relatorios_bp.route("/desfechos/<int:servico_id>/pedido", methods=["POST"])
+def marcar_peca_pedida(servico_id):
+    """Dá baixa: a peça daquele atendimento foi pedida.
+
+    Faz duas coisas de uma vez, e é essa junção que fecha o circuito:
+    marca o atendimento aqui e ESCREVE NA PLANILHA quem é o cliente e qual a
+    peça. Assim o pedido deixa de existir só na cabeça de quem comprou.
+
+    Se a planilha falhar, a baixa AINDA acontece e a resposta avisa. O
+    contrário — travar a baixa porque o Google recusou — deixaria o operador
+    sem saber se pediu ou não, que é pior que uma linha faltando na planilha.
+    """
+    from flask import session
+
+    with db_conn() as conn:
+        dado = fetch_one(conn, sql("""
+            SELECT d.servico_id, d.desfecho, d.peca, d.observacao, d.pedido_em,
+                   s.cliente, s.numero_os, s.tipo_aparelho, s.modelo,
+                   t.nome AS tecnico
+              FROM servico_desfecho d
+              JOIN servicos s ON s.id = d.servico_id
+              LEFT JOIN fichas f ON f.id = s.ficha_id
+              LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+             WHERE d.servico_id = ?
+        """), (servico_id,))
+
+    if not dado:
+        return jsonify({"erro": "Atendimento não encontrado"}), 404
+    if dado["pedido_em"]:
+        return jsonify({"erro": "Esta peça já foi marcada como pedida.",
+                        "pedido_em": dado["pedido_em"]}), 409
+
+    quem = (session.get("usuario_nome") or "").strip()[:80]
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_conn(commit=True) as conn:
+        execute(conn, sql("UPDATE servico_desfecho SET pedido_em = ?, "
+                          "pedido_por = ? WHERE servico_id = ?"),
+                (agora, quem, servico_id))
+
+    aviso = None
+    try:
+        from services.planilha import registrar_peca_solicitada
+        r = registrar_peca_solicitada({
+            "servico_id": servico_id,
+            "cliente": dado.get("cliente"),
+            "peca": dado.get("peca"),
+            "aparelho": " ".join(x for x in [dado.get("tipo_aparelho"),
+                                             dado.get("modelo")] if x),
+            "numero_os": dado.get("numero_os"),
+            "tecnico": dado.get("tecnico"),
+            "observacao": dado.get("observacao"),
+            "pedido_por": quem,
+        })
+        if not r.get("configurada"):
+            aviso = "Baixa registrada, mas a planilha não está configurada."
+    except Exception as exc:
+        log.exception("Falha ao gravar peça solicitada na planilha")
+        aviso = f"Baixa registrada, mas não consegui escrever na planilha: {exc}"
+
+    return jsonify({"pedido_em": agora, "pedido_por": quem, "aviso": aviso})

@@ -2085,6 +2085,7 @@ async function carregarPecas() {
         </button>
       </div>
 
+      ${sugestaoDeCliente(p)}
       <div class="peca-sugestao-slot" id="sugestao-${p.linha}"
            data-nota="${esc(p.nota_fiscal)}"></div>
     </div>
@@ -2364,7 +2365,7 @@ const DESFECHO_ROTULO = {
   resolvido:    { txt: 'Resolvido',       classe: 'df-resolvido' },
   precisa_peca: { txt: 'Precisa de peça', classe: 'df-precisa-peca' },
   volto_depois: { txt: 'Volta depois',    classe: 'df-volto' },
-  nao_atendido: { txt: 'Não atendido',    classe: 'df-nao-atendido' },
+  nao_atendido: { txt: 'Reagendar',        classe: 'df-nao-atendido' },
 };
 
 function seloDesfecho(s) {
@@ -2372,7 +2373,8 @@ function seloDesfecho(s) {
   if (!d) return '';
   const extra = s.desfecho_peca || s.desfecho_motivo || '';
   return `<div class="roteiro-desfecho ${d.classe}">${d.txt}${
-    extra ? ' · ' + esc(extra) : ''}</div>`;
+    extra ? ' · ' + esc(extra) : ''}</div>${
+    s.desfecho_obs ? `<div class="roteiro-obs">${esc(s.desfecho_obs)}</div>` : ''}`;
 }
 
 // ─── Estágio da compra ──────────────────────────────────────────────
@@ -4416,7 +4418,7 @@ const DF_OPCOES = [
   { tipo: 'resolvido',    rotulo: 'Resolvido',       sub: 'consertado na hora' },
   { tipo: 'precisa_peca', rotulo: 'Precisa de peça', sub: 'diagnosticado, falta peça' },
   { tipo: 'volto_depois', rotulo: 'Volta depois',    sub: 'precisa retornar' },
-  { tipo: 'nao_atendido', rotulo: 'Não atendido',    sub: 'não deu para fazer' },
+  { tipo: 'nao_atendido', rotulo: 'Reagendar',       sub: 'não deu para fazer, precisa remarcar' },
 ];
 const DF_MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                     'Aparelho sem defeito', 'Sem acesso ao local'];
@@ -4546,6 +4548,13 @@ function escolherDesfecho(tipo) {
   } else {
     extra.innerHTML = '';
   }
+  // Observação vale para QUALQUER desfecho: mesmo um "resolvido" pode ter
+  // um detalhe que só quem esteve lá sabe. Fica por último e é opcional —
+  // as opções acima é que carregam o dado que dá para somar.
+  extra.insertAdjacentHTML('beforeend', `
+    <label class="form-label" style="margin-top:14px;" for="df-obs">Observação</label>
+    <textarea class="form-input df-obs" id="df-obs" rows="3"
+              placeholder="Algo que a equipe precisa saber (opcional)"></textarea>`);
   document.getElementById('df-confirmar').disabled = false;
 }
 
@@ -4559,6 +4568,8 @@ async function confirmarDesfecho() {
   const desfecho = { tipo: _dfTipo };
   if (_dfTipo === 'precisa_peca') desfecho.peca = document.getElementById('df-peca')?.value.trim() || '';
   if (_dfTipo === 'nao_atendido') desfecho.motivo = document.querySelector('.df-motivo.ativa')?.dataset.motivo || '';
+  const obs = document.getElementById('df-obs')?.value.trim();
+  if (obs) desfecho.observacao = obs;
   if (_dfFoto) desfecho.foto = _dfFoto;
   const svc = _dfServico, ficha = _dfFicha;
   fecharDesfecho();
@@ -4749,8 +4760,8 @@ const AT_TIPOS = [
     classe: 'at-peca',  nota: 'esperando compra' },
   { tipo: 'volto_depois', rotulo: 'Voltar depois',    curto: 'Volta depois',
     classe: 'at-volta', nota: 'precisa de retorno' },
-  { tipo: 'nao_atendido', rotulo: 'Não atendidos',    curto: 'Não atendido',
-    classe: 'at-nao',   nota: 'visita perdida' },
+  { tipo: 'nao_atendido', rotulo: 'Reagendar',        curto: 'Reagendar',
+    classe: 'at-nao',   nota: 'visita perdida, remarcar' },
   { tipo: 'resolvido',    rotulo: 'Resolvidos',       curto: 'Resolvido',
     classe: 'at-ok',    nota: 'fechados na hora' },
 ];
@@ -4808,7 +4819,7 @@ async function carregarDesfechos() {
     const detalhe = a.peca || a.motivo || '';
     const aparelho = [a.tipo_aparelho, a.modelo].filter(Boolean).join(' · ');
     return `
-      <div class="at-linha ${t.classe}">
+      <div class="at-linha ${t.classe}${a.pedido_em ? ' pedida' : ''}" id="at-linha-${a.servico_id}">
         <div class="at-quando">
           <span class="at-data">${esc((a.registrado_em || '').slice(0, 10).split('-').reverse().join('/'))}</span>
           <span class="at-hora">${esc((a.registrado_em || '').slice(11, 16))}</span>
@@ -4821,6 +4832,7 @@ async function carregarDesfechos() {
         <div class="at-oque">
           <span class="at-etiqueta ${t.classe}">${esc(t.curto || a.desfecho)}</span>
           ${detalhe ? `<div class="at-detalhe">${esc(detalhe)}</div>` : ''}
+          ${a.observacao ? `<div class="at-obs">${esc(a.observacao)}</div>` : ''}
         </div>
         <div class="at-tecnico">
           ${a.tecnico ? `<span class="at-ponto-cor" style="background:${escCor(a.tecnico_cor)}"></span>${esc(a.tecnico)}` : '—'}
@@ -4829,6 +4841,9 @@ async function carregarDesfechos() {
         <div class="at-foto" id="at-foto-${a.servico_id}">
           ${a.fotos ? `<button class="at-ver-foto" onclick="verFotosDoAtendimento(${a.servico_id})">
               ${a.fotos} foto${a.fotos !== 1 ? 's' : ''}</button>` : ''}
+        </div>
+        <div class="at-baixa" id="at-baixa-${a.servico_id}">
+          ${a.desfecho === 'precisa_peca' ? botaoBaixa(a) : ''}
         </div>
       </div>`;
   }).join('');
@@ -4841,7 +4856,7 @@ async function carregarDesfechos() {
     <div class="at-tabela">
       <div class="at-cabecalho">
         <span>Quando</span><span>Cliente</span><span>O que aconteceu</span>
-        <span>Técnico</span><span>Etiqueta</span>
+        <span>Técnico</span><span>Etiqueta</span><span>Pedido</span>
       </div>
       ${linhas}
     </div>`;
@@ -4863,4 +4878,98 @@ async function verFotosDoAtendimento(servicoId) {
   } catch (e) {
     slot.innerHTML = `<span class="at-sub">${esc(e.message)}</span>`;
   }
+}
+
+
+// ─── Baixa da peça ──────────────────────────────────────────────────
+//
+// "Já pedi" fecha o circuito: marca aqui E escreve na planilha qual peça foi
+// pedida para qual cliente. Antes, entre o técnico dizer "precisa de peça" e
+// a compra chegar, o pedido existia só na memória de quem comprou — e
+// ninguém conseguia responder "essa peça já foi pedida?".
+//
+// A linha inteira fica verde, e não só o botão: com vinte linhas na tela, é a
+// cor da linha que responde a pergunta de longe.
+function botaoBaixa(a) {
+  if (a.pedido_em) {
+    const quando = (a.pedido_em || '').slice(0, 10).split('-').reverse().join('/');
+    return `<span class="at-pedida" title="Pedida em ${esc(a.pedido_em)}${
+      a.pedido_por ? ' por ' + esc(a.pedido_por) : ''}">✓ pedida ${esc(quando)}</span>`;
+  }
+  return `<button class="at-btn-baixa" onclick="darBaixaPeca(${a.servico_id})">
+            Já pedi</button>`;
+}
+
+async function darBaixaPeca(servicoId) {
+  const slot = document.getElementById(`at-baixa-${servicoId}`);
+  if (!slot) return;
+  const original = slot.innerHTML;
+  slot.innerHTML = '<span class="at-sub">gravando...</span>';
+  try {
+    const r = await api(`/desfechos/${servicoId}/pedido`, { method: 'POST' });
+    document.getElementById(`at-linha-${servicoId}`)?.classList.add('pedida');
+    slot.innerHTML = botaoBaixa({ pedido_em: r.pedido_em, pedido_por: r.pedido_por });
+    // O aviso aparece quando a baixa foi gravada mas a planilha falhou. É
+    // importante distinguir: a baixa VALEU, só a linha da planilha não saiu.
+    toast(r.aviso || 'Peça marcada como pedida e registrada na planilha',
+          r.aviso ? 'error' : 'success');
+  } catch (e) {
+    slot.innerHTML = original;
+    toast(e.message, 'error');
+  }
+}
+
+
+// ─── "Essa peça é de quem?" respondido pelo próprio sistema ────────────
+//
+// O técnico registrou em campo que precisava da peça X para o cliente Y.
+// Quando a compra dessa peça chega da Panasonic, o servidor casa pelo CÓDIGO
+// e a tela mostra de quem é — em vez de alguém ter que lembrar.
+//
+// SUGERE, não preenche sozinho. Duas pessoas podem precisar da mesma peça na
+// mesma semana; e este projeto já teve erro real de casamento automático de
+// cliente (ver services/agoraos.py), que escreveu na OS de outra pessoa sem
+// possibilidade de desfazer. Um clique é barato; nome errado numa peça, não.
+function sugestaoDeCliente(p) {
+  const lista = p.sugestao_cliente || [];
+  if (!lista.length || p.cliente_final) return '';
+
+  if (lista.length === 1) {
+    const s = lista[0];
+    return `
+      <div class="peca-sugere">
+        <span class="peca-sugere-txt">
+          O técnico pediu esta peça para <b>${esc(s.cliente)}</b>
+          ${s.aparelho ? `· ${esc(s.aparelho)}` : ''}
+          ${s.numero_os ? `· OS ${esc(s.numero_os)}` : ''}
+          ${s.ja_pedida ? '<span class="peca-sugere-ok">já dada baixa</span>' : ''}
+        </span>
+        <button class="peca-sugere-btn"
+                onclick="aplicarSugestaoCliente(${p.linha}, ${JSON.stringify(s.cliente)})">
+          usar este cliente</button>
+      </div>`;
+  }
+
+  // Mais de um candidato: mostra todos e deixa a escolha com quem sabe.
+  return `
+    <div class="peca-sugere ambigua">
+      <span class="peca-sugere-txt">
+        <b>${lista.length} clientes</b> pediram esta peça — escolha qual:
+      </span>
+      <span class="peca-sugere-opcoes">
+        ${lista.map(s => `
+          <button class="peca-sugere-btn"
+                  onclick="aplicarSugestaoCliente(${p.linha}, ${JSON.stringify(s.cliente)})">
+            ${esc(s.cliente)}${s.numero_os ? ' · OS ' + esc(s.numero_os) : ''}</button>`).join('')}
+      </span>
+    </div>`;
+}
+
+function aplicarSugestaoCliente(linha, cliente) {
+  const campo = document.getElementById(`peca-cliente-${linha}`);
+  if (!campo) return;
+  campo.value = cliente;
+  // Dispara a mesma gravação do preenchimento manual — um caminho só de
+  // escrita, para os dois não divergirem.
+  salvarPecaInline(linha);
 }

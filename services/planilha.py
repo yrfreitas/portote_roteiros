@@ -518,3 +518,67 @@ def reverter(ficha: dict, servicos: list) -> dict:
                 break
 
     return {"configurada": True, "revertidas": revertidas}
+
+
+# ─── Aba "Peças Solicitadas" ────────────────────────────────────────────
+#
+# Fecha o circuito que faltava. Até aqui a planilha só sabia das compras que a
+# Panasonic avisava por e-mail — ou seja, do que JÁ foi comprado. O que o
+# técnico pediu do campo não existia em lugar nenhum até virar compra, e
+# ninguém conseguia responder "quais peças estão pendentes de pedido?".
+#
+# ABA PRÓPRIA, e não linha na aba Pedidos, pela mesma razão de sempre neste
+# projeto: a aba Pedidos é escrita pelo robô a partir dos e-mails da
+# Panasonic. Gravar ali uma solicitação interna misturaria duas origens e
+# quebraria a conciliação, que casa por chave de nota.
+ABA_SOLICITADAS = os.environ.get("ABA_SOLICITADAS", "Peças Solicitadas")
+
+CABECALHO_SOLICITADAS = [
+    "Data do Pedido", "Cliente", "Peça", "Aparelho", "Nº OS",
+    "Técnico", "Observação", "Pedido por", "Atendimento",
+]
+
+
+def _aba_solicitadas(planilha):
+    # Import local, como nas outras funções deste módulo: gspread não é
+    # importado no topo para o site subir mesmo sem a integração instalada.
+    import gspread
+
+    try:
+        return planilha.worksheet(ABA_SOLICITADAS)
+    except gspread.WorksheetNotFound:
+        log.info("Criando aba '%s'", ABA_SOLICITADAS)
+        aba = planilha.add_worksheet(title=ABA_SOLICITADAS, rows=2000,
+                                     cols=len(CABECALHO_SOLICITADAS))
+        aba.append_row(CABECALHO_SOLICITADAS, value_input_option="USER_ENTERED")
+        aba.freeze(rows=1)
+        return aba
+
+
+def registrar_peca_solicitada(dados: dict) -> dict:
+    """Grava na planilha que a peça foi pedida para aquele cliente.
+
+    `dados` traz cliente, peca, aparelho, numero_os, tecnico, observacao,
+    pedido_por e servico_id.
+    """
+    if not planilha_configurada():
+        return {"configurada": False}
+
+    aba = _aba_solicitadas(_abrir_planilha())
+
+    # A coluna "Atendimento" guarda o id do serviço no site. É o que permite,
+    # depois, voltar da linha da planilha para o atendimento de origem — sem
+    # isso a linha vira texto solto e ninguém sabe de qual visita veio.
+    aba.append_row([
+        datetime.now().strftime("%d/%m/%Y %H:%M"),
+        dados.get("cliente") or "",
+        dados.get("peca") or "",
+        dados.get("aparelho") or "",
+        dados.get("numero_os") or "",
+        dados.get("tecnico") or "",
+        dados.get("observacao") or "",
+        dados.get("pedido_por") or "",
+        str(dados.get("servico_id") or ""),
+    ], value_input_option="USER_ENTERED", table_range="A1")
+
+    return {"configurada": True, "aba": ABA_SOLICITADAS}

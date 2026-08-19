@@ -354,8 +354,11 @@ _SCHEMA_PG = [
         desfecho        TEXT NOT NULL,
         motivo          TEXT,
         peca            TEXT,
+        observacao      TEXT,
         registrado_em   TEXT,
-        registrado_por  TEXT
+        registrado_por  TEXT,
+        pedido_em       TEXT,
+        pedido_por      TEXT
     )""",
 
     # FOTO DA ETIQUETA DO APARELHO.
@@ -525,8 +528,11 @@ _SCHEMA_SQLITE = """
         desfecho        TEXT NOT NULL,
         motivo          TEXT,
         peca            TEXT,
+        observacao      TEXT,
         registrado_em   TEXT,
-        registrado_por  TEXT
+        registrado_por  TEXT,
+        pedido_em       TEXT,
+        pedido_por      TEXT
     );
     CREATE TABLE IF NOT EXISTS servico_foto (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -572,6 +578,11 @@ _MIGRACOES_PG = [
     "ALTER TABLE rastreios ADD COLUMN IF NOT EXISTS eta_minutos INTEGER",
     "ALTER TABLE rastreios ADD COLUMN IF NOT EXISTS precisao DOUBLE PRECISION",
     "ALTER TABLE tecnicos ADD COLUMN IF NOT EXISTS foto TEXT",
+    # A tabela de desfecho nasceu sem observacao; bancos criados antes disso
+    # precisam ganhar a coluna sem perder o que ja registraram.
+    "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS observacao TEXT",
+    "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS pedido_em TEXT",
+    "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS pedido_por TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -586,6 +597,9 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE servicos ADD COLUMN concluido_em TEXT",
     "ALTER TABLE servicos ADD COLUMN numero_os TEXT",
     "ALTER TABLE servicos ADD COLUMN setor_id INTEGER",
+    "ALTER TABLE servico_desfecho ADD COLUMN observacao TEXT",
+    "ALTER TABLE servico_desfecho ADD COLUMN pedido_em TEXT",
+    "ALTER TABLE servico_desfecho ADD COLUMN pedido_por TEXT",
     "ALTER TABLE rastreios ADD COLUMN eta_minutos INTEGER",
     "ALTER TABLE rastreios ADD COLUMN precisao REAL",
     "ALTER TABLE tecnicos ADD COLUMN foto TEXT",
