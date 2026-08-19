@@ -1703,7 +1703,11 @@ async function carregarFichasTecnico(tecnicoId) {
       const ativa = fichaAtiva?.id === f.id;
       const concluida = f.status === 'concluida';
       return `
-      <div class="ficha-item ${ativa ? 'active' : ''} ${concluida ? 'ficha-item-concluida' : ''}"
+      <!-- "vazia" marca ficha sem atendimento: ela fica mais discreta e mais
+           baixa, para o olho encontrar sozinho quem TEM trabalho. Antes uma
+           terça com zero atendimentos ocupava o mesmo peso e a mesma altura
+           que uma segunda com cinco pontos e 23 km. -->
+      <div class="ficha-item ${ativa ? 'active' : ''} ${concluida ? 'ficha-item-concluida' : ''} ${(f.total_servicos || 0) === 0 && !ativa ? 'vazia' : ''}"
            onclick="selecionarFicha(${f.id})"
            id="sidebar-item-${f.id}"
            style="${ativa ? `border-color:${escCor(tecnico?.cor)}` : ''}">
