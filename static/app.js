@@ -2810,9 +2810,15 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
     return `
       <div class="roteiro-item ${feito ? 'roteiro-item-concluido' : ''}" id="svc-${s.id}" data-id="${s.id}">
         <div class="drag-handle" title="Arraste para reordenar">⠿</div>
+        <!-- O NÚMERO conclui o atendimento. Pendente, abre a folha do desfecho
+             ("o que aconteceu?"); concluído, reabre direto. É o alvo dentro da
+             ordem de atendimento, que é onde quem acompanha a rota está
+             olhando. -->
         <button class="step-num step-num-btn" style="background:${cor}20;border-color:${cor}60;color:${cor}"
-                onclick="alternarStatusServico(${s.id},'${feito ? 'pendente' : 'concluido'}',${ficha.id})"
-                title="${feito ? 'Marcar como pendente' : 'Marcar como concluído'}">
+                onclick="${feito
+                  ? `alternarStatusServico(${s.id},'pendente',${ficha.id})`
+                  : `abrirDesfecho(${s.id},${ficha.id})`}"
+                title="${feito ? 'Reabrir atendimento' : 'Concluir e registrar o que aconteceu'}">
           ${feito ? icone('check', 'icone-13') : i + 1}
         </button>
         <div class="roteiro-info">
@@ -4356,11 +4362,83 @@ async function aplicarConciliacao(fichaId) {
   }
 }
 
-async function alternarStatusServico(servicoId, novoStatus, fichaId) {
+// ─── Folha de desfecho (painel) ─────────────────────────────────────
+//
+// Mesmas quatro opções do app do técnico, e grava pela mesma função no
+// servidor: o desfecho não pode depender de quem concluiu, senão o relatório
+// vira duas contagens diferentes.
+const DF_OPCOES = [
+  { tipo: 'resolvido',    rotulo: 'Resolvido',       sub: 'consertado na hora' },
+  { tipo: 'precisa_peca', rotulo: 'Precisa de peça', sub: 'diagnosticado, falta peça' },
+  { tipo: 'volto_depois', rotulo: 'Volta depois',    sub: 'precisa retornar' },
+  { tipo: 'nao_atendido', rotulo: 'Não atendido',    sub: 'não deu para fazer' },
+];
+const DF_MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
+                    'Aparelho sem defeito', 'Sem acesso ao local'];
+
+let _dfServico = null, _dfFicha = null, _dfTipo = null;
+
+function abrirDesfecho(servicoId, fichaId) {
+  _dfServico = servicoId; _dfFicha = fichaId; _dfTipo = null;
+  const m = document.getElementById('modal-desfecho');
+  m.querySelector('.df-corpo').innerHTML = `
+    <div class="df-opcoes">
+      ${DF_OPCOES.map(o => `
+        <button class="df-opcao" data-tipo="${o.tipo}" onclick="escolherDesfecho('${o.tipo}')">
+          <b>${o.rotulo}</b><small>${o.sub}</small>
+        </button>`).join('')}
+    </div>
+    <div id="df-extra"></div>`;
+  document.getElementById('df-confirmar').disabled = true;
+  m.classList.add('open');
+}
+
+function fecharDesfecho() {
+  document.getElementById('modal-desfecho')?.classList.remove('open');
+  _dfServico = null;
+}
+
+function escolherDesfecho(tipo) {
+  _dfTipo = tipo;
+  document.querySelectorAll('.df-opcao').forEach(b =>
+    b.classList.toggle('ativa', b.dataset.tipo === tipo));
+  const extra = document.getElementById('df-extra');
+  if (tipo === 'precisa_peca') {
+    extra.innerHTML = `<label class="form-label" for="df-peca">Qual peça?</label>
+      <input class="form-input" id="df-peca" autocomplete="off"
+             placeholder="Código ou nome da peça">`;
+    setTimeout(() => document.getElementById('df-peca')?.focus(), 60);
+  } else if (tipo === 'nao_atendido') {
+    extra.innerHTML = `<label class="form-label">Por quê?</label>
+      <div class="df-motivos">${DF_MOTIVOS.map(mo =>
+        `<button class="df-motivo" data-motivo="${esc(mo)}"
+                 onclick="escolherMotivoDesfecho(this)">${esc(mo)}</button>`).join('')}</div>`;
+  } else {
+    extra.innerHTML = '';
+  }
+  document.getElementById('df-confirmar').disabled = false;
+}
+
+function escolherMotivoDesfecho(botao) {
+  document.querySelectorAll('.df-motivo').forEach(b => b.classList.remove('ativa'));
+  botao.classList.add('ativa');
+}
+
+async function confirmarDesfecho() {
+  if (!_dfTipo || !_dfServico) return;
+  const desfecho = { tipo: _dfTipo };
+  if (_dfTipo === 'precisa_peca') desfecho.peca = document.getElementById('df-peca')?.value.trim() || '';
+  if (_dfTipo === 'nao_atendido') desfecho.motivo = document.querySelector('.df-motivo.ativa')?.dataset.motivo || '';
+  const svc = _dfServico, ficha = _dfFicha;
+  fecharDesfecho();
+  await alternarStatusServico(svc, 'concluido', ficha, desfecho);
+}
+
+async function alternarStatusServico(servicoId, novoStatus, fichaId, desfecho) {
   try {
     await api(`/servicos/${servicoId}/status`, {
       method: 'PUT',
-      body: JSON.stringify({ status: novoStatus }),
+      body: JSON.stringify(desfecho ? { status: novoStatus, desfecho } : { status: novoStatus }),
     });
     toast(novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto', 'success');
     await renderFichaDetalhe(fichaId);

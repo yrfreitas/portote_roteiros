@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
 from database import (IS_PG, db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id)
@@ -214,8 +214,16 @@ def alterar_status_servico(servico_id):
         if not servico:
             return jsonify({"erro": "Serviço não encontrado"}), 404
         aplicar_status_servico(conn, servico_id, novo_status)
+        # Mesma função que o app do técnico usa: o desfecho tem de ser gravado
+        # igual venha de onde vier, senão as duas origens divergem e o
+        # relatório passa a depender de quem concluiu.
+        from routes.tecnico_api import _gravar_desfecho
+        desfecho = _gravar_desfecho(conn, servico_id, novo_status,
+                                    data.get("desfecho"),
+                                    (session.get("usuario_nome") or "").strip())
 
-    return jsonify({"mensagem": f"Serviço marcado como {novo_status}", "status": novo_status})
+    return jsonify({"mensagem": f"Serviço marcado como {novo_status}",
+                    "status": novo_status, "desfecho": desfecho})
 
 
 @servicos_bp.route("/servicos/<int:servico_id>", methods=["DELETE"])
