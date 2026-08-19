@@ -1370,9 +1370,19 @@ header::after {
 .roteiro-item {
   position: relative;
   display: grid;
-  grid-template-columns: 22px 40px 1fr auto;
-  align-items: center;
-  gap: 12px;
+  /* AÇÕES NA SEGUNDA LINHA.
+     Eram uma quarta coluna `auto`, que cresce até caber os seis botões
+     (~250px). Como este painel divide a largura com o mapa, o que sobrava
+     para o texto era uma faixa de ~120px: endereço e nome do cliente
+     quebravam palavra por palavra, uma por linha. Em cima o conteúdo,
+     embaixo os botões alinhados sob ele — o texto recupera a largura
+     inteira e a leitura volta a ser horizontal. */
+  grid-template-columns: 22px 40px minmax(0, 1fr);
+  grid-template-areas:
+    "puxador numero info"
+    ".       .      acoes";
+  align-items: start;
+  gap: 6px 12px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
   transition: background 0.18s;
@@ -3272,3 +3282,26 @@ select:focus-visible,
   cursor: pointer; padding: 2px 4px; flex: none; border-radius: 5px;
 }
 .conversa-apagar:hover { color: #ff8a8a; background: rgba(224,76,76,.12); }
+
+/* Desfecho do atendimento, visto no painel. Cor por tipo, com o nome escrito
+   junto — quem lê precisa saber POR QUE o atendimento fechou, e "precisa de
+   peça" é o que gera trabalho novo. */
+.roteiro-desfecho {
+  display: inline-block; margin-top: 6px; padding: 3px 9px;
+  border-radius: 7px; font-size: 11px; font-weight: 650;
+  background: rgba(255,255,255,.05); color: var(--text-secondary);
+}
+.df-resolvido     { background: var(--success-dim); color: var(--success-text); }
+.df-precisa-peca  { background: var(--gold-dim);    color: var(--gold-text); }
+.df-volto         { background: rgba(34,211,238,.13); color: #7de3f4; }
+.df-nao-atendido  { background: var(--danger-dim);  color: var(--danger-text); }
+
+/* Áreas do item de roteiro (ver .roteiro-item: ações foram para a 2ª linha) */
+.roteiro-item > .drag-handle   { grid-area: puxador; align-self: center; }
+.roteiro-item > .step-num      { grid-area: numero;  align-self: center; }
+.roteiro-item > .roteiro-info  { grid-area: info; min-width: 0; }
+.roteiro-item > .roteiro-actions {
+  grid-area: acoes;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
+  margin-top: 2px;
+}

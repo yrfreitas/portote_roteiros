@@ -2315,6 +2315,26 @@ async function salvarPecaInline(linha) {
   }
 }
 
+// ─── Desfecho do atendimento (visto do escritório) ──────────────────
+//
+// O técnico registra em campo o que aconteceu; sem mostrar aqui, o dado
+// ficaria preso no aplicativo dele. "Precisa de peça" é o que mais importa:
+// é o atendimento que vai exigir uma segunda visita.
+const DESFECHO_ROTULO = {
+  resolvido:    { txt: 'Resolvido',       classe: 'df-resolvido' },
+  precisa_peca: { txt: 'Precisa de peça', classe: 'df-precisa-peca' },
+  volto_depois: { txt: 'Volta depois',    classe: 'df-volto' },
+  nao_atendido: { txt: 'Não atendido',    classe: 'df-nao-atendido' },
+};
+
+function seloDesfecho(s) {
+  const d = DESFECHO_ROTULO[s.desfecho];
+  if (!d) return '';
+  const extra = s.desfecho_peca || s.desfecho_motivo || '';
+  return `<div class="roteiro-desfecho ${d.classe}">${d.txt}${
+    extra ? ' · ' + esc(extra) : ''}</div>`;
+}
+
 // ─── Estágio da compra ──────────────────────────────────────────────
 //
 // A Panasonic informa quatro estados por e-mail, e o robô os grava na
@@ -2808,6 +2828,7 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
               : '';
             return (os || marca) ? `<div class="roteiro-etiquetas">${marca}${os}</div>` : '';
           })()}
+          ${seloDesfecho(s)}
           ${(!s.lat || !s.lng) ? `<div class="roteiro-cliente" style="color:var(--danger-text);display:flex;align-items:center;gap:4px;">${icone('alerta', 'icone-11')} sem coordenada — fora do cálculo</div>` : ''}
         </div>
         <div class="roteiro-actions">

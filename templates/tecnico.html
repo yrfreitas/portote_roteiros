@@ -36,6 +36,18 @@
 
   <div class="t-toast" id="toast"></div>
 
+  <!-- Folha de desfecho: sobe de baixo ao marcar um atendimento como feito.
+       Fica no HTML e não é criada por JS para o fundo escuro já existir
+       quando a animação começa. -->
+  <div class="t-folha" id="t-folha-desfecho" role="dialog" aria-modal="true"
+       aria-label="O que aconteceu no atendimento">
+    <div class="t-folha-fundo" onclick="window._tFecharDesfecho()"></div>
+    <div class="t-folha-painel">
+      <div class="t-folha-alca" onclick="window._tFecharDesfecho()"></div>
+      <div class="t-folha-corpo"></div>
+    </div>
+  </div>
+
   <script src="/static/tecnico.js"></script>
 </body>
 </html>

@@ -336,6 +336,27 @@ _SCHEMA_PG = [
         observacao   TEXT,
         registrado_por TEXT
     )""",
+
+    # O QUE ACONTECEU NO ATENDIMENTO.
+    #
+    # Até aqui o técnico só podia dizer "concluído" — e "concluído" tanto
+    # significa "consertei" quanto "fui lá e o cliente não estava". São
+    # desfechos opostos que exigem ações opostas, e a diferença ficava na
+    # cabeça de quem foi.
+    #
+    # É campo ESCOLHIDO, não texto livre, de propósito: "troquei a placa"
+    # digitado de dez maneiras não vira relatório, não filtra e não dispara
+    # nada. Com opção fixa dá para contar quantos atendimentos pararam por
+    # falta de peça no mês — que é a pergunta que ninguém consegue responder
+    # hoje.
+    """CREATE TABLE IF NOT EXISTS servico_desfecho (
+        servico_id      INTEGER PRIMARY KEY,
+        desfecho        TEXT NOT NULL,
+        motivo          TEXT,
+        peca            TEXT,
+        registrado_em   TEXT,
+        registrado_por  TEXT
+    )""",
 ]
 
 _SCHEMA_SQLITE = """
@@ -479,6 +500,14 @@ _SCHEMA_SQLITE = """
         chegou_em    TEXT,
         observacao   TEXT,
         registrado_por TEXT
+    );
+    CREATE TABLE IF NOT EXISTS servico_desfecho (
+        servico_id      INTEGER PRIMARY KEY,
+        desfecho        TEXT NOT NULL,
+        motivo          TEXT,
+        peca            TEXT,
+        registrado_em   TEXT,
+        registrado_por  TEXT
     );
 """
 

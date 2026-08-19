@@ -1,6 +1,8 @@
+from datetime import datetime
+
 from flask import Blueprint, jsonify, request
 
-from database import db_conn, execute, fetch_all, fetch_one, ler_revisao
+from database import db_conn, execute, fetch_all, fetch_one, ler_revisao, sql
 from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
                            recalcular_distancia_ordem_fixa)
 from routes.servicos import STATUS_SERVICO_VALIDOS, aplicar_status_servico
@@ -96,10 +98,17 @@ def detalhe_ficha_tecnico(token, ficha_id):
         if not ficha:
             return jsonify({"erro": "Ficha não encontrada"}), 404
 
-        servicos = fetch_all(
-            conn, "SELECT * FROM servicos WHERE ficha_id = ? ORDER BY ordem, id",
-            (ficha_id,),
-        )
+        # LEFT JOIN para o atendimento sem desfecho continuar aparecendo:
+        # concluir sem escolher desfecho é permitido (o técnico pode fechar o
+        # app antes), e sumir da lista por isso seria pior que a falta do dado.
+        servicos = fetch_all(conn, sql("""
+            SELECT s.*, d.desfecho, d.motivo AS desfecho_motivo,
+                   d.peca AS desfecho_peca
+              FROM servicos s
+              LEFT JOIN servico_desfecho d ON d.servico_id = s.id
+             WHERE s.ficha_id = ?
+             ORDER BY s.ordem, s.id
+        """), (ficha_id,))
 
     return jsonify({"ficha": ficha, "servicos": servicos})
 
@@ -159,8 +168,54 @@ def status_servico_tecnico(token, servico_id):
             return jsonify({"erro": "Serviço não encontrado"}), 404
 
         aplicar_status_servico(conn, servico_id, novo_status)
+        desfecho_gravado = _gravar_desfecho(conn, servico_id, novo_status,
+                                            data.get("desfecho"),
+                                            tecnico.get("nome") or "")
 
-    return jsonify({"mensagem": f"Serviço marcado como {novo_status}", "status": novo_status})
+    return jsonify({"mensagem": f"Serviço marcado como {novo_status}",
+                    "status": novo_status, "desfecho": desfecho_gravado})
+
+
+# Desfechos possíveis de um atendimento. Lista FECHADA de propósito: o valor
+# alimenta contagem e filtro, e texto livre não soma nem filtra.
+DESFECHOS_VALIDOS = {"resolvido", "precisa_peca", "volto_depois", "nao_atendido"}
+
+
+def _gravar_desfecho(conn, servico_id, novo_status, desfecho, quem):
+    """Guarda o que aconteceu no atendimento, junto com a conclusão.
+
+    Vem na MESMA requisição do status, e não num endpoint próprio, porque o
+    aplicativo do técnico tem fila offline: duas requisições significariam
+    que uma pode subir e a outra não, deixando atendimento concluído sem
+    desfecho — ou desfecho órfão de um atendimento que voltou a pendente.
+
+    Reabrir o atendimento apaga o desfecho: ele descreve uma conclusão que
+    deixou de existir.
+    """
+    if novo_status != "concluido":
+        execute(conn, sql("DELETE FROM servico_desfecho WHERE servico_id = ?"),
+                (servico_id,))
+        return None
+
+    if not isinstance(desfecho, dict):
+        return None
+
+    tipo = (desfecho.get("tipo") or "").strip().lower()
+    if tipo not in DESFECHOS_VALIDOS:
+        return None
+
+    motivo = (desfecho.get("motivo") or "").strip()[:120]
+    peca = (desfecho.get("peca") or "").strip()[:200]
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    execute(conn, sql("DELETE FROM servico_desfecho WHERE servico_id = ?"),
+            (servico_id,))
+    execute(conn, sql(
+        "INSERT INTO servico_desfecho (servico_id, desfecho, motivo, peca, "
+        "registrado_em, registrado_por) VALUES (?, ?, ?, ?, ?, ?)"),
+        (servico_id, tipo, motivo, peca, agora, quem))
+
+    return {"tipo": tipo, "motivo": motivo, "peca": peca}
 
 
 @tecnico_api_bp.route("/<token>/fichas/<int:ficha_id>/reordenar", methods=["PUT"])

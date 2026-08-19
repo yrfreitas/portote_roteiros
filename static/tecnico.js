@@ -208,10 +208,13 @@
             <div class="t-ponto-cliente">${esc(s.cliente) || 'Cliente sem nome'}</div>
             <div class="t-ponto-endereco">${esc(s.endereco_completo)}</div>
             ${s.tipo_aparelho ? `<div class="t-ponto-aparelho">${esc(s.tipo_aparelho)}${s.modelo ? ' · ' + esc(s.modelo) : ''}</div>` : ''}
+            ${feito && s.desfecho ? selo_desfecho(s) : ''}
             <div class="t-ponto-acoes">
               <a class="t-ponto-link" target="_blank" rel="noopener" href="${urlMaps}">Google Maps</a>
               <button class="t-ponto-link t-ponto-link-waze" onclick="window._tAvisarACaminho(${s.id})">Waze</button>
-              <button class="t-ponto-check ${feito ? 'concluido' : ''}" onclick="window._tConcluirPonto(${s.id}, '${feito ? 'pendente' : 'concluido'}')">
+              <button class="t-ponto-check ${feito ? 'concluido' : ''}" onclick="${feito
+                  ? `window._tConcluirPonto(${s.id}, 'pendente')`
+                  : `window._tAbrirDesfecho(${s.id})`}">
                 ${feito ? 'Concluído' : 'Marcar feito'}
               </button>
             </div>
@@ -563,8 +566,118 @@
     } catch (e) { toast(e.message); }
   };
 
-  window._tConcluirPonto = async function (servicoId, novoStatus) {
-    const opts = { method: 'PUT', body: JSON.stringify({ status: novoStatus }) };
+  // ─── Desfecho do atendimento ──────────────────────────────────────
+  //
+  // "Concluído" sozinho não dizia nada: significava tanto "consertei" quanto
+  // "fui lá e o cliente não estava". Desfechos opostos, ações opostas — e a
+  // diferença ficava na cabeça de quem foi.
+  //
+  // Opção ESCOLHIDA em vez de campo de texto porque texto livre não soma nem
+  // filtra: "troquei a placa" escrito de dez jeitos nunca vira relatório, e
+  // "precisa de peça" digitado não dispara nada. Assim dá para responder
+  // quantos atendimentos do mês pararam por falta de peça.
+  //
+  // Botão grande e pouco toque: o técnico está de pé, na calçada, com uma
+  // mão segurando o celular e a outra ocupada.
+  const DESFECHOS = [
+    { tipo: 'resolvido',    rotulo: 'Resolvido',        sub: 'consertado na hora',    icone: '✓' },
+    { tipo: 'precisa_peca', rotulo: 'Precisa de peça',  sub: 'diagnosticado, falta peça', icone: '🔧' },
+    { tipo: 'volto_depois', rotulo: 'Volto depois',     sub: 'preciso retornar',      icone: '↻' },
+    { tipo: 'nao_atendido', rotulo: 'Não atendido',     sub: 'não deu para fazer',    icone: '!' },
+  ];
+  const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
+                   'Aparelho sem defeito', 'Sem acesso ao local'];
+
+  function selo_desfecho(s) {
+    const d = DESFECHOS.find(x => x.tipo === s.desfecho);
+    if (!d) return '';
+    const extra = s.desfecho_peca ? ' · ' + esc(s.desfecho_peca)
+                : s.desfecho_motivo ? ' · ' + esc(s.desfecho_motivo) : '';
+    return `<div class="t-desfecho-selo t-df-${s.desfecho}">${d.icone} ${d.rotulo}${extra}</div>`;
+  }
+
+  let _desfechoServicoId = null;
+  let _desfechoTipo = null;
+
+  window._tAbrirDesfecho = function (servicoId) {
+    _desfechoServicoId = servicoId;
+    _desfechoTipo = null;
+    const folha = document.getElementById('t-folha-desfecho');
+    if (!folha) return;
+    folha.querySelector('.t-folha-corpo').innerHTML = `
+      <div class="t-folha-titulo">O que aconteceu?</div>
+      <div class="t-df-opcoes">
+        ${DESFECHOS.map(d => `
+          <button class="t-df-opcao" data-tipo="${d.tipo}"
+                  onclick="window._tEscolherDesfecho('${d.tipo}')">
+            <span class="t-df-icone">${d.icone}</span>
+            <span class="t-df-txt"><b>${d.rotulo}</b><small>${d.sub}</small></span>
+          </button>`).join('')}
+      </div>
+      <div id="t-df-extra"></div>
+      <button class="t-df-confirmar" id="t-df-confirmar" disabled
+              onclick="window._tConfirmarDesfecho()">Confirmar</button>`;
+    folha.classList.add('aberta');
+  };
+
+  window._tFecharDesfecho = function () {
+    document.getElementById('t-folha-desfecho')?.classList.remove('aberta');
+    _desfechoServicoId = null;
+  };
+
+  window._tEscolherDesfecho = function (tipo) {
+    _desfechoTipo = tipo;
+    document.querySelectorAll('.t-df-opcao').forEach(b =>
+      b.classList.toggle('ativa', b.dataset.tipo === tipo));
+
+    const extra = document.getElementById('t-df-extra');
+    if (tipo === 'precisa_peca') {
+      extra.innerHTML = `
+        <label class="t-df-rotulo" for="t-df-peca">Qual peça?</label>
+        <input class="t-df-input" id="t-df-peca" autocomplete="off"
+               placeholder="Código ou nome da peça">`;
+      // Sem foco automático: abrir o teclado por cima da folha esconde o
+      // botão de confirmar, e o técnico fica sem saber o que fazer.
+    } else if (tipo === 'nao_atendido') {
+      extra.innerHTML = `
+        <label class="t-df-rotulo">Por quê?</label>
+        <div class="t-df-motivos">
+          ${MOTIVOS.map(m => `
+            <button class="t-df-motivo" data-motivo="${esc(m)}"
+                    onclick="window._tEscolherMotivo(this)">${esc(m)}</button>`).join('')}
+        </div>`;
+    } else {
+      extra.innerHTML = '';
+    }
+    document.getElementById('t-df-confirmar').disabled = false;
+  };
+
+  window._tEscolherMotivo = function (botao) {
+    document.querySelectorAll('.t-df-motivo').forEach(b => b.classList.remove('ativa'));
+    botao.classList.add('ativa');
+  };
+
+  window._tConfirmarDesfecho = function () {
+    if (!_desfechoTipo || !_desfechoServicoId) return;
+    const desfecho = { tipo: _desfechoTipo };
+    if (_desfechoTipo === 'precisa_peca') {
+      desfecho.peca = document.getElementById('t-df-peca')?.value.trim() || '';
+    }
+    if (_desfechoTipo === 'nao_atendido') {
+      desfecho.motivo = document.querySelector('.t-df-motivo.ativa')?.dataset.motivo || '';
+    }
+    const id = _desfechoServicoId;
+    window._tFecharDesfecho();
+    window._tConcluirPonto(id, 'concluido', desfecho);
+  };
+
+  window._tConcluirPonto = async function (servicoId, novoStatus, desfecho) {
+    // O desfecho vai NA MESMA requisição do status: o app tem fila offline, e
+    // duas requisições separadas poderiam subir só uma — deixando atendimento
+    // concluído sem desfecho, ou desfecho de um atendimento que foi reaberto.
+    const corpo = { status: novoStatus };
+    if (desfecho) corpo.desfecho = desfecho;
+    const opts = { method: 'PUT', body: JSON.stringify(corpo) };
     // Chegou: desliga o GPS na hora. O servidor tambem encerra o rastreio ao
     // concluir o ponto, mas esperar a proxima leitura responder "gravado:
     // false" gastaria bateria a toa depois de o trabalho ter acabado.

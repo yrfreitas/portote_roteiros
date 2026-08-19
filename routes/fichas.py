@@ -3,7 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 
-from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
+from database import (db_conn, execute, fetch_all, fetch_one,
+                      insert_returning_id, sql)
 from services.geo import geocode_cep
 from services.otimizador import (
     MINUTOS_PARADA, calcular_rota_fixa, calcular_tempo, otimizar_rota,
@@ -197,7 +198,14 @@ def obter_ficha(ficha_id):
 
         servicos = fetch_all(
             conn,
-            "SELECT * FROM servicos WHERE ficha_id = ? ORDER BY ordem, id",
+            # Traz o desfecho junto: sem isto, o que o técnico registrou em
+            # campo ficava preso no aplicativo dele e o escritório continuava
+            # sem saber por que o atendimento fechou.
+            sql("""SELECT s.*, d.desfecho, d.motivo AS desfecho_motivo,
+                          d.peca AS desfecho_peca
+                     FROM servicos s
+                     LEFT JOIN servico_desfecho d ON d.servico_id = s.id
+                    WHERE s.ficha_id = ? ORDER BY s.ordem, s.id"""),
             (ficha_id,),
         )
 
