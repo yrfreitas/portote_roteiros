@@ -1988,7 +1988,29 @@ async function carregarPecas() {
     return;
   }
 
+  // Contagem por estágio: é o que responde "cadê a peça do fulano?" antes
+  // mesmo de procurar. Antes o status_compra vinha da planilha até o
+  // navegador e era descartado na hora de desenhar.
+  const porEstagio = { chegou: 0, ENVIADO: 0, FATURADO: 0, APROVADO: 0, CRIADO: 0 };
+  pedidos.forEach(p => {
+    if (p.chegou_em) porEstagio.chegou++;
+    else porEstagio[(p.status_compra || 'CRIADO').toUpperCase()] =
+      (porEstagio[(p.status_compra || 'CRIADO').toUpperCase()] || 0) + 1;
+  });
+
   lista.innerHTML = `
+    <div class="pecas-filtros" id="pecas-filtros">
+      ${[['', 'Todas', pedidos.length],
+         ['chegou', 'Chegou', porEstagio.chegou],
+         ['ENVIADO', 'A caminho', porEstagio.ENVIADO],
+         ['FATURADO', 'Faturada', porEstagio.FATURADO],
+         ['pendente', 'Sem cliente', pedidos.filter(p => !p.cliente_final).length]]
+        .map(([v, rot, n]) => `
+          <button class="pecas-filtro${v === '' ? ' ativo' : ''}" data-estagio="${v}"
+                  onclick="filtrarPorEstagio('${v}')">
+            ${rot} <span class="pecas-filtro-n">${n}</span>
+          </button>`).join('')}
+    </div>
     <div class="pecas-barra">
       <input class="pecas-busca" id="pecas-busca" type="search" autocomplete="off"
              placeholder="Filtrar por peça, cliente ou pedido..."
@@ -2001,8 +2023,11 @@ async function carregarPecas() {
     </div>
     <div id="pecas-revisao"></div>
   ` + pedidos.map(p => `
-    <div class="peca-linha${p.cliente_final ? ' tem-cliente' : ''}"
+    <div class="peca-linha${p.cliente_final ? ' tem-cliente' : ''}${p.chegou_em ? ' chegou' : ''}"
          id="peca-${p.linha}" data-linha="${p.linha}"
+         data-chave="${esc(p.chave || '')}"
+         data-estagio="${p.chegou_em ? 'chegou' : esc((p.status_compra || 'CRIADO').toUpperCase())}"
+         data-pendente="${p.cliente_final ? '0' : '1'}"
          data-busca="${esc(((p.peca || '') + ' ' + (p.cliente_final || '') + ' ' + (p.pedido || '') + ' ' + (p.nota_fiscal || '')).toLowerCase())}">
 
       <div class="peca-ident">
@@ -2011,6 +2036,7 @@ async function carregarPecas() {
             ? 'NF ' + esc(p.nota_fiscal.slice(-8))
             : (p.pedido ? 'Pedido ' + esc(p.pedido) : 'sem nota ainda')}
           · ${esc((p.data || '').split(' ')[0])}</span>
+        ${estagioPeca(p)}
       </div>
 
       <div class="peca-campo">
@@ -2032,8 +2058,17 @@ async function carregarPecas() {
       <!-- Estado da gravação. Fica NA LINHA, e não num toast, porque o toast
            some e some sozinho: quem preencheu cinco linhas seguidas precisa
            poder olhar para trás e ver quais já foram para a planilha. -->
-      <span class="peca-estado" id="peca-estado-${p.linha}">${
-        p.cliente_final ? '<span class="ok">✓ na planilha</span>' : ''}</span>
+      <div class="peca-acoes">
+        <span class="peca-estado" id="peca-estado-${p.linha}">${
+          p.cliente_final ? '<span class="ok">✓ na planilha</span>' : ''}</span>
+        <button class="peca-chegou${p.chegou_em ? ' marcado' : ''}"
+                id="peca-chegou-${p.linha}"
+                title="${p.chegou_em ? 'Chegou em ' + esc(p.chegou_em) + ' — clique para desfazer'
+                                     : 'Marcar que a peça chegou na oficina'}"
+                onclick="alternarChegada(${p.linha})">
+          ${p.chegou_em ? '📦 chegou' : 'marcar chegada'}
+        </button>
+      </div>
 
       <div class="peca-sugestao-slot" id="sugestao-${p.linha}"
            data-nota="${esc(p.nota_fiscal)}"></div>
@@ -2271,6 +2306,72 @@ async function salvarPecaInline(linha) {
   }
 }
 
+// ─── Estágio da compra ──────────────────────────────────────────────
+//
+// A Panasonic informa quatro estados por e-mail, e o robô os grava na
+// planilha: pedido criado, pagamento aprovado, nota faturada, produto
+// enviado. Tudo isso chegava até o navegador e era jogado fora na hora de
+// desenhar — a tela só sabia dizer "sem cliente".
+//
+// É a informação que a operação mais usa: quem vai reagendar a visita
+// precisa saber se a peça saiu, não se a compra foi registrada.
+const ESTAGIOS = {
+  CRIADO:   { rotulo: 'aguardando pagamento', classe: 'e-criado' },
+  APROVADO: { rotulo: 'pago',                 classe: 'e-aprovado' },
+  FATURADO: { rotulo: 'nota emitida',         classe: 'e-faturado' },
+  ENVIADO:  { rotulo: 'a caminho',            classe: 'e-enviado' },
+};
+
+function estagioPeca(p) {
+  if (p.chegou_em) {
+    return `<span class="peca-estagio e-chegou" title="Registrado em ${esc(p.chegou_em)}">chegou</span>`;
+  }
+  const e = ESTAGIOS[(p.status_compra || '').toUpperCase()] || ESTAGIOS.CRIADO;
+  return `<span class="peca-estagio ${e.classe}">${e.rotulo}</span>`;
+}
+
+// Registra que a peça chegou na bancada. É o elo que faltava: a planilha
+// acompanha até "enviado", e entre o envio e a caixa aberta passam dias que
+// não existiam em lugar nenhum.
+async function alternarChegada(linha) {
+  const el = document.getElementById(`peca-${linha}`);
+  const btn = document.getElementById(`peca-chegou-${linha}`);
+  if (!el || !btn) return;
+
+  const marcando = !btn.classList.contains('marcado');
+  btn.disabled = true;
+  try {
+    await api('/pedidos/chegada', {
+      method: 'POST',
+      body: JSON.stringify({ chave: el.dataset.chave, chegou: marcando }),
+    });
+    btn.classList.toggle('marcado', marcando);
+    btn.textContent = marcando ? '📦 chegou' : 'marcar chegada';
+    el.classList.toggle('chegou', marcando);
+    el.dataset.estagio = marcando ? 'chegou' : 'ENVIADO';
+    // Atualiza a etiqueta de estágio sem redesenhar a lista inteira.
+    const etiqueta = el.querySelector('.peca-estagio');
+    if (etiqueta) {
+      etiqueta.className = `peca-estagio ${marcando ? 'e-chegou' : 'e-enviado'}`;
+      etiqueta.textContent = marcando ? 'chegou' : 'a caminho';
+    }
+    toast(marcando ? 'Peça marcada como recebida' : 'Marcação desfeita', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+let _estagioAtivo = '';
+
+function filtrarPorEstagio(estagio) {
+  _estagioAtivo = estagio;
+  document.querySelectorAll('.pecas-filtro').forEach(b =>
+    b.classList.toggle('ativo', b.dataset.estagio === estagio));
+  filtrarPecas(document.getElementById('pecas-busca')?.value || '');
+}
+
 // Filtro local. Com 14 compras e crescendo, caçar uma peça rolando a lista
 // inteira é trabalho manual que o computador faz melhor.
 function filtrarPecas(termo) {
@@ -2278,7 +2379,13 @@ function filtrarPecas(termo) {
   const linhas = document.querySelectorAll('.peca-linha');
   let visiveis = 0;
   linhas.forEach(el => {
-    const bate = !t || (el.dataset.busca || '').includes(t);
+    const bateTexto = !t || (el.dataset.busca || '').includes(t);
+    // "pendente" não é estágio da compra e sim ausência de cliente — por isso
+    // é tratado à parte em vez de virar mais um valor de data-estagio.
+    const bateEstagio = !_estagioAtivo
+      || (_estagioAtivo === 'pendente' ? el.dataset.pendente === '1'
+                                       : el.dataset.estagio === _estagioAtivo);
+    const bate = bateTexto && bateEstagio;
     el.style.display = bate ? '' : 'none';
     if (bate) visiveis++;
   });

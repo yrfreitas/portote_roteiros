@@ -10,10 +10,12 @@ site), o que garante que o nome gravado é idêntico ao do site — e aí a
 conciliação ao finalizar a rota casa exato em vez de aproximado.
 """
 import logging
+from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
-from database import db_conn, execute, fetch_all, fetch_one, sql
+from database import (bump_revisao, db_conn, execute, fetch_all, fetch_one,
+                      sql)
 
 log = logging.getLogger("portotec.pedidos")
 
@@ -121,6 +123,27 @@ def listar():
     for p in pedidos:
         p["peca_sugerida"] = ""
         p["itens_nota"] = []
+
+    # Junta a chegada física. A planilha sabe até "Enviado"; quem recebe a
+    # caixa é que sabe que chegou, e essa informação só existia na memória de
+    # quem abriu o pacote.
+    chaves = [(p.get("nota_fiscal") or ("PED" + (p.get("pedido") or ""))) for p in pedidos]
+    chegadas = {}
+    if chaves:
+        with db_conn() as conn:
+            marcadores = ",".join(["?"] * len(chaves))
+            for l in fetch_all(
+                conn,
+                sql(f"SELECT chave, chegou_em, observacao FROM pecas_chegada "
+                    f"WHERE chave IN ({marcadores})"),
+                tuple(chaves),
+            ):
+                chegadas[l["chave"]] = l
+    for p, chave in zip(pedidos, chaves):
+        registro = chegadas.get(chave)
+        p["chave"] = chave
+        p["chegou_em"] = (registro or {}).get("chegou_em") or ""
+        p["chegou_obs"] = (registro or {}).get("observacao") or ""
 
     # Clientes já cadastrados no site, pra oferecer como lista de escolha —
     # escolher em vez de digitar é o que faz a conciliação casar exato depois.
@@ -477,3 +500,49 @@ def vincular_lote():
         "revisar_agoraos": revisar,
         "mensagem": mensagem,
     })
+
+
+@pedidos_bp.route("/pedidos/chegada", methods=["POST"])
+def marcar_chegada():
+    """Registra que a peça chegou fisicamente na oficina — ou desfaz.
+
+    Existe porque o último estado que a Panasonic informa é "Enviado", e entre
+    o envio e a peça na mão passam dias. Quem vai reagendar a visita do técnico
+    não pergunta "foi enviada?", pergunta "chegou?". Sem isso, a resposta
+    dependia de alguém lembrar de ter aberto a caixa.
+    """
+    data = request.get_json(silent=True) or {}
+    chave = (data.get("chave") or "").strip()
+    if not chave:
+        return jsonify({"erro": "chave é obrigatória"}), 400
+
+    chegou = bool(data.get("chegou", True))
+    observacao = (data.get("observacao") or "").strip()[:300]
+    quem = (session.get("usuario_nome") or "").strip()[:80]
+
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_conn(commit=True) as conn:
+        if not chegou:
+            # Desmarcar APAGA a linha em vez de gravar chegou_em vazio: marcar
+            # por engano e desfazer tem que voltar ao estado anterior de fato,
+            # não deixar um registro fantasma que confunde a leitura depois.
+            execute(conn, sql("DELETE FROM pecas_chegada WHERE chave = ?"), (chave,))
+            bump_revisao(conn)
+            return jsonify({"chave": chave, "chegou_em": ""})
+
+        ja = fetch_one(conn, sql("SELECT chave FROM pecas_chegada WHERE chave = ?"),
+                       (chave,))
+        if ja:
+            execute(conn, sql(
+                "UPDATE pecas_chegada SET chegou_em = ?, observacao = ?, "
+                "registrado_por = ? WHERE chave = ?"),
+                (agora, observacao, quem, chave))
+        else:
+            execute(conn, sql(
+                "INSERT INTO pecas_chegada (chave, chegou_em, observacao, "
+                "registrado_por) VALUES (?, ?, ?, ?)"),
+                (chave, agora, observacao, quem))
+        bump_revisao(conn)
+
+    return jsonify({"chave": chave, "chegou_em": agora, "registrado_por": quem})

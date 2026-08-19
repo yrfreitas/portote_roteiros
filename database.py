@@ -317,6 +317,25 @@ _SCHEMA_PG = [
         forca                TEXT,
         criado_em            TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
+
+    # Chegada FÍSICA da peça na bancada.
+    #
+    # A planilha acompanha a compra até "Enviado" — é o último estado que a
+    # Panasonic informa. Mas quem precisa reagendar a visita não pergunta "foi
+    # enviada?", pergunta "chegou?". Entre o envio e a peça na mão passam dias,
+    # e esse intervalo não existia em lugar nenhum: ficava na cabeça de quem
+    # recebeu a caixa.
+    #
+    # Fica em tabela própria, e não numa coluna da planilha, porque é
+    # informação de dentro da oficina — a planilha é alimentada pelo robô a
+    # partir dos e-mails da Panasonic, e escrever ali um dado que não vem
+    # deles misturaria as duas origens.
+    """CREATE TABLE IF NOT EXISTS pecas_chegada (
+        chave        TEXT PRIMARY KEY,
+        chegou_em    TEXT,
+        observacao   TEXT,
+        registrado_por TEXT
+    )""",
 ]
 
 _SCHEMA_SQLITE = """
@@ -454,6 +473,12 @@ _SCHEMA_SQLITE = """
         qtd                  REAL DEFAULT 1,
         forca                TEXT,
         criado_em            TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS pecas_chegada (
+        chave        TEXT PRIMARY KEY,
+        chegou_em    TEXT,
+        observacao   TEXT,
+        registrado_por TEXT
     );
 """
 

@@ -265,7 +265,7 @@ header {
    comparar as peças de relance. */
 .peca-linha {
   display: grid;
-  grid-template-columns: minmax(190px, 240px) minmax(0, 1.4fr) minmax(0, 1fr) 108px;
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1.4fr) minmax(0, 1fr) 148px;
   gap: 12px; align-items: end;
   background: var(--bg-card); border: 1px solid var(--border);
   border-left: 3px solid var(--gold);
@@ -316,6 +316,65 @@ header {
   box-shadow: 0 0 0 3px var(--accent-dim);
 }
 .pecas-contagem { font-size: 12px; color: var(--text-muted, #8fa3bf); }
+
+/* ─── Estágio da compra ────────────────────────────────────────────
+   Cor por estágio, mas com o nome escrito junto: quem não distingue as
+   cores lê o rótulo, e ninguém precisa decorar legenda. */
+.peca-estagio {
+  /* align-self porque o pai é flex-column: sem isto a etiqueta estica na
+     largura inteira da coluna e vira uma barra colorida. */
+  align-self: flex-start;
+  display: inline-block; margin-top: 4px; padding: 2px 8px;
+  border-radius: 5px; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px; white-space: nowrap;
+}
+.e-criado   { background: rgba(148,178,220,.12); color: #b8c8de; }
+.e-aprovado { background: var(--accent-dim); color: var(--accent-text, #a6c8ff); }
+.e-faturado { background: var(--gold-dim); color: var(--gold-text, #fbd38d); }
+.e-enviado  { background: rgba(34,211,238,.14); color: #7de3f4; }
+.e-chegou   { background: var(--success-dim); color: var(--success-text, #86efac); }
+
+.peca-linha.chegou { border-left-color: var(--accent-2, #22d3ee); }
+
+/* ─── Filtros por estágio ──────────────────────────────────────────
+   Responde "cadê a peça do fulano?" antes de qualquer busca: um clique em
+   "A caminho" mostra o que já saiu da Panasonic. */
+.pecas-filtros { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.pecas-filtro {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-muted, #8fa3bf); font: 600 12px inherit;
+  font-family: inherit; transition: background .16s ease, color .16s ease;
+}
+.pecas-filtro:hover { background: var(--bg-hover); color: var(--text, #e6edf7); }
+.pecas-filtro.ativo {
+  background: var(--accent-dim); border-color: var(--accent);
+  color: var(--accent-text, #a6c8ff);
+}
+.pecas-filtro-n {
+  background: rgba(255,255,255,.09); border-radius: 5px;
+  padding: 1px 6px; font-size: 11px; font-variant-numeric: tabular-nums;
+}
+
+/* ─── Ações da linha ───────────────────────────────────────────────── */
+.peca-acoes {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 6px; align-self: end;
+}
+.peca-chegou {
+  padding: 5px 10px; border-radius: 7px; cursor: pointer;
+  background: transparent; border: 1px dashed var(--border-bright);
+  color: var(--text-muted, #8fa3bf); font: 600 11px inherit;
+  font-family: inherit; white-space: nowrap;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+.peca-chegou:hover { background: var(--bg-hover); color: var(--text, #e6edf7); }
+.peca-chegou.marcado {
+  border-style: solid; border-color: var(--accent-2, #22d3ee);
+  background: rgba(34,211,238,.12); color: #7de3f4;
+}
+.peca-chegou:disabled { opacity: .55; cursor: default; }
 
 @media (max-width: 900px) {
   .peca-linha { grid-template-columns: 1fr 1fr; }
