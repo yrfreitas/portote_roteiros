@@ -711,6 +711,31 @@ let chatUltimoIdPainel = 0;
 let chatModo = 'clientes';   // 'clientes' | 'equipe'
 const chatIdsVistos = new Set();   // trava contra desenhar a mesma mensagem 2x
 let chatBuscando = false;          // trava contra duas buscas ao mesmo tempo
+let chatUltimaAtividade = 0;       // quando algo aconteceu na conversa
+let chatTimer = null;
+
+// RITMO ADAPTATIVO. Conversa viva precisa de resposta rápida; conversa
+// parada não pode ficar consumindo servidor de um worker só. Logo depois
+// de uma mensagem o chat pergunta de 3 em 3 segundos; passados 2 minutos
+// sem nada, volta para 12 — e para de vez com a aba em segundo plano.
+function _intervaloChat() {
+  if (document.hidden) return 30000;
+  return (Date.now() - chatUltimaAtividade < 120000) ? 3000 : 12000;
+}
+
+// Desenha a mensagem ANTES de o servidor confirmar. Sem isso o texto some
+// do campo e não aparece em lugar nenhum até o próximo ciclo — a sensação
+// exata de chat quebrado que o Kalebe relatou.
+function _msgProvisoria(texto) {
+  const corpo = document.getElementById('painel-chat-corpo');
+  if (!corpo) return null;
+  const div = document.createElement('div');
+  div.className = 'msg minha enviando';
+  div.innerHTML = `${esc(texto)}<span class="hora">enviando...</span>`;
+  corpo.appendChild(div);
+  corpo.scrollTop = corpo.scrollHeight;
+  return div;
+}
 
 // Apagar conversa some com o registro do que foi combinado com o cliente —
 // por isso confirma, e por isso o servidor só deixa admin fazer.
@@ -856,6 +881,7 @@ async function atualizarConversaAberta() {
       chatIdsVistos.add(m.id);
       corpo.insertAdjacentHTML('beforeend', _msgHtml(m));
       chatUltimoIdPainel = Math.max(chatUltimoIdPainel, m.id);
+      chatUltimaAtividade = Date.now();
       novas++;
     });
     if (novas) corpo.scrollTop = corpo.scrollHeight;
@@ -898,29 +924,50 @@ function iniciarChatPainel() {
     if (!texto) return;
     if (chatModo !== 'equipe' && !chatSalaAberta) return;
     campo.value = '';
+    campo.focus();                    // continua digitando sem tirar a mão
+    const provisoria = _msgProvisoria(texto);
+    chatUltimaAtividade = Date.now();
     try {
       if (chatModo === 'equipe') {
         await api('/equipe/mensagens', { method: 'POST', body: JSON.stringify({ texto }) });
-        await atualizarChatEquipe();
       } else {
         await api(`/chat/${chatSalaAberta}/responder`, {
           method: 'POST', body: JSON.stringify({ texto }),
         });
-        atualizarConversaAberta();
       }
+      // A provisória sai e a de verdade entra pela busca — assim ela vem
+      // com id e horário do servidor, e não duplica.
+      if (provisoria) provisoria.remove();
+      chatBuscando = false;   // libera a trava: esta busca não pode esperar
+      if (chatModo === 'equipe') await atualizarChatEquipe();
+      else await atualizarConversaAberta();
     } catch (err) {
+      if (provisoria) provisoria.remove();
       campo.value = texto;  // devolve o texto: perder mensagem sem avisar é pior
       toast(err.message, 'error');
     }
   });
 
-  // Sem polling proprio: com a janela FECHADA o contador chega pelo
-  // /api/versao, que ja roda de 10 em 10 segundos.
-  setInterval(() => {
-    if (!janela.classList.contains('aberto')) return;
+  // Com a janela FECHADA o contador chega pelo /api/versao, que já roda no
+  // mesmo ritmo — aqui só trabalha quem está com a conversa aberta.
+  //
+  // setTimeout encadeado em vez de setInterval: o intervalo muda conforme a
+  // conversa esquenta ou esfria, e setInterval não permite mudar o passo.
+  (function ciclarChat() {
+    const seguir = () => { chatTimer = setTimeout(ciclarChat, _intervaloChat()); };
+    if (!janela.classList.contains('aberto')) return seguir();
+    const p = (chatModo === 'equipe') ? atualizarChatEquipe()
+            : (chatSalaAberta ? atualizarConversaAberta() : Promise.resolve());
+    Promise.resolve(p).then(seguir, seguir);
+  })();
+
+  // Voltou para a aba: busca na hora, sem esperar o ciclo.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !janela.classList.contains('aberto')) return;
+    chatBuscando = false;
     if (chatModo === 'equipe') atualizarChatEquipe();
     else if (chatSalaAberta) atualizarConversaAberta();
-  }, 10000);
+  });
 }
 
 // ─── Quem está logado, e o que essa pessoa pode ver ─────────────────
