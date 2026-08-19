@@ -524,14 +524,29 @@ def enviar_posicao(token, rastreio_token):
             return jsonify({"gravado": False, "encerrado": True,
                             "motivo": "rastreio encerrado"})
 
+        # RECALCULA A PREVISÃO A CADA POSIÇÃO.
+        #
+        # Antes esta rota só gravava onde o técnico estava. O tempo de chegada
+        # continuava sendo o calculado na CRIAÇÃO do link — a distância da
+        # parada anterior até o cliente, uma previsão de planejamento. O
+        # carrinho andava no mapa e o "chega em X min" ficava parado no mesmo
+        # número, mesmo que o técnico tivesse pegado trânsito ou desviado.
+        #
+        # Era esta a maior fonte do erro que o cliente via: não a fórmula, mas
+        # o fato de a previsão nunca ser refeita. Agora sai da posição REAL,
+        # com o trânsito do momento. O cache de 90s de rota_tempo.py absorve a
+        # frequência: esta rota é chamada de 20 em 20 segundos.
+        eta = _minutos_ate(conn, r["servico_id"], lat, lng)
+
         # UPDATE e não INSERT: uma linha por rastreio, sobrescrita. É o que
         # mantém a promessa de não guardar trajeto de funcionário.
         execute(conn, """
-            UPDATE rastreios SET lat = ?, lng = ?, precisao = ?, atualizado_em = ?
+            UPDATE rastreios SET lat = ?, lng = ?, precisao = ?,
+                   atualizado_em = ?, eta_minutos = COALESCE(?, eta_minutos)
              WHERE id = ?
-        """, (lat, lng, precisao, _agora(), r["id"]))
+        """, (lat, lng, precisao, _agora(), eta, r["id"]))
 
-    return jsonify({"gravado": True})
+    return jsonify({"gravado": True, "eta_minutos": eta})
 
 
 @rastreio_bp.route("/t/<token>/rastreio/<rastreio_token>/encerrar", methods=["POST"])

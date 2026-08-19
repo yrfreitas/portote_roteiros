@@ -90,10 +90,19 @@ _trava = threading.Lock()
 # num rastreio que atualiza a cada poucos segundos, isso é ruído constante e
 # latência somada à toa.
 #
-# REQUEST_DENIED é permanente até alguém mexer no console do Google, então a
-# trava vale pela vida do processo. Basta reiniciar o site depois de habilitar
-# a API para ele voltar a tentar.
-_google_recusou = False
+# NÃO é permanente, e a primeira versão errou nisso. Ao habilitar a Distance
+# Matrix numa chave, a liberação se propaga aos poucos pelos servidores do
+# Google: medido em 2026-08-19, 5 de 6 chamadas passavam e 1 ainda recusava.
+# Com trava na primeira recusa, essa única falha desligaria o trânsito real
+# pelo resto do dia — e ninguém saberia por quê.
+#
+# Por isso: só desliga após 3 recusas SEGUIDAS (uma passagem zera a contagem),
+# e volta a tentar sozinho depois de 15 minutos. Falha passageira não pode
+# virar decisão permanente.
+_recusas_seguidas = 0
+_google_bloqueado_ate = 0.0
+RECUSAS_PARA_DESLIGAR = 3
+ESPERA_APOS_BLOQUEIO_S = 15 * 60
 
 
 def configurado() -> bool:
@@ -113,8 +122,8 @@ def _google(origem_lat, origem_lng, destino_lat, destino_lng):
     estimativa local). Nunca levanta exceção: previsão de chegada não pode
     derrubar o rastreio.
     """
-    global _google_recusou
-    if _google_recusou:
+    global _recusas_seguidas, _google_bloqueado_ate
+    if time.monotonic() < _google_bloqueado_ate:
         return None
 
     chave_api = os.environ.get("GOOGLE_MAPS_KEY", "").strip()
@@ -140,12 +149,16 @@ def _google(origem_lat, origem_lng, destino_lat, destino_lng):
 
         if dados.get("status") != "OK":
             if dados.get("status") in ("REQUEST_DENIED", "OVER_QUERY_LIMIT"):
-                _google_recusou = True
-                log.warning(
-                    "Distance Matrix indisponivel (%s) — usando OSRM. "
-                    "Para ter previsao com transito, habilite a Distance Matrix "
-                    "API para a GOOGLE_MAPS_KEY e reinicie o site.",
-                    dados.get("status"))
+                _recusas_seguidas += 1
+                if _recusas_seguidas >= RECUSAS_PARA_DESLIGAR:
+                    _google_bloqueado_ate = time.monotonic() + ESPERA_APOS_BLOQUEIO_S
+                    log.warning(
+                        "Distance Matrix recusou %d vezes seguidas (%s) — usando "
+                        "OSRM e tentando de novo em %d min. Se persistir, "
+                        "confira se a Distance Matrix API esta habilitada E "
+                        "liberada nas restricoes da GOOGLE_MAPS_KEY.",
+                        _recusas_seguidas, dados.get("status"),
+                        ESPERA_APOS_BLOQUEIO_S // 60)
             else:
                 log.warning("Distance Matrix devolveu status %s", dados.get("status"))
             return None
@@ -163,6 +176,7 @@ def _google(origem_lat, origem_lng, destino_lat, destino_lng):
         if not seg:
             return None
 
+        _recusas_seguidas = 0   # passou: a sequência de recusas se rompeu
         return max(1, int(round(seg / 60)))
     except Exception as exc:
         log.warning("Falha ao consultar tempo de viagem: %s", exc)
