@@ -1,8 +1,8 @@
-.env
-credentials.json
 *.db
-estado.db
-__pycache__/
 *.pyc
-venv/
+.env
 .venv/
+__pycache__/
+credentials.json
+estado.db
+venv/

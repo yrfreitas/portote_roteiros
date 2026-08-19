@@ -1990,48 +1990,53 @@ async function carregarPecas() {
 
   lista.innerHTML = `
     <div class="pecas-barra">
-      <span class="pecas-contagem">${pedidos.length} compra${pedidos.length !== 1 ? 's' : ''}</span>
+      <input class="pecas-busca" id="pecas-busca" type="search" autocomplete="off"
+             placeholder="Filtrar por peça, cliente ou pedido..."
+             oninput="filtrarPecas(this.value)">
+      <span class="pecas-contagem" id="pecas-contagem">${pedidos.length} compra${pedidos.length !== 1 ? 's' : ''}</span>
       ${r.sugestao_peca_ativa
-        ? `<span class="conc-tag ok" title="As peças vêm do XML da nota fiscal enviada pela Panasonic">peça automática ligada</span>`
-        : `<span class="conc-tag neutro" title="Configure IMAP_USER e IMAP_PASSWORD para ler as notas fiscais">peça automática desligada</span>`}
+        ? `<span class="conc-tag ok" title="A peça é lida do XML da nota fiscal que a Panasonic envia">peça automática ligada</span>`
+        : `<span class="conc-tag neutro" title="Sem IMAP configurado, a peça não é lida da nota fiscal — os pedidos da loja VTEX já trazem a peça no próprio e-mail">peça automática desligada</span>`}
       <button class="btn btn-ghost btn-sm" onclick="revisarAmarelas()">Revisar amarelas</button>
-      <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="salvarPecasEmLote()">
-        Vincular todas preenchidas
-      </button>
     </div>
     <div id="pecas-revisao"></div>
   ` + pedidos.map(p => `
-    <div class="peca-card" id="peca-${p.linha}" data-linha="${p.linha}">
-      <div class="peca-topo">
-        <div>
-          <div class="peca-valor">${esc(p.valor) || '—'}</div>
-          <div class="peca-meta">${p.nota_fiscal
-              ? 'NF ' + esc(p.nota_fiscal.slice(-8))
-              : (p.pedido ? 'Pedido ' + esc(p.pedido) : 'sem nota ainda')} · ${esc(p.data)}</div>
-        </div>
-        ${p.cliente_final
-          ? `<span class="conc-tag ok">${esc(p.cliente_final)}</span>`
-          : `<span class="conc-tag neutro">sem cliente</span>`}
+    <div class="peca-linha${p.cliente_final ? ' tem-cliente' : ''}"
+         id="peca-${p.linha}" data-linha="${p.linha}"
+         data-busca="${esc(((p.peca || '') + ' ' + (p.cliente_final || '') + ' ' + (p.pedido || '') + ' ' + (p.nota_fiscal || '')).toLowerCase())}">
+
+      <div class="peca-ident">
+        <span class="peca-valor">${esc(formatarValorPeca(p.valor))}</span>
+        <span class="peca-meta">${p.nota_fiscal
+            ? 'NF ' + esc(p.nota_fiscal.slice(-8))
+            : (p.pedido ? 'Pedido ' + esc(p.pedido) : 'sem nota ainda')}
+          · ${esc((p.data || '').split(' ')[0])}</span>
       </div>
+
+      <div class="peca-campo">
+        <label class="peca-rot" for="peca-desc-${p.linha}">Peça</label>
+        <input class="form-input peca-input" id="peca-desc-${p.linha}"
+               value="${esc(p.peca)}" title="${esc(p.peca)}"
+               placeholder="Ex: NR-BB64PV1BA"
+               onchange="salvarPecaInline(${p.linha})">
+      </div>
+
+      <div class="peca-campo">
+        <label class="peca-rot" for="peca-cliente-${p.linha}">Cliente</label>
+        <input class="form-input peca-input" list="lista-clientes"
+               id="peca-cliente-${p.linha}" value="${esc(p.cliente_final)}"
+               placeholder="Escolha ou digite..."
+               onchange="salvarPecaInline(${p.linha})">
+      </div>
+
+      <!-- Estado da gravação. Fica NA LINHA, e não num toast, porque o toast
+           some e some sozinho: quem preencheu cinco linhas seguidas precisa
+           poder olhar para trás e ver quais já foram para a planilha. -->
+      <span class="peca-estado" id="peca-estado-${p.linha}">${
+        p.cliente_final ? '<span class="ok">✓ na planilha</span>' : ''}</span>
 
       <div class="peca-sugestao-slot" id="sugestao-${p.linha}"
            data-nota="${esc(p.nota_fiscal)}"></div>
-
-      <div class="peca-form">
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">Cliente</label>
-          <input class="form-input" list="lista-clientes" id="peca-cliente-${p.linha}"
-                 value="${esc(p.cliente_final)}" placeholder="Escolha ou digite...">
-        </div>
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">Peça / Modelo</label>
-          <input class="form-input" id="peca-desc-${p.linha}"
-                 value="${esc(p.peca)}" placeholder="Ex: NR-BB64PV1BA">
-        </div>
-      </div>
-
-      <button class="btn btn-primary btn-sm" style="margin-top:10px;"
-              onclick="salvarPeca(${p.linha})">Vincular</button>
     </div>
   `).join('') + `
     <datalist id="lista-clientes">
@@ -2213,6 +2218,87 @@ async function salvarPecasEmLote() {
       toast(`Linha ${x.linha} não foi pro AgoraOS: ${x.motivo}`, 'error'));
     await carregarPecas();
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Peças: gravar direto, sem botão ────────────────────────────────
+//
+// O pedido era: digitar o nome do cliente e a planilha já atualizar. Antes
+// era preciso preencher e AINDA clicar "Vincular" — duas ações para uma
+// intenção, e quem preenchia várias linhas seguidas esquecia o clique e
+// perdia o trabalho ao trocar de aba.
+//
+// Grava ao sair do campo (onchange), não a cada tecla: salvar por
+// caractere geraria dezenas de escritas na planilha por nome digitado, e a
+// API do Sheets tem cota por minuto.
+//
+// E NÃO recarrega a lista depois de gravar. Recarregar tiraria a linha de
+// baixo do cursor e jogaria fora a rolagem — exatamente o defeito que o
+// auto-refresh tinha. A linha se atualiza sozinha, no lugar.
+const _pecaUltimoValor = {};
+
+async function salvarPecaInline(linha) {
+  const campoCliente = document.getElementById(`peca-cliente-${linha}`);
+  const campoPeca = document.getElementById(`peca-desc-${linha}`);
+  const estado = document.getElementById(`peca-estado-${linha}`);
+  if (!campoCliente || !campoPeca || !estado) return;
+
+  const cliente = campoCliente.value.trim();
+  const peca = campoPeca.value.trim();
+
+  // Sem cliente não há o que vincular; peça sozinha ainda não é um vínculo.
+  if (!cliente) return;
+
+  // Não regrava o que já está igual: sair e voltar num campo sem alterar
+  // nada não deve custar uma escrita na planilha.
+  const assinatura = `${cliente}|${peca}`;
+  if (_pecaUltimoValor[linha] === assinatura) return;
+
+  estado.innerHTML = '<span class="salvando">gravando...</span>';
+  try {
+    const r = await api(`/pedidos/${linha}`, {
+      method: 'PUT',
+      body: JSON.stringify({ cliente, peca }),
+    });
+    _pecaUltimoValor[linha] = assinatura;
+    estado.innerHTML = '<span class="ok">✓ na planilha</span>';
+    document.getElementById(`peca-${linha}`)?.classList.add('tem-cliente');
+    campoPeca.title = peca;
+    carregarSeloPecas();
+    tratarRetornoAgoraOS(linha, cliente, peca, r.agoraos);
+  } catch (e) {
+    estado.innerHTML = `<span class="falhou" title="${esc(e.message)}">✕ não gravou</span>`;
+    toast(e.message, 'error');
+  }
+}
+
+// Filtro local. Com 14 compras e crescendo, caçar uma peça rolando a lista
+// inteira é trabalho manual que o computador faz melhor.
+function filtrarPecas(termo) {
+  const t = (termo || '').trim().toLowerCase();
+  const linhas = document.querySelectorAll('.peca-linha');
+  let visiveis = 0;
+  linhas.forEach(el => {
+    const bate = !t || (el.dataset.busca || '').includes(t);
+    el.style.display = bate ? '' : 'none';
+    if (bate) visiveis++;
+  });
+  const contagem = document.getElementById('pecas-contagem');
+  if (contagem) {
+    contagem.textContent = t
+      ? `${visiveis} de ${linhas.length}`
+      : `${linhas.length} compra${linhas.length !== 1 ? 's' : ''}`;
+  }
+}
+
+// A planilha devolve valor ora como "R$ 778,43", ora como "125,36" — depende
+// de a célula ter formato de moeda ou não. Duas grafias na mesma coluna fazem
+// a tela parecer quebrada. Normaliza para uma só na exibição.
+function formatarValorPeca(bruto) {
+  const texto = String(bruto ?? '').trim();
+  if (!texto) return '—';
+  const numero = parseFloat(texto.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.'));
+  if (!isFinite(numero)) return texto;
+  return numero.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 async function salvarPeca(linha) {

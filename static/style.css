@@ -259,8 +259,74 @@ header {
 /* ─── Assinatura do autor ──────────────────────────────────────────
    Discreta, fixa no canto, e com pointer-events:none para nunca roubar um
    clique de quem está trabalhando. */
+/* ─── Peças: linha compacta em vez de cartão alto ──────────────────
+   Cada compra ocupava ~190px de altura; com 14 compras a tela virava
+   rolagem sem fim. Em linha, cabem seis na mesma altura e dá para
+   comparar as peças de relance. */
+.peca-linha {
+  display: grid;
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1.4fr) minmax(0, 1fr) 108px;
+  gap: 12px; align-items: end;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-left: 3px solid var(--gold);
+  border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+  transition: border-color .16s ease, background .16s ease;
+}
+.peca-linha:hover { background: var(--bg-elevated); }
+.peca-linha.tem-cliente { border-left-color: var(--success); }
+
+.peca-ident { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.peca-valor {
+  font-weight: 700; font-size: 15px; color: var(--text, #e6edf7);
+  font-variant-numeric: tabular-nums;
+}
+/* Quebra em duas linhas em vez de cortar com reticências: o número do pedido
+   e a data são o que identifica a compra — truncar "18/0…" não informa nada. */
+.peca-meta {
+  font-size: 11px; color: var(--text-muted, #8fa3bf);
+  line-height: 1.35; word-break: break-word;
+}
+.peca-campo { min-width: 0; }
+.peca-rot {
+  display: block; font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--text-muted, #8fa3bf);
+  font-weight: 700; margin-bottom: 4px;
+}
+.peca-input { width: 100%; }
+
+.peca-estado { font-size: 11px; text-align: right; white-space: nowrap; align-self: end; padding-bottom: 9px; }
+.peca-estado .ok { color: var(--success-text, #86efac); }
+.peca-estado .salvando { color: var(--text-muted, #8fa3bf); }
+.peca-estado .falhou { color: var(--danger-text, #fca5a5); cursor: help; }
+.peca-sugestao-slot:empty { display: none; }
+.peca-sugestao-slot { grid-column: 1 / -1; }
+
+.pecas-barra {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.pecas-busca {
+  flex: 1 1 240px; min-width: 180px; max-width: 380px;
+  padding: 9px 12px; border-radius: 9px;
+  border: 1px solid var(--border-bright); background: var(--bg-input);
+  color: var(--text, #e6edf7); font-size: 13px; font-family: inherit;
+}
+.pecas-busca:focus {
+  outline: none; border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.pecas-contagem { font-size: 12px; color: var(--text-muted, #8fa3bf); }
+
+@media (max-width: 900px) {
+  .peca-linha { grid-template-columns: 1fr 1fr; }
+  .peca-ident { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: 10px; }
+  .peca-estado { grid-column: 1 / -1; text-align: left; padding-bottom: 0; }
+}
+
 .assinatura-autor {
-  position: fixed; right: 14px; bottom: 9px; z-index: 300;
+  /* Sobe acima do botão flutuante do chat, que fica no canto inferior
+     direito — antes a assinatura ficava escondida atrás dele. */
+  position: fixed; right: 14px; bottom: 82px; z-index: 300;
   pointer-events: none; user-select: none;
   font-family: "Segoe Script", "Bradley Hand", "Brush Script MT",
                "Snell Roundhand", cursive;
