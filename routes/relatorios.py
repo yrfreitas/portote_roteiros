@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request, send_file
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-from database import db_conn, fetch_all
+from database import db_conn, fetch_all, sql
 
 relatorios_bp = Blueprint("relatorios", __name__)
 
@@ -222,3 +222,66 @@ def comparativo_tecnicos():
 
     return jsonify({"dias": dias, "tecnicos": resultado,
                     "total_pontos": total_pontos})
+
+
+# ─── Painel de atendimentos registrados pelo técnico ────────────────────
+#
+# O técnico passou a dizer o que aconteceu em cada visita (resolvido, precisa
+# de peça, volta depois, não atendido) e a mandar a foto da etiqueta. Sem uma
+# tela que junte isso, o dado fica espalhado ponto a ponto dentro de cada
+# rota — existe, mas ninguém enxerga.
+#
+# É aqui que "precisa de peça" vira lista de trabalho: são os atendimentos que
+# dependem de alguém comprar alguma coisa para poderem terminar.
+DESFECHOS_ORDEM = ["precisa_peca", "volto_depois", "nao_atendido", "resolvido"]
+
+
+@relatorios_bp.route("/desfechos", methods=["GET"])
+def listar_desfechos():
+    """Atendimentos com desfecho registrado, com contagem por tipo.
+
+    ?dias=N limita o período (padrão 30). ?tipo=X filtra um desfecho.
+    """
+    try:
+        dias = max(1, min(365, int(request.args.get("dias", 30))))
+    except (TypeError, ValueError):
+        dias = 30
+
+    tipo = (request.args.get("tipo") or "").strip()
+    limite = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d 00:00:00")
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, sql("""
+            SELECT d.servico_id, d.desfecho, d.motivo, d.peca,
+                   d.registrado_em, d.registrado_por,
+                   s.cliente, s.endereco_completo, s.tipo_aparelho, s.modelo,
+                   s.numero_os, s.ficha_id,
+                   f.dia_semana, f.data_referencia,
+                   t.nome AS tecnico, t.cor AS tecnico_cor,
+                   (SELECT COUNT(*) FROM servico_foto sf
+                     WHERE sf.servico_id = d.servico_id) AS fotos
+              FROM servico_desfecho d
+              JOIN servicos s ON s.id = d.servico_id
+              LEFT JOIN fichas f ON f.id = s.ficha_id
+              LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+             WHERE d.registrado_em >= ?
+             ORDER BY d.registrado_em DESC
+        """), (limite,))
+
+    # Contagem vem do conjunto INTEIRO do período, antes de aplicar o filtro:
+    # os números do topo têm de continuar mostrando o total de cada tipo mesmo
+    # quando a lista abaixo está filtrada em um deles.
+    contagem = {k: 0 for k in DESFECHOS_ORDEM}
+    for l in linhas:
+        if l["desfecho"] in contagem:
+            contagem[l["desfecho"]] += 1
+
+    if tipo in contagem:
+        linhas = [l for l in linhas if l["desfecho"] == tipo]
+
+    return jsonify({
+        "dias": dias,
+        "total": sum(contagem.values()),
+        "contagem": contagem,
+        "atendimentos": linhas,
+    })

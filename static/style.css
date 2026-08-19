@@ -3379,3 +3379,117 @@ select:focus-visible,
 }
 .df-processando { font-size: 12.5px; color: var(--text-muted); }
 .df-erro { font-size: 12.5px; color: var(--danger-text); line-height: 1.45; }
+
+/* ═══ Aba Atendimentos ══════════════════════════════════════════════
+   Junta o que o técnico registrou em campo. Os quatro indicadores são
+   BOTÕES: clicar filtra a lista, clicar de novo desfaz — o número e o
+   filtro são a mesma coisa, e separá-los em dois controles seria pedir
+   dois gestos para uma intenção. */
+.at-periodo { display: flex; gap: 5px; }
+.at-per {
+  padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-muted); font: 600 12px inherit; font-family: inherit;
+  transition: background .15s, color .15s;
+}
+.at-per:hover { background: var(--bg-hover); color: var(--text-primary); }
+.at-per.ativo { background: var(--accent-dim); border-color: var(--accent); color: var(--accent-text); }
+
+.at-cartoes {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.at-cartao {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: 15px 16px; cursor: pointer; position: relative; overflow: hidden;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 13px; font-family: inherit;
+  transition: border-color .16s, background .16s, transform .16s;
+}
+.at-cartao:hover { background: var(--bg-elevated); transform: translateY(-1px); }
+.at-cartao.ativo { border-color: currentColor; }
+/* Fio de cor no topo em vez de número colorido: número colorido vira texto
+   que disputa com o próprio valor. A cor fica numa marca, a tinta fica tinta. */
+.at-cartao::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: currentColor; opacity: .9;
+}
+.at-num {
+  font-size: 30px; font-weight: 800; letter-spacing: -1px;
+  color: var(--text-primary); font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.at-rot { font-size: 12.5px; font-weight: 650; color: var(--text-secondary); }
+.at-nota { font-size: 11px; color: var(--text-muted); }
+
+.at-peca  { color: var(--gold); }
+.at-volta { color: var(--accent-2); }
+.at-nao   { color: var(--danger); }
+.at-ok    { color: var(--success); }
+
+.at-filtro-aviso {
+  font-size: 12.5px; color: var(--text-secondary); margin-bottom: 12px;
+}
+.at-limpar {
+  background: none; border: 0; cursor: pointer; padding: 0;
+  color: var(--accent-text); font: inherit; text-decoration: underline;
+}
+
+.at-tabela { border: 1px solid var(--border); border-radius: 13px; overflow: hidden; }
+.at-cabecalho, .at-linha {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1.5fr) minmax(0, 1.4fr) minmax(0, .9fr) 92px;
+  gap: 14px; align-items: start; padding: 12px 15px;
+}
+.at-cabecalho {
+  background: var(--bg-panel); border-bottom: 1px solid var(--border);
+  font-size: 10px; text-transform: uppercase; letter-spacing: .8px;
+  color: var(--text-muted); font-weight: 700;
+}
+.at-linha {
+  background: var(--bg-card); border-bottom: 1px solid rgba(255,255,255,.045);
+  border-left: 3px solid currentColor;
+  transition: background .14s;
+}
+.at-linha:last-child { border-bottom: 0; }
+.at-linha:hover { background: var(--bg-elevated); }
+
+.at-quando { display: flex; flex-direction: column; }
+.at-data { font-size: 12.5px; font-weight: 650; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.at-hora { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.at-cliente { font-size: 13px; font-weight: 650; color: var(--text-primary); }
+.at-sub { font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-top: 1px; }
+.at-detalhe { font-size: 11.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4; }
+.at-tecnico { font-size: 12px; color: var(--text-secondary); display: flex; flex-direction: column; }
+.at-ponto-cor {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+}
+.at-etiqueta {
+  display: inline-block; padding: 3px 9px; border-radius: 7px;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .4px; background: currentColor;
+}
+/* O texto da etiqueta precisa de contraste contra o próprio fundo colorido;
+   por isso a cor entra como fundo e o texto é forçado escuro. */
+.at-etiqueta { color: #08101c; }
+.at-linha.at-peca  .at-etiqueta { background: var(--gold); }
+.at-linha.at-volta .at-etiqueta { background: var(--accent-2); }
+.at-linha.at-nao   .at-etiqueta { background: var(--danger); }
+.at-linha.at-ok    .at-etiqueta { background: var(--success); }
+
+.at-ver-foto {
+  padding: 6px 10px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+  background: var(--accent-dim); border: 1px solid rgba(79,141,251,.3);
+  color: var(--accent-text); font: 600 11.5px inherit; font-family: inherit;
+}
+.at-ver-foto:hover { background: var(--bg-hover); }
+.at-thumb {
+  width: 54px; height: 54px; object-fit: cover; border-radius: 8px;
+  cursor: zoom-in; border: 1px solid var(--border-bright);
+}
+
+@media (max-width: 1000px) {
+  .at-cabecalho { display: none; }
+  .at-linha { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .at-quem { grid-column: 1 / -1; }
+}

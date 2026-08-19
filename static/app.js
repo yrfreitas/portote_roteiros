@@ -473,6 +473,7 @@ function switchMainTab(tab) {
   const isHistorico = tab === 'historico';
   const isPecas     = tab === 'pecas';
   const isDiag      = tab === 'diagnostico';
+  const isAtend     = tab === 'atendimentos';
 
   document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
   document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
@@ -480,12 +481,14 @@ function switchMainTab(tab) {
   document.getElementById('panel-historico').style.display = isHistorico ? 'block' : 'none';
   document.getElementById('panel-pecas').style.display = isPecas ? 'block' : 'none';
   document.getElementById('panel-diagnostico').style.display = isDiag ? 'block' : 'none';
+  document.getElementById('panel-atendimentos').style.display = isAtend ? 'block' : 'none';
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
   document.getElementById('mtab-historico').classList.toggle('active', isHistorico);
   document.getElementById('mtab-pecas').classList.toggle('active', isPecas);
   document.getElementById('mtab-diagnostico').classList.toggle('active', isDiag);
+  document.getElementById('mtab-atendimentos').classList.toggle('active', isAtend);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
@@ -500,6 +503,9 @@ function switchMainTab(tab) {
   }
   if (isPecas) {
     carregarPecas();
+  }
+  if (isAtend) {
+    carregarDesfechos();
   }
 }
 
@@ -4727,4 +4733,134 @@ function toast(msg, type = 'info') {
     el.style.transition = 'opacity 0.3s';
     setTimeout(() => el.remove(), 300);
   }, 4000);
+}
+// ═══ Atendimentos: o que o técnico registrou em campo ══════════════════
+//
+// Junta num lugar só o que antes ficava espalhado ponto a ponto dentro de
+// cada rota. A ordem dos indicadores não é alfabética nem por tamanho: começa
+// por "precisa de peça" porque é o único que gera trabalho para alguém —
+// atendimento que só termina depois que a peça for comprada.
+// `rotulo` conta os do indicador (plural, "2 precisam de peça"); `curto`
+// nomeia UM atendimento na linha (singular). Usar o mesmo texto nos dois
+// lugares fazia a linha do cliente dizer "PRECISAM DE PEÇA", no plural,
+// falando de um só.
+const AT_TIPOS = [
+  { tipo: 'precisa_peca', rotulo: 'Precisam de peça', curto: 'Precisa de peça',
+    classe: 'at-peca',  nota: 'esperando compra' },
+  { tipo: 'volto_depois', rotulo: 'Voltar depois',    curto: 'Volta depois',
+    classe: 'at-volta', nota: 'precisa de retorno' },
+  { tipo: 'nao_atendido', rotulo: 'Não atendidos',    curto: 'Não atendido',
+    classe: 'at-nao',   nota: 'visita perdida' },
+  { tipo: 'resolvido',    rotulo: 'Resolvidos',       curto: 'Resolvido',
+    classe: 'at-ok',    nota: 'fechados na hora' },
+];
+
+let _atDias = 30;
+let _atTipo = '';
+
+function mudarPeriodoDesfechos(dias) {
+  _atDias = dias;
+  document.querySelectorAll('.at-per').forEach(b =>
+    b.classList.toggle('ativo', Number(b.dataset.dias) === dias));
+  carregarDesfechos();
+}
+
+function filtrarDesfecho(tipo) {
+  // Clicar no indicador já ativo desliga o filtro: é o gesto que a pessoa
+  // tenta naturalmente para "ver tudo de novo".
+  _atTipo = (_atTipo === tipo) ? '' : tipo;
+  carregarDesfechos();
+}
+
+async function carregarDesfechos() {
+  const alvo = document.getElementById('at-conteudo');
+  if (!alvo) return;
+  alvo.innerHTML = `<div class="loading-row" style="justify-content:center;padding:30px;">
+      <div class="spinner"></div> Carregando atendimentos...</div>`;
+
+  let r;
+  try {
+    r = await api(`/desfechos?dias=${_atDias}${_atTipo ? '&tipo=' + _atTipo : ''}`);
+  } catch (e) {
+    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const cartoes = AT_TIPOS.map(t => `
+    <button class="at-cartao ${t.classe} ${_atTipo === t.tipo ? 'ativo' : ''}"
+            onclick="filtrarDesfecho('${t.tipo}')"
+            title="${_atTipo === t.tipo ? 'Clique para ver todos' : 'Clique para ver só estes'}">
+      <span class="at-num">${r.contagem[t.tipo] ?? 0}</span>
+      <span class="at-rot">${t.rotulo}</span>
+      <span class="at-nota">${t.nota}</span>
+    </button>`).join('');
+
+  if (!r.atendimentos.length) {
+    alvo.innerHTML = `<div class="at-cartoes">${cartoes}</div>
+      <div class="historico-vazio">${icone('check', 'icone-24')}
+        <p>${_atTipo ? 'Nenhum atendimento desse tipo no período.'
+                     : 'Nenhum atendimento registrado neste período.'}</p></div>`;
+    return;
+  }
+
+  const linhas = r.atendimentos.map(a => {
+    const t = AT_TIPOS.find(x => x.tipo === a.desfecho) || {};
+    const detalhe = a.peca || a.motivo || '';
+    const aparelho = [a.tipo_aparelho, a.modelo].filter(Boolean).join(' · ');
+    return `
+      <div class="at-linha ${t.classe}">
+        <div class="at-quando">
+          <span class="at-data">${esc((a.registrado_em || '').slice(0, 10).split('-').reverse().join('/'))}</span>
+          <span class="at-hora">${esc((a.registrado_em || '').slice(11, 16))}</span>
+        </div>
+        <div class="at-quem">
+          <div class="at-cliente">${esc(a.cliente) || 'Cliente sem nome'}</div>
+          <div class="at-sub">${esc(a.endereco_completo) || ''}</div>
+          ${aparelho ? `<div class="at-sub">${esc(aparelho)}</div>` : ''}
+        </div>
+        <div class="at-oque">
+          <span class="at-etiqueta ${t.classe}">${esc(t.curto || a.desfecho)}</span>
+          ${detalhe ? `<div class="at-detalhe">${esc(detalhe)}</div>` : ''}
+        </div>
+        <div class="at-tecnico">
+          ${a.tecnico ? `<span class="at-ponto-cor" style="background:${escCor(a.tecnico_cor)}"></span>${esc(a.tecnico)}` : '—'}
+          ${a.numero_os ? `<div class="at-sub">OS ${esc(a.numero_os)}</div>` : ''}
+        </div>
+        <div class="at-foto" id="at-foto-${a.servico_id}">
+          ${a.fotos ? `<button class="at-ver-foto" onclick="verFotosDoAtendimento(${a.servico_id})">
+              ${a.fotos} foto${a.fotos !== 1 ? 's' : ''}</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  alvo.innerHTML = `
+    <div class="at-cartoes">${cartoes}</div>
+    ${_atTipo ? `<div class="at-filtro-aviso">Mostrando só
+        <b>${esc((AT_TIPOS.find(x => x.tipo === _atTipo) || {}).rotulo || '')}</b>
+        · <button class="at-limpar" onclick="filtrarDesfecho('${_atTipo}')">ver todos</button></div>` : ''}
+    <div class="at-tabela">
+      <div class="at-cabecalho">
+        <span>Quando</span><span>Cliente</span><span>O que aconteceu</span>
+        <span>Técnico</span><span>Etiqueta</span>
+      </div>
+      ${linhas}
+    </div>`;
+}
+
+// Busca a foto só quando alguém pede. Trazer as imagens junto da lista
+// deixaria a abertura da aba lenta por um dado que se olha de um por vez.
+async function verFotosDoAtendimento(servicoId) {
+  const slot = document.getElementById(`at-foto-${servicoId}`);
+  if (!slot) return;
+  slot.innerHTML = '<span class="at-sub">abrindo...</span>';
+  try {
+    const r = await api(`/servicos/${servicoId}/fotos`);
+    if (!(r.fotos || []).length) { slot.innerHTML = '<span class="at-sub">sem foto</span>'; return; }
+    slot.innerHTML = r.fotos.map(f =>
+      `<img class="at-thumb" src="${f.foto}" alt="Etiqueta"
+            title="${esc(f.criado_em || '')}" onclick="ampliarFoto(this.src)">`).join('');
+    ampliarFoto(r.fotos[0].foto);   // já abre a primeira: foi o que a pessoa pediu
+  } catch (e) {
+    slot.innerHTML = `<span class="at-sub">${esc(e.message)}</span>`;
+  }
 }
