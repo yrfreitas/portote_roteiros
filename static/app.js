@@ -302,14 +302,21 @@ async function _lerRevisao() {
 // fora um formulário meio preenchido seria pior que esperar o próximo ciclo.
 function _conferirVersaoDoPainel(versaoServidor) {
   if (!versaoServidor || versaoServidor === VERSAO_PAINEL) return;
+  if (document.getElementById('aviso-versao')) return;
 
-  const ocupado = document.querySelector('.modal-overlay.open')
-    || (document.activeElement
-        && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));
-  if (ocupado) return;
-
-  toast('Atualizando o sistema...', 'info');
-  setTimeout(() => location.reload(), 700);
+  // Também deixou de recarregar sozinho. Recarga de página é ainda mais
+  // violenta que redesenhar uma aba — leva junto rolagem, ficha aberta e
+  // qualquer coisa em andamento. O aviso fica parado até alguém escolher.
+  const aviso = document.createElement('div');
+  aviso.id = 'aviso-versao';
+  aviso.className = 'aviso-atualizacao aviso-versao';
+  aviso.setAttribute('role', 'status');
+  aviso.innerHTML = `
+    <span class="aviso-ponto" aria-hidden="true"></span>
+    <span class="aviso-texto">Nova versão do sistema</span>
+    <button type="button" class="aviso-btn" id="aviso-versao-btn">Recarregar</button>`;
+  document.body.appendChild(aviso);
+  document.getElementById('aviso-versao-btn').onclick = () => location.reload();
 }
 
 // Chamado depois das escrituras do próprio usuário: a tela dele já se
@@ -372,15 +379,55 @@ async function verificarRevisao() {
   }
   if (revisao === _revisaoConhecida) return;
 
-  // Mudou, mas o usuário está no meio de alguma coisa. Não gravamos a revisão
-  // nova: assim a checagem seguinte torna a detectar a diferença e aplica
-  // quando der. Perder a atualização por causa de um campo focado seria pior
-  // que atrasá-la.
-  if (!_telaOciosa()) return;
+  // NUNCA redesenha sozinho. Só avisa.
+  //
+  // Antes, detectada a mudança, a tela era redesenhada na hora — protegida
+  // apenas por _telaOciosa(), que considera "ocupado" campo focado, modal
+  // aberto ou arraste. Ler uma ficha, comparar dois endereços ou rolar uma
+  // lista longa não conta como nenhum dos três: para o código a tela estava
+  // ociosa, e o trabalho de quem estava lendo era jogado fora de 10 em 10
+  // segundos. O Kalebe descreveu como "resetando o que eu estou fazendo",
+  // que é exatamente o que era.
+  //
+  // A troca: detectar continua automático (custa dezenas de bytes), APLICAR
+  // passa a ser decisão de quem está na frente da tela. Ninguém perde
+  // contexto sem ter pedido.
+  _revisaoPendente = revisao;
+  mostrarAvisoAtualizacao();
+}
 
-  _revisaoConhecida = revisao;
-  await recarregarViewAtual();
-  toast('Dados atualizados', 'info');
+// ─── Aviso de dados novos (não invasivo) ────────────────────────────
+// Fica parado num canto até alguém clicar. Não rouba foco, não fecha
+// sozinho, não desloca o conteúdo da página.
+let _revisaoPendente = null;
+
+function mostrarAvisoAtualizacao() {
+  let aviso = document.getElementById('aviso-atualizacao');
+  if (aviso) return;   // já está na tela; não empilha nem repinta
+
+  aviso = document.createElement('div');
+  aviso.id = 'aviso-atualizacao';
+  aviso.className = 'aviso-atualizacao';
+  aviso.setAttribute('role', 'status');
+  aviso.innerHTML = `
+    <span class="aviso-ponto" aria-hidden="true"></span>
+    <span class="aviso-texto">Há dados novos</span>
+    <button type="button" class="aviso-btn" id="aviso-atualizar-btn">Atualizar</button>
+    <button type="button" class="aviso-fechar" id="aviso-dispensar-btn"
+            title="Dispensar" aria-label="Dispensar">&times;</button>`;
+  document.body.appendChild(aviso);
+
+  document.getElementById('aviso-atualizar-btn').onclick = async () => {
+    _revisaoConhecida = _revisaoPendente;
+    aviso.remove();
+    await recarregarViewAtual();
+  };
+  // Dispensar aceita a revisão sem redesenhar: quem dispensou não quer ser
+  // perguntado de novo pelo mesmo lote de mudanças.
+  document.getElementById('aviso-dispensar-btn').onclick = () => {
+    _revisaoConhecida = _revisaoPendente;
+    aviso.remove();
+  };
 }
 
 function iniciarAutoRefresh() {
@@ -1958,7 +2005,9 @@ async function carregarPecas() {
       <div class="peca-topo">
         <div>
           <div class="peca-valor">${esc(p.valor) || '—'}</div>
-          <div class="peca-meta">NF ${esc((p.nota_fiscal || '').slice(-8))} · ${esc(p.data)}</div>
+          <div class="peca-meta">${p.nota_fiscal
+              ? 'NF ' + esc(p.nota_fiscal.slice(-8))
+              : (p.pedido ? 'Pedido ' + esc(p.pedido) : 'sem nota ainda')} · ${esc(p.data)}</div>
         </div>
         ${p.cliente_final
           ? `<span class="conc-tag ok">${esc(p.cliente_final)}</span>`

@@ -32,7 +32,11 @@
 <div class="layout">
 
   <header>
-    <img src="/static/logo.png" alt="Porto Tec" class="header-logo">
+    <!-- A logo leva ao início. É o gesto que todo mundo já tenta por reflexo;
+         sem o link, clicar nela não fazia nada. -->
+    <a href="/" class="header-logo-link" title="Voltar ao início" aria-label="Ir para o início">
+      <img src="/static/logo.png" alt="Porto Tec" class="header-logo">
+    </a>
 
     <nav class="main-tabs" id="main-tabs">
       <button class="main-tab active" id="mtab-roteiros" onclick="switchMainTab('roteiros')">
@@ -560,6 +564,8 @@
 </div>
 
 <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+<div class="assinatura-autor">criado por yrfreitas</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/sortablejs@1.15.6/Sortable.min.js"></script>

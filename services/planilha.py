@@ -346,7 +346,22 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
             return linha[i - 1].strip() if len(linha) >= i else ""
 
         nota = col(2)
-        if not nota:
+
+        # AGRUPA POR NOTA **OU** POR PEDIDO.
+        #
+        # Até 18/08/2026 toda compra vinha da CrediPay e trazia nota fiscal, e
+        # exigir a nota bastava. A Panasonic mudou a origem dos e-mails para a
+        # loja VTEX, que avisa a compra ANTES de faturar — o e-mail diz, com
+        # todas as letras, "estamos providenciando a emissão da nota fiscal".
+        # Essas compras chegam à planilha com a coluna de nota VAZIA, e o
+        # `if not nota: continue` as descartava: sumiam da tela de Peças sem
+        # deixar rastro, justamente as mais recentes.
+        #
+        # A coluna A guarda o identificador do registro (`nota#STATUS` no
+        # formato antigo, `PED{pedido}#STATUS` no novo). Sem nota, ele é a
+        # identidade da compra.
+        chave = nota or col(1).rsplit("#", 1)[0]
+        if not chave:
             continue
 
         cliente_final = col(COL_NOME_CLIENTE_FINAL)
@@ -354,7 +369,7 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
 
         # Prefere a linha APROVADO como a "oficial" da compra; se já tem
         # cliente vinculado, essa linha manda.
-        atual = por_nota.get(nota)
+        atual = por_nota.get(chave)
         eh_melhor = (
             atual is None
             or bool(cliente_final)
@@ -363,9 +378,16 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
         if not eh_melhor:
             continue
 
-        por_nota[nota] = {
+        por_nota[chave] = {
             "linha": numero_linha,
             "nota_fiscal": nota,
+            # Número do pedido na loja, quando a compra ainda não tem nota.
+            # É o que a tela mostra no lugar do "NF ..." para não exibir um
+            # rótulo vazio.
+            # Fatiamento em vez de removeprefix(): não há runtime.txt fixando
+            # a versão do Python no deploy, e removeprefix só existe do 3.9 em
+            # diante. Não vale arriscar a tela de Peças numa conveniência.
+            "pedido": "" if nota else (chave[3:] if chave.startswith("PED") else chave),
             "valor": col(4),
             "status_compra": col(5),
             "data": col(6),
