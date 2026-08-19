@@ -3602,8 +3602,8 @@ select:focus-visible,
 
 /* Resumo no topo ao abrir a aba. Faixa por linha se perde na rolagem. */
 .aviso-carro {
-  position: fixed; left: 18px; bottom: 18px; z-index: 900;
-  display: flex; align-items: center; gap: 11px; max-width: 460px;
+  display: flex; align-items: center; gap: 11px;
+  margin-bottom: 14px;
   padding: 12px 14px; border-radius: 12px; font-size: 13px;
   background: var(--bg-elevated); border: 1px solid rgba(34,211,238,.4);
   box-shadow: 0 10px 34px rgba(0,0,0,.5); color: var(--text-primary);
@@ -3619,5 +3619,93 @@ select:focus-visible,
 
 @media (max-width: 720px) {
   .carro-form { grid-template-columns: 1fr 1fr; }
-  .aviso-carro { left: 12px; right: 12px; max-width: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CELULAR — correções de sobreposição
+   ═══════════════════════════════════════════════════════════════════
+   Este bloco vai por último de propósito: sobrescreve o que veio antes
+   sem precisar caçar e alterar cada regra original. */
+@media (max-width: 760px) {
+
+  /* 1. ASSINATURA DEIXA DE FLUTUAR.
+     Fixa sobre uma página que rola, ela sempre vai passar por cima de
+     alguma coisa — não existe posição segura. No celular ela entra no
+     fluxo, no fim da página: continua visível, nunca cobre nada. */
+  .assinatura-autor {
+    position: static; display: block; text-align: center;
+    margin: 26px 0 12px; opacity: .5; font-size: 12px;
+    text-shadow: none;
+  }
+
+  /* 2. ESPAÇO PARA OS AVISOS FIXOS.
+     O aviso do carro e o de dados novos ficam presos no rodapé; sem
+     folga embaixo, a última linha da lista fica permanentemente
+     escondida atrás deles. Somado ao botão do chat. */
+  .main, .historico-wrap { padding-bottom: 150px; }
+
+  .aviso-atualizacao { left: 10px; right: 10px; max-width: none; bottom: 84px; }
+
+  /* 3. CARTÃO DO TÉCNICO PARA DE ESTOURAR.
+     Nome + cinco botões não cabem em 390px: a barra rolava para o lado e
+     o cartão seguinte aparecia cortado. As ações passam para a linha de
+     baixo, alinhadas à direita. */
+  /* A raiz do estouro era o .layout: grid-template-columns 380px 1fr numa
+     tela de 390 não deixa espaço para nada, e a barra rolava para o lado
+     mostrando o cartão seguinte cortado. Empilhado, cada faixa usa a
+     largura inteira. O cartão volta a caber em uma linha: cinco botões de
+     22px mais avatar somam ~160px e sobram ~200px para o nome. */
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 64px auto minmax(0, 1fr);
+    height: auto; min-height: 100vh; overflow: visible;
+  }
+  .sidebar { max-height: 46vh; border-right: 0; border-bottom: 1px solid var(--border); }
+  .sidebar, .sidebar-list, .tecnico-section { max-width: 100%; overflow-x: hidden; }
+  .tecnico-header { gap: 6px; padding: 10px; }
+  .tecnico-actions { gap: 2px; }
+
+  /* DESFAZ O CARROSSEL HORIZONTAL.
+     Havia uma regra em 768px que punha os técnicos lado a lado com
+     min-width:180px. Cartão de 180px não comporta nome mais cinco botões:
+     o conteúdo estourava e via-se o cartão seguinte cortado na borda.
+     Lista vertical é o padrão do celular e usa a largura inteira. */
+  .sidebar-list {
+    display: block; overflow-x: hidden; overflow-y: auto;
+    flex: 1 1 auto;
+  }
+  .tecnico-section { flex: none; min-width: 0; width: 100%; margin-bottom: 12px; }
+  .fichas-do-tecnico { display: block; padding-left: 16px; }
+  .ficha-item { min-width: 0; margin-bottom: 4px; }
+
+  /* 4. ATENDIMENTO EM UMA COLUNA.
+     Em duas colunas a observação ficava com ~150px e quebrava palavra
+     por palavra ("Cliente / pediu / para / nao"). Empilhado, cada campo
+     tem a largura inteira. */
+  .at-cabecalho { display: none; }
+  .at-linha { grid-template-columns: 1fr; gap: 9px; }
+  .at-quando { flex-direction: row; align-items: baseline; gap: 8px; }
+  .at-tecnico, .at-foto, .at-baixa { flex-direction: row; align-items: center; }
+  .at-baixa { justify-content: flex-start; }
+  .at-obs, .at-detalhe { padding-left: 8px; }
+
+  /* 5. BOTÃO DO CHAT SAI DE CIMA DO CONTEÚDO.
+     Ele é o elemento mais alto da tela e cobria gráfico e última linha.
+     Encolhe e a folga do item 2 completa. */
+  .chat-bolha { transform: scale(.86); transform-origin: bottom right; }
+
+  /* 6. Cartões de indicador em duas colunas, não quatro espremidos. */
+  .at-cartoes { grid-template-columns: 1fr 1fr; gap: 9px; }
+  .at-num { font-size: 25px; }
+
+  /* 7. Cabeçalho da seção deixa o filtro de período respirar. */
+  .historico-header { flex-wrap: wrap; row-gap: 10px; }
+  .at-periodo { width: 100%; }
+  .at-per { flex: 1; text-align: center; }
+}
+
+/* Telas bem estreitas: os quatro indicadores empilham de vez. */
+@media (max-width: 360px) {
+  .at-cartoes { grid-template-columns: 1fr; }
+  .carro-form { grid-template-columns: 1fr; }
 }

@@ -4819,8 +4819,6 @@ async function carregarDesfechos() {
       <span class="at-nota">${t.nota}</span>
     </button>`).join('');
 
-  avisarPecasNoCarro(r.atendimentos);
-
   if (!r.atendimentos.length) {
     alvo.innerHTML = `<div class="at-cartoes">${cartoes}</div>
       <div class="historico-vazio">${icone('check', 'icone-24')}
@@ -4876,6 +4874,10 @@ async function carregarDesfechos() {
       </div>
       ${linhas}
     </div>`;
+
+  // Depois do render: o innerHTML acima substitui todo o conteúdo do painel
+  // e apagaria o aviso se ele fosse inserido antes.
+  avisarPecasNoCarro(r.atendimentos);
 }
 
 // Busca a foto só quando alguém pede. Trazer as imagens junto da lista
@@ -5091,6 +5093,13 @@ function avisarPecasNoCarro(atendimentos) {
   if (!comCarro.length) return;
   if (document.getElementById('aviso-carro')) return;
 
+  // ENTRA NO FLUXO, no topo do painel — não flutua sobre a lista.
+  // Fixo no rodapé, ele cobria a linha que estivesse embaixo enquanto a
+  // pessoa rolava; no celular isso era metade da tela tapada. No topo ele
+  // é visto de imediato e não esconde nada.
+  const alvo = document.getElementById('at-conteudo');
+  if (!alvo) return;
+
   const aviso = document.createElement('div');
   aviso.id = 'aviso-carro';
   aviso.className = 'aviso-carro';
@@ -5102,5 +5111,5 @@ function avisarPecasNoCarro(atendimentos) {
       no carro de alguém. Confira antes de comprar.</span>
     <button class="aviso-carro-fechar" onclick="this.parentElement.remove()"
             aria-label="Fechar">&times;</button>`;
-  document.body.appendChild(aviso);
+  alvo.prepend(aviso);
 }
