@@ -119,11 +119,26 @@ body {
   align-items: flex-start;
 }
 .t-ponto.concluido { opacity: 0.55; }
+/* O número virou BOTÃO: é por ele que o técnico conclui o atendimento e
+   registra o desfecho. Cresceu de 26px para 40px — 26 é alvo pequeno demais
+   para o polegar de quem está de pé na calçada; a recomendação de
+   acessibilidade é 44, e 40 com folga ao redor chega perto sem desalinhar o
+   cartão. A borda tracejada anuncia que é clicável: círculo chapado com um
+   número dentro parece etiqueta, não botão. */
 .t-ponto-num {
-  width: 26px; height: 26px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   background: var(--bg-elevated); color: var(--text-secondary);
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-mono); font-size: 12px; flex-shrink: 0;
+  font-family: var(--font-mono); font-size: 15px; font-weight: 700;
+  flex-shrink: 0; cursor: pointer;
+  border: 2px dashed rgba(255,255,255,.20);
+  transition: background .15s, border-color .15s, color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.t-ponto-num:active { transform: scale(.94); }
+.t-ponto-num.concluido {
+  border-style: solid; border-color: #34d399;
+  background: rgba(52,211,153,.16); color: #86efac;
 }
 .t-ponto-info { flex: 1; min-width: 0; }
 .t-ponto-cliente { font-weight: 600; font-size: 13px; }

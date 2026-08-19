@@ -203,7 +203,17 @@
       // quem gera o link e o urlWazeDe(), fonte unica para mensagem e botao.
       return `
         <div class="t-ponto ${feito ? 'concluido' : ''}">
-          <div class="t-ponto-num">${i + 1}</div>
+          <!-- O NÚMERO é o gatilho do desfecho. É o alvo que a mão do técnico
+               já procura ao chegar no ponto, e fica no topo do cartão, longe
+               dos links de navegação — não dá para tocar sem querer. -->
+          <button class="t-ponto-num ${feito ? 'concluido' : ''}"
+                  onclick="${feito
+                    ? `window._tConcluirPonto(${s.id}, 'pendente')`
+                    : `window._tAbrirDesfecho(${s.id})`}"
+                  title="${feito ? 'Reabrir atendimento' : 'Registrar o que aconteceu'}"
+                  aria-label="${feito ? 'Reabrir atendimento' : 'Concluir atendimento'}">
+            ${feito ? '✓' : i + 1}
+          </button>
           <div class="t-ponto-info">
             <div class="t-ponto-cliente">${esc(s.cliente) || 'Cliente sem nome'}</div>
             <div class="t-ponto-endereco">${esc(s.endereco_completo)}</div>
@@ -212,10 +222,14 @@
             <div class="t-ponto-acoes">
               <a class="t-ponto-link" target="_blank" rel="noopener" href="${urlMaps}">Google Maps</a>
               <button class="t-ponto-link t-ponto-link-waze" onclick="window._tAvisarACaminho(${s.id})">Waze</button>
+              <!-- Mesma ação do número, com o rótulo escrito: o círculo sozinho
+                   pode não ser óbvio na primeira vez, e este texto ensina.
+                   Os dois abrem a mesma folha — dois caminhos para a mesma
+                   coisa é tolerância, não ambiguidade. -->
               <button class="t-ponto-check ${feito ? 'concluido' : ''}" onclick="${feito
                   ? `window._tConcluirPonto(${s.id}, 'pendente')`
                   : `window._tAbrirDesfecho(${s.id})`}">
-                ${feito ? 'Concluído' : 'Marcar feito'}
+                ${feito ? 'Reabrir' : 'Concluir'}
               </button>
             </div>
           </div>
