@@ -1,7 +1,23 @@
 import math
 
-FATOR_ROTA     = 1.4
-VELOCIDADE_KMH = 40
+# Constantes da estimativa LOCAL — a rede de segurança de quando não há chave
+# do Google ou o serviço de trânsito falha. Enquanto foram a única fonte, a
+# previsão que o cliente recebia errava sempre para o mesmo lado: prometia
+# chegada bem mais cedo do que a real.
+#
+# FATOR_ROTA 1.4 -> 1.55: haversine mede a reta entre dois pontos. Em cidade
+# com rio, marginal, sentido único e quadra fechada, o caminho de carro passa
+# de 1,5x a reta com folga. O 1.4 vinha de trecho aberto, não de zona leste.
+#
+# VELOCIDADE 40 -> 26 km/h: 40 km/h de média não existe em rua de cidade em
+# horário comercial. Somando semáforo, trânsito e a procura por vaga, a média
+# real de deslocamento urbano fica entre 20 e 30.
+#
+# Continua sendo estimativa: o número bom vem do services/rota_tempo.py, que
+# pergunta o tempo real com o trânsito do momento. Estes valores só precisam
+# não mentir quando ele não estiver disponível.
+FATOR_ROTA     = 1.55
+VELOCIDADE_KMH = 26
 MINUTOS_PARADA = 20
 
 OTIMIZAR_COM_RETORNO = False

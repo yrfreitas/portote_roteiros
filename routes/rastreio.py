@@ -39,7 +39,8 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, render_template, request
 
 from database import IS_PG, db_conn, execute, fetch_all, fetch_one
-from services.otimizador import MINUTOS_PARADA, VELOCIDADE_KMH, haversine
+from services.otimizador import (FATOR_ROTA, MINUTOS_PARADA,
+                                 VELOCIDADE_KMH, haversine)
 
 log = logging.getLogger("portotec.rastreio")
 
@@ -118,9 +119,27 @@ def _prever_minutos(conn, servico_id: int) -> int:
     if origem.get("lat") is None:
         return None
 
-    km = haversine(origem["lat"], origem["lng"], destino["lat"], destino["lng"])
-    # Mesmo fator de 1.3 que o otimizador aplica: linha reta não é rua.
-    return max(1, int(round((km * 1.3 / VELOCIDADE_KMH) * 60)))
+    minutos, _ = _minutos_reais_ou_estimados(
+        origem["lat"], origem["lng"], destino["lat"], destino["lng"])
+    return minutos
+
+
+
+# ─── Previsão de chegada ────────────────────────────────────────────────
+#
+# Pergunta o tempo REAL de carro (Google, com o trânsito de agora). Só cai na
+# conta local quando não há chave ou o serviço falha — antes a conta local era
+# a única fonte, e ela errava sempre para o mesmo lado: prometia ao cliente
+# uma chegada bem mais cedo do que a real.
+def _minutos_reais_ou_estimados(o_lat, o_lng, d_lat, d_lng):
+    from services.rota_tempo import minutos_ate
+
+    reais = minutos_ate(o_lat, o_lng, d_lat, d_lng)
+    if reais is not None:
+        return reais, "transito"
+
+    km = haversine(o_lat, o_lng, d_lat, d_lng)
+    return max(1, int(round((km * FATOR_ROTA / VELOCIDADE_KMH) * 60))), "estimado"
 
 
 def _tecnico_por_token(conn, token):
@@ -263,9 +282,9 @@ def _minutos_ate(conn, servico_id, lat, lng):
     if not destino or destino.get("lat") is None or lat is None:
         return None
 
-    km = haversine(lat, lng, destino["lat"], destino["lng"])
-    # Mesmo fator 1.3 do otimizador: linha reta não é rua.
-    return max(1, int(round((km * 1.3 / VELOCIDADE_KMH) * 60)))
+    minutos, _ = _minutos_reais_ou_estimados(
+        lat, lng, destino["lat"], destino["lng"])
+    return minutos
 
 
 @rastreio_bp.route("/t/<token>/rastreador", methods=["GET", "POST"])
