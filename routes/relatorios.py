@@ -1,5 +1,6 @@
 import io
 import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -236,6 +237,53 @@ def comparativo_tecnicos():
 #
 # É aqui que "precisa de peça" vira lista de trabalho: são os atendimentos que
 # dependem de alguém comprar alguma coisa para poderem terminar.
+
+# ─── "Alguém já tem essa peça no carro?" ────────────────────────────────
+#
+# É a pergunta que precisa ser feita ANTES de comprar. Sem ela o escritório
+# pedia peça que já estava rodando na van de um técnico, e o cliente esperava
+# a compra chegar enquanto a peça passava na porta dele.
+#
+# O casamento é pelo CÓDIGO, exato. Descrição varia entre o que o técnico
+# digita e o que está no estoque; código não.
+RE_CODIGO = re.compile(r"([A-Z][A-Z0-9]{2,}(?:-[A-Z0-9]+)?)")
+
+
+def _codigos(texto: str) -> set:
+    return {c for c in RE_CODIGO.findall((texto or "").upper())
+            if any(ch.isdigit() for ch in c)}
+
+
+def _marcar_disponivel_no_carro(conn, atendimentos):
+    """Anota em cada atendimento que precisa de peça quem já a carrega."""
+    pendentes = [a for a in atendimentos
+                 if a.get("desfecho") == "precisa_peca" and a.get("peca")]
+    if not pendentes:
+        return
+
+    estoque = fetch_all(conn, sql("""
+        SELECT c.codigo, c.quantidade, c.tecnico_id, t.nome, t.cor
+          FROM peca_carro c JOIN tecnicos t ON t.id = c.tecnico_id
+         WHERE c.quantidade > 0
+    """))
+    if not estoque:
+        return
+
+    por_codigo = {}
+    for e in estoque:
+        por_codigo.setdefault(e["codigo"], []).append(e)
+
+    for a in pendentes:
+        achados = []
+        for codigo in _codigos(a["peca"]):
+            for e in por_codigo.get(codigo, []):
+                achados.append({"codigo": codigo, "tecnico": e["nome"],
+                                "tecnico_id": e["tecnico_id"],
+                                "cor": e["cor"], "quantidade": e["quantidade"]})
+        if achados:
+            a["no_carro"] = achados
+
+
 DESFECHOS_ORDEM = ["precisa_peca", "volto_depois", "nao_atendido", "resolvido"]
 
 
@@ -279,6 +327,9 @@ def listar_desfechos():
     for l in linhas:
         if l["desfecho"] in contagem:
             contagem[l["desfecho"]] += 1
+
+    with db_conn() as conn:
+        _marcar_disponivel_no_carro(conn, linhas)
 
     if tipo in contagem:
         linhas = [l for l in linhas if l["desfecho"] == tipo]

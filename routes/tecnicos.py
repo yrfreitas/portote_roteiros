@@ -1,8 +1,10 @@
 import secrets
+from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
-from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
+from database import (bump_revisao, db_conn, execute, fetch_all, fetch_one,
+                      insert_returning_id, sql)
 from extensions import limiter
 from services.geo import geocode_cep, geocode_endereco_livre
 from services.otimizador import haversine
@@ -445,3 +447,95 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
     tem_boa_opcao = any(s["classificacao"] == "bem" for s in sugestoes)
 
     return sugestoes, tem_boa_opcao, lista_tecnicos
+
+# ═══ Estoque do carro ═══════════════════════════════════════════════════
+#
+# O técnico carrega um jogo de peças de giro na van. Isso só existia na cabeça
+# dele: o escritório comprava peça que já estava rodando na rua, e o cliente
+# esperava a compra chegar enquanto a peça passava na porta dele.
+#
+# O código é guardado em MAIÚSCULA e sem espaços nas pontas porque é por ele
+# que o casamento com o pedido do técnico acontece — "aww024" e "AWW024 " têm
+# de ser a mesma peça.
+def _normalizar_codigo(valor: str) -> str:
+    return (valor or "").strip().upper()
+
+
+@tecnicos_bp.route("/tecnicos/<int:tecnico_id>/carro", methods=["GET"])
+def listar_pecas_carro(tecnico_id):
+    with db_conn() as conn:
+        pecas = fetch_all(conn, sql(
+            "SELECT id, codigo, descricao, quantidade, atualizado_em, "
+            "atualizado_por FROM peca_carro WHERE tecnico_id = ? "
+            "ORDER BY codigo"), (tecnico_id,))
+    return jsonify({"pecas": pecas})
+
+
+@tecnicos_bp.route("/tecnicos/<int:tecnico_id>/carro", methods=["POST"])
+def adicionar_peca_carro(tecnico_id):
+    data = request.get_json(silent=True) or {}
+    codigo = _normalizar_codigo(data.get("codigo"))[:60]
+    descricao = (data.get("descricao") or "").strip()[:200]
+
+    if not codigo:
+        return jsonify({"erro": "Informe o código da peça"}), 400
+
+    try:
+        quantidade = max(1, min(999, int(data.get("quantidade") or 1)))
+    except (TypeError, ValueError):
+        quantidade = 1
+
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    quem = (session.get("usuario_nome") or "").strip()[:80]
+
+    with db_conn(commit=True) as conn:
+        if not fetch_one(conn, "SELECT id FROM tecnicos WHERE id = ?", (tecnico_id,)):
+            return jsonify({"erro": "Técnico não encontrado"}), 404
+
+        # A mesma peça no mesmo carro SOMA em vez de virar linha nova: duas
+        # linhas do mesmo código seriam dois números para a mesma pergunta.
+        ja = fetch_one(conn, sql(
+            "SELECT id, quantidade FROM peca_carro "
+            "WHERE tecnico_id = ? AND codigo = ?"), (tecnico_id, codigo))
+        if ja:
+            execute(conn, sql(
+                "UPDATE peca_carro SET quantidade = ?, descricao = ?, "
+                "atualizado_em = ?, atualizado_por = ? WHERE id = ?"),
+                ((ja["quantidade"] or 0) + quantidade,
+                 descricao or None, agora, quem, ja["id"]))
+        else:
+            execute(conn, sql(
+                "INSERT INTO peca_carro (tecnico_id, codigo, descricao, "
+                "quantidade, atualizado_em, atualizado_por) "
+                "VALUES (?, ?, ?, ?, ?, ?)"),
+                (tecnico_id, codigo, descricao, quantidade, agora, quem))
+        bump_revisao(conn)
+
+    return jsonify({"codigo": codigo, "quantidade": quantidade}), 201
+
+
+@tecnicos_bp.route("/tecnicos/carro/<int:peca_id>", methods=["PUT"])
+def atualizar_peca_carro(peca_id):
+    """Muda a quantidade. Zero REMOVE: 'acabou' e 'nunca teve' dão no mesmo
+    para quem consulta, e deixar linha com zero encheria a lista de peça que
+    o técnico não tem."""
+    data = request.get_json(silent=True) or {}
+    try:
+        quantidade = int(data.get("quantidade"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Quantidade inválida"}), 400
+
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    quem = (session.get("usuario_nome") or "").strip()[:80]
+
+    with db_conn(commit=True) as conn:
+        if quantidade <= 0:
+            execute(conn, sql("DELETE FROM peca_carro WHERE id = ?"), (peca_id,))
+        else:
+            execute(conn, sql(
+                "UPDATE peca_carro SET quantidade = ?, atualizado_em = ?, "
+                "atualizado_por = ? WHERE id = ?"),
+                (min(999, quantidade), agora, quem, peca_id))
+        bump_revisao(conn)
+
+    return jsonify({"quantidade": max(0, quantidade)})

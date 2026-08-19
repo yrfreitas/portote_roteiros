@@ -371,6 +371,25 @@ _SCHEMA_PG = [
     # mais de uma foto (etiqueta, defeito, local) e porque uma imagem em
     # base64 numa linha que é lida em toda listagem tornaria a listagem lenta
     # sem necessidade.
+    # ESTOQUE DO CARRO DO TECNICO.
+    #
+    # O tecnico carrega um jogo de pecas de giro na van. Isso so existia na
+    # cabeca dele: o escritorio comprava peca que ja estava rodando na rua, e
+    # o cliente esperava a compra chegar enquanto a peca passava na porta.
+    #
+    # Chave (tecnico, codigo): a mesma peca no mesmo carro e uma linha so, com
+    # quantidade. Duas linhas do mesmo codigo seriam dois numeros para a mesma
+    # pergunta.
+    """CREATE TABLE IF NOT EXISTS peca_carro (
+        id             SERIAL PRIMARY KEY,
+        tecnico_id     INTEGER NOT NULL REFERENCES tecnicos(id) ON DELETE CASCADE,
+        codigo         TEXT NOT NULL,
+        descricao      TEXT,
+        quantidade     INTEGER DEFAULT 1,
+        atualizado_em  TEXT,
+        atualizado_por TEXT,
+        UNIQUE (tecnico_id, codigo)
+    )""",
     """CREATE TABLE IF NOT EXISTS servico_foto (
         id           SERIAL PRIMARY KEY,
         servico_id   INTEGER NOT NULL,
@@ -533,6 +552,16 @@ _SCHEMA_SQLITE = """
         registrado_por  TEXT,
         pedido_em       TEXT,
         pedido_por      TEXT
+    );
+    CREATE TABLE IF NOT EXISTS peca_carro (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        tecnico_id     INTEGER NOT NULL,
+        codigo         TEXT NOT NULL,
+        descricao      TEXT,
+        quantidade     INTEGER DEFAULT 1,
+        atualizado_em  TEXT,
+        atualizado_por TEXT,
+        UNIQUE (tecnico_id, codigo)
     );
     CREATE TABLE IF NOT EXISTS servico_foto (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,

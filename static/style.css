@@ -3552,3 +3552,72 @@ select:focus-visible,
   border-color: rgba(245,181,68,.4); color: var(--gold-text);
 }
 .peca-sugere-btn:hover { filter: brightness(1.15); }
+
+/* ═══ Estoque do carro do técnico ═══════════════════════════════════ */
+.btn-carro:hover { color: var(--accent-2); border-color: rgba(34,211,238,.4); }
+
+.carro-form {
+  display: grid; grid-template-columns: 1.1fr 1.4fr 76px auto; gap: 8px;
+  margin-bottom: 14px;
+}
+.carro-qtd-input { text-align: center; }
+.carro-lista { max-height: 320px; overflow-y: auto; }
+.carro-vazio {
+  padding: 22px; text-align: center; font-size: 12.5px; color: var(--text-muted);
+}
+.carro-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px;
+  background: var(--bg-card);
+}
+.carro-info { flex: 1; min-width: 0; }
+.carro-codigo {
+  font-family: var(--font-mono); font-size: 12.5px; font-weight: 600;
+  color: var(--text-primary);
+}
+.carro-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.carro-qtd { display: flex; align-items: center; gap: 4px; flex: none; }
+.carro-btn {
+  width: 28px; height: 28px; border-radius: 8px; cursor: pointer;
+  background: var(--bg-elevated); border: 1px solid var(--border-bright);
+  color: var(--text-secondary); font-size: 15px; line-height: 1;
+  font-family: inherit; display: grid; place-items: center;
+}
+.carro-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.carro-num {
+  min-width: 30px; text-align: center; font-weight: 700; font-size: 14px;
+  font-variant-numeric: tabular-nums; color: var(--text-primary);
+}
+
+/* Alerta na linha do atendimento: aparece ANTES do botão de comprar, que é
+   onde a informação impede o gasto. */
+.at-no-carro {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
+  margin-top: 7px; padding: 7px 11px; border-radius: 9px; font-size: 11.5px;
+  background: rgba(34,211,238,.10); border: 1px solid rgba(34,211,238,.3);
+  color: #b6ecf7;
+}
+.at-no-carro b { color: #fff; }
+.at-carro-icone { font-size: 13px; }
+
+/* Resumo no topo ao abrir a aba. Faixa por linha se perde na rolagem. */
+.aviso-carro {
+  position: fixed; left: 18px; bottom: 18px; z-index: 900;
+  display: flex; align-items: center; gap: 11px; max-width: 460px;
+  padding: 12px 14px; border-radius: 12px; font-size: 13px;
+  background: var(--bg-elevated); border: 1px solid rgba(34,211,238,.4);
+  box-shadow: 0 10px 34px rgba(0,0,0,.5); color: var(--text-primary);
+  animation: avisoEntra .22s ease-out;
+}
+.aviso-carro-icone { font-size: 18px; flex: none; }
+.aviso-carro-fechar {
+  border: 0; background: transparent; color: var(--text-muted); cursor: pointer;
+  font-size: 18px; line-height: 1; padding: 2px 4px; border-radius: 6px;
+  margin-left: auto; font-family: inherit;
+}
+.aviso-carro-fechar:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+@media (max-width: 720px) {
+  .carro-form { grid-template-columns: 1fr 1fr; }
+  .aviso-carro { left: 12px; right: 12px; max-width: none; }
+}

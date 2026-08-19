@@ -467,6 +467,15 @@ if ('serviceWorker' in navigator) {
 }
 
 // ===== ABAS PRINCIPAIS (Roteiros / Verificar CEP) =====
+// Texto virando ARGUMENTO de onclick dentro de atributo HTML.
+//
+// JSON.stringify devolve a string entre aspas DUPLAS, e o atributo onclick
+// também usa aspas duplas: o atributo terminava no meio do nome e o
+// navegador reclamava "Unexpected end of input" — o modal não abria e o
+// erro morria no console. Escapar as aspas para entidade resolve, porque o
+// navegador desfaz a entidade antes de interpretar o JavaScript.
+const argJs = (v) => JSON.stringify(String(v ?? '')).replace(/"/g, '&quot;');
+
 function switchMainTab(tab) {
   const isRoteiros  = tab === 'roteiros';
   const isCep       = tab === 'cep';
@@ -1664,6 +1673,10 @@ async function carregarTecnicos() {
                  botões da linha já são só ícone — agora os quatro combinam. -->
             <button class="btn-add-ficha" onclick="abrirModalNovaFicha(${t.id})"
                     title="Nova ficha" aria-label="Nova ficha">+</button>
+            <button class="btn-link-tecnico btn-carro" onclick="abrirCarro(${t.id}, ${argJs(t.nome)})"
+                    title="Peças que este técnico leva no carro" aria-label="Estoque do carro">
+              <svg class="icone-svg icone-11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M6 17l-1.5-5.5A2 2 0 0 1 6.4 9h11.2a2 2 0 0 1 1.9 2.5L18 17"/><path d="M7 9V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+            </button>
             <button class="btn-link-tecnico" onclick="abrirRastreadorTecnico(${t.id})" title="Configurar rastreio de localização">${icone('mapa', 'icone-11')}</button>
             <button class="btn-link-tecnico" onclick="copiarLinkTecnico('${t.token || ''}')" title="Copiar link de acesso do técnico">${icone('externo', 'icone-11')}</button>
             <button class="btn-del-tecnico" onclick="deletarTecnico(event,${t.id})" title="Remover técnico">${icone('x', 'icone-11')}</button>
@@ -4806,6 +4819,8 @@ async function carregarDesfechos() {
       <span class="at-nota">${t.nota}</span>
     </button>`).join('');
 
+  avisarPecasNoCarro(r.atendimentos);
+
   if (!r.atendimentos.length) {
     alvo.innerHTML = `<div class="at-cartoes">${cartoes}</div>
       <div class="historico-vazio">${icone('check', 'icone-24')}
@@ -4845,6 +4860,7 @@ async function carregarDesfechos() {
         <div class="at-baixa" id="at-baixa-${a.servico_id}">
           ${a.desfecho === 'precisa_peca' ? botaoBaixa(a) : ''}
         </div>
+        ${alertaNoCarro(a)}
       </div>`;
   }).join('');
 
@@ -4945,7 +4961,7 @@ function sugestaoDeCliente(p) {
           ${s.ja_pedida ? '<span class="peca-sugere-ok">já dada baixa</span>' : ''}
         </span>
         <button class="peca-sugere-btn"
-                onclick="aplicarSugestaoCliente(${p.linha}, ${JSON.stringify(s.cliente)})">
+                onclick="aplicarSugestaoCliente(${p.linha}, ${argJs(s.cliente)})">
           usar este cliente</button>
       </div>`;
   }
@@ -4959,7 +4975,7 @@ function sugestaoDeCliente(p) {
       <span class="peca-sugere-opcoes">
         ${lista.map(s => `
           <button class="peca-sugere-btn"
-                  onclick="aplicarSugestaoCliente(${p.linha}, ${JSON.stringify(s.cliente)})">
+                  onclick="aplicarSugestaoCliente(${p.linha}, ${argJs(s.cliente)})">
             ${esc(s.cliente)}${s.numero_os ? ' · OS ' + esc(s.numero_os) : ''}</button>`).join('')}
       </span>
     </div>`;
@@ -4972,4 +4988,119 @@ function aplicarSugestaoCliente(linha, cliente) {
   // Dispara a mesma gravação do preenchimento manual — um caminho só de
   // escrita, para os dois não divergirem.
   salvarPecaInline(linha);
+}
+
+
+// ═══ Estoque do carro do técnico ══════════════════════════════════════
+//
+// O técnico carrega um jogo de peças de giro na van, e isso só existia na
+// cabeça dele. Sem esta lista, o escritório compra peça que já está rodando
+// na rua e o cliente espera a compra chegar enquanto a peça passa na porta.
+let _carroTecnicoId = null;
+
+async function abrirCarro(tecnicoId, nome) {
+  _carroTecnicoId = tecnicoId;
+  const modal = document.getElementById('modal-carro');
+  modal.querySelector('.carro-titulo').textContent = `Peças no carro · ${nome}`;
+  modal.classList.add('open');
+  await recarregarCarro();
+  setTimeout(() => document.getElementById('carro-codigo')?.focus(), 80);
+}
+
+function fecharCarro() {
+  document.getElementById('modal-carro')?.classList.remove('open');
+  _carroTecnicoId = null;
+}
+
+async function recarregarCarro() {
+  const lista = document.getElementById('carro-lista');
+  lista.innerHTML = '<div class="loading-row" style="padding:16px;">Carregando...</div>';
+  try {
+    const r = await api(`/tecnicos/${_carroTecnicoId}/carro`);
+    if (!(r.pecas || []).length) {
+      lista.innerHTML = `<div class="carro-vazio">Nenhuma peça registrada no carro deste técnico.</div>`;
+      return;
+    }
+    lista.innerHTML = r.pecas.map(pc => `
+      <div class="carro-item">
+        <div class="carro-info">
+          <div class="carro-codigo">${esc(pc.codigo)}</div>
+          ${pc.descricao ? `<div class="carro-desc">${esc(pc.descricao)}</div>` : ''}
+        </div>
+        <div class="carro-qtd">
+          <button class="carro-btn" onclick="mudarQtdCarro(${pc.id}, ${pc.quantidade - 1})"
+                  title="Tirar uma">−</button>
+          <span class="carro-num">${pc.quantidade}</span>
+          <button class="carro-btn" onclick="mudarQtdCarro(${pc.id}, ${pc.quantidade + 1})"
+                  title="Somar uma">+</button>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    lista.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+  }
+}
+
+async function mudarQtdCarro(pecaId, quantidade) {
+  try {
+    await api(`/tecnicos/carro/${pecaId}`, {
+      method: 'PUT', body: JSON.stringify({ quantidade }),
+    });
+    await recarregarCarro();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function adicionarPecaCarro() {
+  const codigo = document.getElementById('carro-codigo').value.trim();
+  const descricao = document.getElementById('carro-desc').value.trim();
+  const quantidade = Number(document.getElementById('carro-qtd').value) || 1;
+  if (!codigo) { toast('Informe o código da peça', 'error'); return; }
+  try {
+    await api(`/tecnicos/${_carroTecnicoId}/carro`, {
+      method: 'POST', body: JSON.stringify({ codigo, descricao, quantidade }),
+    });
+    document.getElementById('carro-codigo').value = '';
+    document.getElementById('carro-desc').value = '';
+    document.getElementById('carro-qtd').value = 1;
+    document.getElementById('carro-codigo').focus();
+    await recarregarCarro();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+
+// ─── "Essa peça já está num carro" ────────────────────────────────────
+//
+// Aparece ANTES do botão de comprar, de propósito: é a pergunta que precisa
+// ser feita antes de gastar. Sem isso, o escritório pede peça que já está
+// rodando na van e o cliente espera a entrega enquanto a peça passa na porta
+// dele.
+function alertaNoCarro(a) {
+  const lista = a.no_carro || [];
+  if (!lista.length) return '';
+  const quem = lista.map(c =>
+    `<b>${esc(c.tecnico)}</b>${c.quantidade > 1 ? ` (${c.quantidade})` : ''}`).join(', ');
+  return `<div class="at-no-carro">
+      <span class="at-carro-icone" aria-hidden="true">🚗</span>
+      Já está no carro de ${quem} — confira antes de comprar
+    </div>`;
+}
+
+// Aviso de uma vez só ao abrir a aba. Uma faixa por linha se perde na
+// rolagem; este resume no topo e some quando o usuário fecha.
+function avisarPecasNoCarro(atendimentos) {
+  const comCarro = (atendimentos || []).filter(a => (a.no_carro || []).length);
+  if (!comCarro.length) return;
+  if (document.getElementById('aviso-carro')) return;
+
+  const aviso = document.createElement('div');
+  aviso.id = 'aviso-carro';
+  aviso.className = 'aviso-carro';
+  aviso.setAttribute('role', 'status');
+  aviso.innerHTML = `
+    <span class="aviso-carro-icone" aria-hidden="true">🚗</span>
+    <span><b>${comCarro.length} peça${comCarro.length !== 1 ? 's' : ''}</b>
+      que ${comCarro.length !== 1 ? 'os técnicos pediram já estão' : 'o técnico pediu já está'}
+      no carro de alguém. Confira antes de comprar.</span>
+    <button class="aviso-carro-fechar" onclick="this.parentElement.remove()"
+            aria-label="Fechar">&times;</button>`;
+  document.body.appendChild(aviso);
 }
