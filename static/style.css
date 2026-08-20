@@ -3824,7 +3824,10 @@ select:focus-visible,
    de 900px empilha, senão os mapas ficam estreitos demais para servir. */
 .vcep-grupos-grade {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  /* DUAS colunas fixas — não auto-fit. O auto-fit empilhava quando a caixa
+     era estreita (o "corrido" que o Kalebe viu). Aqui força lado a lado e só
+     empilha de verdade abaixo de 820px, onde dois mapas não caberiam mesmo. */
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
   align-items: start;
 }
@@ -3835,8 +3838,16 @@ select:focus-visible,
   padding: 12px 14px;
   margin-bottom: 0;
   background: rgba(255,255,255,.02);
+  min-width: 0;                   /* deixa o mapa encolher dentro da coluna */
 }
 .vcep-grupos-grade .vcep-mapa { height: 300px; }
-@media (max-width: 900px) {
+@media (max-width: 820px) {
   .vcep-grupos-grade { grid-template-columns: 1fr; }
 }
+
+/* Na aba de análise (a que tem os mapas), a caixa precisa de largura para os
+   dois lado a lado — os 640px do modo normal deixariam tudo espremido.
+   A altura fixa com scroll também sai: com dois mapas, rolar dentro de uma
+   janelinha de 440px é pior que a página inteira rolar. */
+.verificador-box--full.vcep-modo-mapas { max-width: 1080px; }
+.vcep-modo-mapas .vcep-analise-wrap { max-height: none; overflow: visible; }

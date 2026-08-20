@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v47';
+const VERSAO_PAINEL = 'v48';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3537,6 +3537,11 @@ function vcepSwitchTab(tab) {
 function _vcepRenderTab(r) {
   const painel = document.getElementById('vcep-painel');
   if (!painel || !r) return;
+
+  // A caixa alarga só na aba de análise (a dos mapas). Nas outras — Adicionar
+  // e Novo dia — volta aos 640px centrados, que é o certo para formulário.
+  const caixa = painel.closest('.verificador-box--full');
+  if (caixa) caixa.classList.toggle('vcep-modo-mapas', vcepTabAtual === 'analise');
 
   if (vcepTabAtual === 'analise') painel.innerHTML = _vcepAnalise(r);
   if (vcepTabAtual === 'add')     painel.innerHTML = _vcepAdd(r);

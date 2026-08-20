@@ -56,7 +56,8 @@
 // v45 = reagendar (técnico + dia) num bloco só e mais bonito no modal.
 // v46 = verificar CEP agrupado por técnico.
 // v47 = um mapa por técnico no verificar CEP, lado a lado.
-const CACHE_VERSAO = 'portotec-roteiros-v47';
+// v48 = mapas do verificar CEP realmente lado a lado (caixa alargada).
+const CACHE_VERSAO = 'portotec-roteiros-v48';
 
 const ARQUIVOS_CASCA = [
   '/',
