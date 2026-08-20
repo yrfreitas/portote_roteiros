@@ -6,3 +6,7 @@ __pycache__/
 credentials.json
 estado.db
 venv/
+
+# arquivos de teste que eu (Bia) criei por engano na raiz
+local*.log
+t3*.py
