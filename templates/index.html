@@ -266,20 +266,19 @@
     <div class="historico-wrap">
       <div class="estoque-topo">
         <div>
-          <span class="visao-geral-title">Estoque de Peças</span>
-          <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">
-            Saldo controlado aqui no site. Custo médio ponderado calculado
-            automaticamente a cada entrada.
+          <div class="estoque-breadcrumb" id="estoque-breadcrumb"></div>
+          <span class="visao-geral-title" id="estoque-titulo">Meus Estoques</span>
+          <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;" id="estoque-subtitulo">
+            Cada estoque é uma prateleira sua (Electrolux, Panasonic...). Abra um
+            para ver e adicionar as peças dele.
           </p>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="abrirEntradaEstoque()">
-          + Dar entrada
-        </button>
+        <div class="estoque-topo-acoes" id="estoque-topo-acoes"></div>
       </div>
 
       <div class="estoque-cards" id="estoque-resumo"></div>
 
-      <div class="estoque-filtros">
+      <div class="estoque-filtros" id="estoque-filtros" style="display:none;">
         <input type="text" id="estoque-busca-input" class="form-input estoque-busca-input"
                placeholder="Buscar por código, descrição, marca ou modelo..."
                oninput="filtrarEstoque()">
@@ -292,6 +291,24 @@
       <div id="estoque-lista"></div>
     </div>
   </main>
+</div>
+
+<div class="modal-overlay" id="modal-estoque-grupo" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-title" id="estoque-grupo-titulo">Criar estoque</div>
+    <input type="hidden" id="estoque-grupo-id">
+    <div class="form-group">
+      <label class="form-label" for="estoque-grupo-nome">Nome do estoque</label>
+      <input type="text" class="form-input" id="estoque-grupo-nome"
+             maxlength="60" placeholder="Ex: Electrolux, Panasonic - Geladeira..."
+             onkeydown="if(event.key==='Enter') salvarGrupoEstoque()">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="estoque-grupo-salvar"
+              onclick="salvarGrupoEstoque()">Criar</button>
+    </div>
+  </div>
 </div>
 
 <datalist id="estoque-datalist-aparelho"></datalist>
@@ -310,6 +327,12 @@
       <label class="form-label" for="estoque-mov-desc">Descrição</label>
       <input type="text" class="form-input" id="estoque-mov-desc"
              maxlength="120" placeholder="Ex: Placa de potência">
+    </div>
+    <div class="form-group" id="estoque-mov-grupo-estoque">
+      <label class="form-label" for="estoque-mov-estoque">Estoque (prateleira)</label>
+      <select class="form-input" id="estoque-mov-estoque">
+        <option value="">Sem estoque</option>
+      </select>
     </div>
     <div class="estoque-mov-linha" id="estoque-mov-grupo-categoria">
       <div class="form-group">

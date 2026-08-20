@@ -61,7 +61,9 @@
 //       mínimo com alerta e histórico. Saldo controlado no site.
 // v50 = estoque com marca/aparelho/modelo/preço, agrupado por aparelho
 //       (estilo AgoraOS), filtros por chip e marca, e edição da ficha da peça.
-const CACHE_VERSAO = 'portotec-roteiros-v50';
+// v51 = "estoque dentro do estoque": prateleiras nomeadas (Electrolux...) que
+//       o admin cria e abre para adicionar peças dentro. Navegação em 2 níveis.
+const CACHE_VERSAO = 'portotec-roteiros-v51';
 
 const ARQUIVOS_CASCA = [
   '/',

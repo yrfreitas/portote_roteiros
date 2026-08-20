@@ -3870,6 +3870,28 @@ select:focus-visible,
 .estoque-card--alerta .estoque-card-num { color: var(--danger-text); }
 .estoque-card-lbl { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
 
+/* Navegação em dois níveis: breadcrumb + cards de prateleira */
+.estoque-topo-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.estoque-breadcrumb { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.estoque-breadcrumb a { color: var(--accent-text); cursor: pointer; }
+.estoque-breadcrumb a:hover { text-decoration: underline; }
+.estoque-breadcrumb span { margin: 0 4px; opacity: .6; }
+
+.estoque-prateleiras {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;
+}
+.estoque-prateleira {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px; cursor: pointer;
+  transition: border-color .15s, background .15s, transform .1s;
+}
+.estoque-prateleira:hover { border-color: var(--accent); background: var(--bg-elevated); transform: translateY(-2px); }
+.estoque-prateleira-nome {
+  font-size: 15px; font-weight: 700; color: var(--text-primary);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.estoque-prateleira-meta { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
 .estoque-filtros { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .estoque-busca-input { flex: 1 1 280px; max-width: 460px; }
 .estoque-filtro-sel { flex: 0 0 auto; width: auto; min-width: 180px; }

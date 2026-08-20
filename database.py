@@ -307,10 +307,22 @@ _SCHEMA_PG = [
     # A CHAVE é o CODIGO da peça (o cProd da NF-e, ex: ARBPC1A12890) — é o que a
     # leitura da nota já extrai e o que identifica a peça sem ambiguidade, ao
     # contrário da descrição, que varia.
+    # "Estoque dentro do estoque": o Kalebe cria containers nomeados (Electrolux,
+    # Panasonic - Geladeira...) e guarda peças dentro de cada um — é a
+    # prateleira, o mesmo conceito dos 27 estoques do AgoraOS. A peça referencia
+    # o grupo; apagar o grupo NÃO apaga a peça (ON DELETE SET NULL), ela só volta
+    # para "Sem estoque". Nome único para não haver duas Electrolux.
+    """CREATE TABLE IF NOT EXISTS estoque_grupos (
+        id        SERIAL PRIMARY KEY,
+        nome      TEXT NOT NULL UNIQUE,
+        cor       TEXT,
+        criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
     # marca (fabricante do aparelho), aparelho (geladeira, lavadora...) e modelo
     # espelham como o AgoraOS organiza o estoque: por marca+aparelho. É o que
     # permite filtrar "todas as peças de geladeira" ou "de Panasonic".
     # preco_venda é opcional — quanto a peça é revendida, separado do custo.
+    # grupo_id liga a peça ao estoque (prateleira) em que ela vive.
     """CREATE TABLE IF NOT EXISTS estoque_itens (
         id           SERIAL PRIMARY KEY,
         codigo       TEXT NOT NULL UNIQUE,
@@ -318,6 +330,7 @@ _SCHEMA_PG = [
         marca        TEXT,
         aparelho     TEXT,
         modelo       TEXT,
+        grupo_id     INTEGER REFERENCES estoque_grupos(id) ON DELETE SET NULL,
         saldo        DOUBLE PRECISION DEFAULT 0,
         custo_medio  DOUBLE PRECISION DEFAULT 0,
         preco_venda  DOUBLE PRECISION DEFAULT 0,
@@ -562,6 +575,12 @@ _SCHEMA_SQLITE = """
         criado_em  TEXT,
         lida       INTEGER DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS estoque_grupos (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome      TEXT NOT NULL UNIQUE,
+        cor       TEXT,
+        criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE TABLE IF NOT EXISTS estoque_itens (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         codigo       TEXT NOT NULL UNIQUE,
@@ -569,6 +588,7 @@ _SCHEMA_SQLITE = """
         marca        TEXT,
         aparelho     TEXT,
         modelo       TEXT,
+        grupo_id     INTEGER,
         saldo        REAL DEFAULT 0,
         custo_medio  REAL DEFAULT 0,
         preco_venda  REAL DEFAULT 0,
@@ -576,7 +596,8 @@ _SCHEMA_SQLITE = """
         setor_id     INTEGER,
         criado_em    TEXT DEFAULT CURRENT_TIMESTAMP,
         atualizado_em TEXT,
-        FOREIGN KEY (setor_id) REFERENCES setores(id) ON DELETE SET NULL
+        FOREIGN KEY (setor_id) REFERENCES setores(id) ON DELETE SET NULL,
+        FOREIGN KEY (grupo_id) REFERENCES estoque_grupos(id) ON DELETE SET NULL
     );
     CREATE TABLE IF NOT EXISTS estoque_movimentos (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -695,6 +716,11 @@ _MIGRACOES_PG = [
     "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS aparelho TEXT",
     "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS modelo TEXT",
     "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS preco_venda DOUBLE PRECISION DEFAULT 0",
+    # Estoque dentro do estoque: prateleiras nomeadas + o vínculo da peça.
+    """CREATE TABLE IF NOT EXISTS estoque_grupos (
+        id SERIAL PRIMARY KEY, nome TEXT NOT NULL UNIQUE, cor TEXT,
+        criado_em TEXT DEFAULT CURRENT_TIMESTAMP)""",
+    "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS grupo_id INTEGER REFERENCES estoque_grupos(id) ON DELETE SET NULL",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -719,6 +745,10 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE estoque_itens ADD COLUMN aparelho TEXT",
     "ALTER TABLE estoque_itens ADD COLUMN modelo TEXT",
     "ALTER TABLE estoque_itens ADD COLUMN preco_venda REAL DEFAULT 0",
+    """CREATE TABLE IF NOT EXISTS estoque_grupos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE, cor TEXT,
+        criado_em TEXT DEFAULT CURRENT_TIMESTAMP)""",
+    "ALTER TABLE estoque_itens ADD COLUMN grupo_id INTEGER",
 ]
 
 

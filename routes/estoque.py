@@ -64,7 +64,8 @@ def _num_ou_none(v):
 
 def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
                 origem="manual", referencia=None, obs=None,
-                marca=None, aparelho=None, modelo=None, preco_venda=None):
+                marca=None, aparelho=None, modelo=None, preco_venda=None,
+                grupo_id="__manter__"):
     """Entra peça no estoque, recalculando o custo médio ponderado.
 
     Reaproveitável de fora (é o que a NF-e vai chamar, fase 2), por isso recebe
@@ -87,16 +88,22 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
     aparelho = (aparelho or "").strip()
     modelo = (modelo or "").strip()
     preco_venda = _num_ou_none(preco_venda)
+    # grupo_id usa sentinela "__manter__": ausente = não mexe no grupo atual
+    # (reentrada não desprende a peça da prateleira). Presente (int ou None)
+    # = define explicitamente, inclusive tirar do grupo com None.
+    mexer_grupo = grupo_id != "__manter__"
+    grupo_final = (int(grupo_id) if (mexer_grupo and grupo_id) else None)
 
     item = fetch_one(conn, "SELECT * FROM estoque_itens WHERE codigo = ?", (codigo,))
 
     if item is None:
         novo_id = insert_returning_id(conn, """
             INSERT INTO estoque_itens
-                (codigo, descricao, marca, aparelho, modelo, saldo, custo_medio,
-                 preco_venda, criado_em, atualizado_em)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (codigo, descricao, marca, aparelho, modelo, grupo_id, saldo,
+                 custo_medio, preco_venda, criado_em, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (codigo, (descricao or "").strip(), marca, aparelho, modelo,
+              grupo_final if mexer_grupo else None,
               quantidade, custo_unit, preco_venda or 0, _agora(), _agora()))
         _registrar_movimento(conn, novo_id, "entrada", quantidade, quantidade,
                              custo_unit, origem, referencia, obs)
@@ -115,17 +122,24 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
     else:
         custo_novo = custo_antigo
 
-    execute(conn, """
+    # grupo_id fora do COALESCE porque NULL é um valor válido (tirar do grupo),
+    # não "não informado" — por isso o if em vez de truque de SQL.
+    set_grupo = ", grupo_id = ?" if mexer_grupo else ""
+    params = [saldo_novo, custo_novo, _agora(), (descricao or "").strip(),
+              marca, aparelho, modelo, preco_venda]
+    if mexer_grupo:
+        params.append(grupo_final)
+    params.append(item["id"])
+    execute(conn, f"""
         UPDATE estoque_itens
            SET saldo = ?, custo_medio = ?, atualizado_em = ?,
                descricao   = COALESCE(NULLIF(?, ''), descricao),
                marca       = COALESCE(NULLIF(?, ''), marca),
                aparelho    = COALESCE(NULLIF(?, ''), aparelho),
                modelo      = COALESCE(NULLIF(?, ''), modelo),
-               preco_venda = COALESCE(?, preco_venda)
+               preco_venda = COALESCE(?, preco_venda){set_grupo}
          WHERE id = ?
-    """, (saldo_novo, custo_novo, _agora(), (descricao or "").strip(),
-          marca, aparelho, modelo, preco_venda, item["id"]))
+    """, params)
     _registrar_movimento(conn, item["id"], "entrada", quantidade, saldo_novo,
                         custo_unit, origem, referencia, obs)
     return {"item_id": item["id"], "saldo": saldo_novo, "custo_medio": custo_novo,
@@ -173,12 +187,16 @@ def listar():
     busca = (request.args.get("busca") or "").strip().lower()
     f_aparelho = (request.args.get("aparelho") or "").strip().lower()
     f_marca = (request.args.get("marca") or "").strip().lower()
+    # grupo_id: id do estoque para ver só as peças dele. "sem" = as soltas.
+    f_grupo = (request.args.get("grupo_id") or "").strip()
 
     with db_conn() as conn:
         itens = fetch_all(conn, """
-            SELECT e.*, s.nome AS setor_nome, s.cor AS setor_cor
+            SELECT e.*, s.nome AS setor_nome, s.cor AS setor_cor,
+                   g.nome AS grupo_nome, g.cor AS grupo_cor
               FROM estoque_itens e
               LEFT JOIN setores s ON s.id = e.setor_id
+              LEFT JOIN estoque_grupos g ON g.id = e.grupo_id
              ORDER BY e.aparelho, e.marca, e.descricao, e.codigo
         """)
 
@@ -199,6 +217,10 @@ def listar():
         itens = [i for i in itens if (i.get("aparelho") or "").lower() == f_aparelho]
     if f_marca:
         itens = [i for i in itens if (i.get("marca") or "").lower() == f_marca]
+    if f_grupo == "sem":
+        itens = [i for i in itens if not i.get("grupo_id")]
+    elif f_grupo:
+        itens = [i for i in itens if str(i.get("grupo_id") or "") == f_grupo]
 
     for i in itens:
         i["abaixo_minimo"] = (float(i.get("minimo") or 0) > 0
@@ -215,18 +237,113 @@ def listar():
     })
 
 
+# ─── Estoques (grupos / prateleiras) ──────────────────────────────────────
+@estoque_bp.route("/estoque/grupos", methods=["GET"])
+def listar_grupos():
+    """Os estoques criados, cada um com os agregados das peças dentro dele
+    (nº de peças, valor investido, quantas abaixo do mínimo), mais o balde
+    'Sem estoque' das peças ainda não guardadas em nenhum. É a tela-raiz."""
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+
+    with db_conn() as conn:
+        grupos = fetch_all(conn, "SELECT * FROM estoque_grupos ORDER BY nome")
+        itens = fetch_all(conn, "SELECT grupo_id, saldo, custo_medio, minimo FROM estoque_itens")
+
+    def agrega(filtro):
+        sel = [i for i in itens if filtro(i)]
+        return {
+            "total_pecas": len(sel),
+            "valor_investido": round(sum(float(i["saldo"] or 0) * float(i["custo_medio"] or 0) for i in sel), 2),
+            "abaixo_minimo": sum(1 for i in sel
+                                 if float(i["minimo"] or 0) > 0 and float(i["saldo"] or 0) <= float(i["minimo"])),
+        }
+
+    for g in grupos:
+        g.update(agrega(lambda i, gid=g["id"]: i["grupo_id"] == gid))
+
+    sem = agrega(lambda i: not i["grupo_id"])
+    return jsonify({"grupos": grupos, "sem_estoque": sem})
+
+
+@estoque_bp.route("/estoque/grupos", methods=["POST"])
+def criar_grupo():
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    d = request.get_json(silent=True) or {}
+    nome = (d.get("nome") or "").strip()
+    if not nome:
+        return jsonify({"erro": "Dê um nome ao estoque"}), 400
+    with db_conn(commit=True) as conn:
+        # Nome único: dois 'Electrolux' viram bagunça. Avisa em vez de duplicar.
+        existe = fetch_one(conn, "SELECT id FROM estoque_grupos WHERE LOWER(nome) = LOWER(?)", (nome,))
+        if existe:
+            return jsonify({"erro": f"Já existe um estoque chamado {nome}"}), 400
+        novo_id = insert_returning_id(conn,
+            "INSERT INTO estoque_grupos (nome, cor, criado_em) VALUES (?, ?, ?)",
+            (nome, (d.get("cor") or "").strip() or None, _agora()))
+    return jsonify({"mensagem": "Estoque criado", "id": novo_id, "nome": nome}), 201
+
+
+@estoque_bp.route("/estoque/grupos/<int:grupo_id>", methods=["PUT"])
+def editar_grupo(grupo_id):
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    d = request.get_json(silent=True) or {}
+    campos, valores = [], []
+    if "nome" in d:
+        nome = (d.get("nome") or "").strip()
+        if not nome:
+            return jsonify({"erro": "O nome não pode ficar vazio"}), 400
+        campos.append("nome = ?"); valores.append(nome)
+    if "cor" in d:
+        campos.append("cor = ?"); valores.append((d.get("cor") or "").strip() or None)
+    if not campos:
+        return jsonify({"mensagem": "Nada para mudar"})
+    valores.append(grupo_id)
+    with db_conn(commit=True) as conn:
+        try:
+            afetadas = execute(conn, f"UPDATE estoque_grupos SET {', '.join(campos)} WHERE id = ?", valores)
+        except Exception:
+            return jsonify({"erro": "Já existe um estoque com esse nome"}), 400
+    if not afetadas:
+        return jsonify({"erro": "Estoque não encontrado"}), 404
+    return jsonify({"mensagem": "Estoque atualizado"})
+
+
+@estoque_bp.route("/estoque/grupos/<int:grupo_id>", methods=["DELETE"])
+def remover_grupo(grupo_id):
+    """Apaga o estoque; as peças NÃO somem — voltam para 'Sem estoque'. O
+    SET NULL do FK não é confiável no SQLite (foreign_keys vem desligado), por
+    isso solto as peças na mão antes de apagar, garantindo os dois bancos."""
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    with db_conn(commit=True) as conn:
+        soltas = execute(conn, "UPDATE estoque_itens SET grupo_id = NULL WHERE grupo_id = ?", (grupo_id,))
+        apagados = execute(conn, "DELETE FROM estoque_grupos WHERE id = ?", (grupo_id,))
+    if not apagados:
+        return jsonify({"erro": "Estoque não encontrado"}), 404
+    return jsonify({"mensagem": "Estoque removido", "pecas_soltas": soltas})
+
+
 @estoque_bp.route("/estoque/entrada", methods=["POST"])
 def entrada():
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
     d = request.get_json(silent=True) or {}
+    # grupo_id só é repassado quando a chave veio no corpo — ausência mantém o
+    # grupo atual da peça (sentinela "__manter__" no dar_entrada).
+    kw = {}
+    if "grupo_id" in d:
+        kw["grupo_id"] = d.get("grupo_id")
     try:
         with db_conn(commit=True) as conn:
             r = dar_entrada(conn, d.get("codigo"), d.get("descricao"),
                             d.get("quantidade"), d.get("custo_unit"),
                             origem="manual", obs=d.get("obs"),
                             marca=d.get("marca"), aparelho=d.get("aparelho"),
-                            modelo=d.get("modelo"), preco_venda=d.get("preco_venda"))
+                            modelo=d.get("modelo"), preco_venda=d.get("preco_venda"),
+                            **kw)
     except (ValueError, TypeError) as exc:
         return jsonify({"erro": str(exc)}), 400
     return jsonify({"mensagem": "Entrada registrada", **r}), 201
@@ -276,6 +393,9 @@ def editar_item(item_id):
             campos.append("modelo = ?"); valores.append((d["modelo"] or "").strip())
         if "preco_venda" in d:
             campos.append("preco_venda = ?"); valores.append(_num_ou_none(d["preco_venda"]) or 0)
+        if "grupo_id" in d:
+            # Mover a peça para outro estoque (ou tirá-la, com null).
+            campos.append("grupo_id = ?"); valores.append(int(d["grupo_id"]) if d["grupo_id"] else None)
         if "setor_id" in d:
             campos.append("setor_id = ?"); valores.append(d["setor_id"] or None)
 

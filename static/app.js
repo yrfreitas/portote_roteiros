@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v50';
+const VERSAO_PAINEL = 'v51';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -520,7 +520,7 @@ function switchMainTab(tab) {
     carregarDesfechos();
   }
   if (isEstoque) {
-    carregarEstoque();
+    abrirEstoqueRaiz();
   }
 }
 
@@ -4906,22 +4906,100 @@ let estoqueCache = [];
 let estoqueMovModo = 'entrada'; // entrada | saida | ajuste | editar
 let estoqueCatalogo = { aparelhos: [], marcas: [] };
 let estoqueFiltroAparelho = ''; // chip ativo; '' = todos
+// Navegação em dois níveis: 'raiz' mostra os estoques (prateleiras); 'grupo'
+// mostra as peças de um estoque aberto. estoqueGrupos alimenta o <select> do
+// modal para escolher em qual estoque a peça entra.
+let estoqueView = 'raiz';
+let estoqueGrupoAtual = null; // {id, nome} quando dentro de um estoque
+let estoqueGrupos = [];
 
-async function carregarEstoque() {
+// Recarrega a view que está ativa — usado depois de qualquer escrita para
+// refletir sem tirar o senhor de onde estava.
+function carregarEstoque() {
+  if (estoqueView === 'grupo' && estoqueGrupoAtual) {
+    abrirGrupoEstoque(estoqueGrupoAtual.id, estoqueGrupoAtual.nome);
+  } else {
+    abrirEstoqueRaiz();
+  }
+}
+
+// ── Nível 1: os estoques (prateleiras) ──────────────────────────────────
+async function abrirEstoqueRaiz() {
+  estoqueView = 'raiz';
+  estoqueGrupoAtual = null;
   const lista = document.getElementById('estoque-lista');
-  const resumo = document.getElementById('estoque-resumo');
   if (!lista) return;
-  lista.innerHTML = '<div class="carregando">Carregando estoque...</div>';
+  document.getElementById('estoque-breadcrumb').innerHTML = '';
+  document.getElementById('estoque-titulo').textContent = 'Meus Estoques';
+  document.getElementById('estoque-subtitulo').style.display = '';
+  document.getElementById('estoque-subtitulo').innerHTML =
+    'Cada estoque é uma prateleira sua (Electrolux, Panasonic...). Abra um para ver e adicionar as peças dele.';
+  document.getElementById('estoque-topo-acoes').innerHTML =
+    '<button class="btn btn-primary btn-sm" onclick="abrirCriarGrupo()">+ Criar estoque</button>';
+  document.getElementById('estoque-filtros').style.display = 'none';
+  document.getElementById('estoque-chips-aparelho').innerHTML = '';
+  document.getElementById('estoque-resumo').innerHTML = '';
+  lista.innerHTML = '<div class="carregando">Carregando estoques...</div>';
   try {
-    const d = await api('/estoque');
+    const d = await api('/estoque/grupos');
+    estoqueGrupos = d.grupos || [];
+    renderEstoqueRaiz(d);
+  } catch (e) {
+    lista.innerHTML = `<div class="erro-box">Não foi possível carregar os estoques: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderEstoqueRaiz(d) {
+  const lista = document.getElementById('estoque-lista');
+  const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const card = (id, nome, ag, cor) => {
+    const alerta = ag.abaixo_minimo || 0;
+    return `
+    <div class="estoque-prateleira" onclick="abrirGrupoEstoque(${id === 'sem' ? "'sem'" : id}, ${JSON.stringify(nome)})"
+         style="${cor ? `border-left:4px solid ${esc(cor)};` : ''}">
+      <div class="estoque-prateleira-nome">${esc(nome)}${alerta ? `<span class="estoque-tag-alerta">${alerta} em falta</span>` : ''}</div>
+      <div class="estoque-prateleira-meta">${ag.total_pecas || 0} ${ag.total_pecas === 1 ? 'peça' : 'peças'} · ${brl(ag.valor_investido)}</div>
+    </div>`;
+  };
+  const cards = (d.grupos || []).map(g => card(g.id, g.nome, g, g.cor)).join('');
+  // "Sem estoque" só aparece quando há peça solta — não polui quando está tudo guardado.
+  const sem = (d.sem_estoque && d.sem_estoque.total_pecas > 0)
+    ? card('sem', 'Sem estoque', d.sem_estoque, null) : '';
+  if (!cards && !sem) {
+    lista.innerHTML = '<div class="vazio-box">Nenhum estoque ainda. Clique em <b>+ Criar estoque</b> para começar — ex: Electrolux, Panasonic.</div>';
+    return;
+  }
+  lista.innerHTML = `<div class="estoque-prateleiras">${cards}${sem}</div>`;
+}
+
+// ── Nível 2: as peças de um estoque ─────────────────────────────────────
+async function abrirGrupoEstoque(grupoId, nome) {
+  estoqueView = 'grupo';
+  estoqueGrupoAtual = { id: grupoId, nome };
+  estoqueFiltroAparelho = '';
+  const lista = document.getElementById('estoque-lista');
+  if (!lista) return;
+  document.getElementById('estoque-breadcrumb').innerHTML =
+    `<a onclick="abrirEstoqueRaiz()">Meus Estoques</a> <span>›</span> ${esc(nome)}`;
+  document.getElementById('estoque-titulo').textContent = nome;
+  document.getElementById('estoque-subtitulo').style.display = 'none';
+  const ehSem = grupoId === 'sem';
+  document.getElementById('estoque-topo-acoes').innerHTML = `
+    <button class="btn btn-primary btn-sm" onclick="abrirEntradaEstoque()">+ Adicionar peça</button>
+    ${ehSem ? '' : `<button class="btn btn-ghost btn-sm" onclick="renomearGrupoAtual()">Renomear</button>
+    <button class="btn btn-ghost btn-sm" onclick="excluirGrupoAtual()">Excluir estoque</button>`}`;
+  document.getElementById('estoque-filtros').style.display = 'flex';
+  lista.innerHTML = '<div class="carregando">Carregando peças...</div>';
+  try {
+    const q = ehSem ? 'grupo_id=sem' : `grupo_id=${encodeURIComponent(grupoId)}`;
+    const d = await api('/estoque?' + q);
     estoqueCache = d.itens || [];
     estoqueCatalogo = { aparelhos: d.aparelhos || [], marcas: d.marcas || [] };
     renderEstoqueResumo(d);
     montarFiltrosEstoque();
     filtrarEstoque();
   } catch (e) {
-    lista.innerHTML = `<div class="erro-box">Não foi possível carregar o estoque: ${esc(e.message)}</div>`;
-    if (resumo) resumo.innerHTML = '';
+    lista.innerHTML = `<div class="erro-box">Não foi possível carregar as peças: ${esc(e.message)}</div>`;
   }
 }
 
@@ -5063,6 +5141,7 @@ function _visibilidadeModalEstoque(cfg) {
   const grupos = {
     codigo:    'estoque-mov-grupo-codigo',
     desc:      'estoque-mov-grupo-desc',
+    estoque:   'estoque-mov-grupo-estoque',
     categoria: 'estoque-mov-grupo-categoria',
     modelo:    'estoque-mov-grupo-modelo',
     qtdcusto:  'estoque-mov-grupo-qtd-custo',
@@ -5075,9 +5154,21 @@ function _visibilidadeModalEstoque(cfg) {
   }
 }
 
+// Preenche o <select> de estoque do modal com as prateleiras existentes e
+// deixa a escolhida marcada. Vazio = "Sem estoque".
+function _popularSelectEstoque(selecionado) {
+  const sel = document.getElementById('estoque-mov-estoque');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Sem estoque</option>' +
+    estoqueGrupos.map(g => `<option value="${g.id}">${esc(g.nome)}</option>`).join('');
+  sel.value = selecionado != null ? String(selecionado) : '';
+}
+
 function _limparCamposEstoque() {
   ['codigo', 'desc', 'aparelho', 'marca', 'modelo', 'preco', 'qtd', 'custo', 'obs']
     .forEach(c => { const el = document.getElementById('estoque-mov-' + c); if (el) el.value = ''; });
+  const sel = document.getElementById('estoque-mov-estoque');
+  if (sel) sel.value = '';
 }
 
 function _labelQtd(txt) {
@@ -5092,6 +5183,12 @@ function abrirEntradaEstoque(codigo = '', desc = '') {
   document.getElementById('estoque-mov-codigo-fixo').value = codigo;
   document.getElementById('estoque-mov-codigo').value = codigo;
   document.getElementById('estoque-mov-desc').value = desc;
+  // Qual estoque já vem selecionado: o da peça existente, senão o que o senhor
+  // está com aberto na tela (adicionar peça "aqui dentro"). 'sem' = nenhum.
+  let grupoPre = '';
+  if (existente) grupoPre = existente.grupo_id || '';
+  else if (estoqueGrupoAtual && estoqueGrupoAtual.id !== 'sem') grupoPre = estoqueGrupoAtual.id;
+  _popularSelectEstoque(grupoPre);
   // Peça já existente entra com a categoria preenchida, para poder completar/corrigir.
   if (existente) {
     document.getElementById('estoque-mov-aparelho').value = existente.aparelho || '';
@@ -5099,7 +5196,7 @@ function abrirEntradaEstoque(codigo = '', desc = '') {
     document.getElementById('estoque-mov-modelo').value = existente.modelo || '';
     document.getElementById('estoque-mov-preco').value = Number(existente.preco_venda) > 0 ? existente.preco_venda : '';
   }
-  _visibilidadeModalEstoque({ codigo: !codigo, desc: true, categoria: true, modelo: true, qtdcusto: true, custo: true, obs: true });
+  _visibilidadeModalEstoque({ codigo: !codigo, desc: true, estoque: true, categoria: true, modelo: true, qtdcusto: true, custo: true, obs: true });
   _labelQtd('Quantidade');
   document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById(codigo ? 'estoque-mov-qtd' : 'estoque-mov-codigo').focus(), 80);
@@ -5140,7 +5237,8 @@ function abrirEditarEstoque(item) {
   document.getElementById('estoque-mov-marca').value = item.marca || '';
   document.getElementById('estoque-mov-modelo').value = item.modelo || '';
   document.getElementById('estoque-mov-preco').value = Number(item.preco_venda) > 0 ? item.preco_venda : '';
-  _visibilidadeModalEstoque({ desc: true, categoria: true, modelo: true, obs: false });
+  _popularSelectEstoque(item.grupo_id || '');
+  _visibilidadeModalEstoque({ desc: true, estoque: true, categoria: true, modelo: true, obs: false });
   document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById('estoque-mov-aparelho').focus(), 80);
 }
@@ -5150,11 +5248,15 @@ async function salvarMovEstoque() {
   const val = id => document.getElementById(id).value;
   const obs = val('estoque-mov-obs').trim() || null;
   const fixo = val('estoque-mov-codigo-fixo');
+  // grupo_id do <select>: '' vira null (Sem estoque). Sempre enviado nos modos
+  // que mostram o seletor, para o servidor saber que é uma escolha explícita.
+  const grupoSel = val('estoque-mov-estoque');
   const cat = () => ({
     aparelho: val('estoque-mov-aparelho').trim(),
     marca: val('estoque-mov-marca').trim(),
     modelo: val('estoque-mov-modelo').trim(),
     preco_venda: parseFloat(val('estoque-mov-preco')) || 0,
+    grupo_id: grupoSel ? Number(grupoSel) : null,
   });
 
   // Só entrada/saída/ajuste exigem quantidade; editar não mexe em saldo.
@@ -5194,6 +5296,62 @@ async function salvarMovEstoque() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ── Criar / renomear / excluir estoque (prateleira) ─────────────────────
+function abrirCriarGrupo() {
+  document.getElementById('estoque-grupo-titulo').textContent = 'Criar estoque';
+  document.getElementById('estoque-grupo-salvar').textContent = 'Criar';
+  document.getElementById('estoque-grupo-id').value = '';
+  document.getElementById('estoque-grupo-nome').value = '';
+  document.getElementById('modal-estoque-grupo').classList.add('open');
+  setTimeout(() => document.getElementById('estoque-grupo-nome').focus(), 80);
+}
+
+function renomearGrupoAtual() {
+  if (!estoqueGrupoAtual || estoqueGrupoAtual.id === 'sem') return;
+  document.getElementById('estoque-grupo-titulo').textContent = 'Renomear estoque';
+  document.getElementById('estoque-grupo-salvar').textContent = 'Salvar';
+  document.getElementById('estoque-grupo-id').value = estoqueGrupoAtual.id;
+  document.getElementById('estoque-grupo-nome').value = estoqueGrupoAtual.nome;
+  document.getElementById('modal-estoque-grupo').classList.add('open');
+  setTimeout(() => document.getElementById('estoque-grupo-nome').select(), 80);
+}
+
+async function salvarGrupoEstoque() {
+  const btn = document.getElementById('estoque-grupo-salvar');
+  const id = document.getElementById('estoque-grupo-id').value;
+  const nome = document.getElementById('estoque-grupo-nome').value.trim();
+  if (!nome) { toast('Dê um nome ao estoque.', 'error'); return; }
+  btn.disabled = true;
+  try {
+    if (id) {
+      await api(`/estoque/grupos/${id}`, { method: 'PUT', body: JSON.stringify({ nome }) });
+      if (estoqueGrupoAtual) estoqueGrupoAtual.nome = nome; // reflete no cabeçalho
+      toast('Estoque renomeado.', 'success');
+    } else {
+      await api('/estoque/grupos', { method: 'POST', body: JSON.stringify({ nome }) });
+      toast('Estoque criado.', 'success');
+    }
+    fecharModais();
+    carregarEstoque();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function excluirGrupoAtual() {
+  if (!estoqueGrupoAtual || estoqueGrupoAtual.id === 'sem') return;
+  // Confirma porque some da lista; mas tranquiliza: as peças não se perdem.
+  if (!confirm(`Excluir o estoque "${estoqueGrupoAtual.nome}"?\n\nAs peças NÃO serão apagadas — elas voltam para "Sem estoque".`)) return;
+  try {
+    const r = await api(`/estoque/grupos/${estoqueGrupoAtual.id}`, { method: 'DELETE' });
+    const n = r.pecas_soltas || 0;
+    toast(n ? `Estoque excluído. ${n} ${n === 1 ? 'peça voltou' : 'peças voltaram'} para "Sem estoque".` : 'Estoque excluído.', 'success');
+    abrirEstoqueRaiz();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function definirMinimoEstoque(id, codigo, atual) {
