@@ -296,11 +296,28 @@ def acompanhar(token):
 _METODOS_DE_ESCRITA = {"POST", "PUT", "PATCH", "DELETE"}
 
 
+# Escritas que NÃO mexem no que o painel mostra.
+#
+# O contador de revisão existe para o painel saber que a ROTA mudou e
+# rebaixar fichas e técnicos. Posição de GPS, mensagem de chat e registro de
+# erro não alteram rota nenhuma — mas passavam por aqui e incrementavam o
+# contador do mesmo jeito.
+#
+# O estrago: o OwnTracks manda posição a cada 30 segundos POR TÉCNICO. Com
+# dois em campo, o painel do Kalebe recarregava a tela inteira a cada ~15
+# segundos e ficava impossível de usar ("não consigo mexer no site",
+# 2026-08-18). Foi a funcionalidade de rastreio que travou o painel.
+_SEM_REVISAO = ("/rastreador", "/posicao", "/api/chat/", "/api/equipe/",
+                "/api/erro-cliente")
+
+
 @app.after_request
 def _marcar_revisao(resp):
     if request.method not in _METODOS_DE_ESCRITA:
         return resp
     if not request.path.startswith("/api"):
+        return resp
+    if any(p in request.path for p in _SEM_REVISAO):
         return resp
     # 4xx/5xx não mudaram nada no banco. Bumpar aqui faria todo mundo
     # rebaixar dados à toa a cada tentativa malsucedida.
