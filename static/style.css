@@ -3817,3 +3817,26 @@ select:focus-visible,
   border-radius: 99px; padding: 2px 9px;
 }
 .vcep-grupo-vazio { font-size: 12px; color: var(--text-muted); padding: 4px 2px 8px; }
+
+/* ─── Verificar CEP: um mapa por técnico, lado a lado ─────────────────
+   Dois técnicos = dois mapas na mesma linha (a tela tem largura). Três ou
+   mais quebram para a linha de baixo. Um só ocupa a largura inteira. Abaixo
+   de 900px empilha, senão os mapas ficam estreitos demais para servir. */
+.vcep-grupos-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.vcep-grupos-grade .vcep-grupo-tec {
+  border-top: none;               /* na grade, cada bloco é um cartão */
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 0;
+  background: rgba(255,255,255,.02);
+}
+.vcep-grupos-grade .vcep-mapa { height: 300px; }
+@media (max-width: 900px) {
+  .vcep-grupos-grade { grid-template-columns: 1fr; }
+}

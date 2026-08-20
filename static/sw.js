@@ -55,7 +55,8 @@
 // v44 = mover atendimento de dia sem apagar e recriar.
 // v45 = reagendar (técnico + dia) num bloco só e mais bonito no modal.
 // v46 = verificar CEP agrupado por técnico.
-const CACHE_VERSAO = 'portotec-roteiros-v46';
+// v47 = um mapa por técnico no verificar CEP, lado a lado.
+const CACHE_VERSAO = 'portotec-roteiros-v47';
 
 const ARQUIVOS_CASCA = [
   '/',

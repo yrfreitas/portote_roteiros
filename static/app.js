@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v46';
+const VERSAO_PAINEL = 'v47';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3627,11 +3627,12 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
     const chave = s.tecnico_id ?? s.tecnico_nome ?? 'sem';
     if (!porTecnico.has(chave)) {
       porTecnico.set(chave, {
-        nome: s.tecnico_nome || 'Sem técnico', cor: s.tecnico_cor,
-        servem: [], naoServem: [], melhorScore: -Infinity,
+        chave, nome: s.tecnico_nome || 'Sem técnico', cor: s.tecnico_cor,
+        servem: [], naoServem: [], melhorScore: -Infinity, indices: [],
       });
     }
     const g = porTecnico.get(chave);
+    g.indices.push(i);
     const fora = s.classificacao === 'fora' && !s.vazia;
     (fora ? g.naoServem : g.servem).push(monta(s, i));
     if (!fora) g.melhorScore = Math.max(g.melhorScore, s.score || 0);
@@ -3639,6 +3640,11 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
 
   // Técnico com melhor encaixe primeiro: é onde o olho deve ir.
   const grupos = [...porTecnico.values()].sort((a, b) => b.melhorScore - a.melhorScore);
+
+  // Registra, para cada sugestão, a qual GRUPO (posição na lista) ela pertence.
+  // É esse mapa que o destaque e a simulação usam para achar o mapa certo.
+  vcepIndiceGrupo = {};
+  grupos.forEach((g, gi) => g.indices.forEach(i => { vcepIndiceGrupo[i] = gi; }));
 
   const nenhumServe = grupos.every(g => g.servem.length === 0);
   const alerta = nenhumServe ? `
@@ -3651,8 +3657,8 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
       </div>
     </div>` : '';
 
-  const blocos = grupos.map(g => {
-    const foraId = 'vcep-fora-' + (g.nome || '').replace(/\W+/g, '');
+  const blocos = grupos.map((g, gi) => {
+    const foraId = 'vcep-fora-g' + gi;
     const recolhidas = g.naoServem.length ? `
       <button type="button" class="vcep-toggle-fora" onclick="vcepAlternarFora(this)">
         Mostrar ${g.naoServem.length} rota${g.naoServem.length !== 1 ? 's' : ''} fora de mão
@@ -3665,6 +3671,8 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
           ? '<div class="vcep-grupo-vazio">Nenhum dia deste técnico encaixa bem — só fora de mão.</div>'
           : '<div class="vcep-grupo-vazio">Sem rotas em aberto.</div>');
 
+    // Cada técnico: seu próprio mapa e sua própria barra de simulação, com o
+    // sufixo do grupo (g{gi}) que amarra ao vcepMapasGrupo[gi].
     return `
       <div class="vcep-grupo-tec">
         <div class="vcep-grupo-cab" style="--cor:${escCor(g.cor)}">
@@ -3672,18 +3680,21 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
           <span class="vcep-grupo-nome">${esc(g.nome)}</span>
           <span class="vcep-grupo-cont">${g.servem.length} que ${g.servem.length === 1 ? 'serve' : 'servem'}</span>
         </div>
+        <div id="vcep-mapa-g${gi}" class="vcep-mapa"></div>
+        <div id="vcep-sim-g${gi}" class="vcep-sim-barra">
+          <span class="vcep-sim-dica">Clique num dia para ver como a rota ficaria.</span>
+        </div>
         ${corpo}
         ${recolhidas}
       </div>`;
   }).join('');
 
+  // Os blocos vão numa GRADE: com dois técnicos, um mapa ao lado do outro (a
+  // tela tem largura para isso); com três ou mais, quebra em linhas. Um só
+  // técnico ocupa a largura inteira.
   return `<div class="vcep-analise-wrap">
-    <div id="vcep-mapa-encaixe" class="vcep-mapa"></div>
-    <div id="vcep-sim-barra" class="vcep-sim-barra">
-      <span class="vcep-sim-dica">Clique num dia para ver como a rota ficaria com este endereço.</span>
-    </div>
     ${alerta}
-    ${blocos}
+    <div class="vcep-grupos-grade">${blocos}</div>
   </div>`;
 }
 
@@ -3691,104 +3702,121 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
 // O número respondia "quanto encaixa". O mapa responde "onde", que é a
 // pergunta que a cabeça faz primeiro. Ver o CEP caindo no meio do aglomerado
 // de segunda do Pedro decide a questão sem ler nada.
-let vcepMapa = null;
-let vcepCamadas = [];   // uma camada por sugestão, para o destaque cruzado
-let vcepAlvoMarker = null;
+// UM MAPA POR TÉCNICO (pedido do Kalebe em 2026-08-20). Antes era um mapa só
+// com as rotas de todos sobrepostas. Agora cada técnico tem o seu, dentro do
+// bloco dele — os índices abaixo é que amarram tudo:
+//   vcepMapasGrupo[g]  = { mapa, alvoMarker, camadaSim }  — um por grupo
+//   vcepCamadas[i]     = { camada, cor, grupo }           — um por sugestão
+//   vcepIndiceGrupo[i] = g   — de qual grupo é a sugestão i
+// O índice GLOBAL i é preservado porque o destaque e a simulação chegam por
+// ele; reindexar quebraria os dois.
+let vcepMapasGrupo = [];
+let vcepCamadas = [];
+let vcepIndiceGrupo = {};
 
 function vcepRenderizarMapa(r) {
   try {
-    _vcepDesenharMapa(r);
+    _vcepDesenharMapas(r);
   } catch (e) {
     // O mapa é apoio à decisão, não a decisão. Se ele falhar, a análise em
     // texto — que é a informação essencial — não pode cair junto.
-    console.error('Falha ao desenhar o mapa de encaixe:', e);
-    const el = document.getElementById('vcep-mapa-encaixe');
-    if (el) el.style.display = 'none';
+    console.error('Falha ao desenhar os mapas de encaixe:', e);
+    document.querySelectorAll('.vcep-mapa').forEach(el => { el.style.display = 'none'; });
   }
 }
 
-function _vcepDesenharMapa(r) {
-  const el = document.getElementById('vcep-mapa-encaixe');
-  if (!el || !r || typeof L === 'undefined') return;
+// Um mapa POR TÉCNICO. Cada mapa mostra só as rotas daquele técnico + o mesmo
+// alvo (o endereço consultado), para o técnico ser comparado no seu próprio
+// contexto, sem as rotas do outro poluindo.
+function _vcepDesenharMapas(r) {
+  if (!r || typeof L === 'undefined') return;
   if (!Number.isFinite(r.lat) || !Number.isFinite(r.lng)) return;
 
-  // O Leaflet guarda estado no elemento; recriar sem destruir deixa o mapa
-  // cinza quando a tela é redesenhada (e ela é, a cada nova consulta).
-  if (vcepMapa) { vcepMapa.remove(); vcepMapa = null; }
+  // Destrói os mapas da consulta anterior: o Leaflet guarda estado no elemento
+  // e recriar sem destruir deixa o mapa cinza.
+  vcepMapasGrupo.forEach(m => { if (m && m.mapa) m.mapa.remove(); });
+  vcepMapasGrupo = [];
   vcepCamadas = [];
 
-  // O setView TEM que vir junto com a criação, antes de qualquer camada.
-  // Sem visão definida o mapa não tem origem de pixel, e o primeiro
-  // circleMarker adicionado estoura com "Cannot read properties of undefined
-  // (reading 'intersects')" — o renderizador tenta cruzar os limites da tela
-  // com os do desenho, e os da tela ainda não existem.
-  vcepMapa = L.map(el, { scrollWheelZoom: false, attributionControl: false })
-              .setView([r.lat, r.lng], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(vcepMapa);
-
-  // Coordenada que não seja número finito envenena os limites e faz o
-  // fitBounds falhar depois, longe daqui — filtrar na entrada sai mais barato
-  // que caçar o efeito lá na frente.
   const valida = (p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng);
 
-  const limites = [[r.lat, r.lng]];
-
+  // Agrupa os índices das sugestões por grupo (a mesma divisão da tela).
+  const porGrupo = {};
   (r.sugestoes || []).forEach((s, i) => {
-    const camada = L.layerGroup().addTo(vcepMapa);
-    const cor = s.tecnico_cor || '#4f8dfb';
-    // "Fora de mão" entra apagado: continua no mapa para dar noção de onde as
-    // outras rotas passam, sem competir com o que de fato interessa.
-    const fraca = s.classificacao === 'fora' && !s.vazia;
-
-    (s.pontos || []).filter(valida).forEach(p => {
-      L.circleMarker([p.lat, p.lng], {
-        radius: fraca ? 3 : 5,
-        color: cor, fillColor: cor,
-        fillOpacity: fraca ? 0.25 : 0.85,
-        weight: fraca ? 1 : 2,
-        opacity: fraca ? 0.3 : 0.9,
-      }).addTo(camada);
-      if (!fraca) limites.push([p.lat, p.lng]);
-    });
-
-    // A linha até o ponto mais próximo é o que torna "2,1 km fora da rota"
-    // uma distância que se enxerga em vez de um número para acreditar.
-    if (valida(s.ponto_proximo) && !fraca) {
-      L.polyline([[r.lat, r.lng], [s.ponto_proximo.lat, s.ponto_proximo.lng]], {
-        color: cor, weight: 2, opacity: 0.5, dashArray: '4,6',
-      }).addTo(camada);
-    }
-
-    vcepCamadas[i] = { camada, cor };
+    const g = vcepIndiceGrupo[i];
+    if (g === undefined) return;
+    (porGrupo[g] = porGrupo[g] || []).push(i);
   });
 
-  // O alvo vai por último para ficar acima de tudo, e é visualmente diferente
-  // dos pontos de rota — é a pergunta, não uma das respostas.
-  vcepAlvoMarker = L.circleMarker([r.lat, r.lng], {
-    radius: 9, color: '#fff', fillColor: '#e02020', fillOpacity: 1, weight: 3,
-  }).addTo(vcepMapa).bindTooltip(
-    r.endereco || r.cep || 'Endereço consultado', { direction: 'top' }
-  );
+  Object.keys(porGrupo).forEach(gStr => {
+    const gi = Number(gStr);
+    const el = document.getElementById(`vcep-mapa-g${gi}`);
+    if (!el) return;
 
-  // Só reenquadra se houver mais de um ponto e os limites forem válidos.
-  // Com o alvo sozinho, o fitBounds daria zoom máximo num ponto único; o
-  // setView de cima já deixou um enquadramento razoável nesse caso.
-  if (limites.length > 1) {
-    const caixa = L.latLngBounds(limites);
-    if (caixa.isValid()) vcepMapa.fitBounds(caixa.pad(0.2));
-  }
+    // setView junto da criação, antes de qualquer camada — sem visão definida,
+    // o primeiro circleMarker estoura em "reading 'intersects'".
+    const mapa = L.map(el, { scrollWheelZoom: false, attributionControl: false })
+                  .setView([r.lat, r.lng], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(mapa);
 
-  // O container nasce com display:none dentro da aba; sem isso o Leaflet
-  // calcula tamanho zero e o mapa aparece cortado.
-  setTimeout(() => vcepMapa && vcepMapa.invalidateSize(), 120);
+    const limites = [[r.lat, r.lng]];
+
+    porGrupo[gi].forEach(i => {
+      const s = r.sugestoes[i];
+      const camada = L.layerGroup().addTo(mapa);
+      const cor = s.tecnico_cor || '#4f8dfb';
+      const fraca = s.classificacao === 'fora' && !s.vazia;
+
+      (s.pontos || []).filter(valida).forEach(p => {
+        L.circleMarker([p.lat, p.lng], {
+          radius: fraca ? 3 : 5, color: cor, fillColor: cor,
+          fillOpacity: fraca ? 0.25 : 0.85, weight: fraca ? 1 : 2,
+          opacity: fraca ? 0.3 : 0.9,
+        }).addTo(camada);
+        if (!fraca) limites.push([p.lat, p.lng]);
+      });
+
+      // A linha até o ponto mais próximo torna "2,1 km fora da rota" algo que
+      // se enxerga em vez de um número para acreditar.
+      if (valida(s.ponto_proximo) && !fraca) {
+        L.polyline([[r.lat, r.lng], [s.ponto_proximo.lat, s.ponto_proximo.lng]], {
+          color: cor, weight: 2, opacity: 0.5, dashArray: '4,6',
+        }).addTo(camada);
+      }
+
+      vcepCamadas[i] = { camada, cor, grupo: gi };
+    });
+
+    // O alvo vai por último e é visualmente diferente — é a pergunta, não uma
+    // das respostas. Repetido em cada mapa de propósito: é a referência comum.
+    const alvoMarker = L.circleMarker([r.lat, r.lng], {
+      radius: 9, color: '#fff', fillColor: '#e02020', fillOpacity: 1, weight: 3,
+    }).addTo(mapa).bindTooltip(r.endereco || r.cep || 'Endereço consultado',
+                              { direction: 'top' });
+
+    if (limites.length > 1) {
+      const caixa = L.latLngBounds(limites);
+      if (caixa.isValid()) mapa.fitBounds(caixa.pad(0.2));
+    }
+
+    vcepMapasGrupo[gi] = { mapa, alvoMarker, camadaSim: null };
+
+    // O container nasce escondido dentro da aba; sem invalidateSize o Leaflet
+    // calcula tamanho zero e o mapa aparece cortado.
+    setTimeout(() => { if (vcepMapasGrupo[gi]) vcepMapasGrupo[gi].mapa.invalidateSize(); }, 120);
+  });
 }
 
 // Passar o mouse no card acende a rota correspondente no mapa. É o que liga
 // as duas metades da tela: sem isso são duas listas que não se conversam.
 function vcepDestacarNoMapa(indice) {
-  if (!vcepMapa) return;
+  // Só apaga as OUTRAS rotas do MESMO mapa (mesmo técnico). Antes, com um mapa
+  // só, apagava tudo; agora cada técnico é destacado no seu próprio mapa.
+  const grupoAlvo = indice === null ? null : vcepIndiceGrupo[indice];
   vcepCamadas.forEach((c, i) => {
     if (!c) return;
+    // Card de um técnico não mexe no mapa do outro.
+    if (grupoAlvo !== null && c.grupo !== grupoAlvo) return;
     const apagar = indice !== null && i !== indice;
     c.camada.eachLayer(l => {
       if (l.setStyle) l.setStyle({ opacity: apagar ? 0.12 : 0.9, fillOpacity: apagar ? 0.08 : 0.85 });
@@ -3801,15 +3829,20 @@ function vcepDestacarNoMapa(indice) {
 // trajeto inteiro na ordem em que o técnico vai rodar, com o ponto novo já
 // no lugar que o otimizador daria a ele. A pergunta que isso responde não é
 // "encaixa?", é "encaixa ONDE, e me custa quanto?".
-let vcepCamadaSimulacao = null;
 
 async function vcepSimularNoMapa(indice) {
   const r = verificacaoAtual;
-  if (!r || !vcepMapa) return;
+  if (!r) return;
   const s = r.sugestoes?.[indice];
   if (!s) return;
 
-  const barra = document.getElementById('vcep-sim-barra');
+  // A simulação acontece NO MAPA DO TÉCNICO daquele dia.
+  const gi = vcepIndiceGrupo[indice];
+  const grupo = vcepMapasGrupo[gi];
+  if (!grupo || !grupo.mapa) return;
+  const mapaTec = grupo.mapa;
+
+  const barra = document.getElementById(`vcep-sim-g${gi}`);
   if (barra) barra.innerHTML = `<span class="vcep-sim-carregando">Calculando como o dia ${esc(s.dia_semana)} ficaria...</span>`;
 
   let sim;
@@ -3823,10 +3856,11 @@ async function vcepSimularNoMapa(indice) {
     return;
   }
 
-  // Limpa só a camada da simulação — os pontos de contexto das outras rotas
-  // continuam no mapa, senão o usuário perde a noção de onde tudo está.
-  if (vcepCamadaSimulacao) { vcepCamadaSimulacao.remove(); vcepCamadaSimulacao = null; }
-  vcepCamadaSimulacao = L.layerGroup().addTo(vcepMapa);
+  // Limpa só a camada de simulação DESTE mapa — os pontos das outras rotas
+  // continuam, senão o usuário perde a noção de onde tudo está.
+  if (grupo.camadaSim) { grupo.camadaSim.remove(); }
+  grupo.camadaSim = L.layerGroup().addTo(mapaTec);
+  const vcepCamadaSimulacao = grupo.camadaSim;
 
   const cor = s.tecnico_cor || '#4f8dfb';
   const caminho = [];
@@ -3863,7 +3897,7 @@ async function vcepSimularNoMapa(indice) {
   }
 
   const caixa = L.latLngBounds(caminho);
-  if (caixa.isValid()) vcepMapa.fitBounds(caixa.pad(0.15));
+  if (caixa.isValid()) mapaTec.fitBounds(caixa.pad(0.15));
 
   if (barra) barra.innerHTML = _vcepResumoSimulacao(sim, s);
 }
@@ -3910,12 +3944,14 @@ function vcepToggleCard(prefixo, i) {
     vcepExpandido = null;
     document.getElementById('vcep-det-' + prefixo + i)?.style.setProperty('display', 'none');
     document.getElementById('vcep-rc-' + prefixo + i)?.classList.remove('vcep-rota-expanded');
-    // Fechar o card também limpa a simulação: deixar o trajeto desenhado sem
-    // nenhum dia selecionado faria o mapa mostrar uma rota que não é resposta
+    // Fechar o card também limpa a simulação do mapa DAQUELE técnico: deixar o
+    // trajeto desenhado sem dia selecionado mostraria uma rota que não responde
     // a pergunta nenhuma.
-    if (vcepCamadaSimulacao) { vcepCamadaSimulacao.remove(); vcepCamadaSimulacao = null; }
-    const barra = document.getElementById('vcep-sim-barra');
-    if (barra) barra.innerHTML = `<span class="vcep-sim-dica">Clique num dia para ver como a rota ficaria com este endereço.</span>`;
+    const giFechar = vcepIndiceGrupo[i];
+    const grpFechar = vcepMapasGrupo[giFechar];
+    if (grpFechar && grpFechar.camadaSim) { grpFechar.camadaSim.remove(); grpFechar.camadaSim = null; }
+    const barra = document.getElementById(`vcep-sim-g${giFechar}`);
+    if (barra) barra.innerHTML = `<span class="vcep-sim-dica">Clique num dia para ver como a rota ficaria.</span>`;
     return;
   }
   if (vcepExpandido !== null) {
