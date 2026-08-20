@@ -307,12 +307,20 @@ _SCHEMA_PG = [
     # A CHAVE é o CODIGO da peça (o cProd da NF-e, ex: ARBPC1A12890) — é o que a
     # leitura da nota já extrai e o que identifica a peça sem ambiguidade, ao
     # contrário da descrição, que varia.
+    # marca (fabricante do aparelho), aparelho (geladeira, lavadora...) e modelo
+    # espelham como o AgoraOS organiza o estoque: por marca+aparelho. É o que
+    # permite filtrar "todas as peças de geladeira" ou "de Panasonic".
+    # preco_venda é opcional — quanto a peça é revendida, separado do custo.
     """CREATE TABLE IF NOT EXISTS estoque_itens (
         id           SERIAL PRIMARY KEY,
         codigo       TEXT NOT NULL UNIQUE,
         descricao    TEXT,
+        marca        TEXT,
+        aparelho     TEXT,
+        modelo       TEXT,
         saldo        DOUBLE PRECISION DEFAULT 0,
         custo_medio  DOUBLE PRECISION DEFAULT 0,
+        preco_venda  DOUBLE PRECISION DEFAULT 0,
         minimo       DOUBLE PRECISION DEFAULT 0,
         setor_id     INTEGER REFERENCES setores(id) ON DELETE SET NULL,
         criado_em    TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -558,8 +566,12 @@ _SCHEMA_SQLITE = """
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         codigo       TEXT NOT NULL UNIQUE,
         descricao    TEXT,
+        marca        TEXT,
+        aparelho     TEXT,
+        modelo       TEXT,
         saldo        REAL DEFAULT 0,
         custo_medio  REAL DEFAULT 0,
+        preco_venda  REAL DEFAULT 0,
         minimo       REAL DEFAULT 0,
         setor_id     INTEGER,
         criado_em    TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -677,6 +689,12 @@ _MIGRACOES_PG = [
     "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS observacao TEXT",
     "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS pedido_em TEXT",
     "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS pedido_por TEXT",
+    # Estoque nasceu sem categorização; bancos já criados ganham os campos de
+    # marca/aparelho/modelo (organização estilo AgoraOS) sem perder o saldo.
+    "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS marca TEXT",
+    "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS aparelho TEXT",
+    "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS modelo TEXT",
+    "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS preco_venda DOUBLE PRECISION DEFAULT 0",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -697,6 +715,10 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE rastreios ADD COLUMN eta_minutos INTEGER",
     "ALTER TABLE rastreios ADD COLUMN precisao REAL",
     "ALTER TABLE tecnicos ADD COLUMN foto TEXT",
+    "ALTER TABLE estoque_itens ADD COLUMN marca TEXT",
+    "ALTER TABLE estoque_itens ADD COLUMN aparelho TEXT",
+    "ALTER TABLE estoque_itens ADD COLUMN modelo TEXT",
+    "ALTER TABLE estoque_itens ADD COLUMN preco_venda REAL DEFAULT 0",
 ]
 
 

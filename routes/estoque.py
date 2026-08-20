@@ -54,13 +54,26 @@ def _registrar_movimento(conn, item_id, tipo, qtd, saldo_apos,
           _autor(), obs, _agora()))
 
 
+def _num_ou_none(v):
+    """Converte para float; devolve None quando vazio — para a entrada poder
+    dizer 'não mexi nesse campo' e o COALESCE preservar o que já estava."""
+    if v is None or v == "":
+        return None
+    return max(0.0, float(v))
+
+
 def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
-                origem="manual", referencia=None, obs=None):
+                origem="manual", referencia=None, obs=None,
+                marca=None, aparelho=None, modelo=None, preco_venda=None):
     """Entra peça no estoque, recalculando o custo médio ponderado.
 
     Reaproveitável de fora (é o que a NF-e vai chamar, fase 2), por isso recebe
     a conexão: entra na mesma transação de quem chamou, e não sobra entrada de
     um processo que falhou no meio.
+
+    marca/aparelho/modelo/preco_venda são opcionais e, quando a peça já existe,
+    só sobrescrevem se vierem preenchidos — reentrar uma peça não apaga a
+    categoria que ela já tinha.
     """
     codigo = _norm_codigo(codigo)
     if not codigo:
@@ -70,15 +83,21 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
         raise ValueError("Quantidade tem que ser maior que zero")
     custo_unit = max(0.0, float(custo_unit or 0))
 
+    marca = (marca or "").strip()
+    aparelho = (aparelho or "").strip()
+    modelo = (modelo or "").strip()
+    preco_venda = _num_ou_none(preco_venda)
+
     item = fetch_one(conn, "SELECT * FROM estoque_itens WHERE codigo = ?", (codigo,))
 
     if item is None:
         novo_id = insert_returning_id(conn, """
             INSERT INTO estoque_itens
-                (codigo, descricao, saldo, custo_medio, criado_em, atualizado_em)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (codigo, (descricao or "").strip(), quantidade, custo_unit,
-              _agora(), _agora()))
+                (codigo, descricao, marca, aparelho, modelo, saldo, custo_medio,
+                 preco_venda, criado_em, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (codigo, (descricao or "").strip(), marca, aparelho, modelo,
+              quantidade, custo_unit, preco_venda or 0, _agora(), _agora()))
         _registrar_movimento(conn, novo_id, "entrada", quantidade, quantidade,
                              custo_unit, origem, referencia, obs)
         return {"item_id": novo_id, "saldo": quantidade, "custo_medio": custo_unit,
@@ -99,9 +118,14 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
     execute(conn, """
         UPDATE estoque_itens
            SET saldo = ?, custo_medio = ?, atualizado_em = ?,
-               descricao = COALESCE(NULLIF(?, ''), descricao)
+               descricao   = COALESCE(NULLIF(?, ''), descricao),
+               marca       = COALESCE(NULLIF(?, ''), marca),
+               aparelho    = COALESCE(NULLIF(?, ''), aparelho),
+               modelo      = COALESCE(NULLIF(?, ''), modelo),
+               preco_venda = COALESCE(?, preco_venda)
          WHERE id = ?
-    """, (saldo_novo, custo_novo, _agora(), (descricao or "").strip(), item["id"]))
+    """, (saldo_novo, custo_novo, _agora(), (descricao or "").strip(),
+          marca, aparelho, modelo, preco_venda, item["id"]))
     _registrar_movimento(conn, item["id"], "entrada", quantidade, saldo_novo,
                         custo_unit, origem, referencia, obs)
     return {"item_id": item["id"], "saldo": saldo_novo, "custo_medio": custo_novo,
@@ -140,24 +164,41 @@ def dar_saida(conn, codigo, quantidade, origem="manual", referencia=None,
 @estoque_bp.route("/estoque", methods=["GET"])
 def listar():
     """Todos os itens, com o alerta de mínimo já resolvido. `busca` filtra por
-    código ou descrição — o estoque cresce e rolar a lista inteira cansa."""
+    código/descrição/marca/modelo; `aparelho` e `marca` filtram por categoria.
+    Devolve também a lista de aparelhos e marcas existentes para montar os
+    filtros da tela sem uma segunda chamada."""
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
 
     busca = (request.args.get("busca") or "").strip().lower()
+    f_aparelho = (request.args.get("aparelho") or "").strip().lower()
+    f_marca = (request.args.get("marca") or "").strip().lower()
 
     with db_conn() as conn:
         itens = fetch_all(conn, """
             SELECT e.*, s.nome AS setor_nome, s.cor AS setor_cor
               FROM estoque_itens e
               LEFT JOIN setores s ON s.id = e.setor_id
-             ORDER BY e.descricao, e.codigo
+             ORDER BY e.aparelho, e.marca, e.descricao, e.codigo
         """)
+
+    # Catálogos de categoria vêm do universo COMPLETO (antes de filtrar), senão
+    # escolher "Geladeira" faria as outras opções sumirem do próprio filtro.
+    aparelhos = sorted({(i.get("aparelho") or "").strip() for i in itens if (i.get("aparelho") or "").strip()},
+                       key=str.lower)
+    marcas = sorted({(i.get("marca") or "").strip() for i in itens if (i.get("marca") or "").strip()},
+                    key=str.lower)
 
     if busca:
         itens = [i for i in itens
                  if busca in (i.get("codigo") or "").lower()
-                 or busca in (i.get("descricao") or "").lower()]
+                 or busca in (i.get("descricao") or "").lower()
+                 or busca in (i.get("marca") or "").lower()
+                 or busca in (i.get("modelo") or "").lower()]
+    if f_aparelho:
+        itens = [i for i in itens if (i.get("aparelho") or "").lower() == f_aparelho]
+    if f_marca:
+        itens = [i for i in itens if (i.get("marca") or "").lower() == f_marca]
 
     for i in itens:
         i["abaixo_minimo"] = (float(i.get("minimo") or 0) > 0
@@ -169,6 +210,8 @@ def listar():
         "total_itens": len(itens),
         "abaixo_minimo": sum(1 for i in itens if i["abaixo_minimo"]),
         "valor_investido": round(sum(i["valor_total"] for i in itens), 2),
+        "aparelhos": aparelhos,
+        "marcas": marcas,
     })
 
 
@@ -181,7 +224,9 @@ def entrada():
         with db_conn(commit=True) as conn:
             r = dar_entrada(conn, d.get("codigo"), d.get("descricao"),
                             d.get("quantidade"), d.get("custo_unit"),
-                            origem="manual", obs=d.get("obs"))
+                            origem="manual", obs=d.get("obs"),
+                            marca=d.get("marca"), aparelho=d.get("aparelho"),
+                            modelo=d.get("modelo"), preco_venda=d.get("preco_venda"))
     except (ValueError, TypeError) as exc:
         return jsonify({"erro": str(exc)}), 400
     return jsonify({"mensagem": "Entrada registrada", **r}), 201
@@ -223,6 +268,14 @@ def editar_item(item_id):
             campos.append("minimo = ?"); valores.append(max(0.0, float(d["minimo"] or 0)))
         if "descricao" in d:
             campos.append("descricao = ?"); valores.append((d["descricao"] or "").strip())
+        if "marca" in d:
+            campos.append("marca = ?"); valores.append((d["marca"] or "").strip())
+        if "aparelho" in d:
+            campos.append("aparelho = ?"); valores.append((d["aparelho"] or "").strip())
+        if "modelo" in d:
+            campos.append("modelo = ?"); valores.append((d["modelo"] or "").strip())
+        if "preco_venda" in d:
+            campos.append("preco_venda = ?"); valores.append(_num_ou_none(d["preco_venda"]) or 0)
         if "setor_id" in d:
             campos.append("setor_id = ?"); valores.append(d["setor_id"] or None)
 

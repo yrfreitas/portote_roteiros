@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v49';
+const VERSAO_PAINEL = 'v50';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4903,7 +4903,9 @@ async function salvarEdicaoServico() {
 // bebe de uma cópia local `estoqueCache` para a busca filtrar na hora, sem
 // bater no servidor a cada tecla. Só recarrega de verdade depois de mover saldo.
 let estoqueCache = [];
-let estoqueMovModo = 'entrada'; // entrada | saida | ajuste
+let estoqueMovModo = 'entrada'; // entrada | saida | ajuste | editar
+let estoqueCatalogo = { aparelhos: [], marcas: [] };
+let estoqueFiltroAparelho = ''; // chip ativo; '' = todos
 
 async function carregarEstoque() {
   const lista = document.getElementById('estoque-lista');
@@ -4913,12 +4915,46 @@ async function carregarEstoque() {
   try {
     const d = await api('/estoque');
     estoqueCache = d.itens || [];
+    estoqueCatalogo = { aparelhos: d.aparelhos || [], marcas: d.marcas || [] };
     renderEstoqueResumo(d);
+    montarFiltrosEstoque();
     filtrarEstoque();
   } catch (e) {
     lista.innerHTML = `<div class="erro-box">Não foi possível carregar o estoque: ${esc(e.message)}</div>`;
     if (resumo) resumo.innerHTML = '';
   }
+}
+
+// Preenche o select de marca, os chips de aparelho e os datalists do modal a
+// partir do que já existe cadastrado — sem inventar categoria, só reaproveita.
+function montarFiltrosEstoque() {
+  const sel = document.getElementById('estoque-filtro-marca');
+  if (sel) {
+    const atual = sel.value;
+    sel.innerHTML = '<option value="">Todas as marcas</option>' +
+      estoqueCatalogo.marcas.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    sel.value = atual; // preserva a escolha entre recargas
+  }
+  const chips = document.getElementById('estoque-chips-aparelho');
+  if (chips) {
+    if (!estoqueCatalogo.aparelhos.length && !estoqueFiltroAparelho) {
+      chips.innerHTML = '';
+    } else {
+      const btn = (val, rot) =>
+        `<button class="estoque-chip ${estoqueFiltroAparelho === val ? 'ativo' : ''}" onclick="filtrarPorAparelho(${JSON.stringify(val)})">${esc(rot)}</button>`;
+      chips.innerHTML = btn('', 'Todos') + estoqueCatalogo.aparelhos.map(a => btn(a, a)).join('');
+    }
+  }
+  const dlA = document.getElementById('estoque-datalist-aparelho');
+  if (dlA) dlA.innerHTML = estoqueCatalogo.aparelhos.map(a => `<option value="${esc(a)}">`).join('');
+  const dlM = document.getElementById('estoque-datalist-marca');
+  if (dlM) dlM.innerHTML = estoqueCatalogo.marcas.map(m => `<option value="${esc(m)}">`).join('');
+}
+
+function filtrarPorAparelho(val) {
+  estoqueFiltroAparelho = val;
+  montarFiltrosEstoque(); // reflete o chip ativo
+  filtrarEstoque();
 }
 
 function renderEstoqueResumo(d) {
@@ -4943,32 +4979,32 @@ function renderEstoqueResumo(d) {
 
 function filtrarEstoque() {
   const termo = (document.getElementById('estoque-busca-input')?.value || '').trim().toLowerCase();
-  const itens = !termo ? estoqueCache : estoqueCache.filter(i =>
+  const marca = (document.getElementById('estoque-filtro-marca')?.value || '').toLowerCase();
+  let itens = estoqueCache;
+  if (termo) itens = itens.filter(i =>
     (i.codigo || '').toLowerCase().includes(termo) ||
-    (i.descricao || '').toLowerCase().includes(termo));
+    (i.descricao || '').toLowerCase().includes(termo) ||
+    (i.marca || '').toLowerCase().includes(termo) ||
+    (i.modelo || '').toLowerCase().includes(termo));
+  if (marca) itens = itens.filter(i => (i.marca || '').toLowerCase() === marca);
+  if (estoqueFiltroAparelho) itens = itens.filter(i => (i.aparelho || '') === estoqueFiltroAparelho);
   renderEstoqueLista(itens);
 }
 
-function renderEstoqueLista(itens) {
-  const lista = document.getElementById('estoque-lista');
-  if (!lista) return;
-  if (!itens.length) {
-    lista.innerHTML = estoqueCache.length
-      ? '<div class="vazio-box">Nenhuma peça encontrada para essa busca.</div>'
-      : '<div class="vazio-box">Nenhuma peça no estoque ainda. Clique em <b>Dar entrada</b> para começar.</div>';
-    return;
-  }
+function _cardEstoque(i) {
   const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const g = n => (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
-  lista.innerHTML = itens.map(i => {
-    const alerta = i.abaixo_minimo;
-    return `
+  const alerta = i.abaixo_minimo;
+  // Linha de identidade: marca · modelo (o aparelho já é o cabeçalho do grupo).
+  const ident = [i.marca, i.modelo].map(x => (x || '').trim()).filter(Boolean).join(' · ');
+  const venda = Number(i.preco_venda) > 0 ? ` · venda ${brl(i.preco_venda)}` : '';
+  return `
     <div class="estoque-item ${alerta ? 'estoque-item--alerta' : ''}">
       <div class="estoque-item-info">
-        <div class="estoque-item-cod">${esc(i.codigo)}${alerta ? '<span class="estoque-tag-alerta">abaixo do mínimo</span>' : ''}</div>
+        <div class="estoque-item-cod">${esc(i.codigo)}${ident ? `<span class="estoque-item-ident">${esc(ident)}</span>` : ''}${alerta ? '<span class="estoque-tag-alerta">abaixo do mínimo</span>' : ''}</div>
         <div class="estoque-item-desc">${esc(i.descricao || 'Sem descrição')}</div>
         <div class="estoque-item-meta">
-          custo médio ${brl(i.custo_medio)} · vale ${brl(i.valor_total)}${Number(i.minimo) > 0 ? ` · mínimo ${g(i.minimo)}` : ''}
+          custo médio ${brl(i.custo_medio)} · vale ${brl(i.valor_total)}${venda}${Number(i.minimo) > 0 ? ` · mínimo ${g(i.minimo)}` : ''}
         </div>
       </div>
       <div class="estoque-item-saldo">
@@ -4978,88 +5014,178 @@ function renderEstoqueLista(itens) {
       <div class="estoque-item-acoes">
         <button class="btn btn-ghost btn-xs" title="Dar saída" onclick='abrirSaidaEstoque(${JSON.stringify(i.codigo)}, ${JSON.stringify(i.descricao || "")})'>− Saída</button>
         <button class="btn btn-ghost btn-xs" title="Entrada" onclick='abrirEntradaEstoque(${JSON.stringify(i.codigo)}, ${JSON.stringify(i.descricao || "")})'>+ Entrada</button>
+        <button class="btn btn-ghost btn-xs" title="Editar peça (marca, aparelho, modelo, preço)" onclick='abrirEditarEstoque(${JSON.stringify(i)})'>Editar</button>
         <button class="btn btn-ghost btn-xs" title="Corrigir saldo pela contagem física" onclick='abrirAjusteEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.saldo) || 0})'>Ajustar</button>
         <button class="btn btn-ghost btn-xs" title="Definir estoque mínimo" onclick='definirMinimoEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.minimo) || 0})'>Mínimo</button>
         <button class="btn btn-ghost btn-xs" title="Histórico de movimentos" onclick='verHistoricoEstoque(${i.id}, ${JSON.stringify(i.codigo)})'>Histórico</button>
       </div>
     </div>`;
+}
+
+function renderEstoqueLista(itens) {
+  const lista = document.getElementById('estoque-lista');
+  if (!lista) return;
+  if (!itens.length) {
+    lista.innerHTML = estoqueCache.length
+      ? '<div class="vazio-box">Nenhuma peça encontrada para esse filtro.</div>'
+      : '<div class="vazio-box">Nenhuma peça no estoque ainda. Clique em <b>Dar entrada</b> para começar.</div>';
+    return;
+  }
+  // Agrupado por aparelho, igual às prateleiras do AgoraOS. Peça sem aparelho
+  // cai num grupo "Sem categoria" no fim, para não sumir da vista.
+  const grupos = new Map();
+  itens.forEach(i => {
+    const chave = (i.aparelho || '').trim() || 'Sem categoria';
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(i);
+  });
+  const ordenadas = [...grupos.keys()].sort((a, b) => {
+    if (a === 'Sem categoria') return 1;
+    if (b === 'Sem categoria') return -1;
+    return a.localeCompare(b, 'pt-BR');
+  });
+  lista.innerHTML = ordenadas.map(nome => {
+    const doGrupo = grupos.get(nome);
+    return `
+    <div class="estoque-grupo">
+      <div class="estoque-grupo-cab">
+        <span class="estoque-grupo-nome">${esc(nome)}</span>
+        <span class="estoque-grupo-cont">${doGrupo.length} ${doGrupo.length === 1 ? 'peça' : 'peças'}</span>
+      </div>
+      ${doGrupo.map(_cardEstoque).join('')}
+    </div>`;
   }).join('');
 }
 
-function _prepararModalEstoque() {
-  document.getElementById('estoque-mov-qtd').value = '';
-  document.getElementById('estoque-mov-custo').value = '';
-  document.getElementById('estoque-mov-obs').value = '';
-  document.getElementById('modal-estoque-mov').classList.add('open');
+// Mostra/esconde os blocos do modal conforme o modo. Uma config por grupo é
+// mais legível que dez linhas de style.display espalhadas em cada função.
+function _visibilidadeModalEstoque(cfg) {
+  const grupos = {
+    codigo:    'estoque-mov-grupo-codigo',
+    desc:      'estoque-mov-grupo-desc',
+    categoria: 'estoque-mov-grupo-categoria',
+    modelo:    'estoque-mov-grupo-modelo',
+    qtdcusto:  'estoque-mov-grupo-qtd-custo',
+    custo:     'estoque-mov-grupo-custo',
+    obs:       'estoque-mov-grupo-obs',
+  };
+  for (const [chave, id] of Object.entries(grupos)) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = cfg[chave] ? '' : 'none';
+  }
+}
+
+function _limparCamposEstoque() {
+  ['codigo', 'desc', 'aparelho', 'marca', 'modelo', 'preco', 'qtd', 'custo', 'obs']
+    .forEach(c => { const el = document.getElementById('estoque-mov-' + c); if (el) el.value = ''; });
+}
+
+function _labelQtd(txt) {
+  document.getElementById('estoque-mov-qtd').closest('.form-group').querySelector('label').textContent = txt;
 }
 
 function abrirEntradaEstoque(codigo = '', desc = '') {
   estoqueMovModo = 'entrada';
+  _limparCamposEstoque();
+  const existente = codigo ? estoqueCache.find(i => i.codigo === codigo) : null;
   document.getElementById('estoque-mov-titulo').textContent = codigo ? `Entrada — ${codigo}` : 'Dar entrada';
   document.getElementById('estoque-mov-codigo-fixo').value = codigo;
-  document.getElementById('estoque-mov-grupo-codigo').style.display = codigo ? 'none' : '';
-  document.getElementById('estoque-mov-grupo-desc').style.display = '';
-  document.getElementById('estoque-mov-grupo-custo').style.display = '';
   document.getElementById('estoque-mov-codigo').value = codigo;
   document.getElementById('estoque-mov-desc').value = desc;
-  document.getElementById('estoque-mov-qtd').closest('.form-group').querySelector('label').textContent = 'Quantidade';
-  _prepararModalEstoque();
+  // Peça já existente entra com a categoria preenchida, para poder completar/corrigir.
+  if (existente) {
+    document.getElementById('estoque-mov-aparelho').value = existente.aparelho || '';
+    document.getElementById('estoque-mov-marca').value = existente.marca || '';
+    document.getElementById('estoque-mov-modelo').value = existente.modelo || '';
+    document.getElementById('estoque-mov-preco').value = Number(existente.preco_venda) > 0 ? existente.preco_venda : '';
+  }
+  _visibilidadeModalEstoque({ codigo: !codigo, desc: true, categoria: true, modelo: true, qtdcusto: true, custo: true, obs: true });
+  _labelQtd('Quantidade');
+  document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById(codigo ? 'estoque-mov-qtd' : 'estoque-mov-codigo').focus(), 80);
 }
 
 function abrirSaidaEstoque(codigo, desc = '') {
   estoqueMovModo = 'saida';
+  _limparCamposEstoque();
   document.getElementById('estoque-mov-titulo').textContent = `Saída — ${codigo}`;
   document.getElementById('estoque-mov-codigo-fixo').value = codigo;
-  document.getElementById('estoque-mov-grupo-codigo').style.display = 'none';
-  document.getElementById('estoque-mov-grupo-desc').style.display = 'none';
-  document.getElementById('estoque-mov-grupo-custo').style.display = 'none';
-  document.getElementById('estoque-mov-qtd').closest('.form-group').querySelector('label').textContent = 'Quantidade a dar baixa';
-  _prepararModalEstoque();
+  _visibilidadeModalEstoque({ qtdcusto: true, custo: false, obs: true });
+  _labelQtd('Quantidade a dar baixa');
+  document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById('estoque-mov-qtd').focus(), 80);
 }
 
 function abrirAjusteEstoque(id, codigo, saldoAtual) {
   estoqueMovModo = 'ajuste';
+  _limparCamposEstoque();
   document.getElementById('estoque-mov-titulo').textContent = `Ajustar saldo — ${codigo}`;
   document.getElementById('estoque-mov-codigo-fixo').value = id;
-  document.getElementById('estoque-mov-grupo-codigo').style.display = 'none';
-  document.getElementById('estoque-mov-grupo-desc').style.display = 'none';
-  document.getElementById('estoque-mov-grupo-custo').style.display = 'none';
-  document.getElementById('estoque-mov-qtd').closest('.form-group').querySelector('label').textContent = 'Saldo real contado';
-  _prepararModalEstoque();
+  _visibilidadeModalEstoque({ qtdcusto: true, custo: false, obs: true });
+  _labelQtd('Saldo real contado');
   document.getElementById('estoque-mov-qtd').value = saldoAtual;
+  document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById('estoque-mov-qtd').select(), 80);
+}
+
+// Editar a FICHA da peça (marca, aparelho, modelo, descrição, preço) sem tocar
+// no saldo — é aqui que se "marca" uma peça como geladeira depois de cadastrada.
+function abrirEditarEstoque(item) {
+  estoqueMovModo = 'editar';
+  _limparCamposEstoque();
+  document.getElementById('estoque-mov-titulo').textContent = `Editar — ${item.codigo}`;
+  document.getElementById('estoque-mov-codigo-fixo').value = item.id;
+  document.getElementById('estoque-mov-desc').value = item.descricao || '';
+  document.getElementById('estoque-mov-aparelho').value = item.aparelho || '';
+  document.getElementById('estoque-mov-marca').value = item.marca || '';
+  document.getElementById('estoque-mov-modelo').value = item.modelo || '';
+  document.getElementById('estoque-mov-preco').value = Number(item.preco_venda) > 0 ? item.preco_venda : '';
+  _visibilidadeModalEstoque({ desc: true, categoria: true, modelo: true, obs: false });
+  document.getElementById('modal-estoque-mov').classList.add('open');
+  setTimeout(() => document.getElementById('estoque-mov-aparelho').focus(), 80);
 }
 
 async function salvarMovEstoque() {
   const btn = document.getElementById('estoque-mov-salvar');
-  const qtd = parseFloat(document.getElementById('estoque-mov-qtd').value);
-  const obs = document.getElementById('estoque-mov-obs').value.trim() || null;
-  const fixo = document.getElementById('estoque-mov-codigo-fixo').value;
+  const val = id => document.getElementById(id).value;
+  const obs = val('estoque-mov-obs').trim() || null;
+  const fixo = val('estoque-mov-codigo-fixo');
+  const cat = () => ({
+    aparelho: val('estoque-mov-aparelho').trim(),
+    marca: val('estoque-mov-marca').trim(),
+    modelo: val('estoque-mov-modelo').trim(),
+    preco_venda: parseFloat(val('estoque-mov-preco')) || 0,
+  });
 
-  if (!isFinite(qtd) || (estoqueMovModo !== 'ajuste' && qtd <= 0)) {
+  // Só entrada/saída/ajuste exigem quantidade; editar não mexe em saldo.
+  const qtd = parseFloat(val('estoque-mov-qtd'));
+  if (estoqueMovModo !== 'editar' &&
+      (!isFinite(qtd) || (estoqueMovModo !== 'ajuste' && qtd <= 0))) {
     toast('Informe uma quantidade válida.', 'error');
     return;
   }
   btn.disabled = true;
   try {
     if (estoqueMovModo === 'entrada') {
-      const codigo = (fixo || document.getElementById('estoque-mov-codigo').value).trim();
+      const codigo = (fixo || val('estoque-mov-codigo')).trim();
       if (!codigo) { toast('Informe o código da peça.', 'error'); btn.disabled = false; return; }
-      const custo = parseFloat(document.getElementById('estoque-mov-custo').value) || 0;
       await api('/estoque/entrada', { method: 'POST', body: JSON.stringify({
-        codigo, descricao: document.getElementById('estoque-mov-desc').value.trim(),
-        quantidade: qtd, custo_unit: custo, obs }) });
+        codigo, descricao: val('estoque-mov-desc').trim(),
+        quantidade: qtd, custo_unit: parseFloat(val('estoque-mov-custo')) || 0,
+        obs, ...cat() }) });
       toast('Entrada registrada.', 'success');
     } else if (estoqueMovModo === 'saida') {
       await api('/estoque/saida', { method: 'POST', body: JSON.stringify({
         codigo: fixo, quantidade: qtd, obs }) });
       toast('Saída registrada.', 'success');
-    } else { // ajuste
+    } else if (estoqueMovModo === 'ajuste') {
       await api(`/estoque/${fixo}`, { method: 'PUT', body: JSON.stringify({
         saldo_contado: qtd, obs }) });
       toast('Saldo ajustado.', 'success');
+    } else { // editar — só a ficha, sem saldo
+      await api(`/estoque/${fixo}`, { method: 'PUT', body: JSON.stringify({
+        descricao: val('estoque-mov-desc').trim(), ...cat() }) });
+      toast('Peça atualizada.', 'success');
     }
     fecharModais();
     carregarEstoque();

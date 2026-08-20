@@ -279,16 +279,23 @@
 
       <div class="estoque-cards" id="estoque-resumo"></div>
 
-      <div class="estoque-busca">
-        <input type="text" id="estoque-busca-input" class="form-input"
-               placeholder="Buscar por código ou descrição..."
+      <div class="estoque-filtros">
+        <input type="text" id="estoque-busca-input" class="form-input estoque-busca-input"
+               placeholder="Buscar por código, descrição, marca ou modelo..."
                oninput="filtrarEstoque()">
+        <select id="estoque-filtro-marca" class="form-input estoque-filtro-sel" onchange="filtrarEstoque()">
+          <option value="">Todas as marcas</option>
+        </select>
       </div>
+      <div class="estoque-chips" id="estoque-chips-aparelho"></div>
 
       <div id="estoque-lista"></div>
     </div>
   </main>
 </div>
+
+<datalist id="estoque-datalist-aparelho"></datalist>
+<datalist id="estoque-datalist-marca"></datalist>
 
 <div class="modal-overlay" id="modal-estoque-mov" role="dialog" aria-modal="true">
   <div class="modal">
@@ -304,7 +311,33 @@
       <input type="text" class="form-input" id="estoque-mov-desc"
              maxlength="120" placeholder="Ex: Placa de potência">
     </div>
-    <div class="estoque-mov-linha">
+    <div class="estoque-mov-linha" id="estoque-mov-grupo-categoria">
+      <div class="form-group">
+        <label class="form-label" for="estoque-mov-aparelho">Aparelho</label>
+        <input type="text" class="form-input" id="estoque-mov-aparelho"
+               list="estoque-datalist-aparelho" maxlength="40"
+               placeholder="Ex: Geladeira, Lavadora...">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="estoque-mov-marca">Marca</label>
+        <input type="text" class="form-input" id="estoque-mov-marca"
+               list="estoque-datalist-marca" maxlength="40"
+               placeholder="Ex: Panasonic, Brastemp...">
+      </div>
+    </div>
+    <div class="estoque-mov-linha" id="estoque-mov-grupo-modelo">
+      <div class="form-group">
+        <label class="form-label" for="estoque-mov-modelo">Modelo (opcional)</label>
+        <input type="text" class="form-input" id="estoque-mov-modelo"
+               maxlength="40" placeholder="Ex: BT55">
+      </div>
+      <div class="form-group" id="estoque-mov-grupo-preco">
+        <label class="form-label" for="estoque-mov-preco">Preço de venda (R$)</label>
+        <input type="number" class="form-input" id="estoque-mov-preco"
+               min="0" step="any" placeholder="0,00">
+      </div>
+    </div>
+    <div class="estoque-mov-linha" id="estoque-mov-grupo-qtd-custo">
       <div class="form-group">
         <label class="form-label" for="estoque-mov-qtd">Quantidade</label>
         <input type="number" class="form-input" id="estoque-mov-qtd"
@@ -316,7 +349,7 @@
                min="0" step="any" placeholder="0,00">
       </div>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="estoque-mov-grupo-obs">
       <label class="form-label" for="estoque-mov-obs">Observação (opcional)</label>
       <input type="text" class="form-input" id="estoque-mov-obs"
              maxlength="120" placeholder="Ex: NF 1234, garantia...">

@@ -59,7 +59,9 @@
 // v48 = mapas do verificar CEP realmente lado a lado (caixa alargada).
 // v49 = nova aba Estoque: saldo, custo médio ponderado, entrada/saída/ajuste,
 //       mínimo com alerta e histórico. Saldo controlado no site.
-const CACHE_VERSAO = 'portotec-roteiros-v49';
+// v50 = estoque com marca/aparelho/modelo/preço, agrupado por aparelho
+//       (estilo AgoraOS), filtros por chip e marca, e edição da ficha da peça.
+const CACHE_VERSAO = 'portotec-roteiros-v50';
 
 const ARQUIVOS_CASCA = [
   '/',
