@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v43';
+const VERSAO_PAINEL = 'v44';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4667,8 +4667,40 @@ function abrirModalEditarServico(servicoId) {
   preencherSelectSetor('edit-setor', s.setor_id);
   document.getElementById('edit-descricao').value = s.descricao || '';
 
+  preencherMoverDia(servicoId);
+
   document.getElementById('modal-editar-servico').classList.add('open');
   setTimeout(() => document.getElementById('edit-cliente').focus(), 100);
+}
+
+// Monta o seletor "Mudar de dia" com as OUTRAS fichas em aberto do mesmo
+// técnico. Só aparece se houver para onde mover — oferecer um seletor vazio
+// seria pior que não ter.
+async function preencherMoverDia(servicoId) {
+  const bloco = document.getElementById('edit-mover-bloco');
+  const sel = document.getElementById('edit-mover-dia');
+  const tecnicoId = fichaAtiva?.tecnico_id;
+  bloco.style.display = 'none';
+  sel.innerHTML = '';
+  if (!tecnicoId) return;
+
+  let fichas;
+  try {
+    fichas = await api(`/fichas?tecnico_id=${tecnicoId}&abertas=true`);
+  } catch { return; }
+
+  // Fora a ficha em que o ponto já está.
+  const outras = (fichas || []).filter(f => f.id !== fichaAtiva?.id);
+  if (outras.length === 0) return;   // não há outro dia: nada a oferecer
+
+  const hoje = dataDeHoje();
+  sel.innerHTML = '<option value="">— manter neste dia —</option>' +
+    outras.map(f => {
+      const data = f.data_referencia ? ' · ' + formatarData(f.data_referencia) : '';
+      const tag = f.data_referencia === hoje ? ' (hoje)' : '';
+      return `<option value="${f.id}">${esc(f.dia_semana)}${esc(data)}${tag} · ${f.total_servicos} atend.</option>`;
+    }).join('');
+  bloco.style.display = '';
 }
 
 async function salvarEdicaoServico() {
@@ -4706,8 +4738,23 @@ async function salvarEdicaoServico() {
 
     lembrarSetor(setorEditado);
 
+    // Se escolheu outro dia, move DEPOIS de salvar os dados — assim o cliente
+    // e a OS já editados vão junto para o novo dia. Move por último porque a
+    // ficha de origem deixa de conter o ponto.
+    const diaDestino = document.getElementById('edit-mover-dia')?.value;
+    let movido = false;
+    if (diaDestino) {
+      const r = await api(`/servicos/${servicoId}/mover`, {
+        method: 'PUT', body: JSON.stringify({ ficha_id: parseInt(diaDestino, 10) }),
+      });
+      movido = true;
+      toast(r.mensagem || 'Atendimento movido de dia', 'success');
+    }
+
     fecharModais();
-    toast('Atendimento atualizado', 'success');
+    if (!movido) toast('Atendimento atualizado', 'success');
+    // Se moveu, a ficha atual perdeu o ponto — recarregar a de origem mostra
+    // o dia sem ele, que é o resultado esperado.
     await renderFichaDetalhe(parseInt(fichaId, 10));
     await carregarTecnicos();
   } catch (e) {

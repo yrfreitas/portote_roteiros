@@ -249,6 +249,67 @@ def remover_servico(servico_id):
 # exatamente o atrito que fez ninguém preencher em primeiro lugar.
 
 
+@servicos_bp.route("/servicos/<int:servico_id>/mover", methods=["PUT"])
+def mover_servico(servico_id):
+    """Move o atendimento para OUTRO DIA (outra ficha), sem apagar e recriar.
+
+    Pedido do Kalebe em 2026-08-20: hoje, trocar um cliente de dia obriga a
+    apagar o ponto e adicionar de novo — perdendo status, nº da OS e o
+    trabalho de digitar tudo outra vez.
+
+    A ficha de destino é do MESMO técnico: mudar de técnico já tem rota
+    própria (`/tecnico`). Aqui só muda o dia. As duas rotas são recalculadas
+    porque uma perdeu parada e a outra ganhou.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        ficha_destino = int(data.get("ficha_id"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Informe o dia de destino"}), 400
+
+    with db_conn(commit=True) as conn:
+        servico = fetch_one(conn, """
+            SELECT sv.id, sv.ficha_id, f.tecnico_id
+              FROM servicos sv JOIN fichas f ON f.id = sv.ficha_id
+             WHERE sv.id = ?
+        """, (servico_id,))
+        if not servico:
+            return jsonify({"erro": "Atendimento não encontrado"}), 404
+
+        ficha_origem = servico["ficha_id"]
+        if ficha_destino == ficha_origem:
+            return jsonify({"mensagem": "O atendimento já está nesse dia"})
+
+        destino = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_destino,))
+        if not destino:
+            return jsonify({"erro": "Dia de destino não encontrado"}), 404
+        if destino.get("status") == "concluida":
+            return jsonify({"erro": "Não dá para mover para um dia já concluído"}), 400
+        # Trava de coerência: a ficha destino tem que ser do mesmo técnico. Sem
+        # isso, "mover de dia" viraria um jeito escondido de trocar de técnico
+        # sem encerrar o rastreio, que a rota /tecnico faz de propósito.
+        if destino.get("tecnico_id") != servico.get("tecnico_id"):
+            return jsonify({"erro": "Esse dia é de outro técnico. Use "
+                                    "'transferir' para mudar de técnico."}), 400
+
+        # Rastreio aberto do ponto perde o sentido: o dia mudou.
+        from routes.rastreio import encerrar_por_servico
+        encerrar_por_servico(conn, servico_id)
+
+        # Entra no fim; a otimização recoloca no lugar certo.
+        ultima = fetch_one(conn, "SELECT MAX(ordem) AS m FROM servicos WHERE ficha_id = ?",
+                           (ficha_destino,))
+        execute(conn, "UPDATE servicos SET ficha_id = ?, ordem = ? WHERE id = ?",
+                (ficha_destino, (ultima or {}).get("m") or 0, servico_id))
+
+        for fid in (ficha_origem, ficha_destino):
+            f = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (fid,))
+            recalcular_rota(conn, fid, f)
+
+    return jsonify({"mensagem": "Atendimento movido de dia",
+                    "ficha_destino": ficha_destino, "ficha_origem": ficha_origem})
+
+
 @servicos_bp.route("/servicos/<int:servico_id>/tecnico", methods=["PUT"])
 def transferir_servico(servico_id):
     """Move UM ponto para outro técnico, no mesmo dia.

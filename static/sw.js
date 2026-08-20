@@ -52,7 +52,8 @@
 // v41 = GPS e chat param de forçar recarga do painel + chat responde na hora.
 // v42 = aviso quando o cliente não está vendo o técnico no mapa.
 // v43 = verificar CEP só mostra rotas em aberto e de hoje em diante.
-const CACHE_VERSAO = 'portotec-roteiros-v43';
+// v44 = mover atendimento de dia sem apagar e recriar.
+const CACHE_VERSAO = 'portotec-roteiros-v44';
 
 const ARQUIVOS_CASCA = [
   '/',

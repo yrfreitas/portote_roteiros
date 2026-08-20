@@ -469,6 +469,16 @@
              onkeydown="if(event.key==='Enter') salvarEdicaoServico()">
     </div>
 
+    <!-- Mudar de dia sem apagar e recriar. Só aparece quando o técnico tem
+         outro dia em aberto para onde mover. -->
+    <div class="form-group" id="edit-mover-bloco" style="display:none;">
+      <label class="form-label" for="edit-mover-dia">Mudar de dia</label>
+      <select class="form-input" id="edit-mover-dia"></select>
+      <small style="color:var(--text-muted);font-size:11px;">
+        Move este atendimento para outro dia do mesmo técnico, mantendo cliente, OS e status.
+      </small>
+    </div>
+
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
       <button type="button" class="btn btn-primary" id="btn-editar-servico" onclick="salvarEdicaoServico()">
