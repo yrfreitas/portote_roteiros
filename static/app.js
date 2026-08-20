@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v41';
+const VERSAO_PAINEL = 'v42';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1243,14 +1243,23 @@ async function carregarDiagnostico() {
 // O relatório por setor é o número que serve para cobrar a fabricante. Com
 // 60% dos pontos sem classificação ele não vale nada — e ninguém classifica
 // o que não aparece na frente.
+// Faixa de avisos no topo do painel.
+//
+// Passou a ler `/avisos` em vez de `/setores/resumo`: a mesma chamada agora
+// traz também os atendimentos em que o CLIENTE ESTÁ OLHANDO UM MAPA PARADO.
+// Isso nasceu de um caso real — o celular do técnico parou de mandar posição
+// às 17h e ninguém percebeu até o checkup do dia seguinte; quem descobriria
+// primeiro seria o cliente. Sem custo extra de rede: uma chamada no lugar da
+// outra (o servidor roda com um worker só, ver siteroteiro-desempenho).
 async function verificarPontosSemSetor() {
   let d;
-  try { d = await api('/setores/resumo'); } catch { return; }
+  try { d = await api('/avisos'); } catch { return; }
 
-  const total = d.sem_setor || 0;
+  const semSetor = d.sem_setor || 0;
+  const mudos = d.rastreio || [];
+
   let faixa = document.getElementById('aviso-sem-setor');
-
-  if (!total) { if (faixa) faixa.remove(); return; }
+  if (!semSetor && mudos.length === 0) { if (faixa) faixa.remove(); return; }
 
   if (!faixa) {
     faixa = document.createElement('div');
@@ -1260,10 +1269,28 @@ async function verificarPontosSemSetor() {
     if (main) main.prepend(faixa); else return;
   }
 
-  faixa.innerHTML = `
-    <span><b>${total}</b> atendimento${total !== 1 ? 's' : ''} sem setor —
-      o relatório por frente fica incompleto enquanto isso.</span>
-    <button class="btn btn-primary btn-sm" onclick="abrirClassificacaoEmLote()">Classificar</button>`;
+  const partes = [];
+
+  // O rastreio vem primeiro: é o que o cliente está vendo AGORA.
+  if (mudos.length) {
+    partes.push(`
+      <div class="aviso-linha grave">
+        <span>${mudos.map(m => `<b>${esc(m.cliente)}</b> não está vendo
+          ${esc(m.tecnico)} no mapa (${esc(m.motivo)})`).join(' · ')}</span>
+        <button class="btn btn-ghost btn-sm" onclick="switchMainTab('diagnostico')">Ver diagnóstico</button>
+      </div>`);
+  }
+
+  if (semSetor) {
+    partes.push(`
+      <div class="aviso-linha">
+        <span><b>${semSetor}</b> atendimento${semSetor !== 1 ? 's' : ''} sem setor —
+          o relatório por frente fica incompleto enquanto isso.</span>
+        <button class="btn btn-primary btn-sm" onclick="abrirClassificacaoEmLote()">Classificar</button>
+      </div>`);
+  }
+
+  faixa.innerHTML = partes.join('');
 }
 
 

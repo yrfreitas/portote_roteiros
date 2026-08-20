@@ -809,3 +809,69 @@ def diagnostico():
 
 # A página em si (/acompanhar/<token>) fica no app.py, fora deste blueprint:
 # aqui tudo vive sob /api, e a página é HTML que o cliente abre no navegador.
+
+
+@rastreio_bp.route("/avisos", methods=["GET"])
+def avisos():
+    """O que precisa de atenção AGORA, numa chamada só.
+
+    Nasceu de um caso real: o Igor tinha atendimento aberto e o celular dele
+    parou de mandar posição às 17h do dia anterior. O cliente abria o link e
+    não via ninguém — e a Porto Tec só descobriria pela reclamação.
+
+    Junta os dois avisos numa resposta porque o painel já chamava
+    `/setores/resumo` para a faixa de pontos sem setor; agora essa mesma
+    chamada traz tudo, sem custar mais uma ida ao servidor (o painel roda com
+    UM worker, ver siteroteiro-desempenho).
+    """
+    from routes.auth import e_admin
+
+    saida = {"sem_setor": 0, "rastreio": []}
+
+    with db_conn() as conn:
+        orfaos = fetch_one(conn, """
+            SELECT COUNT(*) AS total FROM servicos sv
+              JOIN fichas f ON f.id = sv.ficha_id
+             WHERE sv.setor_id IS NULL AND f.status <> 'concluida'
+        """)
+        saida["sem_setor"] = (orfaos or {}).get("total", 0)
+
+        # Atendimento com link aberto e posição velha (ou nenhuma): é o
+        # cliente olhando um mapa parado neste exato momento.
+        abertos = fetch_all(conn, f"""
+            SELECT ra.atualizado_em, sv.cliente, t.nome AS tecnico
+              FROM rastreios ra
+              JOIN servicos sv ON sv.id = ra.servico_id
+              JOIN tecnicos t  ON t.id = ra.tecnico_id
+             WHERE {_ATIVO} AND sv.status <> 'concluido'
+        """)
+
+    for r in abertos:
+        idade = None
+        if r.get("atualizado_em"):
+            try:
+                visto = datetime.strptime(str(r["atualizado_em"])[:19],
+                                          "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                idade = (datetime.now(timezone.utc) - visto).total_seconds() / 60
+            except ValueError:
+                idade = None
+
+        if idade is None:
+            motivo = "ainda sem posição"
+        elif idade > POSICAO_FRESCA_SEG / 60:
+            motivo = f"última posição há {int(idade)} min"
+        else:
+            continue  # está ao vivo, não é aviso
+
+        saida["rastreio"].append({
+            "cliente": r.get("cliente") or "Cliente",
+            "tecnico": r.get("tecnico") or "",
+            "motivo": motivo,
+        })
+
+    # Só admin vê o detalhe do rastreio; o técnico vê apenas o próprio
+    # trabalho pendente (sem setor).
+    if not e_admin():
+        saida["rastreio"] = []
+
+    return jsonify(saida)

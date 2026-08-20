@@ -3727,3 +3727,17 @@ select:focus-visible,
   .at-cartoes { grid-template-columns: 1fr; }
   .carro-form { grid-template-columns: 1fr; }
 }
+
+/* A faixa de avisos passou a ter mais de uma linha (rastreio mudo + setor).
+   O aviso GRAVE é o que o cliente está vendo agora — vermelho, não amarelo. */
+.aviso-sem-setor { flex-direction: column; align-items: stretch; gap: 8px; }
+.aviso-linha {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.aviso-linha.grave {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(224,168,42,.25);
+  color: #ffb4b4;
+}
+.aviso-linha.grave b { color: #fff; }
