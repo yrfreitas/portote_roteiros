@@ -57,7 +57,9 @@
 // v46 = verificar CEP agrupado por técnico.
 // v47 = um mapa por técnico no verificar CEP, lado a lado.
 // v48 = mapas do verificar CEP realmente lado a lado (caixa alargada).
-const CACHE_VERSAO = 'portotec-roteiros-v48';
+// v49 = nova aba Estoque: saldo, custo médio ponderado, entrada/saída/ajuste,
+//       mínimo com alerta e histórico. Saldo controlado no site.
+const CACHE_VERSAO = 'portotec-roteiros-v49';
 
 const ARQUIVOS_CASCA = [
   '/',

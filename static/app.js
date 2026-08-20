@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v48';
+const VERSAO_PAINEL = 'v49';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -483,6 +483,7 @@ function switchMainTab(tab) {
   const isPecas     = tab === 'pecas';
   const isDiag      = tab === 'diagnostico';
   const isAtend     = tab === 'atendimentos';
+  const isEstoque   = tab === 'estoque';
 
   document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
   document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
@@ -491,6 +492,7 @@ function switchMainTab(tab) {
   document.getElementById('panel-pecas').style.display = isPecas ? 'block' : 'none';
   document.getElementById('panel-diagnostico').style.display = isDiag ? 'block' : 'none';
   document.getElementById('panel-atendimentos').style.display = isAtend ? 'block' : 'none';
+  document.getElementById('panel-estoque').style.display = isEstoque ? 'block' : 'none';
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
@@ -498,6 +500,7 @@ function switchMainTab(tab) {
   document.getElementById('mtab-pecas').classList.toggle('active', isPecas);
   document.getElementById('mtab-diagnostico').classList.toggle('active', isDiag);
   document.getElementById('mtab-atendimentos').classList.toggle('active', isAtend);
+  document.getElementById('mtab-estoque').classList.toggle('active', isEstoque);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
@@ -515,6 +518,9 @@ function switchMainTab(tab) {
   }
   if (isAtend) {
     carregarDesfechos();
+  }
+  if (isEstoque) {
+    carregarEstoque();
   }
 }
 
@@ -1046,6 +1052,10 @@ async function carregarUsuarioLogado() {
   const admin = usuarioLogado.papel === 'admin';
   const aba = document.getElementById('mtab-diagnostico');
   if (aba) aba.style.display = admin ? '' : 'none';
+  // Estoque expõe custo médio e valor investido — dado de negócio, não do
+  // técnico. Mesmo tratamento do diagnóstico: some do menu e o servidor barra.
+  const abaEst = document.getElementById('mtab-estoque');
+  if (abaEst) abaEst.style.display = admin ? '' : 'none';
 
   const marca = document.getElementById('usuario-logado');
   if (marca) {
@@ -4886,6 +4896,227 @@ async function salvarEdicaoServico() {
     btn.disabled = false;
     btn.innerHTML = 'Salvar Alterações';
   }
+}
+
+// ═══ Estoque de peças ══════════════════════════════════════════════════
+// O saldo mora AQUI (o AgoraOS não deixa a API escrever estoque). Toda a tela
+// bebe de uma cópia local `estoqueCache` para a busca filtrar na hora, sem
+// bater no servidor a cada tecla. Só recarrega de verdade depois de mover saldo.
+let estoqueCache = [];
+let estoqueMovModo = 'entrada'; // entrada | saida | ajuste
+
+async function carregarEstoque() {
+  const lista = document.getElementById('estoque-lista');
+  const resumo = document.getElementById('estoque-resumo');
+  if (!lista) return;
+  lista.innerHTML = '<div class="carregando">Carregando estoque...</div>';
+  try {
+    const d = await api('/estoque');
+    estoqueCache = d.itens || [];
+    renderEstoqueResumo(d);
+    filtrarEstoque();
+  } catch (e) {
+    lista.innerHTML = `<div class="erro-box">Não foi possível carregar o estoque: ${esc(e.message)}</div>`;
+    if (resumo) resumo.innerHTML = '';
+  }
+}
+
+function renderEstoqueResumo(d) {
+  const resumo = document.getElementById('estoque-resumo');
+  if (!resumo) return;
+  const investido = (d.valor_investido || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const alerta = d.abaixo_minimo || 0;
+  resumo.innerHTML = `
+    <div class="estoque-card">
+      <div class="estoque-card-num">${d.total_itens || 0}</div>
+      <div class="estoque-card-lbl">peças cadastradas</div>
+    </div>
+    <div class="estoque-card">
+      <div class="estoque-card-num">${investido}</div>
+      <div class="estoque-card-lbl">investido em estoque</div>
+    </div>
+    <div class="estoque-card ${alerta ? 'estoque-card--alerta' : ''}">
+      <div class="estoque-card-num">${alerta}</div>
+      <div class="estoque-card-lbl">${alerta === 1 ? 'peça abaixo do mínimo' : 'peças abaixo do mínimo'}</div>
+    </div>`;
+}
+
+function filtrarEstoque() {
+  const termo = (document.getElementById('estoque-busca-input')?.value || '').trim().toLowerCase();
+  const itens = !termo ? estoqueCache : estoqueCache.filter(i =>
+    (i.codigo || '').toLowerCase().includes(termo) ||
+    (i.descricao || '').toLowerCase().includes(termo));
+  renderEstoqueLista(itens);
+}
+
+function renderEstoqueLista(itens) {
+  const lista = document.getElementById('estoque-lista');
+  if (!lista) return;
+  if (!itens.length) {
+    lista.innerHTML = estoqueCache.length
+      ? '<div class="vazio-box">Nenhuma peça encontrada para essa busca.</div>'
+      : '<div class="vazio-box">Nenhuma peça no estoque ainda. Clique em <b>Dar entrada</b> para começar.</div>';
+    return;
+  }
+  const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const g = n => (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+  lista.innerHTML = itens.map(i => {
+    const alerta = i.abaixo_minimo;
+    return `
+    <div class="estoque-item ${alerta ? 'estoque-item--alerta' : ''}">
+      <div class="estoque-item-info">
+        <div class="estoque-item-cod">${esc(i.codigo)}${alerta ? '<span class="estoque-tag-alerta">abaixo do mínimo</span>' : ''}</div>
+        <div class="estoque-item-desc">${esc(i.descricao || 'Sem descrição')}</div>
+        <div class="estoque-item-meta">
+          custo médio ${brl(i.custo_medio)} · vale ${brl(i.valor_total)}${Number(i.minimo) > 0 ? ` · mínimo ${g(i.minimo)}` : ''}
+        </div>
+      </div>
+      <div class="estoque-item-saldo">
+        <div class="estoque-saldo-num">${g(i.saldo)}</div>
+        <div class="estoque-saldo-lbl">em estoque</div>
+      </div>
+      <div class="estoque-item-acoes">
+        <button class="btn btn-ghost btn-xs" title="Dar saída" onclick='abrirSaidaEstoque(${JSON.stringify(i.codigo)}, ${JSON.stringify(i.descricao || "")})'>− Saída</button>
+        <button class="btn btn-ghost btn-xs" title="Entrada" onclick='abrirEntradaEstoque(${JSON.stringify(i.codigo)}, ${JSON.stringify(i.descricao || "")})'>+ Entrada</button>
+        <button class="btn btn-ghost btn-xs" title="Corrigir saldo pela contagem física" onclick='abrirAjusteEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.saldo) || 0})'>Ajustar</button>
+        <button class="btn btn-ghost btn-xs" title="Definir estoque mínimo" onclick='definirMinimoEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.minimo) || 0})'>Mínimo</button>
+        <button class="btn btn-ghost btn-xs" title="Histórico de movimentos" onclick='verHistoricoEstoque(${i.id}, ${JSON.stringify(i.codigo)})'>Histórico</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function _prepararModalEstoque() {
+  document.getElementById('estoque-mov-qtd').value = '';
+  document.getElementById('estoque-mov-custo').value = '';
+  document.getElementById('estoque-mov-obs').value = '';
+  document.getElementById('modal-estoque-mov').classList.add('open');
+}
+
+function abrirEntradaEstoque(codigo = '', desc = '') {
+  estoqueMovModo = 'entrada';
+  document.getElementById('estoque-mov-titulo').textContent = codigo ? `Entrada — ${codigo}` : 'Dar entrada';
+  document.getElementById('estoque-mov-codigo-fixo').value = codigo;
+  document.getElementById('estoque-mov-grupo-codigo').style.display = codigo ? 'none' : '';
+  document.getElementById('estoque-mov-grupo-desc').style.display = '';
+  document.getElementById('estoque-mov-grupo-custo').style.display = '';
+  document.getElementById('estoque-mov-codigo').value = codigo;
+  document.getElementById('estoque-mov-desc').value = desc;
+  document.getElementById('estoque-mov-qtd').closest('.form-group').querySelector('label').textContent = 'Quantidade';
+  _prepararModalEstoque();
+  setTimeout(() => document.getElementById(codigo ? 'estoque-mov-qtd' : 'estoque-mov-codigo').focus(), 80);
+}
+
+function abrirSaidaEstoque(codigo, desc = '') {
+  estoqueMovModo = 'saida';
+  document.getElementById('estoque-mov-titulo').textContent = `Saída — ${codigo}`;
+  document.getElementById('estoque-mov-codigo-fixo').value = codigo;
+  document.getElementById('estoque-mov-grupo-codigo').style.display = 'none';
+  document.getElementById('estoque-mov-grupo-desc').style.display = 'none';
+  document.getElementById('estoque-mov-grupo-custo').style.display = 'none';
+  document.getElementById('estoque-mov-qtd').closest('.form-group').querySelector('label').textContent = 'Quantidade a dar baixa';
+  _prepararModalEstoque();
+  setTimeout(() => document.getElementById('estoque-mov-qtd').focus(), 80);
+}
+
+function abrirAjusteEstoque(id, codigo, saldoAtual) {
+  estoqueMovModo = 'ajuste';
+  document.getElementById('estoque-mov-titulo').textContent = `Ajustar saldo — ${codigo}`;
+  document.getElementById('estoque-mov-codigo-fixo').value = id;
+  document.getElementById('estoque-mov-grupo-codigo').style.display = 'none';
+  document.getElementById('estoque-mov-grupo-desc').style.display = 'none';
+  document.getElementById('estoque-mov-grupo-custo').style.display = 'none';
+  document.getElementById('estoque-mov-qtd').closest('.form-group').querySelector('label').textContent = 'Saldo real contado';
+  _prepararModalEstoque();
+  document.getElementById('estoque-mov-qtd').value = saldoAtual;
+  setTimeout(() => document.getElementById('estoque-mov-qtd').select(), 80);
+}
+
+async function salvarMovEstoque() {
+  const btn = document.getElementById('estoque-mov-salvar');
+  const qtd = parseFloat(document.getElementById('estoque-mov-qtd').value);
+  const obs = document.getElementById('estoque-mov-obs').value.trim() || null;
+  const fixo = document.getElementById('estoque-mov-codigo-fixo').value;
+
+  if (!isFinite(qtd) || (estoqueMovModo !== 'ajuste' && qtd <= 0)) {
+    toast('Informe uma quantidade válida.', 'error');
+    return;
+  }
+  btn.disabled = true;
+  try {
+    if (estoqueMovModo === 'entrada') {
+      const codigo = (fixo || document.getElementById('estoque-mov-codigo').value).trim();
+      if (!codigo) { toast('Informe o código da peça.', 'error'); btn.disabled = false; return; }
+      const custo = parseFloat(document.getElementById('estoque-mov-custo').value) || 0;
+      await api('/estoque/entrada', { method: 'POST', body: JSON.stringify({
+        codigo, descricao: document.getElementById('estoque-mov-desc').value.trim(),
+        quantidade: qtd, custo_unit: custo, obs }) });
+      toast('Entrada registrada.', 'success');
+    } else if (estoqueMovModo === 'saida') {
+      await api('/estoque/saida', { method: 'POST', body: JSON.stringify({
+        codigo: fixo, quantidade: qtd, obs }) });
+      toast('Saída registrada.', 'success');
+    } else { // ajuste
+      await api(`/estoque/${fixo}`, { method: 'PUT', body: JSON.stringify({
+        saldo_contado: qtd, obs }) });
+      toast('Saldo ajustado.', 'success');
+    }
+    fecharModais();
+    carregarEstoque();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function definirMinimoEstoque(id, codigo, atual) {
+  const v = prompt(`Estoque mínimo de ${codigo}\n\nAvisa quando o saldo chegar nesse número ou abaixo. Zero desliga o aviso.`, atual);
+  if (v === null) return;
+  const num = parseFloat(String(v).replace(',', '.'));
+  if (!isFinite(num) || num < 0) { toast('Número inválido.', 'error'); return; }
+  try {
+    await api(`/estoque/${id}`, { method: 'PUT', body: JSON.stringify({ minimo: num }) });
+    toast('Mínimo definido.', 'success');
+    carregarEstoque();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function verHistoricoEstoque(id, codigo) {
+  try {
+    const d = await api(`/estoque/${id}/historico`);
+    const brl = n => n == null ? '—' : (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const g = n => (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+    const rotulo = { entrada: '↑ entrada', saida: '↓ saída', ajuste: '⚙ ajuste' };
+    const linhas = (d.movimentos || []).map(m => `
+      <tr class="estoque-hist-${esc(m.tipo)}">
+        <td>${esc(rotulo[m.tipo] || m.tipo)}</td>
+        <td style="text-align:right;">${m.tipo === 'saida' ? '−' : (m.tipo === 'ajuste' && m.quantidade < 0 ? '' : '+')}${g(Math.abs(m.quantidade))}</td>
+        <td style="text-align:right;">${g(m.saldo_apos)}</td>
+        <td style="text-align:right;">${brl(m.custo_unit)}</td>
+        <td>${esc(m.origem || '—')}</td>
+        <td>${esc(m.autor || '—')}</td>
+        <td>${esc(formatarDataHora(m.criado_em))}</td>
+        <td>${esc(m.obs || '')}</td>
+      </tr>`).join('');
+    const corpo = linhas || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Sem movimentos.</td></tr>';
+    const box = document.getElementById('estoque-lista');
+    box.innerHTML = `
+      <div class="estoque-hist-topo">
+        <button class="btn btn-ghost btn-sm" onclick="carregarEstoque()">← Voltar ao estoque</button>
+        <span class="estoque-hist-titulo">Histórico — ${esc(codigo)}</span>
+      </div>
+      <div class="estoque-hist-scroll">
+        <table class="estoque-hist-tabela">
+          <thead><tr>
+            <th>Tipo</th><th style="text-align:right;">Qtd</th><th style="text-align:right;">Saldo</th>
+            <th style="text-align:right;">Custo un.</th><th>Origem</th><th>Quem</th><th>Quando</th><th>Obs</th>
+          </tr></thead>
+          <tbody>${corpo}</tbody>
+        </table>
+      </div>`;
+    document.getElementById('estoque-resumo').innerHTML = '';
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 function fecharModais() {

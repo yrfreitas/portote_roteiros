@@ -297,6 +297,44 @@ _SCHEMA_PG = [
     #
     # Guarda pouco e por pouco tempo: mensagem, origem e versão. Nada de dado
     # de cliente.
+    # Estoque de peças — o SITE é o dono do saldo.
+    #
+    # Nasceu porque a API do AgoraOS lê estoque mas não deixa escrever (não
+    # liga o controle nem dá entrada de saldo), então a baixa "não baixava de
+    # nada". Aqui o saldo é do site: entra quando a peça é comprada (nota
+    # fiscal ou entrada manual) e sai quando é usada num atendimento.
+    #
+    # A CHAVE é o CODIGO da peça (o cProd da NF-e, ex: ARBPC1A12890) — é o que a
+    # leitura da nota já extrai e o que identifica a peça sem ambiguidade, ao
+    # contrário da descrição, que varia.
+    """CREATE TABLE IF NOT EXISTS estoque_itens (
+        id           SERIAL PRIMARY KEY,
+        codigo       TEXT NOT NULL UNIQUE,
+        descricao    TEXT,
+        saldo        DOUBLE PRECISION DEFAULT 0,
+        custo_medio  DOUBLE PRECISION DEFAULT 0,
+        minimo       DOUBLE PRECISION DEFAULT 0,
+        setor_id     INTEGER REFERENCES setores(id) ON DELETE SET NULL,
+        criado_em    TEXT DEFAULT CURRENT_TIMESTAMP,
+        atualizado_em TEXT
+    )""",
+    # Todo movimento fica registrado: sem o histórico, um saldo errado é
+    # impossível de auditar -- não dá para saber de onde veio o número.
+    # tipo: entrada | saida | ajuste. `origem` diz o que causou (nota fiscal,
+    # atendimento, manual), e `saldo_apos` congela o saldo daquele instante.
+    """CREATE TABLE IF NOT EXISTS estoque_movimentos (
+        id           SERIAL PRIMARY KEY,
+        item_id      INTEGER NOT NULL REFERENCES estoque_itens(id) ON DELETE CASCADE,
+        tipo         TEXT NOT NULL,
+        quantidade   DOUBLE PRECISION NOT NULL,
+        saldo_apos   DOUBLE PRECISION,
+        custo_unit   DOUBLE PRECISION,
+        origem       TEXT,
+        referencia   TEXT,
+        autor        TEXT,
+        obs          TEXT,
+        criado_em    TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
     """CREATE TABLE IF NOT EXISTS erros_cliente (
         id        SERIAL PRIMARY KEY,
         quando    TEXT,
@@ -516,6 +554,32 @@ _SCHEMA_SQLITE = """
         criado_em  TEXT,
         lida       INTEGER DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS estoque_itens (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo       TEXT NOT NULL UNIQUE,
+        descricao    TEXT,
+        saldo        REAL DEFAULT 0,
+        custo_medio  REAL DEFAULT 0,
+        minimo       REAL DEFAULT 0,
+        setor_id     INTEGER,
+        criado_em    TEXT DEFAULT CURRENT_TIMESTAMP,
+        atualizado_em TEXT,
+        FOREIGN KEY (setor_id) REFERENCES setores(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS estoque_movimentos (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id      INTEGER NOT NULL,
+        tipo         TEXT NOT NULL,
+        quantidade   REAL NOT NULL,
+        saldo_apos   REAL,
+        custo_unit   REAL,
+        origem       TEXT,
+        referencia   TEXT,
+        autor        TEXT,
+        obs          TEXT,
+        criado_em    TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (item_id) REFERENCES estoque_itens(id) ON DELETE CASCADE
+    );
     CREATE TABLE IF NOT EXISTS erros_cliente (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
         quando    TEXT,
@@ -582,6 +646,7 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_rastreios_servico ON rastreios(servico_id)",
     "CREATE INDEX IF NOT EXISTS idx_rastreios_ativo   ON rastreios(ativo)",
     "CREATE INDEX IF NOT EXISTS idx_mensagens_sala    ON mensagens(sala, id)",
+    "CREATE INDEX IF NOT EXISTS idx_estoque_mov_item   ON estoque_movimentos(item_id, id)",
 ]
 
 _MIGRACOES_PG = [
