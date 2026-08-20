@@ -304,6 +304,25 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
     """Núcleo do "isso encaixa em qual rota": recebe só coordenadas +
     zona, então serve tanto pra busca por CEP quanto por endereço livre —
     as duas rotas HTTP acima só resolvem como chegar em lat/lng/zona."""
+    # Só encaixa em rota que ainda vai acontecer.
+    #
+    # A verificação listava TODAS as fichas — inclusive as já concluídas e as
+    # de dias que já passaram. O Kalebe reclamou disso em 2026-08-20 ("aparecem
+    # uns dias que não tem mais"): não faz sentido oferecer encaixe numa rota
+    # que já foi feita ou num dia que ficou para trás.
+    #
+    # Duas condições, e as duas importam:
+    # - status <> 'concluida': rota fechada não recebe ponto novo (mexeria em
+    #   número de dia já entregue);
+    # - data_referencia vazia OU >= hoje: ficha antiga com data no passado sai;
+    #   ficha sem data fica (é modelo recorrente, ainda não agendado).
+    #
+    # A data de hoje vem do fuso da máquina do servidor. Como a coluna é TEXTO
+    # no formato AAAA-MM-DD, a comparação de string funciona como comparação de
+    # data — mesma garantia usada no resto do sistema.
+    from datetime import datetime, timezone
+    hoje = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+
     with db_conn() as conn:
         linhas = fetch_all(conn, """
             SELECT f.id AS ficha_id, f.dia_semana, f.data_referencia,
@@ -316,7 +335,11 @@ def _analisar_encaixe(lat_alvo: float, lng_alvo: float, zona_alvo: str):
             LEFT JOIN servicos s
                    ON s.ficha_id = f.id
                   AND s.lat IS NOT NULL AND s.lng IS NOT NULL
-        """)
+           WHERE f.status <> 'concluida'
+             AND (f.data_referencia IS NULL
+                  OR f.data_referencia = ''
+                  OR f.data_referencia >= ?)
+        """, (hoje,))
         lista_tecnicos = fetch_all(
             conn, "SELECT id, nome, cor FROM tecnicos ORDER BY nome"
         )
