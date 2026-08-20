@@ -53,7 +53,8 @@
 // v42 = aviso quando o cliente não está vendo o técnico no mapa.
 // v43 = verificar CEP só mostra rotas em aberto e de hoje em diante.
 // v44 = mover atendimento de dia sem apagar e recriar.
-const CACHE_VERSAO = 'portotec-roteiros-v44';
+// v45 = reagendar (técnico + dia) num bloco só e mais bonito no modal.
+const CACHE_VERSAO = 'portotec-roteiros-v45';
 
 const ARQUIVOS_CASCA = [
   '/',

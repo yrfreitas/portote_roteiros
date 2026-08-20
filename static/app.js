@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v44';
+const VERSAO_PAINEL = 'v45';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2928,8 +2928,7 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
           ${(s.lat && s.lng) ? `<a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16" target="_blank" rel="noopener" title="Ver no mapa" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('externo', 'icone-13')}</a>` : ''}
           ${(s.lat && s.lng) ? `<a href="https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes" target="_blank" rel="noopener" title="Navegar com Waze" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('navegacao', 'icone-13')}</a>` : ''}
           <button class="btn-a-caminho" onclick="avisarACaminho(${s.id})" title="Avisar no WhatsApp que está a caminho deste cliente">A caminho</button>
-          <button class="btn-editar" onclick="transferirPonto(${s.id}, '${esc(s.cliente || 'este atendimento').replace(/'/g, "\'")}')" title="Passar este atendimento para outro técnico">${icone('usuario', 'icone-12')}</button>
-          <button class="btn-editar" onclick="abrirModalEditarServico(${s.id})" title="Editar atendimento">${icone('editar', 'icone-12')}</button>
+          <button class="btn-editar" onclick="abrirModalEditarServico(${s.id})" title="Editar, reagendar ou mudar de técnico">${icone('editar', 'icone-12')}</button>
           <button class="btn-remove" onclick="removerServico(${s.id},${ficha.id})">${icone('x', 'icone-11')}</button>
         </div>
       </div>`;
@@ -4667,40 +4666,78 @@ function abrirModalEditarServico(servicoId) {
   preencherSelectSetor('edit-setor', s.setor_id);
   document.getElementById('edit-descricao').value = s.descricao || '';
 
-  preencherMoverDia(servicoId);
+  montarReagendar();
 
   document.getElementById('modal-editar-servico').classList.add('open');
   setTimeout(() => document.getElementById('edit-cliente').focus(), 100);
 }
 
-// Monta o seletor "Mudar de dia" com as OUTRAS fichas em aberto do mesmo
-// técnico. Só aparece se houver para onde mover — oferecer um seletor vazio
-// seria pior que não ter.
-async function preencherMoverDia(servicoId) {
-  const bloco = document.getElementById('edit-mover-bloco');
-  const sel = document.getElementById('edit-mover-dia');
-  const tecnicoId = fichaAtiva?.tecnico_id;
-  bloco.style.display = 'none';
-  sel.innerHTML = '';
-  if (!tecnicoId) return;
+// ─── Reagendar: técnico + dia num lugar só ──────────────────────────
+// Junta o que antes eram duas coisas separadas (mudar de dia num campo,
+// transferir de técnico noutro botão). O Kalebe quer trocar o técnico E o dia
+// da mesma tela. Escolher um técnico recarrega os dias DELE.
+let _reagTecnico = null;   // técnico escolhido (null = mantém o atual)
+let _reagFicha = null;     // ficha de destino escolhida (null = mantém)
+
+function montarReagendar() {
+  _reagTecnico = fichaAtiva?.tecnico_id || null;
+  _reagFicha = null;
+
+  const alvo = document.getElementById('edit-reag-tecnicos');
+  alvo.innerHTML = (tecnicos || []).map(t => `
+    <button type="button" class="reag-tec ${t.id === _reagTecnico ? 'sel' : ''}"
+            data-tec="${t.id}" onclick="escolherReagTecnico(${t.id})"
+            style="--cor:${escCor(t.cor)}">
+      <span class="reag-bolinha" style="background:${escCor(t.cor)}"></span>${esc(t.nome)}
+    </button>`).join('');
+
+  montarReagDias();
+}
+
+function escolherReagTecnico(id) {
+  _reagTecnico = id;
+  _reagFicha = null;   // trocou de técnico: os dias são outros
+  document.querySelectorAll('#edit-reag-tecnicos .reag-tec').forEach(b =>
+    b.classList.toggle('sel', Number(b.dataset.tec) === id));
+  montarReagDias();
+}
+
+async function montarReagDias() {
+  const alvo = document.getElementById('edit-reag-dias');
+  alvo.innerHTML = '<span class="reag-vazio">Carregando dias...</span>';
 
   let fichas;
   try {
-    fichas = await api(`/fichas?tecnico_id=${tecnicoId}&abertas=true`);
-  } catch { return; }
+    fichas = await api(`/fichas?tecnico_id=${_reagTecnico}&abertas=true`);
+  } catch { alvo.innerHTML = '<span class="reag-vazio">Não consegui carregar os dias.</span>'; return; }
 
-  // Fora a ficha em que o ponto já está.
-  const outras = (fichas || []).filter(f => f.id !== fichaAtiva?.id);
-  if (outras.length === 0) return;   // não há outro dia: nada a oferecer
-
+  const mesmoTecnico = _reagTecnico === fichaAtiva?.tecnico_id;
   const hoje = dataDeHoje();
-  sel.innerHTML = '<option value="">— manter neste dia —</option>' +
-    outras.map(f => {
-      const data = f.data_referencia ? ' · ' + formatarData(f.data_referencia) : '';
-      const tag = f.data_referencia === hoje ? ' (hoje)' : '';
-      return `<option value="${f.id}">${esc(f.dia_semana)}${esc(data)}${tag} · ${f.total_servicos} atend.</option>`;
-    }).join('');
-  bloco.style.display = '';
+
+  // Do mesmo técnico, a ficha onde o ponto já está aparece como "atual" e fica
+  // marcada; das outras fichas ou de outro técnico, todas são destinos.
+  const cards = (fichas || []).map(f => {
+    const atual = mesmoTecnico && f.id === fichaAtiva?.id;
+    const data = f.data_referencia ? formatarData(f.data_referencia) : 'sem data';
+    const hojeTag = f.data_referencia === hoje ? '<span class="reag-hoje">hoje</span>' : '';
+    return `
+      <button type="button" class="reag-dia ${atual ? 'atual' : ''}"
+              data-ficha="${f.id}" ${atual ? 'disabled' : `onclick="escolherReagDia(${f.id})"`}>
+        <span class="reag-dia-nome">${esc(f.dia_semana)} ${hojeTag}</span>
+        <span class="reag-dia-meta">${esc(data)} · ${f.total_servicos} atend.${atual ? ' · atual' : ''}</span>
+      </button>`;
+  }).join('');
+
+  const semDias = !(fichas || []).some(f => !(mesmoTecnico && f.id === fichaAtiva?.id));
+  alvo.innerHTML = cards + (semDias
+    ? '<span class="reag-vazio">Esse técnico não tem outro dia em aberto. Crie um dia novo na barra lateral.</span>'
+    : '');
+}
+
+function escolherReagDia(fichaId) {
+  _reagFicha = fichaId;
+  document.querySelectorAll('#edit-reag-dias .reag-dia').forEach(b =>
+    b.classList.toggle('sel', Number(b.dataset.ficha) === fichaId));
 }
 
 async function salvarEdicaoServico() {
@@ -4738,20 +4775,29 @@ async function salvarEdicaoServico() {
 
     lembrarSetor(setorEditado);
 
-    // Se escolheu outro dia, move DEPOIS de salvar os dados — assim o cliente
-    // e a OS já editados vão junto para o novo dia. Move por último porque a
-    // ficha de origem deixa de conter o ponto.
-    const diaDestino = document.getElementById('edit-mover-dia')?.value;
-    let movido = false;
-    if (diaDestino) {
-      const r = await api(`/servicos/${servicoId}/mover`, {
-        method: 'PUT', body: JSON.stringify({ ficha_id: parseInt(diaDestino, 10) }),
+    // Reagendamento, DEPOIS de gravar os dados — assim o que foi editado vai
+    // junto. Duas situações, decididas pelo que a pessoa escolheu:
+    //  - outro técnico  -> transferir (encerra rastreio, cria ficha se preciso)
+    //  - mesmo técnico, outro dia -> mover entre fichas
+    let remanejou = false;
+    const trocouTecnico = _reagTecnico && _reagTecnico !== fichaAtiva?.tecnico_id;
+
+    if (trocouTecnico) {
+      const r = await api(`/servicos/${servicoId}/tecnico`, {
+        method: 'PUT', body: JSON.stringify({ tecnico_id: _reagTecnico }),
       });
-      movido = true;
+      remanejou = true;
+      toast(r.mensagem || 'Atendimento transferido', 'success');
+    } else if (_reagFicha && _reagFicha !== fichaAtiva?.id) {
+      const r = await api(`/servicos/${servicoId}/mover`, {
+        method: 'PUT', body: JSON.stringify({ ficha_id: _reagFicha }),
+      });
+      remanejou = true;
       toast(r.mensagem || 'Atendimento movido de dia', 'success');
     }
 
     fecharModais();
+    let movido = remanejou;
     if (!movido) toast('Atendimento atualizado', 'success');
     // Se moveu, a ficha atual perdeu o ponto — recarregar a de origem mostra
     // o dia sem ele, que é o resultado esperado.

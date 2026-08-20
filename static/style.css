@@ -3741,3 +3741,55 @@ select:focus-visible,
   color: #ffb4b4;
 }
 .aviso-linha.grave b { color: #fff; }
+
+/* ─── Reagendar (técnico + dia no modal de editar) ────────────────────
+   Junta o que antes eram dois lugares diferentes. Cartões clicáveis em vez
+   de <select>: o Kalebe quis "menos feio", e escolher batendo o olho num
+   quadro é mais direto que abrir uma lista. */
+.reagendar {
+  margin-top: 6px; padding: 14px; border-radius: 12px;
+  background: rgba(255,255,255,.03); border: 1px solid var(--border);
+}
+.reagendar-titulo {
+  font-family: var(--font-display); font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .8px; color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.reagendar-tecnicos { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 5px; }
+.reag-tec {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 99px; cursor: pointer;
+  border: 1px solid var(--border); background: none; color: var(--text-secondary);
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.reag-tec:hover { border-color: var(--border-bright); color: var(--text-primary); }
+.reag-tec.sel {
+  border-color: var(--cor); color: #fff;
+  background: color-mix(in srgb, var(--cor) 22%, transparent);
+}
+.reag-bolinha { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+.reagendar-dias {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 7px; margin-top: 5px;
+}
+.reag-dia {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: 8px 11px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--border); background: none; color: var(--text-primary);
+  font-family: inherit; transition: border-color .12s, background .12s;
+}
+.reag-dia:hover:not(.atual) { border-color: var(--accent); }
+.reag-dia.sel {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.reag-dia.atual { opacity: .5; cursor: default; }
+.reag-dia-nome { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.reag-dia-meta { font-size: 10.5px; color: var(--text-muted); }
+.reag-hoje {
+  font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+  background: #2aa05c; color: #fff; padding: 1px 5px; border-radius: 4px;
+}
+.reag-vazio { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-muted); padding: 4px 2px; }
