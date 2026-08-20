@@ -54,7 +54,8 @@
 // v43 = verificar CEP só mostra rotas em aberto e de hoje em diante.
 // v44 = mover atendimento de dia sem apagar e recriar.
 // v45 = reagendar (técnico + dia) num bloco só e mais bonito no modal.
-const CACHE_VERSAO = 'portotec-roteiros-v45';
+// v46 = verificar CEP agrupado por técnico.
+const CACHE_VERSAO = 'portotec-roteiros-v46';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v45';
+const VERSAO_PAINEL = 'v46';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3614,16 +3614,34 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
   // Separa o que serve do que não serve. Antes as 10 rotas vinham numa lista
   // só, com o mesmo peso visual — e a decisão ficava por conta do usuário
   // comparar números. "Fora de mão" quase nunca interessa, então vai recolhido.
-  const servem    = [];
-  const naoServem = [];
+  // AGRUPA POR TÉCNICO. Antes as rotas de todo mundo vinham numa lista só e
+  // ficava confuso saber de quem era cada dia (pedido do Kalebe em 2026-08-20:
+  // "tudo em um lugar só está confuso, separar por técnico"). A régua é a
+  // mesma — as que servem em cima, as "fora de mão" recolhidas — só que agora
+  // dentro de cada técnico.
+  //
+  // O índice ORIGINAL (i) é preservado em cada card: o mapa, o clique de
+  // simulação e o expandir dependem dele. Reindexar aqui quebraria os três.
+  const porTecnico = new Map();
   r.sugestoes.forEach((s, i) => {
-    (s.classificacao === 'fora' && !s.vazia ? naoServem : servem).push(monta(s, i));
+    const chave = s.tecnico_id ?? s.tecnico_nome ?? 'sem';
+    if (!porTecnico.has(chave)) {
+      porTecnico.set(chave, {
+        nome: s.tecnico_nome || 'Sem técnico', cor: s.tecnico_cor,
+        servem: [], naoServem: [], melhorScore: -Infinity,
+      });
+    }
+    const g = porTecnico.get(chave);
+    const fora = s.classificacao === 'fora' && !s.vazia;
+    (fora ? g.naoServem : g.servem).push(monta(s, i));
+    if (!fora) g.melhorScore = Math.max(g.melhorScore, s.score || 0);
   });
 
-  // Estado honesto: se nada passou da régua, dizer isso. A tela antiga sempre
-  // elegia um vencedor, mesmo quando não havia vencedor — e era isso que
-  // levava a botar ponto numa rota que não tinha nada a ver com o endereço.
-  const alerta = servem.length === 0 ? `
+  // Técnico com melhor encaixe primeiro: é onde o olho deve ir.
+  const grupos = [...porTecnico.values()].sort((a, b) => b.melhorScore - a.melhorScore);
+
+  const nenhumServe = grupos.every(g => g.servem.length === 0);
+  const alerta = nenhumServe ? `
     <div class="vcep-alerta-nenhuma">
       ${icone('alerta', 'icone-13')}
       <div>
@@ -3633,11 +3651,31 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
       </div>
     </div>` : '';
 
-  const recolhidas = naoServem.length ? `
-    <button type="button" class="vcep-toggle-fora" onclick="vcepAlternarFora(this)">
-      Mostrar outras ${naoServem.length} rota${naoServem.length !== 1 ? 's' : ''} — fora de mão
-    </button>
-    <div class="vcep-fora-lista" style="display:none;">${naoServem.join('')}</div>` : '';
+  const blocos = grupos.map(g => {
+    const foraId = 'vcep-fora-' + (g.nome || '').replace(/\W+/g, '');
+    const recolhidas = g.naoServem.length ? `
+      <button type="button" class="vcep-toggle-fora" onclick="vcepAlternarFora(this)">
+        Mostrar ${g.naoServem.length} rota${g.naoServem.length !== 1 ? 's' : ''} fora de mão
+      </button>
+      <div class="vcep-fora-lista" id="${foraId}" style="display:none;">${g.naoServem.join('')}</div>` : '';
+
+    const corpo = g.servem.length
+      ? g.servem.join('')
+      : (g.naoServem.length
+          ? '<div class="vcep-grupo-vazio">Nenhum dia deste técnico encaixa bem — só fora de mão.</div>'
+          : '<div class="vcep-grupo-vazio">Sem rotas em aberto.</div>');
+
+    return `
+      <div class="vcep-grupo-tec">
+        <div class="vcep-grupo-cab" style="--cor:${escCor(g.cor)}">
+          <span class="vcep-grupo-bolinha" style="background:${escCor(g.cor)}"></span>
+          <span class="vcep-grupo-nome">${esc(g.nome)}</span>
+          <span class="vcep-grupo-cont">${g.servem.length} que ${g.servem.length === 1 ? 'serve' : 'servem'}</span>
+        </div>
+        ${corpo}
+        ${recolhidas}
+      </div>`;
+  }).join('');
 
   return `<div class="vcep-analise-wrap">
     <div id="vcep-mapa-encaixe" class="vcep-mapa"></div>
@@ -3645,9 +3683,7 @@ function _vcepAnalise(r, prefixo = '', interativo = true) {
       <span class="vcep-sim-dica">Clique num dia para ver como a rota ficaria com este endereço.</span>
     </div>
     ${alerta}
-    <div class="vcep-analise-label">${servem.length} rota${servem.length !== 1 ? 's' : ''} que ${servem.length !== 1 ? 'servem' : 'serve'}</div>
-    ${servem.join('')}
-    ${recolhidas}
+    ${blocos}
   </div>`;
 }
 
