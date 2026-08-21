@@ -63,7 +63,9 @@
 //       (estilo AgoraOS), filtros por chip e marca, e edição da ficha da peça.
 // v51 = "estoque dentro do estoque": prateleiras nomeadas (Electrolux...) que
 //       o admin cria e abre para adicionar peças dentro. Navegação em 2 níveis.
-const CACHE_VERSAO = 'portotec-roteiros-v51';
+// v52 = conserta o clique no card de estoque (aspas do onclick quebravam o
+//       HTML): não dava para abrir a prateleira nem adicionar peça dentro.
+const CACHE_VERSAO = 'portotec-roteiros-v52';
 
 const ARQUIVOS_CASCA = [
   '/',

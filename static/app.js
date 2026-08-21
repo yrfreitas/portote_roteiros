@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v51';
+const VERSAO_PAINEL = 'v52';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4954,8 +4954,11 @@ function renderEstoqueRaiz(d) {
   const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const card = (id, nome, ag, cor) => {
     const alerta = ag.abaixo_minimo || 0;
+    // Passa SÓ o id (string) no onclick — nunca o nome. JSON.stringify do nome
+    // devolvia aspas duplas dentro de um atributo de aspas duplas e quebrava o
+    // HTML; o nome é resolvido dentro de abrirGrupoEstoque a partir do id.
     return `
-    <div class="estoque-prateleira" onclick="abrirGrupoEstoque(${id === 'sem' ? "'sem'" : id}, ${JSON.stringify(nome)})"
+    <div class="estoque-prateleira" onclick="abrirGrupoEstoque('${id}')"
          style="${cor ? `border-left:4px solid ${esc(cor)};` : ''}">
       <div class="estoque-prateleira-nome">${esc(nome)}${alerta ? `<span class="estoque-tag-alerta">${alerta} em falta</span>` : ''}</div>
       <div class="estoque-prateleira-meta">${ag.total_pecas || 0} ${ag.total_pecas === 1 ? 'peça' : 'peças'} · ${brl(ag.valor_investido)}</div>
@@ -4973,7 +4976,17 @@ function renderEstoqueRaiz(d) {
 }
 
 // ── Nível 2: as peças de um estoque ─────────────────────────────────────
+// grupoId chega como string ('3' ou 'sem'). nome é opcional: quando não vem
+// (clique no card, que só passa o id), é resolvido a partir de estoqueGrupos.
 async function abrirGrupoEstoque(grupoId, nome) {
+  grupoId = String(grupoId);
+  if (nome == null) {
+    if (grupoId === 'sem') nome = 'Sem estoque';
+    else {
+      const g = estoqueGrupos.find(x => String(x.id) === grupoId);
+      nome = g ? g.nome : 'Estoque';
+    }
+  }
   estoqueView = 'grupo';
   estoqueGrupoAtual = { id: grupoId, nome };
   estoqueFiltroAparelho = '';
@@ -5019,7 +5032,7 @@ function montarFiltrosEstoque() {
       chips.innerHTML = '';
     } else {
       const btn = (val, rot) =>
-        `<button class="estoque-chip ${estoqueFiltroAparelho === val ? 'ativo' : ''}" onclick="filtrarPorAparelho(${JSON.stringify(val)})">${esc(rot)}</button>`;
+        `<button class="estoque-chip ${estoqueFiltroAparelho === val ? 'ativo' : ''}" onclick='filtrarPorAparelho(${JSON.stringify(val)})'>${esc(rot)}</button>`;
       chips.innerHTML = btn('', 'Todos') + estoqueCatalogo.aparelhos.map(a => btn(a, a)).join('');
     }
   }
