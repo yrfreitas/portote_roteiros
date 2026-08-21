@@ -34,6 +34,7 @@ CATALOGO = [
     {"chave": "atendimentos",       "area": "Roteiros",    "rotulo": "Editar / mover / excluir atendimentos"},
     # Peças e estoque
     {"chave": "pecas",              "area": "Peças",       "rotulo": "Ver a aba Peças (compras / nota fiscal)"},
+    {"chave": "cotacao",            "area": "Peças",       "rotulo": "Ver e usar a aba Cotação (peças aguardando preço)"},
     {"chave": "estoque_ver",        "area": "Estoque",     "rotulo": "Ver o Estoque"},
     {"chave": "estoque_editar",     "area": "Estoque",     "rotulo": "Mexer no Estoque (entrada, saída, ajuste, criar)"},
     {"chave": "estoque_excluir",    "area": "Estoque",     "rotulo": "Excluir peças e estoques"},
@@ -69,6 +70,7 @@ REGRAS = [
     ("/api/servicos",              ("POST", "PUT", "DELETE"), "atendimentos"),
     # Peças, usuários, relatórios, chat da equipe.
     ("/api/pedidos",               None,                     "pecas"),
+    ("/api/cotacoes",              None,                     "cotacao"),
     ("/api/usuarios",              None,                     "gerenciar_usuarios"),
     ("/api/permissoes",            None,                     "gerenciar_usuarios"),
     ("/api/equipe",                None,                     "chat_equipe"),

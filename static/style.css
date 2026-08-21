@@ -382,6 +382,34 @@ header {
   .peca-estado { grid-column: 1 / -1; text-align: left; padding-bottom: 0; }
 }
 
+/* ─── Cotação: peças aguardando preço, antes de comprar ─────────────── */
+.cotacao-form {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: end;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px; margin-bottom: 16px;
+}
+.cotacao-form .form-group { margin: 0; flex: 1 1 150px; min-width: 130px; }
+.cotacao-form .cotacao-desc { flex: 2 1 220px; }
+.cotacao-form .cotacao-qtd { flex: 0 1 80px; min-width: 70px; }
+
+.cotacao-linha {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: end;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-left: 3px solid var(--gold);
+  border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+  transition: border-color .16s ease, background .16s ease;
+}
+.cotacao-linha:hover { background: var(--bg-elevated); }
+.cotacao-linha.cotado { border-left-color: var(--success); }
+
+.cotacao-ident { display: flex; flex-direction: column; gap: 3px; min-width: 150px; flex: 1 1 170px; }
+.cotacao-cod { font-family: var(--font-mono); font-weight: 700; font-size: 14px; color: var(--text, #e6edf7); }
+
+.cotacao-campo { min-width: 0; flex: 1 1 160px; }
+.cotacao-campo-sm { flex: 0 1 100px; min-width: 90px; }
+
+.cotacao-acoes { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+
 .assinatura-autor {
   /* Sobe acima do botão flutuante do chat, que fica no canto inferior
      direito — antes a assinatura ficava escondida atrás dele. */

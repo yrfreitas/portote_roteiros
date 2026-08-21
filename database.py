@@ -743,6 +743,22 @@ _MIGRACOES_PG = [
     "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS permissoes TEXT",
     "ALTER TABLE erros_cliente ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'novo'",
     "ALTER TABLE erros_cliente ADD COLUMN IF NOT EXISTS obs TEXT",
+    # Lista de peças que precisam de cotação de preço antes de comprar — não é
+    # o estoque (que já tem saldo) nem a planilha de compras (que já foi
+    # comprada). É o passo ANTES: "preciso saber quanto custa isto".
+    """CREATE TABLE IF NOT EXISTS cotacoes (
+        id            SERIAL PRIMARY KEY,
+        codigo        TEXT,
+        modelo        TEXT,
+        descricao     TEXT,
+        quantidade    DOUBLE PRECISION DEFAULT 1,
+        status        TEXT DEFAULT 'pendente',
+        valor_cotado  DOUBLE PRECISION,
+        fornecedor    TEXT,
+        criado_em     TEXT DEFAULT CURRENT_TIMESTAMP,
+        criado_por    TEXT,
+        atualizado_em TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -775,6 +791,19 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE usuarios ADD COLUMN permissoes TEXT",
     "ALTER TABLE erros_cliente ADD COLUMN status TEXT DEFAULT 'novo'",
     "ALTER TABLE erros_cliente ADD COLUMN obs TEXT",
+    """CREATE TABLE IF NOT EXISTS cotacoes (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo        TEXT,
+        modelo        TEXT,
+        descricao     TEXT,
+        quantidade    REAL DEFAULT 1,
+        status        TEXT DEFAULT 'pendente',
+        valor_cotado  REAL,
+        fornecedor    TEXT,
+        criado_em     TEXT DEFAULT CURRENT_TIMESTAMP,
+        criado_por    TEXT,
+        atualizado_em TEXT
+    )""",
 ]
 
 

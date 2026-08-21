@@ -15,6 +15,7 @@ from database import IS_PG, bump_revisao, db_conn, init_db, ler_revisao
 from extensions import VERSAO_APP, limiter
 from routes.auth import auth_bp
 from routes.chat import chat_bp
+from routes.cotacoes import cotacoes_bp
 from routes.estoque import estoque_bp
 from routes.fichas import fichas_bp
 from routes.pedidos import pedidos_bp
@@ -89,6 +90,7 @@ app.register_blueprint(tecnico_view_bp)
 app.register_blueprint(rastreio_bp, url_prefix="/api")
 app.register_blueprint(chat_bp, url_prefix="/api")
 app.register_blueprint(estoque_bp, url_prefix="/api")
+app.register_blueprint(cotacoes_bp, url_prefix="/api")
 
 
 def _e_api() -> bool:

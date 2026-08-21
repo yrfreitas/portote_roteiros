@@ -484,6 +484,7 @@ function switchMainTab(tab) {
   const isDiag      = tab === 'diagnostico';
   const isAtend     = tab === 'atendimentos';
   const isEstoque   = tab === 'estoque';
+  const isCotacao   = tab === 'cotacao';
 
   document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
   document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
@@ -493,6 +494,7 @@ function switchMainTab(tab) {
   document.getElementById('panel-diagnostico').style.display = isDiag ? 'block' : 'none';
   document.getElementById('panel-atendimentos').style.display = isAtend ? 'block' : 'none';
   document.getElementById('panel-estoque').style.display = isEstoque ? 'block' : 'none';
+  document.getElementById('panel-cotacao').style.display = isCotacao ? 'block' : 'none';
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
@@ -501,6 +503,7 @@ function switchMainTab(tab) {
   document.getElementById('mtab-diagnostico').classList.toggle('active', isDiag);
   document.getElementById('mtab-atendimentos').classList.toggle('active', isAtend);
   document.getElementById('mtab-estoque').classList.toggle('active', isEstoque);
+  document.getElementById('mtab-cotacao').classList.toggle('active', isCotacao);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
@@ -521,6 +524,9 @@ function switchMainTab(tab) {
   }
   if (isEstoque) {
     abrirEstoqueRaiz();
+  }
+  if (isCotacao) {
+    carregarCotacoes();
   }
 }
 
@@ -1065,6 +1071,7 @@ async function carregarUsuarioLogado() {
   mostra('mtab-diagnostico', podeUsuario('diagnostico'));
   mostra('mtab-estoque', podeUsuario('estoque_ver'));
   mostra('mtab-pecas', podeUsuario('pecas'));
+  mostra('mtab-cotacao', podeUsuario('cotacao'));
 
   const marca = document.getElementById('usuario-logado');
   if (marca) {
@@ -5199,6 +5206,217 @@ async function salvarEdicaoServico() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = 'Salvar Alterações';
+  }
+}
+
+// ═══ Cotação: peças aguardando preço, antes de comprar ══════════════════
+// Fica ANTES da compra. O técnico ou o Kalebe acham que vão precisar de uma
+// peça — por código ou só pelo modelo da máquina — e lançam aqui para levar
+// ao fornecedor. Hoje isso é manual (o botão "Abrir GAP" só leva ao portal;
+// não há login automatizado confirmado ainda — ver /api/cotacoes/config).
+// Depois de cotado, o valor fica registrado; comprar de fato continua sendo
+// outra etapa (planilha / aba Peças), esta lista não lança pedido nenhum.
+let _cotacoesConfig = null;
+let _cotacoesAtuais = [];
+const _brlCotacao = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+async function carregarCotacoes() {
+  const mount = document.getElementById('cotacao-conteudo');
+  if (!mount) return;
+
+  const todas = document.getElementById('cotacao-mostrar-todas')?.checked;
+  mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
+
+  let r, cfg;
+  try {
+    [r, cfg] = await Promise.all([
+      api(`/cotacoes${todas ? '' : '?status=pendente'}`),
+      _cotacoesConfig || api('/cotacoes/config'),
+    ]);
+    _cotacoesConfig = cfg;
+  } catch (e) {
+    mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  _cotacoesAtuais = r.itens || [];
+  renderCotacoes(mount, _cotacoesAtuais, cfg, todas);
+}
+
+function renderCotacoes(mount, itens, cfg, todas) {
+  const cabecalho = `
+    <div class="cotacao-form">
+      <div class="form-group">
+        <label class="form-label">Código da peça</label>
+        <input class="form-input" id="cotacao-novo-codigo" placeholder="ex: DE97-01234A">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Modelo da máquina</label>
+        <input class="form-input" id="cotacao-novo-modelo" placeholder="ex: NA-F70B6">
+      </div>
+      <div class="form-group cotacao-desc">
+        <label class="form-label">Observação</label>
+        <input class="form-input" id="cotacao-novo-obs" placeholder="ex: cliente João, urgente"
+               onkeydown="if(event.key==='Enter') adicionarCotacao()">
+      </div>
+      <div class="form-group cotacao-qtd">
+        <label class="form-label">Qtd</label>
+        <input class="form-input" type="number" min="1" value="1" id="cotacao-novo-qtd">
+      </div>
+      <button class="btn btn-primary" onclick="adicionarCotacao()">${icone('plus', 'icone-13')} Adicionar</button>
+      <a class="btn btn-ghost" href="${esc(cfg.gap_url)}" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Abrir GAP</a>
+    </div>`;
+
+  if (itens.length === 0) {
+    mount.innerHTML = cabecalho + `
+      <div class="historico-vazio">
+        ${icone('check', 'icone-24')}
+        <p>${todas ? 'Nenhuma cotação registrada ainda.' : 'Nada pendente — todas as peças já foram cotadas.'}</p>
+      </div>`;
+    return;
+  }
+
+  const linhas = itens.map(item => {
+    const cotado = item.status === 'cotado';
+    const meta = [item.modelo || 'sem modelo', `${Number(item.quantidade || 1)}x`,
+                  (item.criado_em || '').split(' ')[0]].filter(Boolean).join(' · ');
+
+    const selo = cotado
+      ? `<span class="conc-tag ok">cotado: ${esc(_brlCotacao(item.valor_cotado))}${item.fornecedor ? ' · ' + esc(item.fornecedor) : ''}</span>`
+      : `<span class="conc-tag aviso">aguardando cotação</span>`;
+
+    const acoes = cotado
+      ? `<div class="cotacao-acoes">
+           <button class="btn btn-ghost btn-sm" onclick="reabrirCotacao(${item.id})">Reabrir</button>
+           <button class="btn-remove" title="Remover" onclick="removerCotacao(${item.id})">${icone('x', 'icone-11')}</button>
+         </div>`
+      : `<div class="cotacao-campo cotacao-campo-sm">
+           <label class="peca-rot">Valor (R$)</label>
+           <input class="form-input" type="number" step="0.01" min="0" id="cotacao-valor-${item.id}"
+                  placeholder="0,00" onkeydown="if(event.key==='Enter') marcarCotado(${item.id})">
+         </div>
+         <div class="cotacao-campo">
+           <label class="peca-rot">Fornecedor</label>
+           <input class="form-input" id="cotacao-fornecedor-${item.id}" placeholder="ex: GAP Panasonic"
+                  onkeydown="if(event.key==='Enter') marcarCotado(${item.id})">
+         </div>
+         <div class="cotacao-acoes">
+           <button class="btn btn-primary btn-sm" onclick="marcarCotado(${item.id})">Marcar cotado</button>
+           <button class="btn-remove" title="Remover" onclick="removerCotacao(${item.id})">${icone('x', 'icone-11')}</button>
+         </div>`;
+
+    return `
+      <div class="cotacao-linha${cotado ? ' cotado' : ''}" id="cotacao-${item.id}">
+        <div class="cotacao-ident">
+          <span class="cotacao-cod">${esc(item.codigo) || '—'}</span>
+          <span class="peca-meta">${esc(meta)}</span>
+          ${selo}
+        </div>
+        <div class="cotacao-campo">
+          <label class="peca-rot">Observação</label>
+          <input class="form-input" value="${esc(item.descricao)}" placeholder="—"
+                 onchange="salvarObsCotacao(${item.id}, this.value)">
+        </div>
+        ${acoes}
+      </div>`;
+  }).join('');
+
+  mount.innerHTML = cabecalho + `
+    <span class="pecas-contagem" style="display:block;margin-bottom:10px;">
+      ${itens.length} item${itens.length !== 1 ? 's' : ''}${!todas ? ' · aguardando cotação' : ''}
+    </span>
+    ${linhas}
+    <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="copiarListaCotacao()">Copiar lista</button>`;
+}
+
+async function adicionarCotacao() {
+  const codigo = document.getElementById('cotacao-novo-codigo').value.trim();
+  const modelo = document.getElementById('cotacao-novo-modelo').value.trim();
+  const descricao = document.getElementById('cotacao-novo-obs').value.trim();
+  const quantidade = document.getElementById('cotacao-novo-qtd').value || 1;
+
+  if (!codigo && !modelo) {
+    toast('Informe o código da peça ou o modelo da máquina', 'error');
+    return;
+  }
+
+  try {
+    await api('/cotacoes', { method: 'POST', body: JSON.stringify({ codigo, modelo, descricao, quantidade }) });
+    toast('Item adicionado à lista de cotação', 'success');
+    carregarCotacoes();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function marcarCotado(id) {
+  const valorEl = document.getElementById(`cotacao-valor-${id}`);
+  const fornecedorEl = document.getElementById(`cotacao-fornecedor-${id}`);
+  if (!valorEl?.value) {
+    toast('Informe o valor cotado', 'error');
+    valorEl?.focus();
+    return;
+  }
+  try {
+    await api(`/cotacoes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'cotado', valor_cotado: valorEl.value, fornecedor: fornecedorEl?.value || '' }),
+    });
+    toast('Peça marcada como cotada', 'success');
+    carregarCotacoes();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function reabrirCotacao(id) {
+  try {
+    await api(`/cotacoes/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'pendente' }) });
+    carregarCotacoes();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function removerCotacao(id) {
+  if (!confirm('Remover este item da lista de cotação?')) return;
+  try {
+    await api(`/cotacoes/${id}`, { method: 'DELETE' });
+    toast('Item removido', 'success');
+    carregarCotacoes();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function salvarObsCotacao(id, valor) {
+  try {
+    await api(`/cotacoes/${id}`, { method: 'PUT', body: JSON.stringify({ descricao: valor }) });
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function copiarListaCotacao() {
+  const pendentes = _cotacoesAtuais.filter(i => i.status === 'pendente');
+  if (pendentes.length === 0) {
+    toast('Nada pendente para copiar', 'info');
+    return;
+  }
+  const texto = pendentes.map(item => {
+    const partes = [];
+    if (item.codigo) partes.push(`Código: ${item.codigo}`);
+    if (item.modelo) partes.push(`Modelo: ${item.modelo}`);
+    partes.push(`Qtd: ${item.quantidade || 1}`);
+    if (item.descricao) partes.push(`Obs: ${item.descricao}`);
+    return '- ' + partes.join(' | ');
+  }).join('\n');
+
+  try {
+    await navigator.clipboard.writeText(texto);
+    toast('Lista copiada', 'success');
+  } catch {
+    toast('Não foi possível copiar automaticamente — selecione o texto na tela', 'error');
   }
 }
 
