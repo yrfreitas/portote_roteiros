@@ -89,7 +89,10 @@
 //       diagnóstico editável (status/observação/excluir nos erros da tela).
 // v64 = mais permissões (13 ações: split diagnóstico, técnicos, setores,
 //       roteiros, atendimentos, relatórios, chat) + botão Analisar erro com IA.
-const CACHE_VERSAO = 'portotec-roteiros-v64';
+// v65 = desfecho "Cotação de peça" (código+nome+foto obrigatórios) no app do
+//       técnico, reagendar/volto-depois com escolha de dia, e Cotação de
+//       Peças virou seção compacta dentro da aba Peças em vez de aba própria.
+const CACHE_VERSAO = 'portotec-roteiros-v65';
 
 const ARQUIVOS_CASCA = [
   '/',

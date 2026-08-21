@@ -1085,7 +1085,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v64';
+  const VERSAO_TELA = 'v65';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
