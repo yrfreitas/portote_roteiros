@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v53';
+const VERSAO_PAINEL = 'v54';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4887,9 +4887,59 @@ async function montarReagDias() {
   }).join('');
 
   const semDias = !(fichas || []).some(f => !(mesmoTecnico && f.id === fichaAtiva?.id));
-  alvo.innerHTML = cards + (semDias
-    ? '<span class="reag-vazio">Esse técnico não tem outro dia em aberto. Crie um dia novo na barra lateral.</span>'
-    : '');
+
+  // Botão de criar dia direto aqui — antes mandava "criar na barra lateral",
+  // o que obrigava a fechar o modal, criar, e voltar. Agora cria e já usa.
+  const criador = `
+    <div class="reag-novo">
+      <button type="button" class="reag-novo-btn" onclick="toggleNovoDiaReag()">+ Criar dia novo</button>
+      <div class="reag-novo-form" id="reag-novo-form" style="display:none;">
+        <input type="date" class="form-input" id="reag-novo-data" min="${hoje}">
+        <button type="button" class="btn btn-primary btn-sm" onclick="criarDiaReag()">Criar e usar</button>
+      </div>
+    </div>`;
+
+  const aviso = semDias
+    ? '<span class="reag-vazio">Esse técnico não tem outro dia em aberto — crie um abaixo.</span>'
+    : '';
+  alvo.innerHTML = cards + aviso + criador;
+}
+
+function toggleNovoDiaReag() {
+  const f = document.getElementById('reag-novo-form');
+  if (!f) return;
+  const abrir = f.style.display === 'none';
+  f.style.display = abrir ? 'flex' : 'none';
+  if (abrir) setTimeout(() => document.getElementById('reag-novo-data')?.focus(), 40);
+}
+
+// Nome do dia da semana (pt-BR, capitalizado) a partir de "AAAA-MM-DD".
+// Constrói a data em fuso LOCAL — new Date('AAAA-MM-DD') seria UTC e podia
+// voltar o dia da semana errado perto da virada do dia.
+function diaSemanaDeData(dataStr) {
+  const [y, m, d] = (dataStr || '').split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const nome = new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'long' });
+  return nome.charAt(0).toUpperCase() + nome.slice(1);
+}
+
+// Cria a ficha (dia) para o técnico escolhido no reagendar e já a seleciona
+// como destino — o Salvar então move o atendimento para lá.
+async function criarDiaReag() {
+  const data = document.getElementById('reag-novo-data')?.value;
+  if (!data) { toast('Escolha a data do novo dia.', 'error'); return; }
+  const dia = diaSemanaDeData(data);
+  if (!dia) { toast('Data inválida.', 'error'); return; }
+  if (!_reagTecnico) { toast('Escolha o técnico primeiro.', 'error'); return; }
+
+  try {
+    const r = await api('/fichas', { method: 'POST', body: JSON.stringify({
+      tecnico_id: _reagTecnico, dia_semana: dia, data_referencia: data,
+    }) });
+    toast(`Dia ${dia} (${formatarData(data)}) criado`, 'success');
+    await montarReagDias();          // redesenha a lista com o dia novo
+    escolherReagDia(r.id);           // já deixa selecionado como destino
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 function escolherReagDia(fichaId) {

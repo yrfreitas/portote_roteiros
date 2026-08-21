@@ -67,7 +67,9 @@
 //       HTML): não dava para abrir a prateleira nem adicionar peça dentro.
 // v53 = estoque linkado: saída "para" um cliente/atendimento, entrada pela
 //       nota fiscal na aba Peças (idempotente) e saldo do estoque na aba Peças.
-const CACHE_VERSAO = 'portotec-roteiros-v53';
+// v54 = reagendar ganha "criar dia novo" ali mesmo: escolhe a data, cria a
+//       ficha do técnico e já a seleciona como destino do atendimento.
+const CACHE_VERSAO = 'portotec-roteiros-v54';
 
 const ARQUIVOS_CASCA = [
   '/',

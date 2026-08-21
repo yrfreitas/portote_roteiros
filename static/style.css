@@ -3794,6 +3794,19 @@ select:focus-visible,
 }
 .reag-vazio { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-muted); padding: 4px 2px; }
 
+/* Criar dia novo dentro do reagendar (ocupa a linha inteira do grid) */
+.reag-novo { grid-column: 1 / -1; margin-top: 2px; }
+.reag-novo-btn {
+  font-size: 11.5px; font-weight: 600; cursor: pointer;
+  color: var(--accent-text); background: none;
+  border: 1px dashed var(--border-bright); border-radius: 9px;
+  padding: 7px 11px; width: 100%; font-family: inherit;
+  transition: border-color .12s, color .12s;
+}
+.reag-novo-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.reag-novo-form { display: flex; gap: 8px; margin-top: 7px; align-items: center; }
+.reag-novo-form .form-input { flex: 1 1 auto; }
+
 /* ─── Verificar CEP agrupado por técnico ──────────────────────────────
    Antes as rotas de todos vinham numa lista só e ninguém sabia de quem era
    cada dia. Agora cada técnico tem seu bloco, com a barrinha da cor dele. */
