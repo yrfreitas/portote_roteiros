@@ -65,7 +65,9 @@
 //       o admin cria e abre para adicionar peças dentro. Navegação em 2 níveis.
 // v52 = conserta o clique no card de estoque (aspas do onclick quebravam o
 //       HTML): não dava para abrir a prateleira nem adicionar peça dentro.
-const CACHE_VERSAO = 'portotec-roteiros-v52';
+// v53 = estoque linkado: saída "para" um cliente/atendimento, entrada pela
+//       nota fiscal na aba Peças (idempotente) e saldo do estoque na aba Peças.
+const CACHE_VERSAO = 'portotec-roteiros-v53';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -3971,6 +3971,18 @@ select:focus-visible,
 .estoque-hist-saida td:first-child { color: var(--danger-text); font-weight: 600; }
 .estoque-hist-ajuste td:first-child { color: var(--accent-text); font-weight: 600; }
 
+/* Elo com a aba Peças: selo de saldo e botão de entrada */
+.peca-estoque-tag {
+  font-size: 10px; font-weight: 600; color: var(--accent-text);
+  background: var(--accent-dim); border-radius: 6px; padding: 1px 7px; margin-left: 6px;
+}
+.peca-estoque-btn {
+  font-size: 10px; font-weight: 600; cursor: pointer;
+  color: var(--accent-text); background: transparent;
+  border: 1px solid var(--border-bright); border-radius: 7px; padding: 4px 9px;
+}
+.peca-estoque-btn:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-dim); }
+
 /* Estados auxiliares reutilizados pela aba */
 .carregando { padding: 30px; text-align: center; color: var(--text-muted); font-size: 13px; }
 .vazio-box {

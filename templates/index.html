@@ -313,11 +313,13 @@
 
 <datalist id="estoque-datalist-aparelho"></datalist>
 <datalist id="estoque-datalist-marca"></datalist>
+<datalist id="estoque-datalist-cliente"></datalist>
 
 <div class="modal-overlay" id="modal-estoque-mov" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="modal-title" id="estoque-mov-titulo">Dar entrada</div>
     <input type="hidden" id="estoque-mov-codigo-fixo">
+    <input type="hidden" id="estoque-mov-referencia">
     <div class="form-group" id="estoque-mov-grupo-codigo">
       <label class="form-label" for="estoque-mov-codigo">Código da peça</label>
       <input type="text" class="form-input" id="estoque-mov-codigo"
@@ -333,6 +335,12 @@
       <select class="form-input" id="estoque-mov-estoque">
         <option value="">Sem estoque</option>
       </select>
+    </div>
+    <div class="form-group" id="estoque-mov-grupo-cliente">
+      <label class="form-label" for="estoque-mov-cliente">Saiu para (cliente/atendimento)</label>
+      <input type="text" class="form-input" id="estoque-mov-cliente"
+             list="estoque-datalist-cliente" maxlength="120"
+             placeholder="Opcional — a quem a peça foi">
     </div>
     <div class="estoque-mov-linha" id="estoque-mov-grupo-categoria">
       <div class="form-group">

@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v52';
+const VERSAO_PAINEL = 'v53';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2091,6 +2091,8 @@ async function carregarPecas() {
     <div class="peca-linha${p.cliente_final ? ' tem-cliente' : ''}${p.chegou_em ? ' chegou' : ''}"
          id="peca-${p.linha}" data-linha="${p.linha}"
          data-chave="${esc(p.chave || '')}"
+         data-valor="${esc(p.valor || '')}"
+         data-nota="${esc(p.nota_fiscal || '')}"
          data-estagio="${p.chegou_em ? 'chegou' : esc((p.status_compra || 'CRIADO').toUpperCase())}"
          data-pendente="${p.cliente_final ? '0' : '1'}"
          data-busca="${esc(((p.peca || '') + ' ' + (p.cliente_final || '') + ' ' + (p.pedido || '') + ' ' + (p.nota_fiscal || '')).toLowerCase())}">
@@ -2102,6 +2104,7 @@ async function carregarPecas() {
             : (p.pedido ? 'Pedido ' + esc(p.pedido) : 'sem nota ainda')}
           · ${esc((p.data || '').split(' ')[0])}</span>
         ${estagioPeca(p)}
+        <span class="peca-estoque" id="peca-estoque-${p.linha}"></span>
       </div>
 
       <div class="peca-campo">
@@ -2133,6 +2136,11 @@ async function carregarPecas() {
                 onclick="alternarChegada(${p.linha})">
           ${p.chegou_em ? '📦 chegou' : 'marcar chegada'}
         </button>
+        <button class="peca-estoque-btn" id="peca-estoque-btn-${p.linha}"
+                title="Dar entrada desta peça no estoque (com o custo da nota)"
+                onclick="darEntradaEstoqueDaPeca(${p.linha})">
+          → estoque
+        </button>
       </div>
 
       ${sugestaoDeCliente(p)}
@@ -2145,6 +2153,9 @@ async function carregarPecas() {
     </datalist>`;
 
   atualizarSeloPecas(r.pendentes ?? pedidos.filter(p => !p.cliente_final).length);
+
+  // Mostra o saldo do estoque ao lado de cada compra (o elo com a aba Estoque).
+  anotarSaldosEstoque(pedidos);
 
   // Sugestões vêm depois, sem travar a tela (ler os XMLs das notas é lento).
   if (r.sugestao_peca_ativa) buscarSugestoesPecas(pedidos);
@@ -2160,6 +2171,66 @@ async function carregarPecas() {
       }
     });
   });
+}
+
+// Anota "em estoque: N" em cada compra, cruzando o código da peça (o texto do
+// campo Peça, ex NR-BB64PV1BA) com os saldos do estoque. Best-effort: só marca
+// o que casa exato; peça que não está no estoque simplesmente não recebe selo.
+async function anotarSaldosEstoque(pedidos) {
+  const codigos = [...new Set(pedidos
+    .map(p => (document.getElementById(`peca-desc-${p.linha}`)?.value || p.peca || '').trim().toUpperCase())
+    .filter(Boolean))];
+  if (!codigos.length) return;
+  let saldos;
+  try {
+    const d = await api('/estoque/saldos?codigos=' + encodeURIComponent(codigos.join(',')));
+    saldos = d.saldos || {};
+  } catch { return; }
+  pedidos.forEach(p => {
+    const cod = (document.getElementById(`peca-desc-${p.linha}`)?.value || p.peca || '').trim().toUpperCase();
+    const slot = document.getElementById(`peca-estoque-${p.linha}`);
+    if (!slot) return;
+    const info = saldos[cod];
+    slot.innerHTML = info
+      ? `<span class="peca-estoque-tag" title="Saldo atual no estoque">em estoque: ${info.saldo.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}</span>`
+      : '';
+  });
+}
+
+// Garante que a lista de prateleiras esteja carregada antes de abrir o modal
+// de entrada a partir da aba Peças (onde a aba Estoque pode nunca ter sido aberta).
+async function _garantirGruposCarregados() {
+  if (estoqueGrupos.length) return;
+  try { estoqueGrupos = (await api('/estoque/grupos')).grupos || []; } catch { /* segue sem prateleira */ }
+}
+
+// Dá entrada da peça comprada no estoque, reaproveitando o modal de entrada já
+// testado — mas carimbado com a nota (origem 'nota', idempotente). Assim o
+// senhor confere quantidade, custo e a prateleira antes de confirmar.
+async function darEntradaEstoqueDaPeca(linha) {
+  const linhaEl = document.getElementById(`peca-${linha}`);
+  const codigo = (document.getElementById(`peca-desc-${linha}`)?.value || '').trim();
+  if (!codigo) { toast('Preencha o código/modelo da peça antes de mandar ao estoque.', 'error'); return; }
+  // O valor da planilha vem "R$ 123,45" ou "123.45" — normaliza para número.
+  const valorBruto = String(linhaEl?.dataset.valor || '');
+  const custo = parseFloat(valorBruto.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
+  const nota = (linhaEl?.dataset.nota || '').trim();
+
+  await _garantirGruposCarregados();
+  estoqueMovModo = 'entrada';
+  _limparCamposEstoque();
+  document.getElementById('estoque-mov-titulo').textContent = `Entrada no estoque — ${codigo}`;
+  document.getElementById('estoque-mov-codigo-fixo').value = '';
+  document.getElementById('estoque-mov-referencia').value = nota; // marca a nota
+  document.getElementById('estoque-mov-codigo').value = codigo;
+  document.getElementById('estoque-mov-desc').value = codigo;
+  document.getElementById('estoque-mov-qtd').value = 1;
+  document.getElementById('estoque-mov-custo').value = custo || '';
+  _popularSelectEstoque('');
+  _visibilidadeModalEstoque({ codigo: true, desc: true, estoque: true, categoria: true, modelo: true, qtdcusto: true, custo: true, obs: true });
+  _labelQtd('Quantidade');
+  document.getElementById('modal-estoque-mov').classList.add('open');
+  setTimeout(() => document.getElementById('estoque-mov-qtd').select(), 80);
 }
 
 // Busca as peças no XML das notas fiscais e injeta nos cards já renderizados.
@@ -5155,6 +5226,7 @@ function _visibilidadeModalEstoque(cfg) {
     codigo:    'estoque-mov-grupo-codigo',
     desc:      'estoque-mov-grupo-desc',
     estoque:   'estoque-mov-grupo-estoque',
+    cliente:   'estoque-mov-grupo-cliente',
     categoria: 'estoque-mov-grupo-categoria',
     modelo:    'estoque-mov-grupo-modelo',
     qtdcusto:  'estoque-mov-grupo-qtd-custo',
@@ -5178,10 +5250,23 @@ function _popularSelectEstoque(selecionado) {
 }
 
 function _limparCamposEstoque() {
-  ['codigo', 'desc', 'aparelho', 'marca', 'modelo', 'preco', 'qtd', 'custo', 'obs']
+  ['codigo', 'desc', 'aparelho', 'marca', 'modelo', 'preco', 'qtd', 'custo', 'obs', 'cliente', 'referencia']
     .forEach(c => { const el = document.getElementById('estoque-mov-' + c); if (el) el.value = ''; });
   const sel = document.getElementById('estoque-mov-estoque');
   if (sel) sel.value = '';
+}
+
+// Clientes dos atendimentos para o autocomplete do "saiu para quem".
+// Buscado uma vez e reaproveitado — não muda a cada abertura do modal.
+let estoqueClientesCarregado = false;
+async function _carregarClientesAtendimento() {
+  if (estoqueClientesCarregado) return;
+  try {
+    const d = await api('/estoque/atendimentos');
+    const dl = document.getElementById('estoque-datalist-cliente');
+    if (dl) dl.innerHTML = (d.clientes || []).map(c => `<option value="${esc(c)}">`).join('');
+    estoqueClientesCarregado = true;
+  } catch { /* autocomplete é conveniência; sem ele ainda dá para digitar */ }
 }
 
 function _labelQtd(txt) {
@@ -5218,9 +5303,10 @@ function abrirEntradaEstoque(codigo = '', desc = '') {
 function abrirSaidaEstoque(codigo, desc = '') {
   estoqueMovModo = 'saida';
   _limparCamposEstoque();
+  _carregarClientesAtendimento(); // preenche o datalist de clientes em paralelo
   document.getElementById('estoque-mov-titulo').textContent = `Saída — ${codigo}`;
   document.getElementById('estoque-mov-codigo-fixo').value = codigo;
-  _visibilidadeModalEstoque({ qtdcusto: true, custo: false, obs: true });
+  _visibilidadeModalEstoque({ cliente: true, qtdcusto: true, custo: false, obs: true });
   _labelQtd('Quantidade a dar baixa');
   document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById('estoque-mov-qtd').focus(), 80);
@@ -5284,14 +5370,26 @@ async function salvarMovEstoque() {
     if (estoqueMovModo === 'entrada') {
       const codigo = (fixo || val('estoque-mov-codigo')).trim();
       if (!codigo) { toast('Informe o código da peça.', 'error'); btn.disabled = false; return; }
-      await api('/estoque/entrada', { method: 'POST', body: JSON.stringify({
-        codigo, descricao: val('estoque-mov-desc').trim(),
-        quantidade: qtd, custo_unit: parseFloat(val('estoque-mov-custo')) || 0,
-        obs, ...cat() }) });
-      toast('Entrada registrada.', 'success');
+      const referencia = val('estoque-mov-referencia').trim();
+      const custo_unit = parseFloat(val('estoque-mov-custo')) || 0;
+      if (referencia) {
+        // Entrada carimbada com a nota fiscal: usa o endpoint idempotente, que
+        // não duplica se a mesma nota já tiver lançado esta peça.
+        const c = cat();
+        await api('/estoque/entrada-nota', { method: 'POST', body: JSON.stringify({
+          referencia, grupo_id: c.grupo_id,
+          itens: [{ codigo, descricao: val('estoque-mov-desc').trim(), quantidade: qtd, custo_unit }] }) });
+        toast('Entrada da nota no estoque.', 'success');
+      } else {
+        await api('/estoque/entrada', { method: 'POST', body: JSON.stringify({
+          codigo, descricao: val('estoque-mov-desc').trim(),
+          quantidade: qtd, custo_unit, obs, ...cat() }) });
+        toast('Entrada registrada.', 'success');
+      }
     } else if (estoqueMovModo === 'saida') {
       await api('/estoque/saida', { method: 'POST', body: JSON.stringify({
-        codigo: fixo, quantidade: qtd, obs }) });
+        codigo: fixo, quantidade: qtd, obs,
+        cliente: val('estoque-mov-cliente').trim() || null }) });
       toast('Saída registrada.', 'success');
     } else if (estoqueMovModo === 'ajuste') {
       await api(`/estoque/${fixo}`, { method: 'PUT', body: JSON.stringify({
@@ -5385,13 +5483,21 @@ async function verHistoricoEstoque(id, codigo) {
     const brl = n => n == null ? '—' : (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     const g = n => (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
     const rotulo = { entrada: '↑ entrada', saida: '↓ saída', ajuste: '⚙ ajuste' };
+    // "Origem/destino": mostra de onde veio ou para quem foi. A referência é o
+    // cliente (na saída) ou a nota (na entrada) — é o elo com o resto do sistema.
+    const origemDestino = m => {
+      const ref = (m.referencia || '').trim();
+      if (m.origem === 'atendimento') return ref ? `→ ${esc(ref)}` : 'atendimento';
+      if (m.origem === 'nota') return ref ? `nota ${esc(ref)}` : 'nota fiscal';
+      return esc(m.origem || '—');
+    };
     const linhas = (d.movimentos || []).map(m => `
       <tr class="estoque-hist-${esc(m.tipo)}">
         <td>${esc(rotulo[m.tipo] || m.tipo)}</td>
         <td style="text-align:right;">${m.tipo === 'saida' ? '−' : (m.tipo === 'ajuste' && m.quantidade < 0 ? '' : '+')}${g(Math.abs(m.quantidade))}</td>
         <td style="text-align:right;">${g(m.saldo_apos)}</td>
         <td style="text-align:right;">${brl(m.custo_unit)}</td>
-        <td>${esc(m.origem || '—')}</td>
+        <td>${origemDestino(m)}</td>
         <td>${esc(m.autor || '—')}</td>
         <td>${esc(formatarDataHora(m.criado_em))}</td>
         <td>${esc(m.obs || '')}</td>
@@ -5407,7 +5513,7 @@ async function verHistoricoEstoque(id, codigo) {
         <table class="estoque-hist-tabela">
           <thead><tr>
             <th>Tipo</th><th style="text-align:right;">Qtd</th><th style="text-align:right;">Saldo</th>
-            <th style="text-align:right;">Custo un.</th><th>Origem</th><th>Quem</th><th>Quando</th><th>Obs</th>
+            <th style="text-align:right;">Custo un.</th><th>Origem / destino</th><th>Quem</th><th>Quando</th><th>Obs</th>
           </tr></thead>
           <tbody>${corpo}</tbody>
         </table>

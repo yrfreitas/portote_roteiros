@@ -354,13 +354,109 @@ def saida():
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
     d = request.get_json(silent=True) or {}
+    # cliente/atendimento a que a baixa se destina: vira a referência do
+    # movimento e a origem passa a 'atendimento'. É o que liga a peça que saiu
+    # ao trabalho que a consumiu — o histórico deixa de dizer só "saiu 1".
+    cliente = (d.get("cliente") or d.get("referencia") or "").strip() or None
+    origem = "atendimento" if cliente else "manual"
     try:
         with db_conn(commit=True) as conn:
             r = dar_saida(conn, d.get("codigo"), d.get("quantidade"),
-                          origem="manual", obs=d.get("obs"))
+                          origem=origem, referencia=cliente, obs=d.get("obs"))
     except (ValueError, TypeError) as exc:
         return jsonify({"erro": str(exc)}), 400
     return jsonify({"mensagem": "Saída registrada", **r}), 201
+
+
+@estoque_bp.route("/estoque/atendimentos", methods=["GET"])
+def atendimentos_para_baixa():
+    """Clientes dos atendimentos, para o autocomplete de 'saiu para quem'.
+    Vem de servicos (a base real de trabalho) — escolher em vez de digitar faz
+    a referência casar certo e o histórico ficar consistente."""
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT DISTINCT cliente FROM servicos
+             WHERE cliente IS NOT NULL AND TRIM(cliente) <> ''
+             ORDER BY cliente
+        """)
+    return jsonify({"clientes": [l["cliente"] for l in linhas]})
+
+
+@estoque_bp.route("/estoque/saldos", methods=["GET"])
+def saldos_por_codigo():
+    """Saldo atual de vários códigos de uma vez — usado pela aba Peças para
+    mostrar 'em estoque: N' ao lado de cada compra. `codigos` separados por
+    vírgula. Devolve um mapa {CODIGO: {saldo, id, ...}} só do que existe."""
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    brutos = (request.args.get("codigos") or "").split(",")
+    codigos = {_norm_codigo(c) for c in brutos if (c or "").strip()}
+    if not codigos:
+        return jsonify({"saldos": {}})
+    with db_conn() as conn:
+        itens = fetch_all(conn, "SELECT id, codigo, descricao, saldo, custo_medio FROM estoque_itens")
+    saldos = {i["codigo"]: {"id": i["id"], "saldo": float(i["saldo"] or 0),
+                            "descricao": i["descricao"], "custo_medio": float(i["custo_medio"] or 0)}
+              for i in itens if i["codigo"] in codigos}
+    return jsonify({"saldos": saldos})
+
+
+@estoque_bp.route("/estoque/entrada-nota", methods=["POST"])
+def entrada_nota():
+    """Dá entrada em uma ou mais peças a partir de uma NOTA FISCAL, de uma vez.
+
+    Idempotente por `referencia` (a chave da nota): reprocessar a mesma nota
+    não duplica saldo. Sem isso, um clique a mais numa compra que já entrou
+    inflaria o estoque em silêncio — o pior tipo de erro, o que ninguém vê.
+
+    Corpo: {referencia, grupo_id?, itens:[{codigo, descricao, quantidade,
+    custo_unit}]}. origem fica 'nota'.
+    """
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    d = request.get_json(silent=True) or {}
+    referencia = (d.get("referencia") or "").strip()
+    itens = d.get("itens") or []
+    if not itens:
+        return jsonify({"erro": "Nenhum item para dar entrada"}), 400
+
+    grupo_id = d.get("grupo_id")
+    resultados, entraram, pulados = [], 0, 0
+    try:
+        with db_conn(commit=True) as conn:
+            for it in itens:
+                codigo = _norm_codigo(it.get("codigo"))
+                if not codigo:
+                    continue
+                # Trava de idempotência: se ESTA nota já lançou ESTE código,
+                # não repete. Checa antes de mexer no saldo.
+                if referencia:
+                    ja = fetch_one(conn, """
+                        SELECT m.id FROM estoque_movimentos m
+                          JOIN estoque_itens e ON e.id = m.item_id
+                         WHERE m.origem = 'nota' AND m.referencia = ? AND e.codigo = ?
+                         LIMIT 1
+                    """, (referencia, codigo))
+                    if ja:
+                        pulados += 1
+                        resultados.append({"codigo": codigo, "status": "ja_lancado"})
+                        continue
+                kw = {}
+                if grupo_id not in (None, "", "__manter__"):
+                    kw["grupo_id"] = grupo_id
+                r = dar_entrada(conn, codigo, it.get("descricao"),
+                                it.get("quantidade") or 1, it.get("custo_unit") or 0,
+                                origem="nota", referencia=referencia or None, **kw)
+                entraram += 1
+                resultados.append({"codigo": codigo, "status": "ok", "saldo": r["saldo"]})
+    except (ValueError, TypeError) as exc:
+        return jsonify({"erro": str(exc)}), 400
+    return jsonify({"mensagem": f"{entraram} peça(s) no estoque"
+                    + (f", {pulados} já estavam" if pulados else ""),
+                    "entraram": entraram, "pulados": pulados,
+                    "resultados": resultados}), 201
 
 
 @estoque_bp.route("/estoque/<int:item_id>", methods=["PUT"])
