@@ -484,7 +484,6 @@ function switchMainTab(tab) {
   const isDiag      = tab === 'diagnostico';
   const isAtend     = tab === 'atendimentos';
   const isEstoque   = tab === 'estoque';
-  const isCotacao   = tab === 'cotacao';
 
   document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
   document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
@@ -494,7 +493,6 @@ function switchMainTab(tab) {
   document.getElementById('panel-diagnostico').style.display = isDiag ? 'block' : 'none';
   document.getElementById('panel-atendimentos').style.display = isAtend ? 'block' : 'none';
   document.getElementById('panel-estoque').style.display = isEstoque ? 'block' : 'none';
-  document.getElementById('panel-cotacao').style.display = isCotacao ? 'block' : 'none';
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
@@ -503,7 +501,6 @@ function switchMainTab(tab) {
   document.getElementById('mtab-diagnostico').classList.toggle('active', isDiag);
   document.getElementById('mtab-atendimentos').classList.toggle('active', isAtend);
   document.getElementById('mtab-estoque').classList.toggle('active', isEstoque);
-  document.getElementById('mtab-cotacao').classList.toggle('active', isCotacao);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
@@ -524,9 +521,6 @@ function switchMainTab(tab) {
   }
   if (isEstoque) {
     abrirEstoqueRaiz();
-  }
-  if (isCotacao) {
-    carregarCotacoes();
   }
 }
 
@@ -1071,7 +1065,7 @@ async function carregarUsuarioLogado() {
   mostra('mtab-diagnostico', podeUsuario('diagnostico'));
   mostra('mtab-estoque', podeUsuario('estoque_ver'));
   mostra('mtab-pecas', podeUsuario('pecas'));
-  mostra('mtab-cotacao', podeUsuario('cotacao'));
+  mostra('cotacao-details', podeUsuario('cotacao'));
 
   const marca = document.getElementById('usuario-logado');
   if (marca) {
@@ -5216,7 +5210,6 @@ async function salvarEdicaoServico() {
 // não há login automatizado confirmado ainda — ver /api/cotacoes/config).
 // Depois de cotado, o valor fica registrado; comprar de fato continua sendo
 // outra etapa (planilha / aba Peças), esta lista não lança pedido nenhum.
-let _cotacoesConfig = null;
 let _cotacoesAtuais = [];
 const _brlCotacao = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -5227,23 +5220,30 @@ async function carregarCotacoes() {
   const todas = document.getElementById('cotacao-mostrar-todas')?.checked;
   mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
 
-  let r, cfg;
+  let r;
   try {
-    [r, cfg] = await Promise.all([
-      api(`/cotacoes${todas ? '' : '?status=pendente'}`),
-      _cotacoesConfig || api('/cotacoes/config'),
-    ]);
-    _cotacoesConfig = cfg;
+    r = await api(`/cotacoes${todas ? '' : '?status=pendente'}`);
   } catch (e) {
     mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
     return;
   }
 
   _cotacoesAtuais = r.itens || [];
-  renderCotacoes(mount, _cotacoesAtuais, cfg, todas);
+  atualizarSeloCotacao(r.pendentes ?? _cotacoesAtuais.filter(i => i.status === 'pendente').length);
+  renderCotacoes(mount, _cotacoesAtuais, todas);
 }
 
-function renderCotacoes(mount, itens, cfg, todas) {
+// Contagem visível mesmo com a seção fechada — sem isso ninguém lembra de
+// abrir pra ver se chegou foto nova do técnico em campo.
+function atualizarSeloCotacao(qtd) {
+  const selo = document.getElementById('cotacao-selo');
+  if (!selo) return;
+  selo.hidden = qtd === 0;
+  selo.textContent = qtd;
+  selo.classList.toggle('accent', qtd > 0);
+}
+
+function renderCotacoes(mount, itens, todas) {
   const cabecalho = `
     <div class="cotacao-form">
       <div class="form-group">
@@ -5264,7 +5264,6 @@ function renderCotacoes(mount, itens, cfg, todas) {
         <input class="form-input" type="number" min="1" value="1" id="cotacao-novo-qtd">
       </div>
       <button class="btn btn-primary" onclick="adicionarCotacao()">${icone('plus', 'icone-13')} Adicionar</button>
-      <a class="btn btn-ghost" href="${esc(cfg.gap_url)}" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Abrir GAP</a>
     </div>`;
 
   if (itens.length === 0) {
@@ -5305,8 +5304,18 @@ function renderCotacoes(mount, itens, cfg, todas) {
            <button class="btn-remove" title="Remover" onclick="removerCotacao(${item.id})">${icone('x', 'icone-11')}</button>
          </div>`;
 
+    // Foto vem do técnico em campo (desfecho "Cotação de peça") — é dela que
+    // sai o modelo/série certo. Miniatura clicável: abre em tamanho real
+    // pra ler o que está escrito na etiqueta sem depender de zoom no navegador.
+    const foto = item.foto
+      ? `<a href="${item.foto}" target="_blank" rel="noopener" class="cotacao-foto-link" title="Ver foto da etiqueta">
+           <img class="cotacao-foto-mini" src="${item.foto}" alt="Foto da etiqueta enviada pelo técnico">
+         </a>`
+      : '';
+
     return `
       <div class="cotacao-linha${cotado ? ' cotado' : ''}" id="cotacao-${item.id}">
+        ${foto}
         <div class="cotacao-ident">
           <span class="cotacao-cod">${esc(item.codigo) || '—'}</span>
           <span class="peca-meta">${esc(meta)}</span>

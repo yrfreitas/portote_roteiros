@@ -28,6 +28,14 @@ ORDEM_DIAS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
 _INDICE_DIA = {dia: i for i, dia in enumerate(ORDEM_DIAS)}
 
 
+def nome_dia_semana(data_iso: str) -> str:
+    """'2026-08-28' -> 'Sexta-feira'. Usado quando alguém escolhe uma DATA
+    (reagendamento) e a ficha exige dia_semana — evita pedir a mesma coisa
+    duas vezes (data e dia da semana) pra quem só sabe a data."""
+    dt = datetime.strptime(data_iso, "%Y-%m-%d")
+    return ORDEM_DIAS[dt.weekday()]
+
+
 def ordenar_por_semana(fichas: list) -> list:
     """Ordem de CALENDÁRIO: ano, mês, dia — como a vida acontece.
 

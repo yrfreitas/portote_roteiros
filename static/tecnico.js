@@ -596,9 +596,13 @@
   const DESFECHOS = [
     { tipo: 'resolvido',    rotulo: 'Resolvido',        sub: 'consertado na hora',    icone: '✓' },
     { tipo: 'precisa_peca', rotulo: 'Precisa de peça',  sub: 'diagnosticado, falta peça', icone: '🔧' },
+    { tipo: 'cotacao_peca', rotulo: 'Cotação de peça',  sub: 'não sei o preço ainda', icone: '💰' },
     { tipo: 'volto_depois', rotulo: 'Volto depois',     sub: 'preciso retornar',      icone: '↻' },
     { tipo: 'nao_atendido', rotulo: 'Reagendar',        sub: 'não deu, precisa remarcar', icone: '!' },
   ];
+  // Desfechos onde faz sentido oferecer "quando eu volto" — resolvido e
+  // cotação de peça terminam o atendimento ali, não têm o que reagendar.
+  const REAGENDAVEIS = ['volto_depois', 'nao_atendido'];
   const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                    'Aparelho sem defeito', 'Sem acesso ao local'];
 
@@ -614,6 +618,9 @@
   let _desfechoServicoId = null;
   let _desfechoTipo = null;
   let _desfechoFoto = null;
+  // null = "ainda não sei quando volta" (reagendamento fica opcional).
+  // {ficha_id} = escolheu um dia que já existe. {nova_data} = vai criar um dia novo.
+  let _desfechoReagendar = null;
 
   // Reduz mantendo a imagem INTEIRA — sem recorte.
   //
@@ -684,6 +691,7 @@
       previa.innerHTML = `<span class="t-df-erro">${esc(e.message)}</span>`;
     } finally {
       input.value = '';   // permite escolher a MESMA foto de novo depois de remover
+      window._tValidarConfirmar();
     }
   };
 
@@ -691,6 +699,7 @@
     _desfechoFoto = null;
     const previa = document.getElementById('t-df-previa');
     if (previa) previa.innerHTML = '';
+    window._tValidarConfirmar();
   };
 
   function blocoFoto(destaque) {
@@ -705,10 +714,63 @@
       <div id="t-df-previa" class="t-df-previa"></div>`;
   }
 
+  // Oferece reagendar SEM obrigar: o técnico pode não saber ainda quando
+  // volta, e travar o confirmar por isso empurraria gente a inventar uma
+  // data só pra sair da tela. Two caminhos: um dia que já existe na agenda
+  // dele, ou uma data nova (vira ficha nova pro mesmo técnico).
+  function blocoReagendar() {
+    return `
+      <label class="t-df-rotulo">Já sabe quando volta? <small>(opcional)</small></label>
+      <div class="t-df-reagendar-opcoes">
+        <button type="button" class="t-df-reagendar-btn" data-modo="existente"
+                onclick="window._tModoReagendar('existente')">Dia já marcado</button>
+        <button type="button" class="t-df-reagendar-btn" data-modo="novo"
+                onclick="window._tModoReagendar('novo')">Marcar dia novo</button>
+      </div>
+      <div id="t-df-reagendar-corpo"></div>`;
+  }
+
+  window._tModoReagendar = function (modo) {
+    document.querySelectorAll('.t-df-reagendar-btn').forEach(b =>
+      b.classList.toggle('ativa', b.dataset.modo === modo));
+    const corpo = document.getElementById('t-df-reagendar-corpo');
+    if (!corpo) return;
+
+    if (modo === 'existente') {
+      const abertas = fichas.filter(f => f.status !== 'concluida' && f.id !== fichaAbertaId);
+      corpo.innerHTML = abertas.length === 0
+        ? `<p class="t-df-ajuda">Você não tem outro dia em aberto — crie um novo.</p>`
+        : `<select class="t-df-input" id="t-df-reagendar-ficha" onchange="window._tSelecionarReagendar()">
+             <option value="">Selecione o dia...</option>
+             ${abertas.map(f => `<option value="${f.id}">${esc(f.dia_semana)}${
+               f.data_referencia ? ' · ' + esc(f.data_referencia.split('-').reverse().join('/')) : ''
+             }</option>`).join('')}
+           </select>`;
+    } else {
+      corpo.innerHTML = `
+        <input type="date" class="t-df-input" id="t-df-reagendar-data"
+               min="${dataDeHoje()}" onchange="window._tSelecionarReagendar()">`;
+    }
+    window._tSelecionarReagendar();
+  };
+
+  window._tSelecionarReagendar = function () {
+    const ficha = document.getElementById('t-df-reagendar-ficha');
+    const data = document.getElementById('t-df-reagendar-data');
+    if (ficha && ficha.value) {
+      _desfechoReagendar = { ficha_id: Number(ficha.value) };
+    } else if (data && data.value) {
+      _desfechoReagendar = { nova_data: data.value };
+    } else {
+      _desfechoReagendar = null;
+    }
+  };
+
   window._tAbrirDesfecho = function (servicoId) {
     _desfechoServicoId = servicoId;
     _desfechoTipo = null;
     _desfechoFoto = null;
+    _desfechoReagendar = null;
     const folha = document.getElementById('t-folha-desfecho');
     if (!folha) return;
     folha.querySelector('.t-folha-corpo').innerHTML = `
@@ -734,6 +796,7 @@
 
   window._tEscolherDesfecho = function (tipo) {
     _desfechoTipo = tipo;
+    _desfechoReagendar = null;
     document.querySelectorAll('.t-df-opcao').forEach(b =>
       b.classList.toggle('ativa', b.dataset.tipo === tipo));
 
@@ -746,6 +809,17 @@
         ${blocoFoto(true)}`;
       // Sem foco automático: abrir o teclado por cima da folha esconde o
       // botão de confirmar, e o técnico fica sem saber o que fazer.
+    } else if (tipo === 'cotacao_peca') {
+      // Código, nome E foto são obrigatórios aqui — sem os três a cotação
+      // sai sem como identificar a peça de verdade (ver window._tValidarConfirmar).
+      extra.innerHTML = `
+        <label class="t-df-rotulo" for="t-df-codigo">Código da peça</label>
+        <input class="t-df-input" id="t-df-codigo" autocomplete="off"
+               placeholder="Ex: DE97-01234A" oninput="window._tValidarConfirmar()">
+        <label class="t-df-rotulo" for="t-df-nome-peca">Nome da peça</label>
+        <input class="t-df-input" id="t-df-nome-peca" autocomplete="off"
+               placeholder="Ex: Placa eletrônica" oninput="window._tValidarConfirmar()">
+        ${blocoFoto(true)}`;
     } else if (tipo === 'nao_atendido') {
       extra.innerHTML = `
         <label class="t-df-rotulo">Por quê?</label>
@@ -754,7 +828,10 @@
             <button class="t-df-motivo" data-motivo="${esc(m)}"
                     onclick="window._tEscolherMotivo(this)">${esc(m)}</button>`).join('')}
         </div>
-        ${blocoFoto(false)}`;
+        ${blocoFoto(false)}
+        ${blocoReagendar()}`;
+    } else if (tipo === 'volto_depois') {
+      extra.innerHTML = `${blocoFoto(false)}${blocoReagendar()}`;
     } else {
       extra.innerHTML = blocoFoto(false);
     }
@@ -762,7 +839,21 @@
       <label class="t-df-rotulo" for="t-df-obs">Observação</label>
       <textarea class="t-df-input t-df-obs" id="t-df-obs" rows="3"
                 placeholder="Algo que a equipe precisa saber (opcional)"></textarea>`);
-    document.getElementById('t-df-confirmar').disabled = false;
+    window._tValidarConfirmar();
+  };
+
+  // Só a Cotação de peça trava o botão: os outros desfechos continuam
+  // podendo ser confirmados sem preencher nada além da escolha do tipo.
+  window._tValidarConfirmar = function () {
+    const btn = document.getElementById('t-df-confirmar');
+    if (!btn) return;
+    let ok = true;
+    if (_desfechoTipo === 'cotacao_peca') {
+      const codigo = document.getElementById('t-df-codigo')?.value.trim();
+      const nome = document.getElementById('t-df-nome-peca')?.value.trim();
+      ok = !!(codigo && nome && _desfechoFoto);
+    }
+    btn.disabled = !ok;
   };
 
   window._tEscolherMotivo = function (botao) {
@@ -776,8 +867,15 @@
     if (_desfechoTipo === 'precisa_peca') {
       desfecho.peca = document.getElementById('t-df-peca')?.value.trim() || '';
     }
+    if (_desfechoTipo === 'cotacao_peca') {
+      desfecho.codigo = document.getElementById('t-df-codigo')?.value.trim() || '';
+      desfecho.nome_peca = document.getElementById('t-df-nome-peca')?.value.trim() || '';
+    }
     if (_desfechoTipo === 'nao_atendido') {
       desfecho.motivo = document.querySelector('.t-df-motivo.ativa')?.dataset.motivo || '';
+    }
+    if (REAGENDAVEIS.includes(_desfechoTipo) && _desfechoReagendar) {
+      desfecho.reagendar = _desfechoReagendar;
     }
     const obs = document.getElementById('t-df-obs')?.value.trim();
     if (obs) desfecho.observacao = obs;
@@ -800,9 +898,15 @@
     if (novoStatus === 'concluido') pararEnvioDePosicao();
 
     try {
-      await api(`/servicos/${servicoId}/status`, opts);
-      toast(novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto');
+      const resp = await api(`/servicos/${servicoId}/status`, opts);
+      const avisoReagendar = resp?.desfecho?.aviso_reagendamento;
+      toast(avisoReagendar
+        ? `Concluído, mas: ${avisoReagendar}`
+        : (novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto'));
       if (fichaAbertaId) abrirFicha(fichaAbertaId);
+      // Reagendar pode ter criado uma ficha nova ou tirado este ponto da
+      // ficha atual — a lista de dias na tela anterior precisa refletir isso.
+      carregarFichas();
     } catch (e) {
       // TypeError do fetch = não saiu do aparelho. Erro do servidor (regra de
       // negócio, 4xx) não vai para a fila: reenviar depois daria o mesmo erro.

@@ -759,6 +759,14 @@ _MIGRACOES_PG = [
         criado_por    TEXT,
         atualizado_em TEXT
     )""",
+    # Foto e vínculo com o atendimento: quando a cotação nasce do desfecho do
+    # técnico (opção "Cotação de peça"), a foto da etiqueta vem junto — é dela
+    # que sai o modelo/código certo — e servico_id liga de volta pra quem pediu.
+    "ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS foto TEXT",
+    "ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS servico_id INTEGER REFERENCES servicos(id) ON DELETE SET NULL",
+    # Código separado do texto livre de "peça": desfecho de cotação exige os
+    # dois campos, e código é o que casa exato com a compra depois.
+    "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS codigo TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -804,6 +812,9 @@ _MIGRACOES_SQLITE = [
         criado_por    TEXT,
         atualizado_em TEXT
     )""",
+    "ALTER TABLE cotacoes ADD COLUMN foto TEXT",
+    "ALTER TABLE cotacoes ADD COLUMN servico_id INTEGER",
+    "ALTER TABLE servico_desfecho ADD COLUMN codigo TEXT",
 ]
 
 

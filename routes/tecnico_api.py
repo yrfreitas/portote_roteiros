@@ -5,9 +5,10 @@ from flask import Blueprint, jsonify, request
 
 log = logging.getLogger("portotec.tecnico_api")
 
-from database import db_conn, execute, fetch_all, fetch_one, ler_revisao, sql
-from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
-                           recalcular_distancia_ordem_fixa)
+from database import (db_conn, execute, fetch_all, fetch_one,
+                      insert_returning_id, ler_revisao, sql)
+from routes.fichas import (STATUS_VALIDOS, nome_dia_semana, ordenar_por_semana,
+                           recalcular_distancia_ordem_fixa, recalcular_rota)
 from routes.servicos import STATUS_SERVICO_VALIDOS, aplicar_status_servico
 
 tecnico_api_bp = Blueprint("tecnico_api", __name__)
@@ -172,7 +173,8 @@ def status_servico_tecnico(token, servico_id):
             return jsonify({"erro": "Serviço não encontrado"}), 404
 
         aplicar_status_servico(conn, servico_id, novo_status)
-        desfecho_gravado = _gravar_desfecho(conn, servico_id, novo_status,
+        desfecho_gravado = _gravar_desfecho(conn, servico_id, servico["ficha_id"],
+                                            tecnico["id"], novo_status,
                                             data.get("desfecho"),
                                             tecnico.get("nome") or "")
 
@@ -182,7 +184,13 @@ def status_servico_tecnico(token, servico_id):
 
 # Desfechos possíveis de um atendimento. Lista FECHADA de propósito: o valor
 # alimenta contagem e filtro, e texto livre não soma nem filtra.
-DESFECHOS_VALIDOS = {"resolvido", "precisa_peca", "volto_depois", "nao_atendido"}
+DESFECHOS_VALIDOS = {"resolvido", "precisa_peca", "volto_depois", "nao_atendido",
+                     "cotacao_peca"}
+
+# Desfechos que fazem sentido levar pra um dia futuro (o cliente exige nova
+# visita). "resolvido" e "cotacao_peca" terminam o atendimento ali mesmo —
+# reagendar não se aplica a eles.
+DESFECHOS_REAGENDAVEIS = {"volto_depois", "nao_atendido"}
 
 # Teto por foto. O navegador já reduz para 1280px de lado maior em JPEG antes
 # de enviar (ver tecnico.js), o que dá 150–350 KB em base64. 900 KB é folga
@@ -212,7 +220,94 @@ def _gravar_foto(conn, servico_id, foto, quem, agora):
         (servico_id, foto, "etiqueta", agora, quem))
 
 
-def _gravar_desfecho(conn, servico_id, novo_status, desfecho, quem):
+def _criar_cotacao_do_desfecho(conn, servico_id, codigo, nome_peca, foto, quem):
+    """Registro na lista de Cotação de Peças (aba Peças) a partir do que o
+    técnico fotografou em campo. É a MESMA tabela que a aba admin lê — o
+    técnico não sabe que está alimentando uma "cotação", só está dizendo
+    "olha essa peça aqui, preciso saber o preço"."""
+    execute(conn, sql("""
+        INSERT INTO cotacoes (codigo, descricao, quantidade, criado_em,
+                              criado_por, foto, servico_id)
+        VALUES (?, ?, 1, ?, ?, ?, ?)
+    """), (codigo, nome_peca, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+          quem, foto, servico_id))
+
+
+def _resolver_ficha_reagendamento(conn, reagendar, tecnico_id):
+    """Devolve o id da ficha de destino do reagendamento, criando-a se preciso.
+
+    Duas formas de escolher, do jeito que o técnico decide em campo:
+    'ficha_id' — já existe um dia aberto que serve (ex: já tem rota pra
+    sexta que vem); 'nova_data' — não tem nada marcado ainda, cria um dia
+    novo só com essa data. Nos dois casos a ficha tem que ser DESTE técnico:
+    trocar de técnico tem rota própria (/tecnico), aqui só muda o dia.
+    """
+    if not isinstance(reagendar, dict):
+        return None, None
+
+    ficha_id = reagendar.get("ficha_id")
+    if ficha_id:
+        try:
+            ficha_id = int(ficha_id)
+        except (TypeError, ValueError):
+            return None, "Dia de destino inválido"
+        destino = fetch_one(conn, "SELECT * FROM fichas WHERE id = ? AND tecnico_id = ?",
+                            (ficha_id, tecnico_id))
+        if not destino:
+            return None, "Esse dia não é seu ou não existe mais"
+        if destino.get("status") == "concluida":
+            return None, "Esse dia já foi concluído, escolha outro"
+        return destino["id"], None
+
+    nova_data = (reagendar.get("nova_data") or "").strip()
+    if nova_data:
+        try:
+            dia = nome_dia_semana(nova_data)
+        except ValueError:
+            return None, "Data inválida"
+        # Reaproveita ficha já existente NESSA data pro mesmo técnico, em vez
+        # de criar uma duplicada — o técnico pode já ter outros clientes
+        # marcados pro mesmo dia.
+        existente = fetch_one(conn, """
+            SELECT id FROM fichas
+             WHERE tecnico_id = ? AND data_referencia = ? AND status <> 'concluida'
+             ORDER BY id DESC
+        """, (tecnico_id, nova_data))
+        if existente:
+            return existente["id"], None
+
+        novo_id = insert_returning_id(conn, """
+            INSERT INTO fichas (tecnico_id, dia_semana, data_referencia)
+            VALUES (?, ?, ?)
+        """, (tecnico_id, dia, nova_data))
+        return novo_id, None
+
+    return None, None
+
+
+def _mover_para_reagendamento(conn, servico_id, ficha_origem_id, ficha_destino_id):
+    """Re-parenta o atendimento pro dia novo, igual o admin já faz em
+    routes/servicos.py (mover_servico) — sem apagar e recriar, preservando
+    nº da OS e histórico. Volta pra 'pendente': o desfecho registrado marcou
+    ESTA tentativa como concluída, mas o atendimento em si ainda não
+    aconteceu — só vai acontecer no dia novo."""
+    from routes.rastreio import encerrar_por_servico
+    encerrar_por_servico(conn, servico_id)
+
+    ultima = fetch_one(conn, "SELECT MAX(ordem) AS m FROM servicos WHERE ficha_id = ?",
+                       (ficha_destino_id,))
+    execute(conn, """
+        UPDATE servicos SET ficha_id = ?, ordem = ?, status = 'pendente',
+               concluido_em = NULL WHERE id = ?
+    """, (ficha_destino_id, (ultima or {}).get("m") or 0, servico_id))
+
+    for fid in (ficha_origem_id, ficha_destino_id):
+        f = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (fid,))
+        if f:
+            recalcular_rota(conn, fid, f)
+
+
+def _gravar_desfecho(conn, servico_id, ficha_id, tecnico_id, novo_status, desfecho, quem):
     """Guarda o que aconteceu no atendimento, junto com a conclusão.
 
     Vem na MESMA requisição do status, e não num endpoint próprio, porque o
@@ -237,22 +332,51 @@ def _gravar_desfecho(conn, servico_id, novo_status, desfecho, quem):
 
     motivo = (desfecho.get("motivo") or "").strip()[:120]
     peca = (desfecho.get("peca") or "").strip()[:200]
+    codigo = (desfecho.get("codigo") or "").strip().upper()[:60]
+    nome_peca = (desfecho.get("nome_peca") or "").strip()[:200]
     # Observação é COMPLEMENTO das opções, não substituta: as opções dão o
     # número que dá para somar, a observação dá o contexto que só quem esteve
     # lá conhece ("cliente pediu para voltar de manhã", "tomada queimada").
     observacao = (desfecho.get("observacao") or "").strip()[:600]
+    foto = desfecho.get("foto")
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    _gravar_foto(conn, servico_id, desfecho.get("foto"), quem, agora)
+    # Cotação de peça exige código, nome E foto — sem os três não é uma peça
+    # identificável, e "identifiquei errado" custa mais caro que recusar aqui
+    # e pedir pro técnico tentar de novo com a etiqueta na mão.
+    if tipo == "cotacao_peca":
+        foto_valida = isinstance(foto, str) and foto.startswith(PREFIXOS_FOTO) \
+            and len(foto) <= FOTO_MAXIMA
+        if not codigo or not nome_peca or not foto_valida:
+            return None
+        peca = f"{codigo} — {nome_peca}"
+
+    _gravar_foto(conn, servico_id, foto, quem, agora)
 
     execute(conn, sql("DELETE FROM servico_desfecho WHERE servico_id = ?"),
             (servico_id,))
     execute(conn, sql(
         "INSERT INTO servico_desfecho (servico_id, desfecho, motivo, peca, "
-        "observacao, registrado_em, registrado_por) VALUES (?, ?, ?, ?, ?, ?, ?)"),
-        (servico_id, tipo, motivo, peca, observacao, agora, quem))
+        "codigo, observacao, registrado_em, registrado_por) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"),
+        (servico_id, tipo, motivo, peca, codigo, observacao, agora, quem))
 
-    return {"tipo": tipo, "motivo": motivo, "peca": peca, "observacao": observacao}
+    if tipo == "cotacao_peca":
+        _criar_cotacao_do_desfecho(conn, servico_id, codigo, nome_peca, foto, quem)
+
+    aviso_reagendamento = None
+    if tipo in DESFECHOS_REAGENDAVEIS:
+        ficha_destino_id, erro = _resolver_ficha_reagendamento(
+            conn, desfecho.get("reagendar"), tecnico_id)
+        if erro:
+            aviso_reagendamento = erro
+        elif ficha_destino_id:
+            _mover_para_reagendamento(conn, servico_id, ficha_id, ficha_destino_id)
+
+    resultado = {"tipo": tipo, "motivo": motivo, "peca": peca, "observacao": observacao}
+    if aviso_reagendamento:
+        resultado["aviso_reagendamento"] = aviso_reagendamento
+    return resultado
 
 
 @tecnico_api_bp.route("/<token>/fichas/<int:ficha_id>/reordenar", methods=["PUT"])

@@ -1,16 +1,12 @@
 """Lista de peças aguardando cotação de preço.
 
-Fica ANTES da compra: alguém acha que vai precisar de uma peça — por código
-ou por modelo da máquina, às vezes só um palpite — e lança aqui para levar ao
-fornecedor (hoje, ao GAP da Panasonic, na mão: não há acesso automatizado
-confirmado ainda). Depois de cotado, o valor fica registrado; a compra em si
+Fica ANTES da compra: o técnico fotografa a etiqueta em campo (desfecho
+"Cotação de peça") ou alguém no escritório lança à mão — por código ou só
+pelo modelo da máquina — e o item entra aqui até alguém confirmar o valor
+com o fornecedor. Depois de cotado, o valor fica registrado; a compra em si
 continua acontecendo por fora (planilha / rotas/pedidos.py), esta tabela não
 lança pedido nenhum.
-
-GAP_URL fica configurável por env em vez de fixo no código: se a Panasonic
-mudar o endereço do portal, corrige-se sem deploy de código.
 """
-import os
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request, session
@@ -19,8 +15,6 @@ from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
 
 cotacoes_bp = Blueprint("cotacoes", __name__)
 
-GAP_URL = os.environ.get("GAP_URL", "https://www.gap.com.br/NewCloudscape/Home/Login/Login")
-
 
 def _agora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -28,17 +22,6 @@ def _agora() -> str:
 
 def _autor() -> str:
     return session.get("usuario_nome") or "Administrador"
-
-
-@cotacoes_bp.route("/cotacoes/config", methods=["GET"])
-def config():
-    """Endereço do GAP e se há credencial configurada — sem expor a senha.
-    A tela usa isto para decidir entre 'abrir o GAP manualmente' e (quando a
-    integração automática existir) buscar direto."""
-    return jsonify({
-        "gap_url": GAP_URL,
-        "gap_credenciais": bool(os.environ.get("GAP_USUARIO") and os.environ.get("GAP_SENHA")),
-    })
 
 
 @cotacoes_bp.route("/cotacoes", methods=["GET"])

@@ -461,6 +461,15 @@ button.t-ponto-link-waze {
 }
 .t-df-motivo.ativa { border-color: #4f8dfb; background: rgba(79,141,251,.16); color: #fff; }
 
+.t-df-reagendar-opcoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.t-df-reagendar-btn {
+  padding: 11px 14px; min-height: 44px; border-radius: 11px;
+  background: #19202b; border: 1px solid rgba(255,255,255,.09);
+  color: #cfdaea; font-size: 13.5px; font-family: inherit; cursor: pointer;
+}
+.t-df-reagendar-btn.ativa { border-color: #4f8dfb; background: rgba(79,141,251,.16); color: #fff; }
+#t-df-reagendar-corpo:not(:empty) { margin-top: 10px; }
+
 .t-df-confirmar {
   width: 100%; margin-top: 18px; padding: 16px;
   border: 0; border-radius: 13px;
