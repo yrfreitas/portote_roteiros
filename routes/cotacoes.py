@@ -19,7 +19,7 @@ from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
 
 cotacoes_bp = Blueprint("cotacoes", __name__)
 
-GAP_URL = os.environ.get("GAP_URL", "https://gap.panasonic.com.br")
+GAP_URL = os.environ.get("GAP_URL", "https://www.gap.com.br/NewCloudscape/Home/Login/Login")
 
 
 def _agora() -> str:
