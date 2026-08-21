@@ -288,6 +288,9 @@
       </div>
       <div class="estoque-chips" id="estoque-chips-aparelho"></div>
 
+      <!-- Sub-estoques do estoque aberto. Fica FORA de #estoque-lista para a
+           busca de peças não apagá-lo a cada tecla. -->
+      <div id="estoque-subgrupos"></div>
       <div id="estoque-lista"></div>
     </div>
   </main>
@@ -297,6 +300,7 @@
   <div class="modal">
     <div class="modal-title" id="estoque-grupo-titulo">Criar estoque</div>
     <input type="hidden" id="estoque-grupo-id">
+    <input type="hidden" id="estoque-grupo-parent">
     <div class="form-group">
       <label class="form-label" for="estoque-grupo-nome">Nome do estoque</label>
       <input type="text" class="form-input" id="estoque-grupo-nome"

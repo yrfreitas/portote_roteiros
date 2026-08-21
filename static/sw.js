@@ -79,7 +79,9 @@
 //       (preenche depois de montar o form, carregando os setores se preciso).
 // v59 = bipar mais robusto: busca da nota sempre volta com status (nunca 502),
 //       varredura só dos e-mails recentes, e mostra o motivo do erro na tela.
-const CACHE_VERSAO = 'portotec-roteiros-v59';
+// v60 = sub-estoque dentro do estoque (Panasonic > Geladeira): navegação em
+//       árvore, roll-up dos totais e exclusão que promove os filhos.
+const CACHE_VERSAO = 'portotec-roteiros-v60';
 
 const ARQUIVOS_CASCA = [
   '/',

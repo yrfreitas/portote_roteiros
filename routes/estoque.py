@@ -251,8 +251,22 @@ def listar_grupos():
         grupos = fetch_all(conn, "SELECT * FROM estoque_grupos ORDER BY nome")
         itens = fetch_all(conn, "SELECT grupo_id, saldo, custo_medio, minimo FROM estoque_itens")
 
-    def agrega(filtro):
-        sel = [i for i in itens if filtro(i)]
+    # Mapa pai -> filhos, para roll-up e contagem de sub-estoques.
+    filhos = {}
+    for g in grupos:
+        filhos.setdefault(g.get("parent_id"), []).append(g["id"])
+
+    def subtree(gid):
+        """ids do grupo + todos os descendentes (o estoque e seus sub-estoques)."""
+        acc, pilha = {gid}, [gid]
+        while pilha:
+            for c in filhos.get(pilha.pop(), []):
+                if c not in acc:
+                    acc.add(c); pilha.append(c)
+        return acc
+
+    def agrega(ids):
+        sel = [i for i in itens if i["grupo_id"] in ids]
         return {
             "total_pecas": len(sel),
             "valor_investido": round(sum(float(i["saldo"] or 0) * float(i["custo_medio"] or 0) for i in sel), 2),
@@ -261,9 +275,12 @@ def listar_grupos():
         }
 
     for g in grupos:
-        g.update(agrega(lambda i, gid=g["id"]: i["grupo_id"] == gid))
+        # Roll-up: o card da Panasonic soma tudo que está sob ela, sub-estoques
+        # inclusive — é o total que faz sentido ver de fora.
+        g.update(agrega(subtree(g["id"])))
+        g["sub_estoques"] = len(filhos.get(g["id"], []))
 
-    sem = agrega(lambda i: not i["grupo_id"])
+    sem = agrega({None})  # peças sem estoque nenhum
     return jsonify({"grupos": grupos, "sem_estoque": sem})
 
 
@@ -275,15 +292,22 @@ def criar_grupo():
     nome = (d.get("nome") or "").strip()
     if not nome:
         return jsonify({"erro": "Dê um nome ao estoque"}), 400
+    # parent_id define se é um estoque de topo (None) ou um sub-estoque.
+    parent_id = int(d["parent_id"]) if d.get("parent_id") else None
     with db_conn(commit=True) as conn:
-        # Nome único: dois 'Electrolux' viram bagunça. Avisa em vez de duplicar.
-        existe = fetch_one(conn, "SELECT id FROM estoque_grupos WHERE LOWER(nome) = LOWER(?)", (nome,))
+        # Unicidade POR PAI: 'Geladeira' pode existir sob Panasonic e sob
+        # Brastemp, mas não duas 'Geladeira' sob a mesma Panasonic.
+        if parent_id is None:
+            existe = fetch_one(conn, "SELECT id FROM estoque_grupos WHERE LOWER(nome) = LOWER(?) AND parent_id IS NULL", (nome,))
+        else:
+            existe = fetch_one(conn, "SELECT id FROM estoque_grupos WHERE LOWER(nome) = LOWER(?) AND parent_id = ?", (nome, parent_id))
         if existe:
-            return jsonify({"erro": f"Já existe um estoque chamado {nome}"}), 400
+            return jsonify({"erro": f"Já existe um estoque chamado {nome} aqui"}), 400
         novo_id = insert_returning_id(conn,
-            "INSERT INTO estoque_grupos (nome, cor, criado_em) VALUES (?, ?, ?)",
-            (nome, (d.get("cor") or "").strip() or None, _agora()))
-    return jsonify({"mensagem": "Estoque criado", "id": novo_id, "nome": nome}), 201
+            "INSERT INTO estoque_grupos (nome, cor, parent_id, criado_em) VALUES (?, ?, ?, ?)",
+            (nome, (d.get("cor") or "").strip() or None, parent_id, _agora()))
+    return jsonify({"mensagem": "Estoque criado", "id": novo_id, "nome": nome,
+                    "parent_id": parent_id}), 201
 
 
 @estoque_bp.route("/estoque/grupos/<int:grupo_id>", methods=["PUT"])
@@ -314,17 +338,22 @@ def editar_grupo(grupo_id):
 
 @estoque_bp.route("/estoque/grupos/<int:grupo_id>", methods=["DELETE"])
 def remover_grupo(grupo_id):
-    """Apaga o estoque; as peças NÃO somem — voltam para 'Sem estoque'. O
-    SET NULL do FK não é confiável no SQLite (foreign_keys vem desligado), por
-    isso solto as peças na mão antes de apagar, garantindo os dois bancos."""
+    """Apaga o estoque sem destruir o que estava dentro: as peças diretas voltam
+    para 'Sem estoque' e os sub-estoques SOBEM para o pai do que foi apagado
+    (some a Panasonic, a Geladeira dela vira estoque de topo). Faço na mão
+    porque o SET NULL do FK não é confiável no SQLite (foreign_keys desligado)."""
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
     with db_conn(commit=True) as conn:
+        alvo = fetch_one(conn, "SELECT parent_id FROM estoque_grupos WHERE id = ?", (grupo_id,))
+        if alvo is None:
+            return jsonify({"erro": "Estoque não encontrado"}), 404
+        avo = alvo["parent_id"]  # pai do apagado — para onde os filhos sobem
+        subiram = execute(conn, "UPDATE estoque_grupos SET parent_id = ? WHERE parent_id = ?", (avo, grupo_id))
         soltas = execute(conn, "UPDATE estoque_itens SET grupo_id = NULL WHERE grupo_id = ?", (grupo_id,))
-        apagados = execute(conn, "DELETE FROM estoque_grupos WHERE id = ?", (grupo_id,))
-    if not apagados:
-        return jsonify({"erro": "Estoque não encontrado"}), 404
-    return jsonify({"mensagem": "Estoque removido", "pecas_soltas": soltas})
+        execute(conn, "DELETE FROM estoque_grupos WHERE id = ?", (grupo_id,))
+    return jsonify({"mensagem": "Estoque removido", "pecas_soltas": soltas,
+                    "sub_estoques_movidos": subiram})
 
 
 @estoque_bp.route("/estoque/entrada", methods=["POST"])

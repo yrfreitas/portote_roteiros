@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v59';
+const VERSAO_PAINEL = 'v60';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5107,25 +5107,51 @@ async function abrirEstoqueRaiz() {
   }
 }
 
-function renderEstoqueRaiz(d) {
-  const lista = document.getElementById('estoque-lista');
-  const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const card = (id, nome, ag, cor) => {
-    const alerta = ag.abaixo_minimo || 0;
-    // Passa SÓ o id (string) no onclick — nunca o nome. JSON.stringify do nome
-    // devolvia aspas duplas dentro de um atributo de aspas duplas e quebrava o
-    // HTML; o nome é resolvido dentro de abrirGrupoEstoque a partir do id.
-    return `
+const _brlEstoque = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+function _grupoPorId(id) {
+  return estoqueGrupos.find(g => String(g.id) === String(id)) || null;
+}
+
+// Card de prateleira. Passa SÓ o id (string) no onclick — nunca o nome (aspas
+// do nome quebravam o HTML). ag traz os agregados roll-up (subtree inteiro).
+function _cardPrateleira(id, nome, ag, cor) {
+  const alerta = ag.abaixo_minimo || 0;
+  const subs = ag.sub_estoques || 0;
+  const metaSub = subs ? `${subs} sub-estoque${subs > 1 ? 's' : ''} · ` : '';
+  return `
     <div class="estoque-prateleira" onclick="abrirGrupoEstoque('${id}')"
          style="${cor ? `border-left:4px solid ${esc(cor)};` : ''}">
       <div class="estoque-prateleira-nome">${esc(nome)}${alerta ? `<span class="estoque-tag-alerta">${alerta} em falta</span>` : ''}</div>
-      <div class="estoque-prateleira-meta">${ag.total_pecas || 0} ${ag.total_pecas === 1 ? 'peça' : 'peças'} · ${brl(ag.valor_investido)}</div>
+      <div class="estoque-prateleira-meta">${metaSub}${ag.total_pecas || 0} ${ag.total_pecas === 1 ? 'peça' : 'peças'} · ${_brlEstoque(ag.valor_investido)}</div>
     </div>`;
-  };
-  const cards = (d.grupos || []).map(g => card(g.id, g.nome, g, g.cor)).join('');
+}
+
+// Trilha "Meus Estoques › Panasonic › Geladeira" subindo pelos parent_id.
+function _breadcrumbEstoque(grupoId) {
+  const partes = ['<a onclick="abrirEstoqueRaiz()">Meus Estoques</a>'];
+  if (grupoId === 'sem') { partes.push('<span>›</span> Sem estoque'); return partes.join(' '); }
+  const cadeia = [];
+  let cur = _grupoPorId(grupoId);
+  while (cur) { cadeia.unshift(cur); cur = cur.parent_id ? _grupoPorId(cur.parent_id) : null; }
+  cadeia.forEach((g, i) => {
+    partes.push('<span>›</span>');
+    partes.push(i === cadeia.length - 1
+      ? esc(g.nome)                                            // atual: sem link
+      : `<a onclick="abrirGrupoEstoque('${g.id}')">${esc(g.nome)}</a>`);
+  });
+  return partes.join(' ');
+}
+
+function renderEstoqueRaiz(d) {
+  const lista = document.getElementById('estoque-lista');
+  document.getElementById('estoque-subgrupos').innerHTML = '';
+  // Só os estoques de TOPO (sem pai); os sub-estoques aparecem dentro dos pais.
+  const topo = (d.grupos || []).filter(g => !g.parent_id);
+  const cards = topo.map(g => _cardPrateleira(g.id, g.nome, g, g.cor)).join('');
   // "Sem estoque" só aparece quando há peça solta — não polui quando está tudo guardado.
   const sem = (d.sem_estoque && d.sem_estoque.total_pecas > 0)
-    ? card('sem', 'Sem estoque', d.sem_estoque, null) : '';
+    ? _cardPrateleira('sem', 'Sem estoque', d.sem_estoque, null) : '';
   if (!cards && !sem) {
     lista.innerHTML = '<div class="vazio-box">Nenhum estoque ainda. Clique em <b>+ Criar estoque</b> para começar — ex: Electrolux, Panasonic.</div>';
     return;
@@ -5138,29 +5164,47 @@ function renderEstoqueRaiz(d) {
 // (clique no card, que só passa o id), é resolvido a partir de estoqueGrupos.
 async function abrirGrupoEstoque(grupoId, nome) {
   grupoId = String(grupoId);
-  if (nome == null) {
-    if (grupoId === 'sem') nome = 'Sem estoque';
-    else {
-      const g = estoqueGrupos.find(x => String(x.id) === grupoId);
-      nome = g ? g.nome : 'Estoque';
-    }
-  }
   estoqueView = 'grupo';
-  estoqueGrupoAtual = { id: grupoId, nome };
   estoqueFiltroAparelho = '';
   const lista = document.getElementById('estoque-lista');
   if (!lista) return;
-  document.getElementById('estoque-breadcrumb').innerHTML =
-    `<a onclick="abrirEstoqueRaiz()">Meus Estoques</a> <span>›</span> ${esc(nome)}`;
+  lista.innerHTML = '<div class="carregando">Carregando...</div>';
+  document.getElementById('estoque-subgrupos').innerHTML = '';
+
+  // Recarrega os grupos SEMPRE ao entrar: garante sub-estoques, breadcrumb e
+  // agregados atuais (inclusive depois de criar/mover coisas aqui dentro).
+  try {
+    const dg = await api('/estoque/grupos');
+    estoqueGrupos = dg.grupos || [];
+  } catch (e) {
+    lista.innerHTML = `<div class="erro-box">Não foi possível carregar os estoques: ${esc(e.message)}</div>`;
+    return;
+  }
+
+  const ehSem = grupoId === 'sem';
+  if (nome == null) nome = ehSem ? 'Sem estoque' : (_grupoPorId(grupoId)?.nome || 'Estoque');
+  estoqueGrupoAtual = { id: grupoId, nome };
+
+  document.getElementById('estoque-breadcrumb').innerHTML = _breadcrumbEstoque(grupoId);
   document.getElementById('estoque-titulo').textContent = nome;
   document.getElementById('estoque-subtitulo').style.display = 'none';
-  const ehSem = grupoId === 'sem';
   document.getElementById('estoque-topo-acoes').innerHTML = `
     <button class="btn btn-primary btn-sm" onclick="abrirEntradaEstoque()">+ Adicionar peça</button>
-    ${ehSem ? '' : `<button class="btn btn-ghost btn-sm" onclick="renomearGrupoAtual()">Renomear</button>
+    ${ehSem ? '' : `<button class="btn btn-ghost btn-sm" onclick="abrirCriarSubEstoque()">+ Sub-estoque</button>
+    <button class="btn btn-ghost btn-sm" onclick="renomearGrupoAtual()">Renomear</button>
     <button class="btn btn-ghost btn-sm" onclick="excluirGrupoAtual()">Excluir estoque</button>`}`;
   document.getElementById('estoque-filtros').style.display = 'flex';
-  lista.innerHTML = '<div class="carregando">Carregando peças...</div>';
+
+  // Sub-estoques (filhos diretos deste estoque) num container próprio.
+  const filhos = ehSem ? [] : estoqueGrupos.filter(g => String(g.parent_id) === grupoId);
+  const sg = document.getElementById('estoque-subgrupos');
+  sg.innerHTML = filhos.length
+    ? `<div class="estoque-subgrupos-titulo">Sub-estoques</div>
+       <div class="estoque-prateleiras">${filhos.map(g => _cardPrateleira(g.id, g.nome, g, g.cor)).join('')}</div>
+       <div class="estoque-subgrupos-titulo">Peças aqui</div>`
+    : '';
+
+  // Peças diretas deste estoque.
   try {
     const q = ehSem ? 'grupo_id=sem' : `grupo_id=${encodeURIComponent(grupoId)}`;
     const d = await api('/estoque?' + q);
@@ -5331,8 +5375,21 @@ function _visibilidadeModalEstoque(cfg) {
 function _popularSelectEstoque(selecionado) {
   const sel = document.getElementById('estoque-mov-estoque');
   if (!sel) return;
-  sel.innerHTML = '<option value="">Sem estoque</option>' +
-    estoqueGrupos.map(g => `<option value="${g.id}">${esc(g.nome)}</option>`).join('');
+  // Ordena em árvore e indenta os sub-estoques, para dar pra escolher
+  // "Panasonic › Geladeira" sem confundir com uma "Geladeira" de outro pai.
+  const filhos = {};
+  estoqueGrupos.forEach(g => { (filhos[g.parent_id || 0] = filhos[g.parent_id || 0] || []).push(g); });
+  const opts = [];
+  const caminhar = (paiId, nivel) => {
+    (filhos[paiId] || []).sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'))
+      .forEach(g => {
+        const prefixo = nivel ? '  '.repeat(nivel) + '› ' : '';
+        opts.push(`<option value="${g.id}">${prefixo}${esc(g.nome)}</option>`);
+        caminhar(g.id, nivel + 1);
+      });
+  };
+  caminhar(0, 0);
+  sel.innerHTML = '<option value="">Sem estoque</option>' + opts.join('');
   sel.value = selecionado != null ? String(selecionado) : '';
 }
 
@@ -5501,6 +5558,19 @@ function abrirCriarGrupo() {
   document.getElementById('estoque-grupo-titulo').textContent = 'Criar estoque';
   document.getElementById('estoque-grupo-salvar').textContent = 'Criar';
   document.getElementById('estoque-grupo-id').value = '';
+  document.getElementById('estoque-grupo-parent').value = '';   // topo
+  document.getElementById('estoque-grupo-nome').value = '';
+  document.getElementById('modal-estoque-grupo').classList.add('open');
+  setTimeout(() => document.getElementById('estoque-grupo-nome').focus(), 80);
+}
+
+// Criar um sub-estoque DENTRO do estoque aberto (Panasonic > Geladeira).
+function abrirCriarSubEstoque() {
+  if (!estoqueGrupoAtual || estoqueGrupoAtual.id === 'sem') return;
+  document.getElementById('estoque-grupo-titulo').textContent = `Novo sub-estoque em ${estoqueGrupoAtual.nome}`;
+  document.getElementById('estoque-grupo-salvar').textContent = 'Criar';
+  document.getElementById('estoque-grupo-id').value = '';
+  document.getElementById('estoque-grupo-parent').value = estoqueGrupoAtual.id;
   document.getElementById('estoque-grupo-nome').value = '';
   document.getElementById('modal-estoque-grupo').classList.add('open');
   setTimeout(() => document.getElementById('estoque-grupo-nome').focus(), 80);
@@ -5511,6 +5581,7 @@ function renomearGrupoAtual() {
   document.getElementById('estoque-grupo-titulo').textContent = 'Renomear estoque';
   document.getElementById('estoque-grupo-salvar').textContent = 'Salvar';
   document.getElementById('estoque-grupo-id').value = estoqueGrupoAtual.id;
+  document.getElementById('estoque-grupo-parent').value = '';
   document.getElementById('estoque-grupo-nome').value = estoqueGrupoAtual.nome;
   document.getElementById('modal-estoque-grupo').classList.add('open');
   setTimeout(() => document.getElementById('estoque-grupo-nome').select(), 80);
@@ -5519,6 +5590,7 @@ function renomearGrupoAtual() {
 async function salvarGrupoEstoque() {
   const btn = document.getElementById('estoque-grupo-salvar');
   const id = document.getElementById('estoque-grupo-id').value;
+  const parent = document.getElementById('estoque-grupo-parent').value;
   const nome = document.getElementById('estoque-grupo-nome').value.trim();
   if (!nome) { toast('Dê um nome ao estoque.', 'error'); return; }
   btn.disabled = true;
@@ -5528,8 +5600,9 @@ async function salvarGrupoEstoque() {
       if (estoqueGrupoAtual) estoqueGrupoAtual.nome = nome; // reflete no cabeçalho
       toast('Estoque renomeado.', 'success');
     } else {
-      await api('/estoque/grupos', { method: 'POST', body: JSON.stringify({ nome }) });
-      toast('Estoque criado.', 'success');
+      await api('/estoque/grupos', { method: 'POST', body: JSON.stringify({
+        nome, parent_id: parent ? Number(parent) : null }) });
+      toast(parent ? 'Sub-estoque criado.' : 'Estoque criado.', 'success');
     }
     fecharModais();
     carregarEstoque();
@@ -5542,13 +5615,18 @@ async function salvarGrupoEstoque() {
 
 async function excluirGrupoAtual() {
   if (!estoqueGrupoAtual || estoqueGrupoAtual.id === 'sem') return;
-  // Confirma porque some da lista; mas tranquiliza: as peças não se perdem.
-  if (!confirm(`Excluir o estoque "${estoqueGrupoAtual.nome}"?\n\nAs peças NÃO serão apagadas — elas voltam para "Sem estoque".`)) return;
+  // Confirma porque some da lista; mas tranquiliza: nada de dentro se perde.
+  if (!confirm(`Excluir o estoque "${estoqueGrupoAtual.nome}"?\n\nAs peças voltam para "Sem estoque" e os sub-estoques sobem um nível — nada é apagado.`)) return;
   try {
     const r = await api(`/estoque/grupos/${estoqueGrupoAtual.id}`, { method: 'DELETE' });
-    const n = r.pecas_soltas || 0;
-    toast(n ? `Estoque excluído. ${n} ${n === 1 ? 'peça voltou' : 'peças voltaram'} para "Sem estoque".` : 'Estoque excluído.', 'success');
-    abrirEstoqueRaiz();
+    const n = r.pecas_soltas || 0, s = r.sub_estoques_movidos || 0;
+    const partes = [];
+    if (n) partes.push(`${n} ${n === 1 ? 'peça voltou' : 'peças voltaram'} para "Sem estoque"`);
+    if (s) partes.push(`${s} sub-estoque${s > 1 ? 's subiram' : ' subiu'} de nível`);
+    toast('Estoque excluído' + (partes.length ? '. ' + partes.join('; ') + '.' : '.'), 'success');
+    // Volta para o pai (se era sub-estoque) ou para a raiz.
+    const pai = _grupoPorId(estoqueGrupoAtual.id)?.parent_id;
+    if (pai) abrirGrupoEstoque(String(pai)); else abrirEstoqueRaiz();
   } catch (e) { toast(e.message, 'error'); }
 }
 

@@ -312,10 +312,14 @@ _SCHEMA_PG = [
     # prateleira, o mesmo conceito dos 27 estoques do AgoraOS. A peça referencia
     # o grupo; apagar o grupo NÃO apaga a peça (ON DELETE SET NULL), ela só volta
     # para "Sem estoque". Nome único para não haver duas Electrolux.
+    # parent_id permite sub-estoque dentro de estoque (Panasonic > Geladeira).
+    # nome NÃO é único global: "Geladeira" pode existir sob Panasonic e sob
+    # Brastemp — a unicidade é por pai, garantida na aplicação (criar_grupo).
     """CREATE TABLE IF NOT EXISTS estoque_grupos (
         id        SERIAL PRIMARY KEY,
-        nome      TEXT NOT NULL UNIQUE,
+        nome      TEXT NOT NULL,
         cor       TEXT,
+        parent_id INTEGER REFERENCES estoque_grupos(id) ON DELETE SET NULL,
         criado_em TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
     # marca (fabricante do aparelho), aparelho (geladeira, lavadora...) e modelo
@@ -577,8 +581,9 @@ _SCHEMA_SQLITE = """
     );
     CREATE TABLE IF NOT EXISTS estoque_grupos (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome      TEXT NOT NULL UNIQUE,
+        nome      TEXT NOT NULL,
         cor       TEXT,
+        parent_id INTEGER REFERENCES estoque_grupos(id) ON DELETE SET NULL,
         criado_em TEXT DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS estoque_itens (
@@ -721,6 +726,11 @@ _MIGRACOES_PG = [
         id SERIAL PRIMARY KEY, nome TEXT NOT NULL UNIQUE, cor TEXT,
         criado_em TEXT DEFAULT CURRENT_TIMESTAMP)""",
     "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS grupo_id INTEGER REFERENCES estoque_grupos(id) ON DELETE SET NULL",
+    # Sub-estoque: um estoque pode viver dentro de outro (Panasonic > Geladeira).
+    "ALTER TABLE estoque_grupos ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES estoque_grupos(id) ON DELETE SET NULL",
+    # O nome deixou de ser único global (agora é único por pai, na aplicação):
+    # dois "Geladeira" sob pais diferentes são legítimos. Solta a trava antiga.
+    "ALTER TABLE estoque_grupos DROP CONSTRAINT IF EXISTS estoque_grupos_nome_key",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -749,6 +759,7 @@ _MIGRACOES_SQLITE = [
         id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE, cor TEXT,
         criado_em TEXT DEFAULT CURRENT_TIMESTAMP)""",
     "ALTER TABLE estoque_itens ADD COLUMN grupo_id INTEGER",
+    "ALTER TABLE estoque_grupos ADD COLUMN parent_id INTEGER",
 ]
 
 
