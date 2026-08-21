@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v61';
+const VERSAO_PAINEL = 'v62';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5663,11 +5663,15 @@ async function definirMinimoEstoque(id, codigo, atual) {
 // ── Bipar nota fiscal: lê a chave da NF-e e joga as peças no estoque ─────
 let biparItens = [];   // itens resolvidos da nota, aguardando confirmação
 let biparChave = '';   // chave da nota (vira a referência idempotente)
+let biparNavId = null; // pasta atual no navegador de destino (null = raiz)
 let _biparCamera = null; // stream da câmera, para poder desligar
 
 async function abrirBiparNota() {
   biparItens = []; biparChave = '';
-  await _garantirGruposCarregados();
+  biparNavId = null;
+  // Recarrega os estoques SEMPRE: o navegador de destino precisa dos
+  // sub-estoques atuais (o senhor pode ter criado um agora há pouco).
+  try { estoqueGrupos = (await api('/estoque/grupos')).grupos || []; } catch { /* segue */ }
   document.getElementById('bipar-chave').value = '';
   document.getElementById('bipar-xml').value = '';
   document.getElementById('bipar-xml-area').style.display = 'none';
@@ -5747,9 +5751,6 @@ function renderResultadoBipar(d) {
       <td style="text-align:right;">${g(i.quantidade)}</td>
       <td style="text-align:right;">${brl(i.custo_unit)}</td>
     </tr>`).join('');
-  const opcoes = '<option value="">Sem estoque (organizo depois)</option>' +
-    estoqueGrupos.map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('');
-
   alvo.innerHTML = `
     <div class="bipar-cabecalho">
       <span class="conc-tag ok">${biparItens.length} peça(s) na nota</span>
@@ -5762,22 +5763,77 @@ function renderResultadoBipar(d) {
         <tbody>${linhas}</tbody>
       </table>
     </div>
-    <div class="form-group" style="margin-top:10px;">
-      <label class="form-label" for="bipar-grupo">Mandar para o estoque (prateleira)</label>
-      <select class="form-input" id="bipar-grupo">${opcoes}</select>
+    <div class="bipar-nav-wrap">
+      <div class="bipar-nav-titulo">Onde guardar? Entre no estoque e escolha o sub-estoque.</div>
+      <div id="bipar-nav"></div>
     </div>`;
-  confirmar.style.display = '';
+  biparNavId = null;      // começa na raiz (Meus Estoques)
+  renderBiparNav();
+}
+
+// Navegador de destino do bipar: clica na Panasonic, vê os sub-estoques dela,
+// clica na Geladeira. A peça só pode ser guardada num sub-estoque (tem pai) —
+// mesma regra do estoque; por isso o botão de confirmar só liga aí.
+function _filhosEstoqueDe(paiId) {
+  return estoqueGrupos
+    .filter(g => (g.parent_id || null) === (paiId || null))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+}
+
+function biparNavegar(id) {
+  biparNavId = id;         // null = raiz; senão o id (número) da pasta atual
+  renderBiparNav();
+}
+
+function renderBiparNav() {
+  const nav = document.getElementById('bipar-nav');
+  if (!nav) return;
+
+  // Trilha de volta.
+  const cadeia = [];
+  let cur = biparNavId ? _grupoPorId(biparNavId) : null;
+  while (cur) { cadeia.unshift(cur); cur = cur.parent_id ? _grupoPorId(cur.parent_id) : null; }
+  const bc = ['<a onclick="biparNavegar(null)">Estoques</a>']
+    .concat(cadeia.map((x, i) => '<span>›</span> ' + (i === cadeia.length - 1
+      ? esc(x.nome)
+      : `<a onclick="biparNavegar(${x.id})">${esc(x.nome)}</a>`)))
+    .join(' ');
+
+  // Filhos da pasta atual, como botões (drilla ao clicar).
+  const filhos = _filhosEstoqueDe(biparNavId);
+  const cards = filhos.map(g => `
+    <button class="bipar-nav-item ${String(g.id) === String(biparNavId) ? '' : ''}" onclick="biparNavegar(${g.id})">
+      <span>${esc(g.nome)}</span>
+      ${g.sub_estoques ? '<span class="bipar-nav-seta">›</span>' : ''}
+    </button>`).join('') || '<div class="bipar-nav-vazio">Nenhum sub-estoque aqui.</div>';
+
+  const atual = biparNavId ? _grupoPorId(biparNavId) : null;
+  const valido = !!(atual && atual.parent_id != null);   // destino = sub-estoque
+  const destino = atual
+    ? (valido ? `Vai para <b>${esc(atual.nome)}</b>` : 'Entre num sub-estoque para poder guardar aqui')
+    : 'Clique num estoque acima';
+
+  nav.innerHTML = `
+    <div class="bipar-nav-bc">${bc}</div>
+    <div class="bipar-nav-grid">${cards}</div>
+    <div class="bipar-nav-destino ${valido ? 'ok' : ''}">${destino}</div>`;
+
+  document.getElementById('bipar-confirmar-btn').style.display = valido ? '' : 'none';
 }
 
 async function confirmarEntradaNota() {
   if (!biparItens.length) return;
+  const atual = biparNavId ? _grupoPorId(biparNavId) : null;
+  if (!atual || atual.parent_id == null) {
+    toast('Entre num sub-estoque para guardar as peças.', 'error');
+    return;
+  }
   const btn = document.getElementById('bipar-confirmar-btn');
-  const grupo = document.getElementById('bipar-grupo')?.value;
   btn.disabled = true;
   try {
     const r = await api('/estoque/entrada-nota', { method: 'POST', body: JSON.stringify({
       referencia: biparChave || null,
-      grupo_id: grupo ? Number(grupo) : null,
+      grupo_id: Number(biparNavId),
       itens: biparItens,
     }) });
     toast(r.mensagem || 'Peças no estoque.', 'success');

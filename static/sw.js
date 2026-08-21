@@ -83,7 +83,9 @@
 //       árvore, roll-up dos totais e exclusão que promove os filhos.
 // v61 = peça só entra em sub-estoque (topo só cria sub-estoque) + botão de
 //       excluir peça do estoque.
-const CACHE_VERSAO = 'portotec-roteiros-v61';
+// v62 = bipar: escolher o destino navegando (clica Panasonic > Geladeira) em
+//       vez de um menu suspenso; só guarda em sub-estoque.
+const CACHE_VERSAO = 'portotec-roteiros-v62';
 
 const ARQUIVOS_CASCA = [
   '/',

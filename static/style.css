@@ -4015,6 +4015,30 @@ select:focus-visible,
 .bipar-cabecalho { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .bipar-chave-tag { font-size: 11px; color: var(--text-muted); font-family: monospace; }
 
+/* Navegador de destino do bipar (clica Panasonic > Geladeira) */
+.bipar-nav-wrap { margin-top: 14px; }
+.bipar-nav-titulo { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+.bipar-nav-bc { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.bipar-nav-bc a { color: var(--accent-text); cursor: pointer; }
+.bipar-nav-bc a:hover { text-decoration: underline; }
+.bipar-nav-bc span { margin: 0 3px; opacity: .6; }
+.bipar-nav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.bipar-nav-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
+  color: var(--text-primary); background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px;
+  transition: border-color .12s, background .12s;
+}
+.bipar-nav-item:hover { border-color: var(--accent); background: var(--bg-elevated); }
+.bipar-nav-seta { color: var(--text-muted); font-weight: 700; }
+.bipar-nav-vazio { font-size: 12px; color: var(--text-muted); padding: 8px 2px; }
+.bipar-nav-destino {
+  margin-top: 10px; font-size: 12.5px; color: var(--text-muted);
+  padding: 8px 12px; border-radius: 8px; background: var(--bg-card); border: 1px solid var(--border);
+}
+.bipar-nav-destino.ok { color: var(--success-text); border-color: var(--success); background: var(--success-dim); }
+
 /* Elo com a aba Peças: selo de saldo e botão de entrada */
 .peca-estoque-tag {
   font-size: 10px; font-weight: 600; color: var(--accent-text);
