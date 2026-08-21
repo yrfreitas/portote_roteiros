@@ -85,7 +85,9 @@
 //       excluir peça do estoque.
 // v62 = bipar: escolher o destino navegando (clica Panasonic > Geladeira) em
 //       vez de um menu suspenso; só guarda em sub-estoque.
-const CACHE_VERSAO = 'portotec-roteiros-v62';
+// v63 = permissões granulares por usuário (editor em drawer no Acessos) +
+//       diagnóstico editável (status/observação/excluir nos erros da tela).
+const CACHE_VERSAO = 'portotec-roteiros-v63';
 
 const ARQUIVOS_CASCA = [
   '/',

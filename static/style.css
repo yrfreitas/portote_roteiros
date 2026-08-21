@@ -3195,6 +3195,16 @@ select:focus-visible,
   border-left: 2px solid rgba(224,60,60,.5); border-radius: 4px;
 }
 .diag-erro-msg { font-family: var(--font-mono); font-size: 11px; word-break: break-word; }
+/* Cor da borda pelo status do erro (o log de diagnóstico virou editável) */
+.diag-erro--resolvido { background: var(--success-dim); border-left-color: var(--success); opacity: .7; }
+.diag-erro--ignorado  { background: rgba(90,109,138,.10); border-left-color: var(--text-muted); opacity: .6; }
+.diag-erro--investigando { background: var(--accent-dim); border-left-color: var(--accent); }
+.diag-erro-acoes { display: flex; gap: 6px; align-items: center; margin-top: 7px; flex-wrap: wrap; }
+.diag-erro-status {
+  font-family: inherit; font-size: 11px; padding: 4px 7px; border-radius: 6px;
+  background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
+}
+.diag-erro-obs { flex: 1 1 140px; font-size: 11px; padding: 4px 8px; min-width: 120px; }
 
 /* Aviso de pontos sem setor: fica no topo do painel porque ninguém
    classifica o que não aparece na frente. */
@@ -3998,6 +4008,50 @@ select:focus-visible,
 .estoque-hist-entrada td:first-child { color: var(--success-text); font-weight: 600; }
 .estoque-hist-saida td:first-child { color: var(--danger-text); font-weight: 600; }
 .estoque-hist-ajuste td:first-child { color: var(--accent-text); font-weight: 600; }
+
+/* Drawer lateral (editor de permissões) */
+.drawer-overlay {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(3,5,10,0.6); backdrop-filter: blur(6px);
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.drawer-overlay.aberto { opacity: 1; pointer-events: all; }
+.drawer {
+  position: absolute; top: 0; right: 0; height: 100%;
+  width: 420px; max-width: 92vw;
+  background: linear-gradient(160deg, rgba(17,28,49,0.99), rgba(6,9,17,0.99));
+  border-left: 1px solid var(--border-bright);
+  box-shadow: var(--shadow-pop);
+  display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform .28s cubic-bezier(.22,.68,0,1);
+  padding: 22px;
+}
+.drawer-overlay.aberto .drawer { transform: translateX(0); }
+.drawer-cabecalho { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.drawer-titulo { font-size: 17px; font-weight: 700; color: var(--text-primary); }
+.drawer-sub { font-size: 13px; color: var(--accent-text); margin-top: 2px; }
+.drawer-fechar {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 26px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+.drawer-fechar:hover { color: var(--text-primary); }
+.drawer-ajuda { font-size: 12px; color: var(--text-muted); margin: 10px 0 4px; }
+.drawer-corpo { flex: 1; overflow-y: auto; margin: 8px -4px; padding: 0 4px; }
+.drawer-acoes { display: flex; gap: 10px; justify-content: flex-end; padding-top: 14px; border-top: 1px solid var(--border); }
+
+.perm-area { margin-bottom: 16px; }
+.perm-area-titulo {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); margin: 4px 2px 8px;
+}
+.perm-linha {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border);
+  background: var(--bg-card); margin-bottom: 6px; font-size: 13px; color: var(--text-primary);
+  transition: border-color .12s, background .12s;
+}
+.perm-linha:hover { border-color: var(--border-bright); background: var(--bg-elevated); }
+.perm-check { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; flex: 0 0 auto; }
 
 /* Bipar nota fiscal */
 .modal-largo { max-width: 640px; width: 100%; }

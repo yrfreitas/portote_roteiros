@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v62';
+const VERSAO_PAINEL = 'v63';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1044,18 +1044,27 @@ function iniciarChatPainel() {
 // app.py). Esconder aqui é sobre não oferecer o que a pessoa não pode usar —
 // menu escondido sozinho seria decoração, porque quem souber o endereço entra
 // do mesmo jeito.
-let usuarioLogado = { papel: 'admin', nome: '' };
+let usuarioLogado = { papel: 'admin', nome: '', permissoes: {} };
+
+// Atalho: a pessoa PODE fazer a ação? Admin cai em tudo true pelo servidor,
+// então aqui é só ler o mapa que veio do /api/eu.
+function podeUsuario(acao) {
+  // Admin pode tudo (também protege contra a corrida antes do /api/eu chegar).
+  if (usuarioLogado.papel === 'admin') return true;
+  return !!(usuarioLogado.permissoes && usuarioLogado.permissoes[acao]);
+}
 
 async function carregarUsuarioLogado() {
   try { usuarioLogado = await api('/eu'); } catch { return; }
+  usuarioLogado.permissoes = usuarioLogado.permissoes || {};
 
   const admin = usuarioLogado.papel === 'admin';
-  const aba = document.getElementById('mtab-diagnostico');
-  if (aba) aba.style.display = admin ? '' : 'none';
-  // Estoque expõe custo médio e valor investido — dado de negócio, não do
-  // técnico. Mesmo tratamento do diagnóstico: some do menu e o servidor barra.
-  const abaEst = document.getElementById('mtab-estoque');
-  if (abaEst) abaEst.style.display = admin ? '' : 'none';
+  // Cada aba aparece conforme a permissão (o servidor barra de qualquer jeito;
+  // aqui é só não oferecer o que a pessoa não pode abrir).
+  const mostra = (id, ok) => { const el = document.getElementById(id); if (el) el.style.display = ok ? '' : 'none'; };
+  mostra('mtab-diagnostico', podeUsuario('diagnostico'));
+  mostra('mtab-estoque', podeUsuario('estoque_ver'));
+  mostra('mtab-pecas', podeUsuario('pecas'));
 
   const marca = document.getElementById('usuario-logado');
   if (marca) {
@@ -1065,6 +1074,8 @@ async function carregarUsuarioLogado() {
 }
 
 // ─── Acessos (só admin, dentro da aba Diagnóstico) ──────────────────
+let _acessosCache = [];   // usuários carregados, para o editor de permissões
+
 async function carregarAcessos() {
   const alvo = document.getElementById('acessos-corpo');
   if (!alvo) return;
@@ -1073,16 +1084,21 @@ async function carregarAcessos() {
   try { d = await api('/usuarios'); }
   catch (e) { alvo.innerHTML = `<div class="diag-detalhe">${esc(e.message)}</div>`; return; }
 
-  const us = d.usuarios || [];
+  _acessosCache = d.usuarios || [];
   alvo.innerHTML = `
-    ${us.map(u => `
+    ${_acessosCache.map(u => {
+      const admin = u.papel === 'admin';
+      // Conta quantas ações o técnico tem liberadas — resumo rápido na linha.
+      const liberadas = Object.values(u.permissoes || {}).filter(Boolean).length;
+      return `
       <div class="diag-item">
         <div class="diag-titulo">${esc(u.nome)}
           <span class="diag-detalhe" style="grid-column:auto;">${esc(u.login)}</span>
         </div>
-        <div>
-          ${_selo(u.papel === 'admin' ? 'ok' : 'aviso',
-                  u.papel === 'admin' ? 'administrador' : 'técnico')}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          ${_selo(admin ? 'ok' : 'aviso', admin ? 'administrador' : 'técnico')}
+          ${admin ? '' : `<span class="diag-detalhe" style="grid-column:auto;">${liberadas} permiss${liberadas === 1 ? 'ão' : 'ões'}</span>`}
+          ${admin ? '' : `<button class="btn btn-primary btn-sm" onclick="abrirEditorPermissoes(${u.id})">Permissões</button>`}
           <button class="btn btn-ghost btn-sm" onclick="trocarSenhaUsuario(${u.id}, '${esc(u.nome)}')">Trocar senha</button>
           <button class="btn btn-ghost btn-sm" onclick="removerUsuario(${u.id}, '${esc(u.nome)}')">Remover</button>
         </div>
@@ -1090,9 +1106,66 @@ async function carregarAcessos() {
           ${u.tecnico_nome ? 'ligado ao técnico ' + esc(u.tecnico_nome) + ' · ' : ''}
           ${u.ultimo_acesso ? 'último acesso ' + esc(u.ultimo_acesso) : 'nunca entrou'}
         </div>
-      </div>`).join('')}
+      </div>`;
+    }).join('')}
     <button class="btn btn-primary btn-sm" style="margin-top:10px;"
             onclick="criarUsuario()">+ Novo acesso</button>`;
+}
+
+// ─── Editor de permissões (drawer lateral) ──────────────────────────────
+let _permCatalogo = null;   // catálogo de ações, buscado uma vez
+let _permUsuarioId = null;
+
+async function abrirEditorPermissoes(usuarioId) {
+  _permUsuarioId = usuarioId;
+  const u = _acessosCache.find(x => x.id === usuarioId);
+  if (!u) return;
+  if (!_permCatalogo) {
+    try { _permCatalogo = (await api('/permissoes/catalogo')).catalogo || []; }
+    catch (e) { toast(e.message, 'error'); return; }
+  }
+
+  document.getElementById('perm-drawer-nome').textContent = u.nome;
+  const perms = u.permissoes || {};
+
+  // Agrupa por área para ficar legível.
+  const areas = {};
+  _permCatalogo.forEach(c => { (areas[c.area] = areas[c.area] || []).push(c); });
+  document.getElementById('perm-drawer-corpo').innerHTML = Object.entries(areas).map(([area, itens]) => `
+    <div class="perm-area">
+      <div class="perm-area-titulo">${esc(area)}</div>
+      ${itens.map(c => `
+        <label class="perm-linha">
+          <input type="checkbox" class="perm-check" data-acao="${esc(c.chave)}" ${perms[c.chave] ? 'checked' : ''}>
+          <span>${esc(c.rotulo)}</span>
+        </label>`).join('')}
+    </div>`).join('');
+
+  document.getElementById('drawer-permissoes').classList.add('aberto');
+}
+
+function fecharEditorPermissoes() {
+  document.getElementById('drawer-permissoes').classList.remove('aberto');
+}
+
+async function salvarPermissoes() {
+  const btn = document.getElementById('perm-salvar-btn');
+  const perms = {};
+  document.querySelectorAll('#perm-drawer-corpo .perm-check').forEach(ch => {
+    perms[ch.dataset.acao] = ch.checked;
+  });
+  btn.disabled = true;
+  try {
+    await api(`/usuarios/${_permUsuarioId}/permissoes`, { method: 'PUT',
+      body: JSON.stringify({ permissoes: perms }) });
+    toast('Permissões salvas.', 'success');
+    fecharEditorPermissoes();
+    carregarAcessos();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function criarUsuario() {
@@ -1229,23 +1302,74 @@ async function carregarDiagnostico() {
     d.secret_fixa ? 'fixa (sessão sobrevive a atualização)' : 'temporária — todo deploy desloga',
     d.secret_fixa ? '' : 'Defina SECRET_KEY nas variáveis do Railway.'));
 
-  // ── Erros de navegador
+  // ── Erros de navegador (agora EDITÁVEIS: status, observação, excluir)
   const er = d.erros || {};
-  partes.push(`<div class="diag-secao">Erros na tela (últimos)</div>`);
+  const abertos = er.abertos != null ? er.abertos : er.total;
+  partes.push(`<div class="diag-secao">Erros na tela ${er.total ? `· ${abertos} em aberto` : ''}
+    ${er.total ? `<button class="btn btn-ghost btn-xs" style="float:right;" onclick="limparErrosResolvidos()">Limpar tratados</button>` : ''}</div>`);
   if (!er.total) {
     partes.push(_linhaDiag('Nenhum erro registrado', 'ok', 'limpo'));
   } else {
-    partes.push((er.ultimos || []).map(e => `
-      <div class="diag-erro">
-        <div class="diag-erro-msg">${esc(e.mensagem)}</div>
-        <div class="diag-detalhe">${esc(e.quando)} · ${esc(e.origem)} · ${esc(e.versao)} · ${esc(e.url)}</div>
-      </div>`).join(''));
+    partes.push((er.ultimos || []).map(e => _renderErroDiag(e)).join(''));
   }
 
   alvo.innerHTML = `<div class="diag-versao">Sistema na versão ${esc(d.app || '—')}</div>`
     + partes.join('')
-    + `<div class="diag-secao">Acessos ao sistema</div><div id="acessos-corpo"></div>`;
-  carregarAcessos();
+    // Acessos só para quem pode gerenciar usuários.
+    + (podeUsuario('gerenciar_usuarios')
+        ? `<div class="diag-secao">Acessos ao sistema</div><div id="acessos-corpo"></div>`
+        : '');
+  if (podeUsuario('gerenciar_usuarios')) carregarAcessos();
+}
+
+// Cada erro do log com status editável, observação e excluir. `data-id` liga
+// os controles ao registro; salvar é na hora, ao mudar o campo.
+const _STATUS_ERRO_DIAG = ['novo', 'investigando', 'resolvido', 'ignorado'];
+function _renderErroDiag(e) {
+  const st = e.status || 'novo';
+  const opts = _STATUS_ERRO_DIAG.map(s =>
+    `<option value="${s}" ${s === st ? 'selected' : ''}>${s}</option>`).join('');
+  return `
+    <div class="diag-erro diag-erro--${esc(st)}" data-erro="${e.id}">
+      <div class="diag-erro-msg">${esc(e.mensagem)}</div>
+      <div class="diag-detalhe">${esc(e.quando)} · ${esc(e.origem)} · ${esc(e.versao)} · ${esc(e.url)}</div>
+      <div class="diag-erro-acoes">
+        <select class="diag-erro-status" onchange="atualizarErroDiag(${e.id}, 'status', this.value)">${opts}</select>
+        <input class="diag-erro-obs form-input" placeholder="observação..." value="${esc(e.obs || '')}"
+               onchange="atualizarErroDiag(${e.id}, 'obs', this.value)">
+        <button class="btn btn-ghost btn-xs estoque-btn-excluir" onclick="removerErroDiag(${e.id})">Excluir</button>
+      </div>
+    </div>`;
+}
+
+async function atualizarErroDiag(id, campo, valor) {
+  try {
+    await api(`/erros-cliente/${id}`, { method: 'PUT', body: JSON.stringify({ [campo]: valor }) });
+    // Reflete a cor do status na hora sem recarregar tudo.
+    if (campo === 'status') {
+      const box = document.querySelector(`.diag-erro[data-erro="${id}"]`);
+      if (box) box.className = `diag-erro diag-erro--${valor}`, box.dataset.erro = id;
+    }
+    toast('Diagnóstico atualizado.', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function removerErroDiag(id) {
+  if (!confirm('Excluir este registro de erro?')) return;
+  try {
+    await api(`/erros-cliente/${id}`, { method: 'DELETE' });
+    document.querySelector(`.diag-erro[data-erro="${id}"]`)?.remove();
+    toast('Registro removido.', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function limparErrosResolvidos() {
+  if (!confirm('Limpar todos os erros marcados como resolvidos/ignorados?')) return;
+  try {
+    const r = await api('/erros-cliente/resolvidos', { method: 'DELETE' });
+    toast(`${r.removidos || 0} registro(s) limpos.`, 'success');
+    carregarDiagnostico();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 
@@ -5091,9 +5215,10 @@ async function abrirEstoqueRaiz() {
   document.getElementById('estoque-subtitulo').style.display = '';
   document.getElementById('estoque-subtitulo').innerHTML =
     'Cada estoque é uma prateleira sua (Electrolux, Panasonic...). Abra um para ver e adicionar as peças dele.';
-  document.getElementById('estoque-topo-acoes').innerHTML =
-    '<button class="btn btn-ghost btn-sm" onclick="abrirBiparNota()">📷 Bipar nota fiscal</button>' +
-    '<button class="btn btn-primary btn-sm" onclick="abrirCriarGrupo()">+ Criar estoque</button>';
+  document.getElementById('estoque-topo-acoes').innerHTML = podeUsuario('estoque_editar')
+    ? '<button class="btn btn-ghost btn-sm" onclick="abrirBiparNota()">📷 Bipar nota fiscal</button>'
+      + '<button class="btn btn-primary btn-sm" onclick="abrirCriarGrupo()">+ Criar estoque</button>'
+    : '';
   document.getElementById('estoque-filtros').style.display = 'none';
   document.getElementById('estoque-chips-aparelho').innerHTML = '';
   document.getElementById('estoque-resumo').innerHTML = '';
@@ -5191,13 +5316,15 @@ async function abrirGrupoEstoque(grupoId, nome) {
   // Peça só entra em SUB-estoque (tem pai). No estoque de topo (Panasonic) a
   // ação é criar sub-estoque; a peça vai dentro dele. Pedido do Kalebe.
   const ehTopo = !ehSem && !(_grupoPorId(grupoId)?.parent_id);
+  const podeEd = podeUsuario('estoque_editar'), podeEx = podeUsuario('estoque_excluir');
+  const btnAddPeca = '<button class="btn btn-primary btn-sm" onclick="abrirEntradaEstoque()">+ Adicionar peça</button>';
   document.getElementById('estoque-topo-acoes').innerHTML = ehSem
-    ? '<button class="btn btn-primary btn-sm" onclick="abrirEntradaEstoque()">+ Adicionar peça</button>'
+    ? (podeEd ? btnAddPeca : '')
     : `
-    ${ehTopo ? '' : '<button class="btn btn-primary btn-sm" onclick="abrirEntradaEstoque()">+ Adicionar peça</button>'}
-    <button class="btn ${ehTopo ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="abrirCriarSubEstoque()">+ Sub-estoque</button>
-    <button class="btn btn-ghost btn-sm" onclick="renomearGrupoAtual()">Renomear</button>
-    <button class="btn btn-ghost btn-sm" onclick="excluirGrupoAtual()">Excluir estoque</button>`;
+    ${podeEd && !ehTopo ? btnAddPeca : ''}
+    ${podeEd ? `<button class="btn ${ehTopo ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="abrirCriarSubEstoque()">+ Sub-estoque</button>
+    <button class="btn btn-ghost btn-sm" onclick="renomearGrupoAtual()">Renomear</button>` : ''}
+    ${podeEx ? '<button class="btn btn-ghost btn-sm" onclick="excluirGrupoAtual()">Excluir estoque</button>' : ''}`;
   document.getElementById('estoque-filtros').style.display = 'flex';
 
   // Sub-estoques (filhos diretos deste estoque) num container próprio.
@@ -5310,13 +5437,14 @@ function _cardEstoque(i) {
         <div class="estoque-saldo-lbl">em estoque</div>
       </div>
       <div class="estoque-item-acoes">
+        ${podeUsuario('estoque_editar') ? `
         <button class="btn btn-ghost btn-xs" title="Dar saída" onclick='abrirSaidaEstoque(${JSON.stringify(i.codigo)}, ${JSON.stringify(i.descricao || "")})'>− Saída</button>
         <button class="btn btn-ghost btn-xs" title="Entrada" onclick='abrirEntradaEstoque(${JSON.stringify(i.codigo)}, ${JSON.stringify(i.descricao || "")})'>+ Entrada</button>
         <button class="btn btn-ghost btn-xs" title="Editar peça (marca, aparelho, modelo, preço)" onclick='abrirEditarEstoque(${JSON.stringify(i)})'>Editar</button>
         <button class="btn btn-ghost btn-xs" title="Corrigir saldo pela contagem física" onclick='abrirAjusteEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.saldo) || 0})'>Ajustar</button>
-        <button class="btn btn-ghost btn-xs" title="Definir estoque mínimo" onclick='definirMinimoEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.minimo) || 0})'>Mínimo</button>
+        <button class="btn btn-ghost btn-xs" title="Definir estoque mínimo" onclick='definirMinimoEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.minimo) || 0})'>Mínimo</button>` : ''}
         <button class="btn btn-ghost btn-xs" title="Histórico de movimentos" onclick='verHistoricoEstoque(${i.id}, ${JSON.stringify(i.codigo)})'>Histórico</button>
-        <button class="btn btn-ghost btn-xs estoque-btn-excluir" title="Excluir a peça do estoque" onclick='excluirPecaEstoque(${i.id}, ${JSON.stringify(i.codigo)})'>Excluir</button>
+        ${podeUsuario('estoque_excluir') ? `<button class="btn btn-ghost btn-xs estoque-btn-excluir" title="Excluir a peça do estoque" onclick='excluirPecaEstoque(${i.id}, ${JSON.stringify(i.codigo)})'>Excluir</button>` : ''}
       </div>
     </div>`;
 }

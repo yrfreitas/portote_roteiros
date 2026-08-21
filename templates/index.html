@@ -319,6 +319,25 @@
 <datalist id="estoque-datalist-marca"></datalist>
 <datalist id="estoque-datalist-cliente"></datalist>
 
+<div class="drawer-overlay" id="drawer-permissoes" onclick="if(event.target===this)fecharEditorPermissoes()">
+  <aside class="drawer" role="dialog" aria-modal="true">
+    <div class="drawer-cabecalho">
+      <div>
+        <div class="drawer-titulo">Permissões</div>
+        <div class="drawer-sub" id="perm-drawer-nome"></div>
+      </div>
+      <button class="drawer-fechar" onclick="fecharEditorPermissoes()" aria-label="Fechar">×</button>
+    </div>
+    <p class="drawer-ajuda">Marque o que esta pessoa pode fazer no sistema. O
+      bloqueio vale no servidor — desmarcar realmente impede a ação.</p>
+    <div class="drawer-corpo" id="perm-drawer-corpo"></div>
+    <div class="drawer-acoes">
+      <button class="btn btn-ghost" onclick="fecharEditorPermissoes()">Cancelar</button>
+      <button class="btn btn-primary" id="perm-salvar-btn" onclick="salvarPermissoes()">Salvar permissões</button>
+    </div>
+  </aside>
+</div>
+
 <div class="modal-overlay" id="modal-estoque-bipar" role="dialog" aria-modal="true">
   <div class="modal modal-largo">
     <div class="modal-title">Bipar nota fiscal</div>

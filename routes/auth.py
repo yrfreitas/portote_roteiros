@@ -122,8 +122,21 @@ def logout():
 
 @auth_bp.route("/api/eu", methods=["GET"])
 def eu():
-    """Quem sou eu — o painel usa para esconder o que não é do papel."""
-    return jsonify(usuario_atual())
+    """Quem sou eu — o painel usa para esconder o que a pessoa não pode.
+    Inclui as permissões EFETIVAS (papel + ajustes) já resolvidas."""
+    from permissoes import _caps_do_request
+    dados = usuario_atual()
+    dados["permissoes"] = _caps_do_request()
+    return jsonify(dados)
+
+
+@auth_bp.route("/api/permissoes/catalogo", methods=["GET"])
+def catalogo_permissoes():
+    """Lista de ações que dá para ligar/desligar — alimenta o editor."""
+    if not e_admin():
+        return jsonify({"erro": "Só o administrador"}), 403
+    from permissoes import CATALOGO
+    return jsonify({"catalogo": CATALOGO})
 
 
 # ─── Cadastro de pessoas (só admin) ─────────────────────────────────────
@@ -132,14 +145,18 @@ def listar_usuarios():
     if not e_admin():
         return jsonify({"erro": "Só o administrador pode ver os acessos"}), 403
 
+    from permissoes import efetivas
     with db_conn() as conn:
         linhas = fetch_all(conn, """
             SELECT u.id, u.nome, u.login, u.papel, u.tecnico_id, u.ativo,
-                   u.criado_em, u.ultimo_acesso, t.nome AS tecnico_nome
+                   u.permissoes, u.criado_em, u.ultimo_acesso, t.nome AS tecnico_nome
               FROM usuarios u
               LEFT JOIN tecnicos t ON t.id = u.tecnico_id
              ORDER BY u.papel, u.nome
         """)
+    for u in linhas:
+        # Permissões já resolvidas (papel + ajustes), para o editor marcar certo.
+        u["permissoes"] = efetivas(u.get("papel"), u.get("permissoes"))
     return jsonify({"usuarios": linhas})
 
 
@@ -218,6 +235,38 @@ def editar_usuario(usuario_id):
                     (data["papel"], usuario_id))
 
     return jsonify({"mensagem": "Acesso atualizado"})
+
+
+@auth_bp.route("/api/usuarios/<int:usuario_id>/permissoes", methods=["PUT"])
+def salvar_permissoes(usuario_id):
+    """Grava as permissões de um usuário (o editor manda o mapa {acao: bool}).
+
+    Não deixa mexer nas próprias permissões (evita o admin se auto-trancar) e
+    ignora chave que não está no catálogo (lixo não vira permissão)."""
+    if not e_admin():
+        return jsonify({"erro": "Só o administrador pode mudar permissões"}), 403
+    if usuario_id == session.get("usuario_id"):
+        return jsonify({"erro": "Você não pode mudar as próprias permissões"}), 400
+
+    import json as _json
+
+    from permissoes import TODAS
+    data = request.get_json(silent=True) or {}
+    entra = data.get("permissoes") or {}
+    limpo = {a: bool(entra[a]) for a in TODAS if a in entra}
+
+    with db_conn(commit=True) as conn:
+        usuario = fetch_one(conn, "SELECT id, papel FROM usuarios WHERE id = ?", (usuario_id,))
+        if not usuario:
+            return jsonify({"erro": "Usuário não encontrado"}), 404
+        # Admin tem tudo por definição — guardar ajuste nele só confunde.
+        if usuario.get("papel") == "admin":
+            return jsonify({"erro": "Administrador já tem todas as permissões. "
+                            "Baixe o papel para 'técnico' antes de restringir."}), 400
+        execute(conn, "UPDATE usuarios SET permissoes = ? WHERE id = ?",
+                (_json.dumps(limpo), usuario_id))
+
+    return jsonify({"mensagem": "Permissões atualizadas"})
 
 
 @auth_bp.route("/api/usuarios/<int:usuario_id>", methods=["DELETE"])

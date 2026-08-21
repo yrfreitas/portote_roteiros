@@ -103,29 +103,20 @@ _PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
                       "/acompanhar/", "/api/rastreio/", "/api/chat/")
 
 
-# Rotas que só o ADMIN vê. É o pedido do Kalebe: o técnico entra no sistema,
-# mas não enxerga diagnóstico, erro de servidor nem cadastro de gente — o que
-# ele chamou de "coisa de desenvolvedor".
-#
-# Bloquear no SERVIDOR e não só escondendo o botão: menu escondido é
-# decoração, quem souber o endereço entra do mesmo jeito.
-_PREFIXOS_SO_ADMIN = (
-    "/api/diagnostico", "/api/erros-cliente", "/api/rastreios/diagnostico",
-    "/api/pedidos/agoraos", "/api/pedidos/diagnostico", "/api/usuarios",
-    # Estoque carrega custo médio e valor investido — informação de negócio
-    # que o técnico não deve ver. Trava no servidor, não só escondendo a aba.
-    "/api/estoque",
-)
-
-
+# Controle de acesso por AÇÃO (ver permissoes.py), no lugar do antigo "só
+# admin". Cada área sensível exige uma capacidade que o admin liga/desliga por
+# pessoa. Bloqueio no SERVIDOR — esconder o botão sem barrar a rota é decoração.
 @app.before_request
-def _exigir_papel():
-    if not request.path.startswith(_PREFIXOS_SO_ADMIN):
+def _exigir_permissao():
+    if not request.path.startswith("/api"):
         return
     if not session.get("admin"):
         return  # o _exigir_autenticacao abaixo trata quem nem logado está
-    if (session.get("papel") or "admin") != "admin":
-        return jsonify({"erro": "Esta área é só do administrador"}), 403
+    from permissoes import checar_acesso
+    faltou = checar_acesso(request.path, request.method)
+    if faltou:
+        return jsonify({"erro": "Você não tem permissão para esta ação",
+                        "acao": faltou}), 403
 
 
 @app.before_request
@@ -248,10 +239,12 @@ def diagnostico_geral():
     def _erros():
         with db_conn() as conn:
             linhas = fetch_all(conn, """
-                SELECT quando, origem, versao, url, mensagem
+                SELECT id, quando, origem, versao, url, mensagem, status, obs
                   FROM erros_cliente ORDER BY id DESC
             """)
-        return {"total": len(linhas), "ultimos": linhas[:15]}
+        # abertos = tudo que não foi marcado como resolvido — é o que importa ver.
+        abertos = sum(1 for l in linhas if (l.get("status") or "novo") != "resolvido")
+        return {"total": len(linhas), "abertos": abertos, "ultimos": linhas[:30]}
 
     bloco("rastreio", _rastreio)
     bloco("agoraos", _agoraos)
@@ -264,15 +257,67 @@ def diagnostico_geral():
 
 @app.route("/api/erros-cliente", methods=["GET"])
 def listar_erros_cliente():
-    """Os últimos erros de navegador. Atrás da sessão de admin."""
+    """Os últimos erros de navegador. Atrás da permissão de diagnóstico."""
     from database import fetch_all
 
     with db_conn() as conn:
         linhas = fetch_all(conn, """
-            SELECT quando, origem, versao, url, mensagem
+            SELECT id, quando, origem, versao, url, mensagem, status, obs
               FROM erros_cliente ORDER BY id DESC
         """)
     return jsonify({"total": len(linhas), "erros": linhas[:50]})
+
+
+# Status válidos de um erro de diagnóstico: do "acabou de aparecer" ao "tratado".
+_STATUS_ERRO = ("novo", "investigando", "resolvido", "ignorado")
+
+
+@app.route("/api/erros-cliente/<int:erro_id>", methods=["PUT"])
+def editar_erro_cliente(erro_id):
+    """Atualiza status e/ou observação de um erro — a tela de diagnóstico deixa
+    de ser só leitura. Só quem tem a permissão de diagnóstico chega aqui."""
+    from database import execute, fetch_one
+
+    dados = request.get_json(silent=True) or {}
+    campos, valores = [], []
+    if "status" in dados:
+        st = (dados.get("status") or "").strip()
+        if st not in _STATUS_ERRO:
+            return jsonify({"erro": f"Status inválido. Use um de: {', '.join(_STATUS_ERRO)}"}), 400
+        campos.append("status = ?"); valores.append(st)
+    if "obs" in dados:
+        campos.append("obs = ?"); valores.append((dados.get("obs") or "").strip()[:500] or None)
+    if not campos:
+        return jsonify({"mensagem": "Nada para mudar"})
+
+    valores.append(erro_id)
+    with db_conn(commit=True) as conn:
+        if not fetch_one(conn, "SELECT id FROM erros_cliente WHERE id = ?", (erro_id,)):
+            return jsonify({"erro": "Registro não encontrado"}), 404
+        execute(conn, f"UPDATE erros_cliente SET {', '.join(campos)} WHERE id = ?", valores)
+    return jsonify({"mensagem": "Diagnóstico atualizado"})
+
+
+@app.route("/api/erros-cliente/<int:erro_id>", methods=["DELETE"])
+def remover_erro_cliente(erro_id):
+    """Apaga um erro do log de diagnóstico."""
+    from database import execute
+
+    with db_conn(commit=True) as conn:
+        apagados = execute(conn, "DELETE FROM erros_cliente WHERE id = ?", (erro_id,))
+    if not apagados:
+        return jsonify({"erro": "Registro não encontrado"}), 404
+    return jsonify({"mensagem": "Registro removido"})
+
+
+@app.route("/api/erros-cliente/resolvidos", methods=["DELETE"])
+def limpar_erros_resolvidos():
+    """Limpa de uma vez tudo que já foi tratado (resolvido/ignorado)."""
+    from database import execute
+
+    with db_conn(commit=True) as conn:
+        n = execute(conn, "DELETE FROM erros_cliente WHERE status IN ('resolvido', 'ignorado')")
+    return jsonify({"mensagem": f"{n} registro(s) limpos", "removidos": n})
 
 
 @app.route("/acompanhar/<token>")

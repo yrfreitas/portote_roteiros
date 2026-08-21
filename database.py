@@ -265,6 +265,8 @@ _SCHEMA_PG = [
     #
     # `tecnico_id` liga a pessoa ao técnico das rotas, para o painel dele já
     # abrir no que é dele.
+    # permissoes: JSON de ajustes por ação {chave: true/false}. Vazio = usa o
+    # padrão do papel (admin tudo, técnico o mínimo). Ver permissoes.py.
     """CREATE TABLE IF NOT EXISTS usuarios (
         id          SERIAL PRIMARY KEY,
         nome        TEXT NOT NULL,
@@ -272,6 +274,7 @@ _SCHEMA_PG = [
         senha_hash  TEXT NOT NULL,
         papel       TEXT NOT NULL DEFAULT 'tecnico',
         tecnico_id  INTEGER REFERENCES tecnicos(id) ON DELETE SET NULL,
+        permissoes  TEXT,
         ativo       BOOLEAN DEFAULT TRUE,
         criado_em   TEXT DEFAULT CURRENT_TIMESTAMP,
         ultimo_acesso TEXT
@@ -366,7 +369,9 @@ _SCHEMA_PG = [
         origem    TEXT,
         versao    TEXT,
         url       TEXT,
-        mensagem  TEXT
+        mensagem  TEXT,
+        status    TEXT DEFAULT 'novo',
+        obs       TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS pecas_agoraos (
         id                   SERIAL PRIMARY KEY,
@@ -565,6 +570,7 @@ _SCHEMA_SQLITE = """
         senha_hash  TEXT NOT NULL,
         papel       TEXT NOT NULL DEFAULT 'tecnico',
         tecnico_id  INTEGER,
+        permissoes  TEXT,
         ativo       INTEGER DEFAULT 1,
         criado_em   TEXT DEFAULT CURRENT_TIMESTAMP,
         ultimo_acesso TEXT,
@@ -624,7 +630,9 @@ _SCHEMA_SQLITE = """
         origem    TEXT,
         versao    TEXT,
         url       TEXT,
-        mensagem  TEXT
+        mensagem  TEXT,
+        status    TEXT DEFAULT 'novo',
+        obs       TEXT
     );
     CREATE TABLE IF NOT EXISTS pecas_agoraos (
         id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -731,6 +739,10 @@ _MIGRACOES_PG = [
     # O nome deixou de ser único global (agora é único por pai, na aplicação):
     # dois "Geladeira" sob pais diferentes são legítimos. Solta a trava antiga.
     "ALTER TABLE estoque_grupos DROP CONSTRAINT IF EXISTS estoque_grupos_nome_key",
+    # Permissões granulares por usuário e diagnóstico (erros) com status editável.
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS permissoes TEXT",
+    "ALTER TABLE erros_cliente ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'novo'",
+    "ALTER TABLE erros_cliente ADD COLUMN IF NOT EXISTS obs TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -760,6 +772,9 @@ _MIGRACOES_SQLITE = [
         criado_em TEXT DEFAULT CURRENT_TIMESTAMP)""",
     "ALTER TABLE estoque_itens ADD COLUMN grupo_id INTEGER",
     "ALTER TABLE estoque_grupos ADD COLUMN parent_id INTEGER",
+    "ALTER TABLE usuarios ADD COLUMN permissoes TEXT",
+    "ALTER TABLE erros_cliente ADD COLUMN status TEXT DEFAULT 'novo'",
+    "ALTER TABLE erros_cliente ADD COLUMN obs TEXT",
 ]
 
 
