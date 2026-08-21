@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v56';
+const VERSAO_PAINEL = 'v57';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5610,13 +5610,20 @@ function renderResultadoBipar(d) {
 
   if (!biparItens.length) {
     confirmar.style.display = 'none';
-    // Mensagem honesta: bipar só dá os itens se o XML da nota existir. Sem
-    // IMAP ou nota que não veio por e-mail, o caminho é colar o XML.
-    const dica = d.nao_encontrada
-      ? (d.imap_configurado
-          ? 'Essa nota ainda não chegou no e-mail da Panasonic (ou não é dela). Se tiver o XML, cole no botão acima.'
-          : 'A leitura por chave depende do e-mail configurado. Por enquanto, cole o XML da nota no botão acima.')
-      : 'Não encontrei peças nessa nota.';
+    // Mensagem honesta conforme o motivo do vazio.
+    let dica;
+    if (d.erro_busca) {
+      dica = 'Não consegui ler a nota pelo e-mail agora (demorou ou está indisponível). Cole o XML da nota abaixo.';
+      // Abre o campo de XML na hora — é o caminho de saída.
+      const area = document.getElementById('bipar-xml-area');
+      if (area) area.style.display = 'block';
+    } else if (d.nao_encontrada) {
+      dica = d.imap_configurado
+        ? 'Essa nota ainda não chegou no e-mail da Panasonic (ou não é dela). Se tiver o XML, cole abaixo.'
+        : 'A leitura por chave depende do e-mail configurado. Por enquanto, cole o XML da nota abaixo.';
+    } else {
+      dica = 'Não encontrei peças nessa nota.';
+    }
     alvo.innerHTML = `<div class="vazio-box">${esc(dica)}</div>`;
     return;
   }

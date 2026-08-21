@@ -73,7 +73,9 @@
 //       XML colado), reconhece as peças e manda pro estoque (idempotente).
 // v56 = conserta modal alto que não rolava (editar atendimento travava, Salvar
 //       fora do alcance); + setor/marca e Nº da OS no adicionar do verificar CEP.
-const CACHE_VERSAO = 'portotec-roteiros-v56';
+// v57 = bipar não dá mais 502: busca direcionada da nota (acha o e-mail exato)
+//       e, se demorar/falhar, pede o XML em vez de estourar o gateway.
+const CACHE_VERSAO = 'portotec-roteiros-v57';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -119,6 +119,72 @@ def _resumir(itens: List[dict]) -> str:
     return f"{len(itens)} itens: {codigos}"
 
 
+def itens_de_uma_nota(chave: str):
+    """Busca DIRECIONADA de UMA nota pela chave — rápida o bastante para caber
+    numa requisição web (é o que o 'bipar' usa).
+
+    O pecas_por_nota varre TODOS os e-mails da Panasonic baixando cada um
+    inteiro até achar — 24s+ — e estourava o timeout do gateway (502 ao bipar).
+    Aqui a busca é mirada: no Gmail o X-GM-RAW acha o e-mail exato pela chave
+    (indexa nome do anexo e conteúdo); fora do Gmail, cai num fallback limitado
+    aos mais recentes. Um socket curto impede travar.
+
+    Retorno: lista de itens se achou; [] se buscou e não achou; None se NÃO deu
+    para buscar (IMAP desligado, timeout, erro) — a tela então pede o XML."""
+    chave = re.sub(r"\D", "", chave or "")
+    if len(chave) != 44 or not imap_configurado():
+        return None
+
+    conn = None
+    try:
+        conn = _conectar()
+        # Encurta o socket para search/fetch: melhor devolver "não deu, cole o
+        # XML" em ~12s do que deixar o gateway cortar em 502.
+        socket.setdefaulttimeout(12)
+
+        ids = []
+        try:
+            status, data = conn.search(None, "X-GM-RAW", f'"{chave}"')
+            if status == "OK" and data and data[0]:
+                ids = data[0].split()
+        except Exception:
+            ids = []  # servidor não-Gmail: usa o fallback abaixo
+
+        if not ids:
+            status, data = conn.search(None, "FROM", REMETENTE_NFE)
+            if status == "OK" and data and data[0]:
+                # Só os mais recentes: sem isso o fallback repete o problema.
+                ids = sorted(data[0].split(), key=lambda x: -int(x))[:30]
+
+        for mid in ids:
+            try:
+                status, d = conn.fetch(mid, "(RFC822)")
+                if status != "OK" or not d or not d[0]:
+                    continue
+                msg = email.message_from_bytes(d[0][1])
+            except Exception:
+                continue
+            for parte in msg.walk():
+                nome = parte.get_filename() or ""
+                if not nome.lower().endswith(".xml"):
+                    continue
+                if re.sub(r"\D", "", nome)[:44] != chave:
+                    continue
+                itens = _itens_do_xml(parte.get_payload(decode=True))
+                if itens:
+                    return itens
+        return []
+    except Exception:
+        log.exception("Busca direcionada da nota %s falhou", chave[:8])
+        return None
+    finally:
+        if conn is not None:
+            try:
+                conn.logout()
+            except Exception:
+                pass
+
+
 def pecas_por_nota(chaves: List[str]) -> Dict[str, dict]:
     """Devolve {chave_da_nota: {"resumo": str, "itens": [...]}}.
 

@@ -433,20 +433,26 @@ def ler_nota():
     (vProd é o total do item ÷ quantidade), que é o que o estoque precisa."""
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
-    from services.nfe import _itens_do_xml, imap_configurado, pecas_por_nota
+    from services.nfe import _itens_do_xml, imap_configurado, itens_de_uma_nota
 
     d = request.get_json(silent=True) or {}
     xml = (d.get("xml") or "").strip()
     chave = _extrair_chave(d.get("chave") or d.get("codigo") or "")
 
-    itens_brutos, fonte = [], None
+    itens_brutos, fonte, erro_busca = [], None, False
     if xml:
         itens_brutos = _itens_do_xml(xml.encode("utf-8"))
         fonte = "xml"
     elif chave:
-        achadas = pecas_por_nota([chave])
-        if chave in achadas:
-            itens_brutos = achadas[chave]["itens"]
+        # None = não deu para buscar (timeout/IMAP off) → a tela pede o XML,
+        # em vez de o gateway estourar 502. [] = buscou e não achou.
+        achados = itens_de_uma_nota(chave)
+        if achados is None:
+            # None com IMAP ligado = a busca falhou (timeout/erro) → pedir XML.
+            # None com IMAP desligado = caso normal "não tem e-mail" → nao_encontrada.
+            erro_busca = imap_configurado()
+        elif achados:
+            itens_brutos = achados
             fonte = "email"
     else:
         return jsonify({"erro": "Bipe a nota ou cole a chave/XML"}), 400
@@ -467,8 +473,10 @@ def ler_nota():
         "itens": itens,
         "fonte": fonte,
         "imap_configurado": imap_configurado(),
-        # Mensagem só quando não achou nada por chave: ajuda a entender o vazio.
-        "nao_encontrada": bool(chave and not xml and not itens),
+        # Não deu para buscar (timeout/erro no e-mail): a tela pede o XML.
+        "erro_busca": erro_busca,
+        # Buscou por chave e não achou o XML dessa nota no e-mail.
+        "nao_encontrada": bool(chave and not xml and not itens and not erro_busca),
     })
 
 
