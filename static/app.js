@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v65';
+const VERSAO_PAINEL = 'v66';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2633,6 +2633,7 @@ function ampliarFoto(src) {
 const DESFECHO_ROTULO = {
   resolvido:    { txt: 'Resolvido',       classe: 'df-resolvido' },
   precisa_peca: { txt: 'Precisa de peça', classe: 'df-precisa-peca' },
+  cotacao_peca: { txt: 'Cotação de peça', classe: 'df-cotacao-peca' },
   volto_depois: { txt: 'Volta depois',    classe: 'df-volto' },
   nao_atendido: { txt: 'Reagendar',        classe: 'df-nao-atendido' },
 };
@@ -4798,6 +4799,7 @@ async function aplicarConciliacao(fichaId) {
 const DF_OPCOES = [
   { tipo: 'resolvido',    rotulo: 'Resolvido',       sub: 'consertado na hora' },
   { tipo: 'precisa_peca', rotulo: 'Precisa de peça', sub: 'diagnosticado, falta peça' },
+  { tipo: 'cotacao_peca', rotulo: 'Cotação de peça', sub: 'não sei o preço ainda' },
   { tipo: 'volto_depois', rotulo: 'Volta depois',    sub: 'precisa retornar' },
   { tipo: 'nao_atendido', rotulo: 'Reagendar',       sub: 'não deu para fazer, precisa remarcar' },
 ];
@@ -4881,6 +4883,7 @@ async function escolherFotoDesfecho(input) {
     previa.innerHTML = `<span class="df-erro">${esc(e.message)}</span>`;
   } finally {
     input.value = '';   // permite reescolher a MESMA foto depois de remover
+    validarConfirmarDesfecho();
   }
 }
 
@@ -4888,6 +4891,7 @@ function removerFotoDesfecho() {
   _dfFoto = null;
   const previa = document.getElementById('df-previa');
   if (previa) previa.innerHTML = '';
+  validarConfirmarDesfecho();
 }
 
 function abrirDesfecho(servicoId, fichaId) {
@@ -4921,6 +4925,17 @@ function escolherDesfecho(tipo) {
              placeholder="Código ou nome da peça">
       ${blocoFotoPainel()}`;
     setTimeout(() => document.getElementById('df-peca')?.focus(), 60);
+  } else if (tipo === 'cotacao_peca') {
+    // Código, nome e foto obrigatórios — mesma regra do app do técnico
+    // (ver validarConfirmarDesfecho). Sem os três não dá pra cotar direito.
+    extra.innerHTML = `<label class="form-label" for="df-codigo">Código da peça</label>
+      <input class="form-input" id="df-codigo" autocomplete="off"
+             placeholder="Ex: DE97-01234A" oninput="validarConfirmarDesfecho()">
+      <label class="form-label" style="margin-top:10px;" for="df-nome-peca">Nome da peça</label>
+      <input class="form-input" id="df-nome-peca" autocomplete="off"
+             placeholder="Ex: Placa eletrônica" oninput="validarConfirmarDesfecho()">
+      ${blocoFotoPainel()}`;
+    setTimeout(() => document.getElementById('df-codigo')?.focus(), 60);
   } else if (tipo === 'nao_atendido') {
     extra.innerHTML = `<label class="form-label">Por quê?</label>
       <div class="df-motivos">${DF_MOTIVOS.map(mo =>
@@ -4936,7 +4951,21 @@ function escolherDesfecho(tipo) {
     <label class="form-label" style="margin-top:14px;" for="df-obs">Observação</label>
     <textarea class="form-input df-obs" id="df-obs" rows="3"
               placeholder="Algo que a equipe precisa saber (opcional)"></textarea>`);
-  document.getElementById('df-confirmar').disabled = false;
+  validarConfirmarDesfecho();
+}
+
+// Só cotação de peça trava o botão — os demais desfechos continuam podendo
+// ser confirmados só com o tipo escolhido, igual sempre foi.
+function validarConfirmarDesfecho() {
+  const btn = document.getElementById('df-confirmar');
+  if (!btn) return;
+  let ok = true;
+  if (_dfTipo === 'cotacao_peca') {
+    const codigo = document.getElementById('df-codigo')?.value.trim();
+    const nome = document.getElementById('df-nome-peca')?.value.trim();
+    ok = !!(codigo && nome && _dfFoto);
+  }
+  btn.disabled = !ok;
 }
 
 function escolherMotivoDesfecho(botao) {
@@ -4948,6 +4977,10 @@ async function confirmarDesfecho() {
   if (!_dfTipo || !_dfServico) return;
   const desfecho = { tipo: _dfTipo };
   if (_dfTipo === 'precisa_peca') desfecho.peca = document.getElementById('df-peca')?.value.trim() || '';
+  if (_dfTipo === 'cotacao_peca') {
+    desfecho.codigo = document.getElementById('df-codigo')?.value.trim() || '';
+    desfecho.nome_peca = document.getElementById('df-nome-peca')?.value.trim() || '';
+  }
   if (_dfTipo === 'nao_atendido') desfecho.motivo = document.querySelector('.df-motivo.ativa')?.dataset.motivo || '';
   const obs = document.getElementById('df-obs')?.value.trim();
   if (obs) desfecho.observacao = obs;
@@ -6387,6 +6420,8 @@ function toast(msg, type = 'info') {
 const AT_TIPOS = [
   { tipo: 'precisa_peca', rotulo: 'Precisam de peça', curto: 'Precisa de peça',
     classe: 'at-peca',  nota: 'esperando compra' },
+  { tipo: 'cotacao_peca', rotulo: 'Cotação de peça',  curto: 'Cotação de peça',
+    classe: 'at-cotacao', nota: 'aguardando preço' },
   { tipo: 'volto_depois', rotulo: 'Voltar depois',    curto: 'Volta depois',
     classe: 'at-volta', nota: 'precisa de retorno' },
   { tipo: 'nao_atendido', rotulo: 'Reagendar',        curto: 'Reagendar',

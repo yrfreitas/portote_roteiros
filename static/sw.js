@@ -92,7 +92,12 @@
 // v65 = desfecho "Cotação de peça" (código+nome+foto obrigatórios) no app do
 //       técnico, reagendar/volto-depois com escolha de dia, e Cotação de
 //       Peças virou seção compacta dentro da aba Peças em vez de aba própria.
-const CACHE_VERSAO = 'portotec-roteiros-v65';
+// v66 = corrige quebra no /api/servicos/<id>/status (painel admin) causada
+//       pela mudança de assinatura de _gravar_desfecho no v65 — concluir
+//       QUALQUER atendimento pelo painel estava dando erro 500. Também
+//       adiciona "Cotação de peça" nas listas do painel (concluir manual,
+//       selo do desfecho, cartão de Atendimentos).
+const CACHE_VERSAO = 'portotec-roteiros-v66';
 
 const ARQUIVOS_CASCA = [
   '/',

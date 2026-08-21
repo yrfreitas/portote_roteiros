@@ -284,7 +284,7 @@ def _marcar_disponivel_no_carro(conn, atendimentos):
             a["no_carro"] = achados
 
 
-DESFECHOS_ORDEM = ["precisa_peca", "volto_depois", "nao_atendido", "resolvido"]
+DESFECHOS_ORDEM = ["precisa_peca", "cotacao_peca", "volto_depois", "nao_atendido", "resolvido"]
 
 
 @relatorios_bp.route("/desfechos", methods=["GET"])

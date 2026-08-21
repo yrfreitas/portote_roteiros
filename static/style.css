@@ -3372,6 +3372,7 @@ select:focus-visible,
 }
 .df-resolvido     { background: var(--success-dim); color: var(--success-text); }
 .df-precisa-peca  { background: var(--gold-dim);    color: var(--gold-text); }
+.df-cotacao-peca  { background: var(--accent-dim);  color: var(--accent-text); }
 .df-volto         { background: rgba(34,211,238,.13); color: #7de3f4; }
 .df-nao-atendido  { background: var(--danger-dim);  color: var(--danger-text); }
 
@@ -3500,10 +3501,11 @@ select:focus-visible,
 .at-rot { font-size: 12.5px; font-weight: 650; color: var(--text-secondary); }
 .at-nota { font-size: 11px; color: var(--text-muted); }
 
-.at-peca  { color: var(--gold); }
-.at-volta { color: var(--accent-2); }
-.at-nao   { color: var(--danger); }
-.at-ok    { color: var(--success); }
+.at-peca    { color: var(--gold); }
+.at-cotacao { color: var(--accent); }
+.at-volta   { color: var(--accent-2); }
+.at-nao     { color: var(--danger); }
+.at-ok      { color: var(--success); }
 
 .at-filtro-aviso {
   font-size: 12.5px; color: var(--text-secondary); margin-bottom: 12px;
@@ -3551,10 +3553,11 @@ select:focus-visible,
 /* O texto da etiqueta precisa de contraste contra o próprio fundo colorido;
    por isso a cor entra como fundo e o texto é forçado escuro. */
 .at-etiqueta { color: #08101c; }
-.at-linha.at-peca  .at-etiqueta { background: var(--gold); }
-.at-linha.at-volta .at-etiqueta { background: var(--accent-2); }
-.at-linha.at-nao   .at-etiqueta { background: var(--danger); }
-.at-linha.at-ok    .at-etiqueta { background: var(--success); }
+.at-linha.at-peca    .at-etiqueta { background: var(--gold); }
+.at-linha.at-cotacao .at-etiqueta { background: var(--accent); }
+.at-linha.at-volta   .at-etiqueta { background: var(--accent-2); }
+.at-linha.at-nao     .at-etiqueta { background: var(--danger); }
+.at-linha.at-ok      .at-etiqueta { background: var(--success); }
 
 .at-ver-foto {
   padding: 6px 10px; border-radius: 8px; cursor: pointer; white-space: nowrap;
