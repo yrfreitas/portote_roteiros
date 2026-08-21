@@ -71,7 +71,9 @@
 //       ficha do técnico e já a seleciona como destino do atendimento.
 // v55 = bipar nota fiscal: lê a chave (leitor de código de barras, câmera ou
 //       XML colado), reconhece as peças e manda pro estoque (idempotente).
-const CACHE_VERSAO = 'portotec-roteiros-v55';
+// v56 = conserta modal alto que não rolava (editar atendimento travava, Salvar
+//       fora do alcance); + setor/marca e Nº da OS no adicionar do verificar CEP.
+const CACHE_VERSAO = 'portotec-roteiros-v56';
 
 const ARQUIVOS_CASCA = [
   '/',

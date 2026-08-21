@@ -1769,7 +1769,15 @@ header::after {
   z-index: 100;
   background: rgba(3,5,10,0.75);
   backdrop-filter: blur(10px);
-  display: flex; align-items: center; justify-content: center;
+  /* display:flex + overflow + margin:auto no .modal = modal alto ROLA em vez
+     de cortar o topo/rodapé. align-items:center junto com overflow tinha o bug
+     clássico do flexbox de clipar o topo do que não cabe — por isso saiu, e a
+     centralização passou a ser pelo margin:auto do .modal. Sem isso, editar
+     atendimento (modal alto) deixava o botão Salvar fora do alcance. */
+  display: flex;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 12px;
   opacity: 0; pointer-events: none;
   transition: opacity 0.25s;
 }
@@ -1777,6 +1785,7 @@ header::after {
 
 .modal {
   position: relative;
+  margin: auto;              /* centraliza quando cabe; ancora no topo e rola quando não cabe */
   width: 480px;
   max-width: 92vw;
   padding: 32px;

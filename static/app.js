@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v55';
+const VERSAO_PAINEL = 'v56';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4146,6 +4146,17 @@ function _vcepAdd(r) {
           <input class="vcep-input" type="text" id="vadd-modelo" placeholder="Ex: BRM45">
         </div>
         <div class="vcep-fg vcep-fg-half">
+          <label class="vcep-lbl">Setor / Marca *</label>
+          <select class="vcep-select" id="vadd-setor">
+            <option value="">Selecione...</option>
+            ${setores.map(s => `<option value="${s.id}" ${String(s.id) === String(ultimoSetorUsado()) ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="vcep-fg vcep-fg-half">
+          <label class="vcep-lbl">Nº da OS (DigiTeam)</label>
+          <input class="vcep-input" type="text" id="vadd-os" placeholder="Ex: 1208202621026">
+        </div>
+        <div class="vcep-fg vcep-fg-full">
           <label class="vcep-lbl">Descrição</label>
           <input class="vcep-input" type="text" id="vadd-desc" placeholder="Ex: não gela">
         </div>
@@ -4206,6 +4217,15 @@ async function vcepAdicionarServico() {
   const cep = document.getElementById('vadd-cep')?.value;
   if (!fichaId || !cep) { toast('Preencha os campos obrigatórios', 'error'); return; }
 
+  // Setor é obrigatório no servidor (é a "marca": Panasonic, Philco, Loja...).
+  // Barrar aqui evita a viagem de ida e volta só para levar o erro de volta.
+  const setorId = document.getElementById('vadd-setor')?.value;
+  if (!setorId) {
+    toast('Escolha o setor/marca do atendimento.', 'error');
+    document.getElementById('vadd-setor')?.focus();
+    return;
+  }
+
   const btn = document.getElementById('vcep-btn-add-svc');
   if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner"></div> Geocodificando...'; }
 
@@ -4219,9 +4239,12 @@ async function vcepAdicionarServico() {
         descricao:     document.getElementById('vadd-desc')?.value || '',
         tipo_aparelho: document.getElementById('vadd-tipo')?.value || '',
         modelo:        document.getElementById('vadd-modelo')?.value || '',
+        numero_os:     document.getElementById('vadd-os')?.value || '',
+        setor_id:      setorId,
       }),
     });
 
+    lembrarSetor(setorId);
     toast(`Atendimento adicionado! ${fmtKm(r.distancia_total)} km`, 'success');
     if (r.aviso) toast(r.aviso, 'info');
 
