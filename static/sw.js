@@ -81,7 +81,9 @@
 //       varredura só dos e-mails recentes, e mostra o motivo do erro na tela.
 // v60 = sub-estoque dentro do estoque (Panasonic > Geladeira): navegação em
 //       árvore, roll-up dos totais e exclusão que promove os filhos.
-const CACHE_VERSAO = 'portotec-roteiros-v60';
+// v61 = peça só entra em sub-estoque (topo só cria sub-estoque) + botão de
+//       excluir peça do estoque.
+const CACHE_VERSAO = 'portotec-roteiros-v61';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v60';
+const VERSAO_PAINEL = 'v61';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5188,11 +5188,16 @@ async function abrirGrupoEstoque(grupoId, nome) {
   document.getElementById('estoque-breadcrumb').innerHTML = _breadcrumbEstoque(grupoId);
   document.getElementById('estoque-titulo').textContent = nome;
   document.getElementById('estoque-subtitulo').style.display = 'none';
-  document.getElementById('estoque-topo-acoes').innerHTML = `
-    <button class="btn btn-primary btn-sm" onclick="abrirEntradaEstoque()">+ Adicionar peça</button>
-    ${ehSem ? '' : `<button class="btn btn-ghost btn-sm" onclick="abrirCriarSubEstoque()">+ Sub-estoque</button>
+  // Peça só entra em SUB-estoque (tem pai). No estoque de topo (Panasonic) a
+  // ação é criar sub-estoque; a peça vai dentro dele. Pedido do Kalebe.
+  const ehTopo = !ehSem && !(_grupoPorId(grupoId)?.parent_id);
+  document.getElementById('estoque-topo-acoes').innerHTML = ehSem
+    ? '<button class="btn btn-primary btn-sm" onclick="abrirEntradaEstoque()">+ Adicionar peça</button>'
+    : `
+    ${ehTopo ? '' : '<button class="btn btn-primary btn-sm" onclick="abrirEntradaEstoque()">+ Adicionar peça</button>'}
+    <button class="btn ${ehTopo ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="abrirCriarSubEstoque()">+ Sub-estoque</button>
     <button class="btn btn-ghost btn-sm" onclick="renomearGrupoAtual()">Renomear</button>
-    <button class="btn btn-ghost btn-sm" onclick="excluirGrupoAtual()">Excluir estoque</button>`}`;
+    <button class="btn btn-ghost btn-sm" onclick="excluirGrupoAtual()">Excluir estoque</button>`;
   document.getElementById('estoque-filtros').style.display = 'flex';
 
   // Sub-estoques (filhos diretos deste estoque) num container próprio.
@@ -5311,6 +5316,7 @@ function _cardEstoque(i) {
         <button class="btn btn-ghost btn-xs" title="Corrigir saldo pela contagem física" onclick='abrirAjusteEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.saldo) || 0})'>Ajustar</button>
         <button class="btn btn-ghost btn-xs" title="Definir estoque mínimo" onclick='definirMinimoEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.minimo) || 0})'>Mínimo</button>
         <button class="btn btn-ghost btn-xs" title="Histórico de movimentos" onclick='verHistoricoEstoque(${i.id}, ${JSON.stringify(i.codigo)})'>Histórico</button>
+        <button class="btn btn-ghost btn-xs estoque-btn-excluir" title="Excluir a peça do estoque" onclick='excluirPecaEstoque(${i.id}, ${JSON.stringify(i.codigo)})'>Excluir</button>
       </div>
     </div>`;
 }
@@ -5627,6 +5633,18 @@ async function excluirGrupoAtual() {
     // Volta para o pai (se era sub-estoque) ou para a raiz.
     const pai = _grupoPorId(estoqueGrupoAtual.id)?.parent_id;
     if (pai) abrirGrupoEstoque(String(pai)); else abrirEstoqueRaiz();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function excluirPecaEstoque(id, codigo) {
+  // Apaga a peça E todo o histórico dela — some de vez. Por isso confirma.
+  // Para peça que só ACABOU (saldo 0) o certo é deixar; isto é para peça
+  // cadastrada por engano ou que não se quer mais rastrear.
+  if (!confirm(`Excluir a peça ${codigo} do estoque?\n\nApaga também o histórico dela. Não dá para desfazer.`)) return;
+  try {
+    await api(`/estoque/${id}`, { method: 'DELETE' });
+    toast('Peça excluída.', 'success');
+    carregarEstoque();
   } catch (e) { toast(e.message, 'error'); }
 }
 
