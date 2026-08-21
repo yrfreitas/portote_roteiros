@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v57';
+const VERSAO_PAINEL = 'v58';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3642,6 +3642,17 @@ function _vcepRenderTab(r) {
       });
     });
   }
+
+  // Preenche o select de setor da aba Adicionar. Se os setores ainda não
+  // vieram (usuário rápido logo após abrir o painel), busca e então preenche —
+  // por isso o select nasce como "Carregando setores..." e não vazio.
+  if (vcepTabAtual === 'add') {
+    if (setores.length) {
+      preencherSelectSetor('vadd-setor');
+    } else {
+      carregarSetores().then(() => preencherSelectSetor('vadd-setor'));
+    }
+  }
 }
 
 function _vcepAnalise(r, prefixo = '', interativo = true) {
@@ -4147,9 +4158,11 @@ function _vcepAdd(r) {
         </div>
         <div class="vcep-fg vcep-fg-half">
           <label class="vcep-lbl">Setor / Marca *</label>
+          <!-- Opções preenchidas por preencherSelectSetor DEPOIS de inserir o
+               HTML (ver _vcepRenderTab): montar inline aqui deixava o select
+               vazio quando os setores ainda não tinham carregado. -->
           <select class="vcep-select" id="vadd-setor">
-            <option value="">Selecione...</option>
-            ${setores.map(s => `<option value="${s.id}" ${String(s.id) === String(ultimoSetorUsado()) ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}
+            <option value="">Carregando setores...</option>
           </select>
         </div>
         <div class="vcep-fg vcep-fg-half">

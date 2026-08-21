@@ -75,7 +75,9 @@
 //       fora do alcance); + setor/marca e Nº da OS no adicionar do verificar CEP.
 // v57 = bipar não dá mais 502: busca direcionada da nota (acha o e-mail exato)
 //       e, se demorar/falhar, pede o XML em vez de estourar o gateway.
-const CACHE_VERSAO = 'portotec-roteiros-v57';
+// v58 = conserta o select de Setor vazio no adicionar do verificar CEP
+//       (preenche depois de montar o form, carregando os setores se preciso).
+const CACHE_VERSAO = 'portotec-roteiros-v58';
 
 const ARQUIVOS_CASCA = [
   '/',
