@@ -69,7 +69,9 @@
 //       nota fiscal na aba Peças (idempotente) e saldo do estoque na aba Peças.
 // v54 = reagendar ganha "criar dia novo" ali mesmo: escolhe a data, cria a
 //       ficha do técnico e já a seleciona como destino do atendimento.
-const CACHE_VERSAO = 'portotec-roteiros-v54';
+// v55 = bipar nota fiscal: lê a chave (leitor de código de barras, câmera ou
+//       XML colado), reconhece as peças e manda pro estoque (idempotente).
+const CACHE_VERSAO = 'portotec-roteiros-v55';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -3984,6 +3984,22 @@ select:focus-visible,
 .estoque-hist-saida td:first-child { color: var(--danger-text); font-weight: 600; }
 .estoque-hist-ajuste td:first-child { color: var(--accent-text); font-weight: 600; }
 
+/* Bipar nota fiscal */
+.modal-largo { max-width: 640px; width: 100%; }
+.bipar-entrada { display: flex; gap: 8px; }
+.bipar-entrada .form-input { flex: 1 1 auto; font-size: 15px; letter-spacing: .3px; }
+.bipar-alt { display: flex; gap: 14px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.bipar-xml-link, .bipar-camera-btn {
+  font-size: 12px; cursor: pointer; background: none; border: none;
+  color: var(--accent-text); font-family: inherit; padding: 0;
+}
+.bipar-xml-link:hover, .bipar-camera-btn:hover { text-decoration: underline; }
+.bipar-camera-btn {
+  border: 1px solid var(--border-bright); border-radius: 8px; padding: 6px 12px; font-weight: 600;
+}
+.bipar-cabecalho { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.bipar-chave-tag { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+
 /* Elo com a aba Peças: selo de saldo e botão de entrada */
 .peca-estoque-tag {
   font-size: 10px; font-weight: 600; color: var(--accent-text);

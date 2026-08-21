@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v54';
+const VERSAO_PAINEL = 'v55';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5056,6 +5056,7 @@ async function abrirEstoqueRaiz() {
   document.getElementById('estoque-subtitulo').innerHTML =
     'Cada estoque é uma prateleira sua (Electrolux, Panasonic...). Abra um para ver e adicionar as peças dele.';
   document.getElementById('estoque-topo-acoes').innerHTML =
+    '<button class="btn btn-ghost btn-sm" onclick="abrirBiparNota()">📷 Bipar nota fiscal</button>' +
     '<button class="btn btn-primary btn-sm" onclick="abrirCriarGrupo()">+ Criar estoque</button>';
   document.getElementById('estoque-filtros').style.display = 'none';
   document.getElementById('estoque-chips-aparelho').innerHTML = '';
@@ -5527,6 +5528,163 @@ async function definirMinimoEstoque(id, codigo, atual) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+// ── Bipar nota fiscal: lê a chave da NF-e e joga as peças no estoque ─────
+let biparItens = [];   // itens resolvidos da nota, aguardando confirmação
+let biparChave = '';   // chave da nota (vira a referência idempotente)
+let _biparCamera = null; // stream da câmera, para poder desligar
+
+async function abrirBiparNota() {
+  biparItens = []; biparChave = '';
+  await _garantirGruposCarregados();
+  document.getElementById('bipar-chave').value = '';
+  document.getElementById('bipar-xml').value = '';
+  document.getElementById('bipar-xml-area').style.display = 'none';
+  document.getElementById('bipar-resultado').innerHTML = '';
+  document.getElementById('bipar-confirmar-btn').style.display = 'none';
+  // Câmera só quando o navegador sabe ler código de barras nativamente
+  // (Android/Chrome). Sem isso, o leitor físico ou a digitação cobrem.
+  const temCamera = ('BarcodeDetector' in window) && navigator.mediaDevices?.getUserMedia;
+  document.getElementById('bipar-camera-btn').style.display = temCamera ? '' : 'none';
+  document.getElementById('modal-estoque-bipar').classList.add('open');
+  setTimeout(() => document.getElementById('bipar-chave').focus(), 80);
+}
+
+function fecharBiparNota() {
+  _pararCameraBipar();
+  document.getElementById('modal-estoque-bipar').classList.remove('open');
+}
+
+function toggleXmlBipar() {
+  const a = document.getElementById('bipar-xml-area');
+  a.style.display = a.style.display === 'none' ? 'block' : 'none';
+  if (a.style.display !== 'none') document.getElementById('bipar-xml').focus();
+}
+
+async function lerNotaBipada() {
+  const chave = document.getElementById('bipar-chave').value.trim();
+  const xml = document.getElementById('bipar-xml').value.trim();
+  if (!chave && !xml) { toast('Bipe a nota ou cole a chave/XML.', 'error'); return; }
+  const btn = document.getElementById('bipar-ler-btn');
+  btn.disabled = true;
+  document.getElementById('bipar-resultado').innerHTML = '<div class="carregando">Lendo a nota...</div>';
+  try {
+    const d = await api('/estoque/nota/itens', { method: 'POST',
+      body: JSON.stringify({ chave, xml }) });
+    _pararCameraBipar();
+    renderResultadoBipar(d);
+  } catch (e) {
+    document.getElementById('bipar-resultado').innerHTML = `<div class="erro-box">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderResultadoBipar(d) {
+  biparItens = d.itens || [];
+  biparChave = d.chave || '';
+  const alvo = document.getElementById('bipar-resultado');
+  const confirmar = document.getElementById('bipar-confirmar-btn');
+
+  if (!biparItens.length) {
+    confirmar.style.display = 'none';
+    // Mensagem honesta: bipar só dá os itens se o XML da nota existir. Sem
+    // IMAP ou nota que não veio por e-mail, o caminho é colar o XML.
+    const dica = d.nao_encontrada
+      ? (d.imap_configurado
+          ? 'Essa nota ainda não chegou no e-mail da Panasonic (ou não é dela). Se tiver o XML, cole no botão acima.'
+          : 'A leitura por chave depende do e-mail configurado. Por enquanto, cole o XML da nota no botão acima.')
+      : 'Não encontrei peças nessa nota.';
+    alvo.innerHTML = `<div class="vazio-box">${esc(dica)}</div>`;
+    return;
+  }
+
+  const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const g = n => (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+  const linhas = biparItens.map(i => `
+    <tr>
+      <td><b>${esc(i.codigo)}</b></td>
+      <td>${esc(i.descricao || '—')}</td>
+      <td style="text-align:right;">${g(i.quantidade)}</td>
+      <td style="text-align:right;">${brl(i.custo_unit)}</td>
+    </tr>`).join('');
+  const opcoes = '<option value="">Sem estoque (organizo depois)</option>' +
+    estoqueGrupos.map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('');
+
+  alvo.innerHTML = `
+    <div class="bipar-cabecalho">
+      <span class="conc-tag ok">${biparItens.length} peça(s) na nota</span>
+      ${biparChave ? `<span class="bipar-chave-tag">NF ...${esc(biparChave.slice(-8))}</span>` : ''}
+      ${d.fonte === 'xml' ? '<span class="conc-tag neutro">do XML</span>' : ''}
+    </div>
+    <div class="estoque-hist-scroll" style="margin-top:8px;">
+      <table class="estoque-hist-tabela">
+        <thead><tr><th>Código</th><th>Descrição</th><th style="text-align:right;">Qtd</th><th style="text-align:right;">Custo un.</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+    <div class="form-group" style="margin-top:10px;">
+      <label class="form-label" for="bipar-grupo">Mandar para o estoque (prateleira)</label>
+      <select class="form-input" id="bipar-grupo">${opcoes}</select>
+    </div>`;
+  confirmar.style.display = '';
+}
+
+async function confirmarEntradaNota() {
+  if (!biparItens.length) return;
+  const btn = document.getElementById('bipar-confirmar-btn');
+  const grupo = document.getElementById('bipar-grupo')?.value;
+  btn.disabled = true;
+  try {
+    const r = await api('/estoque/entrada-nota', { method: 'POST', body: JSON.stringify({
+      referencia: biparChave || null,
+      grupo_id: grupo ? Number(grupo) : null,
+      itens: biparItens,
+    }) });
+    toast(r.mensagem || 'Peças no estoque.', 'success');
+    fecharBiparNota();
+    carregarEstoque();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Leitura pela câmera (progressivo — só onde o BarcodeDetector existe).
+async function biparPelaCamera() {
+  const video = document.getElementById('bipar-video');
+  try {
+    const detector = new BarcodeDetector({ formats: ['code_128', 'qr_code'] });
+    _biparCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = _biparCamera;
+    video.style.display = 'block';
+    await video.play();
+    const tick = async () => {
+      if (!_biparCamera) return; // câmera desligada: para o laço
+      try {
+        const cods = await detector.detect(video);
+        const achou = cods.map(c => c.rawValue).find(v => /\d{44}/.test(v));
+        if (achou) {
+          document.getElementById('bipar-chave').value = achou;
+          lerNotaBipada();
+          return;
+        }
+      } catch { /* frame ruim: tenta o próximo */ }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  } catch (e) {
+    toast('Não consegui abrir a câmera. Use o leitor ou digite a chave.', 'error');
+    _pararCameraBipar();
+  }
+}
+
+function _pararCameraBipar() {
+  if (_biparCamera) { _biparCamera.getTracks().forEach(t => t.stop()); _biparCamera = null; }
+  const v = document.getElementById('bipar-video');
+  if (v) { v.srcObject = null; v.style.display = 'none'; }
+}
+
 async function verHistoricoEstoque(id, codigo) {
   try {
     const d = await api(`/estoque/${id}/historico`);
@@ -5574,6 +5732,9 @@ async function verHistoricoEstoque(id, codigo) {
 
 function fecharModais() {
   document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
+  // Fechar por fora (clique no fundo / Esc) também precisa soltar a câmera do
+  // bipar — senão a luz da câmera fica acesa com o modal já fechado.
+  if (typeof _pararCameraBipar === 'function') _pararCameraBipar();
 }
 
 document.querySelectorAll('.modal-overlay').forEach(overlay => {

@@ -315,6 +315,48 @@
 <datalist id="estoque-datalist-marca"></datalist>
 <datalist id="estoque-datalist-cliente"></datalist>
 
+<div class="modal-overlay" id="modal-estoque-bipar" role="dialog" aria-modal="true">
+  <div class="modal modal-largo">
+    <div class="modal-title">Bipar nota fiscal</div>
+    <p style="font-size:12px;color:var(--text-muted);margin:-4px 0 12px;">
+      Bipe o código de barras do DANFE (ou digite/cole a chave de 44 dígitos)
+      e dê Enter. As peças da nota entram no estoque de uma vez.
+    </p>
+
+    <div class="bipar-entrada">
+      <input type="text" class="form-input" id="bipar-chave" inputmode="numeric"
+             autocomplete="off" placeholder="Bipe aqui ou cole a chave / QR..."
+             onkeydown="if(event.key==='Enter'){event.preventDefault();lerNotaBipada();}">
+      <button type="button" class="btn btn-primary" id="bipar-ler-btn"
+              onclick="lerNotaBipada()">Ler nota</button>
+    </div>
+
+    <div class="bipar-alt">
+      <button type="button" class="bipar-camera-btn" id="bipar-camera-btn"
+              onclick="biparPelaCamera()" style="display:none;">📷 Ler pela câmera</button>
+      <button type="button" class="bipar-xml-link" onclick="toggleXmlBipar()">
+        Nota não achada? Colar o XML
+      </button>
+    </div>
+    <div id="bipar-xml-area" style="display:none;margin-top:8px;">
+      <textarea class="form-input" id="bipar-xml" rows="4"
+                placeholder="Cole aqui o conteúdo do XML da NF-e..."></textarea>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;"
+              onclick="lerNotaBipada()">Ler do XML</button>
+    </div>
+
+    <video id="bipar-video" style="display:none;width:100%;border-radius:10px;margin-top:10px;" muted playsinline></video>
+
+    <div id="bipar-resultado" style="margin-top:14px;"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharBiparNota()">Fechar</button>
+      <button type="button" class="btn btn-primary" id="bipar-confirmar-btn"
+              onclick="confirmarEntradaNota()" style="display:none;">Mandar pro estoque</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-estoque-mov" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="modal-title" id="estoque-mov-titulo">Dar entrada</div>

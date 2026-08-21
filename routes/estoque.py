@@ -20,6 +20,7 @@ DUAS REGRAS QUE DEFINEM TUDO:
    sempre que os preços variassem — e eles variam.
 """
 import logging
+import re
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request, session
@@ -401,6 +402,74 @@ def saldos_por_codigo():
                             "descricao": i["descricao"], "custo_medio": float(i["custo_medio"] or 0)}
               for i in itens if i["codigo"] in codigos}
     return jsonify({"saldos": saldos})
+
+
+def _extrair_chave(texto):
+    """Tira a chave de 44 dígitos do que veio do leitor de código de barras.
+
+    O DANFE (NF-e modelo 55) tem um Code-128 com os 44 dígitos crus; a NFC-e
+    (modelo 65) tem um QR com uma URL que carrega a chave embutida. Pegar a
+    primeira sequência de exatamente 44 dígitos cobre os dois casos e ignora
+    espaço, quebra de linha e o resto da URL."""
+    m = re.search(r"\d{44}", (texto or ""))
+    return m.group(0) if m else ""
+
+
+def _num(v):
+    """Número da NF-e (usa ponto decimal, padrão do XML) em float, tolerante."""
+    try:
+        return float(str(v).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@estoque_bp.route("/estoque/nota/itens", methods=["POST"])
+def ler_nota():
+    """Resolve os itens de uma nota fiscal para conferência antes da entrada.
+
+    Dois caminhos: `chave` (o que o leitor bipa) busca o XML no e-mail da
+    Panasonic (services.nfe); `xml` colado é lido direto — cobre nota que não
+    chegou por e-mail ou IMAP não configurado. Calcula o custo UNITÁRIO
+    (vProd é o total do item ÷ quantidade), que é o que o estoque precisa."""
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    from services.nfe import _itens_do_xml, imap_configurado, pecas_por_nota
+
+    d = request.get_json(silent=True) or {}
+    xml = (d.get("xml") or "").strip()
+    chave = _extrair_chave(d.get("chave") or d.get("codigo") or "")
+
+    itens_brutos, fonte = [], None
+    if xml:
+        itens_brutos = _itens_do_xml(xml.encode("utf-8"))
+        fonte = "xml"
+    elif chave:
+        achadas = pecas_por_nota([chave])
+        if chave in achadas:
+            itens_brutos = achadas[chave]["itens"]
+            fonte = "email"
+    else:
+        return jsonify({"erro": "Bipe a nota ou cole a chave/XML"}), 400
+
+    itens = []
+    for it in itens_brutos:
+        qtd = _num(it.get("quantidade")) or 1
+        total = _num(it.get("valor"))
+        itens.append({
+            "codigo": (it.get("codigo") or "").strip(),
+            "descricao": (it.get("descricao") or "").strip(),
+            "quantidade": qtd,
+            "custo_unit": round(total / qtd, 4) if qtd else 0,
+        })
+
+    return jsonify({
+        "chave": chave,
+        "itens": itens,
+        "fonte": fonte,
+        "imap_configurado": imap_configurado(),
+        # Mensagem só quando não achou nada por chave: ajuda a entender o vazio.
+        "nao_encontrada": bool(chave and not xml and not itens),
+    })
 
 
 @estoque_bp.route("/estoque/entrada-nota", methods=["POST"])
