@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v58';
+const VERSAO_PAINEL = 'v59';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5626,7 +5626,8 @@ function renderResultadoBipar(d) {
     // Mensagem honesta conforme o motivo do vazio.
     let dica;
     if (d.erro_busca) {
-      dica = 'Não consegui ler a nota pelo e-mail agora (demorou ou está indisponível). Cole o XML da nota abaixo.';
+      dica = 'Não consegui ler a nota pelo e-mail agora (demorou ou está indisponível). Cole o XML da nota abaixo.'
+           + (d.motivo ? `\n\nDetalhe: ${d.motivo}` : '');
       // Abre o campo de XML na hora — é o caminho de saída.
       const area = document.getElementById('bipar-xml-area');
       if (area) area.style.display = 'block';

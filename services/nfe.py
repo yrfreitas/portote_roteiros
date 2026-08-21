@@ -119,42 +119,45 @@ def _resumir(itens: List[dict]) -> str:
     return f"{len(itens)} itens: {codigos}"
 
 
-def itens_de_uma_nota(chave: str):
+def itens_de_uma_nota(chave: str) -> dict:
     """Busca DIRECIONADA de UMA nota pela chave — rápida o bastante para caber
     numa requisição web (é o que o 'bipar' usa).
 
-    O pecas_por_nota varre TODOS os e-mails da Panasonic baixando cada um
-    inteiro até achar — 24s+ — e estourava o timeout do gateway (502 ao bipar).
-    Aqui a busca é mirada: no Gmail o X-GM-RAW acha o e-mail exato pela chave
-    (indexa nome do anexo e conteúdo); fora do Gmail, cai num fallback limitado
-    aos mais recentes. Um socket curto impede travar.
+    Devolve um dict com `status`:
+      - "off"   : IMAP desligado ou chave inválida (a tela pede o XML)
+      - "ok"    : achou; `itens` preenchido
+      - "vazio" : buscou e não achou o XML dessa nota
+      - "erro"  : falha/timeout ao ler o e-mail; `motivo` explica (mostra na tela)
 
-    Retorno: lista de itens se achou; [] se buscou e não achou; None se NÃO deu
-    para buscar (IMAP desligado, timeout, erro) — a tela então pede o XML."""
+    Por que é rápida (o pecas_por_nota varria TUDO e dava 502): no Gmail o
+    X-GM-RAW acha o e-mail exato pela chave; senão, varre só os MAIS RECENTES —
+    a nota bipada acabou de chegar, está no topo. Fetch limitado e socket curto
+    impedem travar o gateway.
+    """
     chave = re.sub(r"\D", "", chave or "")
     if len(chave) != 44 or not imap_configurado():
-        return None
+        return {"status": "off", "itens": []}
 
     conn = None
     try:
         conn = _conectar()
-        # Encurta o socket para search/fetch: melhor devolver "não deu, cole o
-        # XML" em ~12s do que deixar o gateway cortar em 502.
-        socket.setdefaulttimeout(12)
+        # Socket curto: melhor "não deu, cole o XML" em ~15s do que 502.
+        socket.setdefaulttimeout(15)
 
         ids = []
         try:
-            status, data = conn.search(None, "X-GM-RAW", f'"{chave}"')
+            status, data = conn.search(None, "X-GM-RAW", chave)  # Gmail: tiro certo
             if status == "OK" and data and data[0]:
                 ids = data[0].split()
-        except Exception:
-            ids = []  # servidor não-Gmail: usa o fallback abaixo
+        except Exception as exc:
+            log.warning("X-GM-RAW indisponível (%s); usando varredura recente", exc)
 
         if not ids:
             status, data = conn.search(None, "FROM", REMETENTE_NFE)
             if status == "OK" and data and data[0]:
-                # Só os mais recentes: sem isso o fallback repete o problema.
-                ids = sorted(data[0].split(), key=lambda x: -int(x))[:30]
+                # Recentes primeiro e no máximo 25 — os e-mails de NF-e são só o
+                # XML (pequenos), então isso resolve em poucos segundos.
+                ids = sorted(data[0].split(), key=lambda x: -int(x))[:25]
 
         for mid in ids:
             try:
@@ -172,11 +175,12 @@ def itens_de_uma_nota(chave: str):
                     continue
                 itens = _itens_do_xml(parte.get_payload(decode=True))
                 if itens:
-                    return itens
-        return []
-    except Exception:
+                    return {"status": "ok", "itens": itens}
+
+        return {"status": "vazio", "itens": []}
+    except Exception as exc:
         log.exception("Busca direcionada da nota %s falhou", chave[:8])
-        return None
+        return {"status": "erro", "itens": [], "motivo": str(exc)[:200]}
     finally:
         if conn is not None:
             try:

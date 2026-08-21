@@ -439,21 +439,20 @@ def ler_nota():
     xml = (d.get("xml") or "").strip()
     chave = _extrair_chave(d.get("chave") or d.get("codigo") or "")
 
-    itens_brutos, fonte, erro_busca = [], None, False
+    itens_brutos, fonte, erro_busca, motivo = [], None, False, None
     if xml:
         itens_brutos = _itens_do_xml(xml.encode("utf-8"))
         fonte = "xml"
     elif chave:
-        # None = não deu para buscar (timeout/IMAP off) → a tela pede o XML,
-        # em vez de o gateway estourar 502. [] = buscou e não achou.
-        achados = itens_de_uma_nota(chave)
-        if achados is None:
-            # None com IMAP ligado = a busca falhou (timeout/erro) → pedir XML.
-            # None com IMAP desligado = caso normal "não tem e-mail" → nao_encontrada.
-            erro_busca = imap_configurado()
-        elif achados:
-            itens_brutos = achados
+        # Nunca deixa estourar 502: a função sempre volta com um status.
+        r = itens_de_uma_nota(chave)
+        if r.get("status") == "ok":
+            itens_brutos = r.get("itens") or []
             fonte = "email"
+        elif r.get("status") == "erro":
+            erro_busca = True
+            motivo = r.get("motivo")
+        # "vazio"/"off" caem em nao_encontrada abaixo.
     else:
         return jsonify({"erro": "Bipe a nota ou cole a chave/XML"}), 400
 
@@ -475,6 +474,7 @@ def ler_nota():
         "imap_configurado": imap_configurado(),
         # Não deu para buscar (timeout/erro no e-mail): a tela pede o XML.
         "erro_busca": erro_busca,
+        "motivo": motivo,   # detalhe técnico do erro, só quando erro_busca
         # Buscou por chave e não achou o XML dessa nota no e-mail.
         "nao_encontrada": bool(chave and not xml and not itens and not erro_busca),
     })

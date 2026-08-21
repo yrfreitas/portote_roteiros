@@ -77,7 +77,9 @@
 //       e, se demorar/falhar, pede o XML em vez de estourar o gateway.
 // v58 = conserta o select de Setor vazio no adicionar do verificar CEP
 //       (preenche depois de montar o form, carregando os setores se preciso).
-const CACHE_VERSAO = 'portotec-roteiros-v58';
+// v59 = bipar mais robusto: busca da nota sempre volta com status (nunca 502),
+//       varredura só dos e-mails recentes, e mostra o motivo do erro na tela.
+const CACHE_VERSAO = 'portotec-roteiros-v59';
 
 const ARQUIVOS_CASCA = [
   '/',
