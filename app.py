@@ -246,10 +246,15 @@ def diagnostico_geral():
         abertos = sum(1 for l in linhas if (l.get("status") or "novo") != "resolvido")
         return {"total": len(linhas), "abertos": abertos, "ultimos": linhas[:30]}
 
+    def _ia():
+        from services.ia import MODELO, configurado
+        return {"configurado": configurado(), "modelo": MODELO}
+
     bloco("rastreio", _rastreio)
     bloco("agoraos", _agoraos)
     bloco("planilha", _planilha)
     bloco("setores", _setores)
+    bloco("ia", _ia)
     bloco("erros", _erros)
 
     return jsonify(saida)
@@ -308,6 +313,27 @@ def remover_erro_cliente(erro_id):
     if not apagados:
         return jsonify({"erro": "Registro não encontrado"}), 404
     return jsonify({"mensagem": "Registro removido"})
+
+
+@app.route("/api/erros-cliente/<int:erro_id>/analisar", methods=["POST"])
+def analisar_erro_cliente(erro_id):
+    """Manda o erro para a IA (Claude) e devolve o diagnóstico + a correção
+    sugerida. Exige a permissão de diagnóstico (POST cai na regra de ver)."""
+    from database import fetch_one
+
+    from services.ia import analisar_erro
+    with db_conn() as conn:
+        erro = fetch_one(conn, """
+            SELECT quando, origem, versao, url, mensagem
+              FROM erros_cliente WHERE id = ?
+        """, (erro_id,))
+    if not erro:
+        return jsonify({"erro": "Registro não encontrado"}), 404
+
+    r = analisar_erro(dict(erro))
+    if not r.get("ativo"):
+        return jsonify({"erro": r.get("motivo") or "IA indisponível"}), 503
+    return jsonify({"analise": r["analise"]})
 
 
 @app.route("/api/erros-cliente/resolvidos", methods=["DELETE"])

@@ -23,12 +23,23 @@ from database import db_conn, fetch_one
 
 # Catálogo de ações. `area` só agrupa na tela. A ordem é a de exibição.
 CATALOGO = [
-    {"chave": "diagnostico",     "area": "Sistema",  "rotulo": "Ver Diagnóstico do sistema"},
-    {"chave": "gerenciar_usuarios", "area": "Sistema", "rotulo": "Gerenciar acessos e permissões"},
-    {"chave": "pecas",           "area": "Peças",    "rotulo": "Ver a aba Peças (compras / nota fiscal)"},
-    {"chave": "estoque_ver",     "area": "Estoque",  "rotulo": "Ver o Estoque"},
-    {"chave": "estoque_editar",  "area": "Estoque",  "rotulo": "Mexer no Estoque (entrada, saída, ajuste, criar)"},
-    {"chave": "estoque_excluir", "area": "Estoque",  "rotulo": "Excluir peças e estoques"},
+    # Sistema
+    {"chave": "diagnostico",        "area": "Sistema",     "rotulo": "Ver Diagnóstico do sistema"},
+    {"chave": "diagnostico_editar", "area": "Sistema",     "rotulo": "Editar diagnóstico (status/observação dos erros)"},
+    {"chave": "gerenciar_usuarios", "area": "Sistema",     "rotulo": "Gerenciar acessos e permissões"},
+    {"chave": "gerenciar_tecnicos", "area": "Sistema",     "rotulo": "Criar / editar / remover técnicos"},
+    {"chave": "gerenciar_setores",  "area": "Sistema",     "rotulo": "Criar / editar / remover setores"},
+    # Roteiros e atendimentos
+    {"chave": "roteiros",           "area": "Roteiros",    "rotulo": "Mexer nos roteiros (criar dia, otimizar, adicionar atendimento)"},
+    {"chave": "atendimentos",       "area": "Roteiros",    "rotulo": "Editar / mover / excluir atendimentos"},
+    # Peças e estoque
+    {"chave": "pecas",              "area": "Peças",       "rotulo": "Ver a aba Peças (compras / nota fiscal)"},
+    {"chave": "estoque_ver",        "area": "Estoque",     "rotulo": "Ver o Estoque"},
+    {"chave": "estoque_editar",     "area": "Estoque",     "rotulo": "Mexer no Estoque (entrada, saída, ajuste, criar)"},
+    {"chave": "estoque_excluir",    "area": "Estoque",     "rotulo": "Excluir peças e estoques"},
+    # Comunicação e relatórios
+    {"chave": "chat_equipe",        "area": "Comunicação", "rotulo": "Usar o chat da equipe"},
+    {"chave": "relatorios",         "area": "Relatórios",  "rotulo": "Ver relatórios e exportações"},
 ]
 
 TODAS = [c["chave"] for c in CATALOGO]
@@ -41,16 +52,34 @@ PADRAO_TECNICO = set()
 # É avaliado em ordem; a PRIMEIRA regra cujo prefixo casa decide. Por isso as
 # regras mais específicas de estoque (por método) vêm antes da genérica.
 REGRAS = [
-    ("/api/diagnostico",          None,                     "diagnostico"),
-    ("/api/erros-cliente",        None,                     "diagnostico"),
-    ("/api/rastreios/diagnostico", None,                    "diagnostico"),
-    ("/api/pedidos/diagnostico",  None,                     "diagnostico"),
-    ("/api/pedidos",              None,                     "pecas"),
-    ("/api/usuarios",             None,                     "gerenciar_usuarios"),
-    ("/api/permissoes",           None,                     "gerenciar_usuarios"),
-    ("/api/estoque",              ("GET",),                 "estoque_ver"),
-    ("/api/estoque",              ("POST", "PUT", "PATCH"), "estoque_editar"),
-    ("/api/estoque",              ("DELETE",),              "estoque_excluir"),
+    # Diagnóstico: ver vs. mexer. A regra de editar vem ANTES da de ver, senão
+    # a de ver (prefixo igual, sem método) casaria primeiro e o editar nunca
+    # seria exigido. PUT/DELETE nos erros = editar; o resto (GET) = ver.
+    ("/api/erros-cliente",         ("PUT", "DELETE"),        "diagnostico_editar"),
+    ("/api/erros-cliente",         None,                     "diagnostico"),
+    ("/api/diagnostico",           None,                     "diagnostico"),
+    ("/api/rastreios/diagnostico", None,                     "diagnostico"),
+    ("/api/pedidos/diagnostico",   None,                     "diagnostico"),
+    # Cadastros de sistema (GET fica livre — os selects do painel precisam dele).
+    ("/api/tecnicos",              ("POST", "PUT", "DELETE"), "gerenciar_tecnicos"),
+    ("/api/setores",               ("POST", "PUT", "DELETE"), "gerenciar_setores"),
+    # Roteiros: escrita em fichas (inclui adicionar atendimento, otimizar...).
+    ("/api/fichas",                ("POST", "PUT", "DELETE"), "roteiros"),
+    # Atendimentos existentes: editar, mover, transferir, excluir.
+    ("/api/servicos",              ("POST", "PUT", "DELETE"), "atendimentos"),
+    # Peças, usuários, relatórios, chat da equipe.
+    ("/api/pedidos",               None,                     "pecas"),
+    ("/api/usuarios",              None,                     "gerenciar_usuarios"),
+    ("/api/permissoes",            None,                     "gerenciar_usuarios"),
+    ("/api/equipe",                None,                     "chat_equipe"),
+    ("/api/relatorios",            None,                     "relatorios"),
+    ("/api/historico",             None,                     "relatorios"),
+    ("/api/metricas",              None,                     "relatorios"),
+    ("/api/desfechos",             None,                     "relatorios"),
+    # Estoque: ver / editar / excluir.
+    ("/api/estoque",               ("GET",),                 "estoque_ver"),
+    ("/api/estoque",               ("POST", "PUT", "PATCH"), "estoque_editar"),
+    ("/api/estoque",               ("DELETE",),              "estoque_excluir"),
 ]
 
 

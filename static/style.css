@@ -3205,6 +3205,15 @@ select:focus-visible,
   background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
 }
 .diag-erro-obs { flex: 1 1 140px; font-size: 11px; padding: 4px 8px; min-width: 120px; }
+.diag-ia-btn:hover { border-color: var(--accent); color: var(--accent-text); }
+.diag-ia-resultado:empty { display: none; }
+.diag-ia-carregando { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+.diag-ia-caixa {
+  margin-top: 8px; padding: 10px 12px; border-radius: 9px;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+}
+.diag-ia-titulo { font-size: 11px; font-weight: 700; color: var(--accent-text); margin-bottom: 5px; }
+.diag-ia-texto { font-size: 12.5px; color: var(--text-primary); line-height: 1.5; }
 
 /* Aviso de pontos sem setor: fica no topo do painel porque ninguém
    classifica o que não aparece na frente. */

@@ -9,3 +9,4 @@ pywebpush==2.4.0
 openpyxl==3.1.5
 gspread==6.2.1
 google-auth==2.56.3
+anthropic==0.69.0

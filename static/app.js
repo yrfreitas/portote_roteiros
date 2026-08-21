@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v63';
+const VERSAO_PAINEL = 'v64';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1289,6 +1289,12 @@ async function carregarDiagnostico() {
     em.configurado ? 'ok' : 'aviso',
     em.configurado ? 'configurada' : 'não configurada'));
 
+  const ia = d.ia || {};
+  partes.push(_linhaDiag('Análise de erros com IA',
+    ia.configurado ? 'ok' : 'aviso',
+    ia.configurado ? 'ligada (' + esc(ia.modelo || '') + ')' : 'sem ANTHROPIC_API_KEY',
+    ia.configurado ? '' : 'Defina ANTHROPIC_API_KEY nas variáveis do Railway para o botão "Analisar com IA" funcionar.'));
+
   // ── Higiene dos dados
   partes.push(`<div class="diag-secao">Dados</div>`);
   const semSetor = (d.setores && d.setores.sem_setor) || 0;
@@ -1306,7 +1312,7 @@ async function carregarDiagnostico() {
   const er = d.erros || {};
   const abertos = er.abertos != null ? er.abertos : er.total;
   partes.push(`<div class="diag-secao">Erros na tela ${er.total ? `· ${abertos} em aberto` : ''}
-    ${er.total ? `<button class="btn btn-ghost btn-xs" style="float:right;" onclick="limparErrosResolvidos()">Limpar tratados</button>` : ''}</div>`);
+    ${er.total && podeUsuario('diagnostico_editar') ? `<button class="btn btn-ghost btn-xs" style="float:right;" onclick="limparErrosResolvidos()">Limpar tratados</button>` : ''}</div>`);
   if (!er.total) {
     partes.push(_linhaDiag('Nenhum erro registrado', 'ok', 'limpo'));
   } else {
@@ -1329,17 +1335,34 @@ function _renderErroDiag(e) {
   const st = e.status || 'novo';
   const opts = _STATUS_ERRO_DIAG.map(s =>
     `<option value="${s}" ${s === st ? 'selected' : ''}>${s}</option>`).join('');
+  const podeEditar = podeUsuario('diagnostico_editar');
   return `
     <div class="diag-erro diag-erro--${esc(st)}" data-erro="${e.id}">
       <div class="diag-erro-msg">${esc(e.mensagem)}</div>
       <div class="diag-detalhe">${esc(e.quando)} · ${esc(e.origem)} · ${esc(e.versao)} · ${esc(e.url)}</div>
       <div class="diag-erro-acoes">
+        <button class="btn btn-ghost btn-xs diag-ia-btn" onclick="analisarErroIA(${e.id})" title="Pedir à IA um diagnóstico e a correção">🤖 Analisar com IA</button>
+        ${podeEditar ? `
         <select class="diag-erro-status" onchange="atualizarErroDiag(${e.id}, 'status', this.value)">${opts}</select>
         <input class="diag-erro-obs form-input" placeholder="observação..." value="${esc(e.obs || '')}"
                onchange="atualizarErroDiag(${e.id}, 'obs', this.value)">
-        <button class="btn btn-ghost btn-xs estoque-btn-excluir" onclick="removerErroDiag(${e.id})">Excluir</button>
+        <button class="btn btn-ghost btn-xs estoque-btn-excluir" onclick="removerErroDiag(${e.id})">Excluir</button>` : ''}
       </div>
+      <div class="diag-ia-resultado" id="diag-ia-${e.id}"></div>
     </div>`;
+}
+
+async function analisarErroIA(id) {
+  const alvo = document.getElementById(`diag-ia-${id}`);
+  if (!alvo) return;
+  alvo.innerHTML = '<div class="diag-ia-carregando"><div class="spinner"></div> A IA está analisando o erro...</div>';
+  try {
+    const d = await api(`/erros-cliente/${id}/analisar`, { method: 'POST' }, 90000);
+    // Texto simples da IA — escapo e preservo as quebras de linha.
+    alvo.innerHTML = `<div class="diag-ia-caixa"><div class="diag-ia-titulo">🤖 Análise da IA</div><div class="diag-ia-texto">${esc(d.analise).replace(/\n/g, '<br>')}</div></div>`;
+  } catch (e) {
+    alvo.innerHTML = `<div class="erro-box">${esc(e.message)}</div>`;
+  }
 }
 
 async function atualizarErroDiag(id, campo, valor) {

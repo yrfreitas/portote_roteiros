@@ -87,7 +87,9 @@
 //       vez de um menu suspenso; só guarda em sub-estoque.
 // v63 = permissões granulares por usuário (editor em drawer no Acessos) +
 //       diagnóstico editável (status/observação/excluir nos erros da tela).
-const CACHE_VERSAO = 'portotec-roteiros-v63';
+// v64 = mais permissões (13 ações: split diagnóstico, técnicos, setores,
+//       roteiros, atendimentos, relatórios, chat) + botão Analisar erro com IA.
+const CACHE_VERSAO = 'portotec-roteiros-v64';
 
 const ARQUIVOS_CASCA = [
   '/',
