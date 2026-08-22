@@ -7,7 +7,8 @@ log = logging.getLogger("portotec.tecnico_api")
 
 from database import (db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id, ler_revisao, sql)
-from routes.fichas import (STATUS_VALIDOS, nome_dia_semana, ordenar_por_semana,
+from routes.fichas import (STATUS_VALIDOS, nome_dia_semana, obter_ou_criar_ficha,
+                           ordenar_por_semana,
                            recalcular_distancia_ordem_fixa, recalcular_rota)
 from routes.servicos import STATUS_SERVICO_VALIDOS, aplicar_status_servico
 
@@ -268,19 +269,9 @@ def _resolver_ficha_reagendamento(conn, reagendar, tecnico_id):
             return None, "Data inválida"
         # Reaproveita ficha já existente NESSA data pro mesmo técnico, em vez
         # de criar uma duplicada — o técnico pode já ter outros clientes
-        # marcados pro mesmo dia.
-        existente = fetch_one(conn, """
-            SELECT id FROM fichas
-             WHERE tecnico_id = ? AND data_referencia = ? AND status <> 'concluida'
-             ORDER BY id DESC
-        """, (tecnico_id, nova_data))
-        if existente:
-            return existente["id"], None
-
-        novo_id = insert_returning_id(conn, """
-            INSERT INTO fichas (tecnico_id, dia_semana, data_referencia)
-            VALUES (?, ?, ?)
-        """, (tecnico_id, dia, nova_data))
+        # marcados pro mesmo dia. Travado contra dois reagendamentos quase
+        # simultâneos criarem ficha dobrada — ver obter_ou_criar_ficha.
+        novo_id, _ = obter_ou_criar_ficha(conn, tecnico_id, dia, nova_data)
         return novo_id, None
 
     return None, None

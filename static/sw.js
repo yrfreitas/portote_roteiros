@@ -115,7 +115,11 @@
 //       peças usadas vinculadas (dá baixa no estoque, aceita mais de uma),
 //       busca por número/cliente, histórico do cliente na Nova OS, e
 //       métricas (por mês, tempo médio até finalizar, indicação).
-const CACHE_VERSAO = 'portotec-roteiros-v72';
+// v73 = auditoria de segurança: permissão fecha por padrão (não abre) pra
+//       rota sem regra mapeada; excluir técnico com histórico desativa em
+//       vez de apagar as fichas; corrida ao criar ficha durante transferência
+//       de atendimento corrigida de verdade (testado com 30 threads).
+const CACHE_VERSAO = 'portotec-roteiros-v73';
 
 const ARQUIVOS_CASCA = [
   '/',

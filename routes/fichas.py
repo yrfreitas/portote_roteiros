@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
@@ -14,6 +15,52 @@ from services.push import notificar_tecnico
 log = logging.getLogger("portotec.fichas")
 
 fichas_bp = Blueprint("fichas", __name__)
+
+# Trava única pra "reaproveita a ficha se já existe, senão cria" — o mesmo
+# problema que services/agoraos.py já resolveu pro token: Procfile roda
+# --workers 1 --threads 8, várias threads no mesmo processo. Sem isto, duas
+# transferências/agendamentos pro mesmo técnico+dia quase ao mesmo tempo
+# podiam cada uma checar "não existe" antes da outra commitar o INSERT, e
+# criar duas fichas duplicadas pro mesmo dia. Ponto único porque são TRÊS
+# lugares fazendo esse mesmo check-then-insert (transferir técnico, reagendar
+# do app do técnico, agendar OS) — trava espalhada em cada um seria trava
+# nenhuma.
+_trava_ficha = threading.Lock()
+
+
+def obter_ou_criar_ficha(conn, tecnico_id, dia_semana, data_referencia=None, **extras):
+    """Devolve (ficha_id, criou_ficha). Reaproveita ficha aberta do mesmo
+    técnico/dia/data se existir; senão cria. `extras` são colunas opcionais
+    do INSERT (ponto_partida, ponto_partida_cep, ...) — passe só o que tiver.
+
+    COMMITA o INSERT na hora, ainda dentro da trava — não espera o commit da
+    transação de quem chamou. Sem isso a trava não resolve nada: o SELECT da
+    PRÓXIMA thread não veria o INSERT da anterior enquanto ele seguir
+    pendente dentro da transação externa (testado: 20 chamadas concorrentes
+    ainda criavam ficha duplicada mesmo com a trava, porque as duas liam
+    "não existe" antes de qualquer uma commitar). Ficha ficar criada mesmo
+    se o resto da requisição falhar depois é um custo aceitável — uma ficha
+    vazia não corrompe nada; ficha duplicada, sim.
+    """
+    with _trava_ficha:
+        existente = fetch_one(conn, sql("""
+            SELECT id FROM fichas
+             WHERE tecnico_id = ? AND dia_semana = ?
+               AND COALESCE(data_referencia, '') = COALESCE(?, '')
+               AND status <> 'concluida'
+             ORDER BY id DESC
+        """), (tecnico_id, dia_semana, data_referencia))
+        if existente:
+            return existente["id"], False
+
+        colunas = ["tecnico_id", "dia_semana", "data_referencia"] + list(extras.keys())
+        valores = [tecnico_id, dia_semana, data_referencia] + list(extras.values())
+        marcadores = ", ".join(["?"] * len(colunas))
+        novo_id = insert_returning_id(conn, sql(
+            f"INSERT INTO fichas ({', '.join(colunas)}) VALUES ({marcadores})"),
+            tuple(valores))
+        conn.commit()
+        return novo_id, True
 
 DIAS_VALIDOS = {
     "Segunda-feira", "Terça-feira", "Quarta-feira",

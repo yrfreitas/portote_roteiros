@@ -818,6 +818,10 @@ _MIGRACOES_PG = [
     # própria pro momento exato em que virou 'finalizada', a métrica de tempo
     # médio até finalizar não tem como ser calculada.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS finalizada_em TEXT",
+    # Igual ao ativo de setores: excluir técnico com histórico ligado (ficha
+    # concluída, faturada) apagava esse histórico junto (CASCADE). Agora só
+    # apaga de fato quem nunca teve ficha nenhuma — o resto é desativado.
+    "ALTER TABLE tecnicos ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT TRUE",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -889,6 +893,7 @@ _MIGRACOES_SQLITE = [
     )""",
     "ALTER TABLE servicos ADD COLUMN ordem_servico_id INTEGER",
     "ALTER TABLE ordens_servico ADD COLUMN finalizada_em TEXT",
+    "ALTER TABLE tecnicos ADD COLUMN ativo INTEGER DEFAULT 1",
     """CREATE TABLE IF NOT EXISTS cotacoes (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         codigo        TEXT,

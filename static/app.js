@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v72';
+const VERSAO_PAINEL = 'v73';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1856,7 +1856,8 @@ async function carregarTecnicos() {
              onclick="alternarTecnico(${t.id})" title="Clique para recolher ou abrir">
           <span class="tec-seta">${icone('chevron', 'icone-11')}</span>
           ${avatarTecnico(t)}
-          <div class="tecnico-nome" style="color:${escCor(t.cor)}">${esc(t.nome)}</div>
+          <div class="tecnico-nome" style="color:${escCor(t.cor)}">${esc(t.nome)}${
+            (t.ativo === false || t.ativo === 0) ? ' <span class="badge" title="Removido, mas mantido pelo histórico de fichas">inativo</span>' : ''}</div>
           <span class="tec-contagem" id="tec-contagem-${t.id}"></span>
           <div class="tecnico-actions" onclick="event.stopPropagation()">
             <!-- Só o "+", não "+ Ficha": o texto consumia ~45px e empurrava o
@@ -2906,13 +2907,16 @@ async function criarTecnico() {
 
 async function deletarTecnico(evt, id) {
   evt.stopPropagation();
-  if (!confirm('Remover este técnico e todas as suas fichas?')) return;
+  // A confirmação não promete mais "remove tudo": se já tem ficha ligada, o
+  // servidor desativa em vez de apagar (preserva histórico faturado).
+  if (!confirm('Remover este técnico? Se ele já tiver ficha registrada, ' +
+               'fica desativado em vez de apagado, pra não perder o histórico.')) return;
 
   try {
-    await api(`/tecnicos/${id}`, { method: 'DELETE' });
+    const r = await api(`/tecnicos/${id}`, { method: 'DELETE' });
     if (fichaAtiva?.tecnico_id === id) mostrarEstadoVazio();
     await carregarTecnicos();
-    toast('Técnico removido', 'info');
+    toast(r.mensagem || (r.desativado ? 'Técnico desativado' : 'Técnico removido'), 'info');
   } catch (e) { toast(e.message, 'error'); }
 }
 

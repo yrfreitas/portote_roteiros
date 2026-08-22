@@ -134,7 +134,7 @@ def listar_tecnicos():
         # cada ciclo, para uma imagem que não muda. Agora vai em rota própria,
         # com cache longo no navegador — o painel baixa uma vez por sessão.
         tecnicos = fetch_all(conn, """
-            SELECT t.id, t.nome, t.cor, t.token, t.created_at,
+            SELECT t.id, t.nome, t.cor, t.token, t.created_at, t.ativo,
                    CASE WHEN t.foto IS NULL THEN 0 ELSE 1 END AS tem_foto,
                    COUNT(f.id) AS total_fichas
             FROM tecnicos t
@@ -233,17 +233,31 @@ def foto_tecnico(tecnico_id):
 
 @tecnicos_bp.route("/tecnicos/<int:tecnico_id>", methods=["DELETE"])
 def deletar_tecnico(tecnico_id):
+    """Desativa em vez de apagar quando já tem ficha ligada — mesmo motivo do
+    setores.py: apagar de verdade levaria junto o histórico de atendimentos
+    concluídos (e já faturados) daquele técnico, que `fichas.tecnico_id` tem
+    ON DELETE CASCADE. Só apaga quem nunca teve ficha nenhuma."""
     with db_conn(commit=True) as conn:
-        execute(conn, """
-            DELETE FROM servicos
-             WHERE ficha_id IN (SELECT id FROM fichas WHERE tecnico_id = ?)
-        """, (tecnico_id,))
-        execute(conn, "DELETE FROM fichas WHERE tecnico_id = ?", (tecnico_id,))
-        apagados = execute(conn, "DELETE FROM tecnicos WHERE id = ?", (tecnico_id,))
+        tecnico = fetch_one(conn, "SELECT * FROM tecnicos WHERE id = ?", (tecnico_id,))
+        if not tecnico:
+            return jsonify({"erro": "Técnico não encontrado"}), 404
 
-    if not apagados:
-        return jsonify({"erro": "Técnico não encontrado"}), 404
-    return jsonify({"mensagem": "Técnico removido"})
+        usos = fetch_one(
+            conn, "SELECT COUNT(*) AS total FROM fichas WHERE tecnico_id = ?",
+            (tecnico_id,)
+        )["total"]
+
+        if usos:
+            execute(conn, "UPDATE tecnicos SET ativo = ? WHERE id = ?", (False, tecnico_id))
+            return jsonify({
+                "mensagem": f'Técnico "{tecnico["nome"]}" desativado '
+                            f"({usos} ficha(s) mantida(s) no histórico)",
+                "desativado": True,
+            })
+
+        execute(conn, "DELETE FROM tecnicos WHERE id = ?", (tecnico_id,))
+
+    return jsonify({"mensagem": f'Técnico "{tecnico["nome"]}" removido', "removido": True})
 
 
 @tecnicos_bp.route("/verificar-cep", methods=["POST"])

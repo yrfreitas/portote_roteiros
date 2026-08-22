@@ -151,4 +151,20 @@ def checar_acesso(path: str, metodo: str):
         if metodos is not None and metodo.upper() not in metodos:
             continue
         return None if pode(acao) else acao
-    return None
+
+    # Nenhuma regra bateu. GET continua livre de propósito — é o que os
+    # selects do painel dependem (ver comentário acima, em REGRAS). Mas
+    # ESCRITA sem regra nenhuma cobrindo é a rota que ALGUÉM ESQUECEU de
+    # mapear, não uma liberada de propósito — foi assim que
+    # DELETE /api/rastreios/<id>/posicao ficou acessível pra qualquer
+    # usuário logado, contrariando o próprio docstring da rota ("fica atrás
+    # da sessão de admin"). Fechar por padrão aqui não tira nada de quem já
+    # tinha acesso: toda ação que algum papel realmente precisa já está
+    # nomeada em REGRAS; o que sobra fora daqui nunca foi pensado pra ser
+    # usado por não-admin.
+    if metodo.upper() == "GET":
+        return None
+    papel = session.get("papel") or ("admin" if session.get("admin") else None)
+    if papel == "admin":
+        return None
+    return "sem_regra_definida"

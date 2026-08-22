@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request, session
 from database import (IS_PG, db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id, sql)
 from extensions import limiter
-from routes.fichas import recalcular_rota
+from routes.fichas import obter_ou_criar_ficha, recalcular_rota
 from services.geo import geocode_cep
 
 servicos_bp = Blueprint("servicos", __name__)
@@ -363,28 +363,14 @@ def transferir_servico(servico_id):
 
         # Ficha do destino no MESMO dia. Só reaproveita a que está em aberto:
         # jogar ponto novo dentro de rota já concluída mexeria em número de
-        # dia fechado.
-        alvo = fetch_one(conn, """
-            SELECT id FROM fichas
-             WHERE tecnico_id = ? AND dia_semana = ?
-               AND COALESCE(data_referencia, '') = COALESCE(?, '')
-               AND status <> 'concluida'
-             ORDER BY id DESC
-        """, (novo_tecnico, servico["dia_semana"], servico.get("data_referencia")))
-
-        if alvo:
-            ficha_destino = alvo["id"]
-            criou_ficha = False
-        else:
-            ficha_destino = insert_returning_id(conn, """
-                INSERT INTO fichas (tecnico_id, dia_semana, data_referencia,
-                                    ponto_partida, ponto_partida_cep,
-                                    ponto_partida_lat, ponto_partida_lng)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (novo_tecnico, servico["dia_semana"], servico.get("data_referencia"),
-                  servico.get("ponto_partida"), servico.get("ponto_partida_cep"),
-                  servico.get("ponto_partida_lat"), servico.get("ponto_partida_lng")))
-            criou_ficha = True
+        # dia fechado. obter_ou_criar_ficha() é travado contra duas
+        # transferências simultâneas criarem ficha duplicada — ver fichas.py.
+        ficha_destino, criou_ficha = obter_ou_criar_ficha(
+            conn, novo_tecnico, servico["dia_semana"], servico.get("data_referencia"),
+            ponto_partida=servico.get("ponto_partida"),
+            ponto_partida_cep=servico.get("ponto_partida_cep"),
+            ponto_partida_lat=servico.get("ponto_partida_lat"),
+            ponto_partida_lng=servico.get("ponto_partida_lng"))
 
         # Rastreio aberto some junto: quem vai ao cliente mudou, e a posição
         # do técnico antigo não diz mais nada sobre esse atendimento.

@@ -14,7 +14,7 @@ from flask import Blueprint, jsonify, request, session
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
 from routes.clientes import criar_cliente
 from routes.estoque import dar_saida
-from routes.fichas import recalcular_rota
+from routes.fichas import obter_ou_criar_ficha, recalcular_rota
 from services.geo import geocode_cep
 
 ordens_servico_bp = Blueprint("ordens_servico", __name__)
@@ -369,18 +369,12 @@ def agendar(os_id):
             except ValueError:
                 return jsonify({"erro": "Data inválida"}), 400
 
-            existente = fetch_one(conn, """
-                SELECT * FROM fichas
-                 WHERE tecnico_id = ? AND data_referencia = ? AND status <> 'concluida'
-            """, (tecnico_id, nova_data))
-            if existente:
-                ficha_id, ficha = existente["id"], existente
-            else:
-                ficha_id = insert_returning_id(conn, """
-                    INSERT INTO fichas (tecnico_id, dia_semana, data_referencia)
-                    VALUES (?, ?, ?)
-                """, (tecnico_id, dia, nova_data))
-                ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+            # Travado contra duas OS sendo agendadas pro mesmo técnico/dia
+            # quase ao mesmo tempo criarem ficha duplicada — obter_ou_criar_ficha
+            # em routes/fichas.py é o ponto único que resolve isso pros três
+            # lugares que precisam de "reaproveita se existe, senão cria".
+            ficha_id, _ = obter_ou_criar_ficha(conn, tecnico_id, dia, nova_data)
+            ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
 
         # Endereço do cliente vira o ponto na rota. Sem CEP não geocodifica,
         # mas a visita ainda entra — corrige depois é melhor que não poder
