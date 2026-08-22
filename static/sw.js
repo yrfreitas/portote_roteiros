@@ -126,7 +126,10 @@
 //       vazando pra segunda página) — @page A4 explícito + espaçamento e
 //       fontes reduzidos em cada seção, com conta somada à mão pra caber
 //       nos ~271mm úteis mesmo no pior caso (observação preenchida).
-const CACHE_VERSAO = 'portotec-roteiros-v75';
+// v76 = impressão da OS: meio-termo entre "vazava pra 2 folhas" (v70) e
+//       "compacto demais" (v75) — devolve ~100-125px de respiro (fonte e
+//       espaçamento) mantendo folga confortável dentro da A4.
+const CACHE_VERSAO = 'portotec-roteiros-v76';
 
 const ARQUIVOS_CASCA = [
   '/',
