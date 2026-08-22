@@ -105,7 +105,10 @@
 //       sozinho (ViaCEP), na abertura de OS.
 // v69 = impressão da OS redesenhada (logo, layout mais profissional) e
 //       corrigido formato de moeda/data pro padrão brasileiro.
-const CACHE_VERSAO = 'portotec-roteiros-v69';
+// v70 = impressão da OS redesenhada de novo: menos "card de app" (sombra,
+//       pílula colorida, emoji), mais "formulário impresso" (tabela com
+//       borda, régua preta, sem cor decorativa fora da logo).
+const CACHE_VERSAO = 'portotec-roteiros-v70';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -6,95 +6,97 @@
 <title>OS #{{ '%06d' % ordem.id }} · Porto Tec</title>
 <link rel="icon" type="image/png" href="/static/logo.png">
 <style>
-  /* Pensado pra impressão/PDF, não pra tela — fundo branco fixo de propósito,
-     sem tema escuro: ninguém imprime papel preto. Cor de destaque (azul) é a
-     mesma do painel, pra ser reconhecível como o mesmo sistema. */
-  :root { --tinta: #12161c; --tinta-2: #5a6270; --linha: #dfe3e8; --azul: #1d5fae; }
+  /* Documento, não card de app: sem sombra, sem canto arredondado por toda
+     parte, sem badge colorido decorativo. Uma régua preta, tabela com borda,
+     e a cor da marca aparecendo só na logo — é assim que um formulário
+     impresso de verdade se parece, não como uma tela de dashboard. */
+  :root { --tinta: #16181c; --cinza: #666; --linha: #b9bec5; --linha-forte: #16181c; }
   * { box-sizing: border-box; }
   body {
-    margin: 0; background: #f2f4f7; color: var(--tinta);
-    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    font-size: 13px; line-height: 1.55;
+    margin: 0; background: #e9eaec; color: var(--tinta);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 12.5px; line-height: 1.5;
   }
   .folha {
-    max-width: 780px; margin: 24px auto; padding: 36px 40px 30px;
-    background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    max-width: 760px; margin: 20px auto 40px; padding: 40px 44px;
+    background: #fff; border: 1px solid #ccc;
   }
 
   .topo {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    padding-bottom: 18px; margin-bottom: 20px; border-bottom: 2px solid var(--tinta);
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding-bottom: 12px; margin-bottom: 4px; border-bottom: 2px solid var(--linha-forte);
   }
-  .marca { display: flex; align-items: center; gap: 12px; }
-  .marca img { width: 46px; height: 46px; border-radius: 10px; display: block; }
-  .marca h1 { margin: 0; font-size: 18px; letter-spacing: -.2px; }
-  .marca .sub { font-size: 11.5px; color: var(--tinta-2); margin-top: 1px; }
+  .marca { display: flex; align-items: center; gap: 11px; }
+  .marca img { width: 40px; height: 40px; display: block; }
+  .marca h1 {
+    margin: 0; font-size: 16.5px; font-weight: 700; letter-spacing: .2px;
+    font-family: Georgia, serif;
+  }
+  .marca .sub { font-size: 10px; color: var(--cinza); letter-spacing: .5px; text-transform: uppercase; }
 
-  .os-numero { text-align: right; }
-  .os-numero .n {
-    font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums;
-    color: var(--azul); letter-spacing: -.3px;
+  .os-numero { text-align: right; font-family: "Courier New", monospace; }
+  .os-numero .n { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .os-numero .d { font-size: 10px; color: var(--cinza); margin-top: 3px; }
+
+  .tarja-status {
+    text-align: center; font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase;
+    font-weight: 700; padding: 5px; margin-bottom: 22px; border: 1px solid var(--linha-forte);
+    font-family: Arial, sans-serif;
   }
-  .os-numero .d { font-size: 11px; color: var(--tinta-2); margin-top: 2px; }
 
   h2 {
-    font-size: 10.5px; text-transform: uppercase; letter-spacing: .9px; font-weight: 700;
-    color: #fff; background: var(--tinta); display: inline-block;
-    padding: 3px 10px; border-radius: 5px; margin: 20px 0 10px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
+    font-family: Arial, sans-serif; color: var(--tinta);
+    margin: 20px 0 6px; padding-bottom: 3px; border-bottom: 1px solid var(--linha-forte);
   }
-  h2:first-of-type { margin-top: 4px; }
+  h2:first-of-type { margin-top: 0; }
 
-  .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 24px; }
-  .campo { padding: 4px 0; border-bottom: 1px solid #f0f1f3; }
-  .campo .rot { font-size: 9.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--tinta-2); display: block; }
-  .campo .val { font-size: 13px; font-weight: 500; }
-  .largura-total { grid-column: 1 / -1; }
+  table.campos { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+  table.campos td {
+    border: 1px solid var(--linha); padding: 5px 9px; vertical-align: top; font-size: 12.5px;
+  }
+  table.campos td.rot {
+    width: 108px; font-family: Arial, sans-serif; font-size: 9px; text-transform: uppercase;
+    letter-spacing: .4px; color: var(--cinza); background: #f7f7f8; font-weight: 700;
+  }
 
   .caixa {
-    border: 1px solid var(--linha); border-radius: 8px; padding: 12px 14px;
-    min-height: 20px; white-space: pre-wrap; background: #fafbfc; font-size: 13px;
+    border: 1px solid var(--linha); padding: 10px 12px; min-height: 18px;
+    white-space: pre-wrap; font-size: 12.5px;
   }
 
-  .status-selo {
-    display: inline-block; padding: 3px 11px; border-radius: 20px;
-    font-size: 10.5px; font-weight: 700; background: #eaf1fb; color: var(--azul);
-    text-transform: uppercase; letter-spacing: .3px;
+  .termos {
+    font-family: Arial, sans-serif; font-size: 9px; color: #555; line-height: 1.6; text-align: justify;
   }
 
-  .destaque-taxa {
-    display: inline-block; margin-top: 4px; font-size: 17px; font-weight: 800; color: var(--azul);
+  .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; margin-top: 54px; }
+  .linha-assinatura { border-top: 1px solid var(--linha-forte); padding-top: 5px; text-align: center; }
+  .linha-assinatura .nome { font-size: 11px; font-weight: 700; }
+  .linha-assinatura .cargo {
+    font-size: 9px; color: var(--cinza); font-family: Arial, sans-serif;
+    text-transform: uppercase; letter-spacing: .4px; margin-top: 1px;
   }
-
-  .termos { font-size: 10px; color: #666; line-height: 1.65; text-align: justify; }
-
-  .assinaturas {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 50px;
-    margin-top: 56px;
-  }
-  .linha-assinatura { border-top: 1px solid var(--tinta); padding-top: 6px; text-align: center; }
-  .linha-assinatura .nome { font-size: 11.5px; font-weight: 600; }
-  .linha-assinatura .cargo { font-size: 10px; color: var(--tinta-2); }
 
   .rodape {
-    margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--linha);
-    text-align: center; font-size: 9.5px; color: #999;
+    margin-top: 26px; padding-top: 10px; border-top: 1px solid var(--linha);
+    text-align: center; font-size: 8.5px; color: #999; font-family: Arial, sans-serif;
   }
 
   .botao-imprimir {
-    position: fixed; top: 18px; right: 18px; padding: 11px 18px;
-    background: var(--azul); color: #fff; border: 0; border-radius: 9px;
-    font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 3px 10px rgba(29,95,174,.35);
+    position: fixed; top: 18px; right: 18px; padding: 9px 16px;
+    background: #16181c; color: #fff; border: 0; font-size: 12px; font-weight: 600;
+    font-family: Arial, sans-serif; cursor: pointer; letter-spacing: .3px;
   }
   @media print {
     .botao-imprimir { display: none; }
     body { background: #fff; }
-    .folha { margin: 0; padding: 0; box-shadow: none; border-radius: 0; max-width: none; }
+    .folha { margin: 0; padding: 0; border: 0; max-width: none; }
   }
 </style>
 </head>
 <body>
 
-<button class="botao-imprimir" onclick="window.print()">🖨 Imprimir</button>
+<button class="botao-imprimir" onclick="window.print()">Imprimir</button>
 
 <div class="folha">
   <div class="topo">
@@ -106,37 +108,38 @@
       </div>
     </div>
     <div class="os-numero">
-      <div class="n">OS #{{ '%06d' % ordem.id }}</div>
-      <div class="d">Aberta em {{ data_abertura_br }} · <span class="status-selo">{{ ordem.status.replace('_', ' ') }}</span></div>
+      <div class="n">Nº {{ '%06d' % ordem.id }}</div>
+      <div class="d">Aberta em {{ data_abertura_br }}</div>
     </div>
   </div>
 
+  <div class="tarja-status">{{ ordem.status.replace('_', ' ') }}</div>
+
   <h2>Cliente</h2>
-  <div class="grade">
-    <div class="campo"><span class="rot">Nome</span><span class="val">{{ ordem.cliente_nome }}</span></div>
-    <div class="campo"><span class="rot">CPF/CNPJ</span><span class="val">{{ ordem.cliente_cpf_cnpj or '—' }}</span></div>
-    <div class="campo"><span class="rot">Telefone</span><span class="val">{{ ordem.cliente_telefone or '—' }}</span></div>
-    <div class="campo"><span class="rot">E-mail</span><span class="val">{{ ordem.cliente_email or '—' }}</span></div>
-    <div class="campo largura-total">
-      <span class="rot">Endereço</span>
+  <table class="campos">
+    <tr><td class="rot">Nome</td><td>{{ ordem.cliente_nome }}</td>
+        <td class="rot">CPF/CNPJ</td><td>{{ ordem.cliente_cpf_cnpj or '—' }}</td></tr>
+    <tr><td class="rot">Telefone</td><td>{{ ordem.cliente_telefone or '—' }}</td>
+        <td class="rot">E-mail</td><td>{{ ordem.cliente_email or '—' }}</td></tr>
+    <tr><td class="rot">Endereço</td><td colspan="3">
       {%- set partes = [] -%}
       {%- if ordem.cliente_endereco %}{% set _ = partes.append(ordem.cliente_endereco + (', ' + ordem.cliente_numero if ordem.cliente_numero else '')) %}{% endif -%}
       {%- if ordem.cliente_complemento %}{% set _ = partes.append(ordem.cliente_complemento) %}{% endif -%}
       {%- if ordem.cliente_bairro %}{% set _ = partes.append(ordem.cliente_bairro) %}{% endif -%}
       {%- if ordem.cliente_cidade %}{% set _ = partes.append(ordem.cliente_cidade + ('/' + ordem.cliente_estado if ordem.cliente_estado else '')) %}{% endif -%}
       {%- if ordem.cliente_cep %}{% set _ = partes.append('CEP ' + ordem.cliente_cep) %}{% endif -%}
-      <span class="val">{{ partes | join(' · ') if partes else '—' }}</span>
-    </div>
-  </div>
+      {{ partes | join(' · ') if partes else '—' }}
+    </td></tr>
+  </table>
 
   <h2>Equipamento</h2>
-  <div class="grade">
-    <div class="campo"><span class="rot">Tipo</span><span class="val">{{ ordem.tipo_aparelho or '—' }}</span></div>
-    <div class="campo"><span class="rot">Marca</span><span class="val">{{ ordem.marca or '—' }}</span></div>
-    <div class="campo"><span class="rot">Modelo</span><span class="val">{{ ordem.modelo or '—' }}</span></div>
-    <div class="campo"><span class="rot">Número de série</span><span class="val">{{ ordem.numero_serie or '—' }}</span></div>
-    <div class="campo largura-total"><span class="rot">Acessórios entregues</span><span class="val">{{ ordem.acessorios or '—' }}</span></div>
-  </div>
+  <table class="campos">
+    <tr><td class="rot">Tipo</td><td>{{ ordem.tipo_aparelho or '—' }}</td>
+        <td class="rot">Marca</td><td>{{ ordem.marca or '—' }}</td></tr>
+    <tr><td class="rot">Modelo</td><td>{{ ordem.modelo or '—' }}</td>
+        <td class="rot">Nº de série</td><td>{{ ordem.numero_serie or '—' }}</td></tr>
+    <tr><td class="rot">Acessórios</td><td colspan="3">{{ ordem.acessorios or '—' }}</td></tr>
+  </table>
 
   <h2>Defeito declarado pelo cliente</h2>
   <div class="caixa">{{ ordem.defeito_declarado or '—' }}</div>
@@ -147,18 +150,13 @@
   {% endif %}
 
   <h2>Atendimento</h2>
-  <div class="grade">
-    <div class="campo"><span class="rot">Atendente</span><span class="val">{{ ordem.atendente or '—' }}</span></div>
-    <div class="campo"><span class="rot">Técnico designado</span><span class="val">{{ (visita.tecnico_nome if visita else None) or 'a definir' }}</span></div>
-    <div class="campo">
-      <span class="rot">Data agendada</span>
-      <span class="val">{{ visita.data_referencia_br if (visita and visita.data_referencia_br) else (visita.dia_semana if visita else 'a definir') }}</span>
-    </div>
-    <div class="campo">
-      <span class="rot">Taxa de avaliação</span>
-      <div class="destaque-taxa">R$ {{ taxa_br }}</div>
-    </div>
-  </div>
+  <table class="campos">
+    <tr><td class="rot">Atendente</td><td>{{ ordem.atendente or '—' }}</td>
+        <td class="rot">Taxa de avaliação</td><td>R$ {{ taxa_br }}</td></tr>
+    <tr><td class="rot">Técnico</td><td>{{ (visita.tecnico_nome if visita else None) or 'a definir' }}</td>
+        <td class="rot">Data agendada</td>
+        <td>{{ visita.data_referencia_br if (visita and visita.data_referencia_br) else (visita.dia_semana if visita else 'a definir') }}</td></tr>
+  </table>
 
   <h2>Termos</h2>
   <div class="termos">{{ termos }}</div>
@@ -174,7 +172,7 @@
     </div>
   </div>
 
-  <div class="rodape">Porto Tec Assistência Técnica · documento gerado em {{ gerado_em_br }}</div>
+  <div class="rodape">Porto Tec Assistência Técnica &nbsp;·&nbsp; documento gerado em {{ gerado_em_br }}</div>
 </div>
 
 </body>
