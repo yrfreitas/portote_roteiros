@@ -35,6 +35,7 @@ CATALOGO = [
     # Peças e estoque
     {"chave": "pecas",              "area": "Peças",       "rotulo": "Ver a aba Peças (compras / nota fiscal)"},
     {"chave": "cotacao",            "area": "Peças",       "rotulo": "Ver e usar a aba Cotação (peças aguardando preço)"},
+    {"chave": "ordens_servico",     "area": "OS",          "rotulo": "Ver e abrir Ordens de Serviço"},
     {"chave": "estoque_ver",        "area": "Estoque",     "rotulo": "Ver o Estoque"},
     {"chave": "estoque_editar",     "area": "Estoque",     "rotulo": "Mexer no Estoque (entrada, saída, ajuste, criar)"},
     {"chave": "estoque_excluir",    "area": "Estoque",     "rotulo": "Excluir peças e estoques"},
@@ -71,6 +72,8 @@ REGRAS = [
     # Peças, usuários, relatórios, chat da equipe.
     ("/api/pedidos",               None,                     "pecas"),
     ("/api/cotacoes",              None,                     "cotacao"),
+    ("/api/clientes",              None,                     "ordens_servico"),
+    ("/api/ordens-servico",        None,                     "ordens_servico"),
     ("/api/usuarios",              None,                     "gerenciar_usuarios"),
     ("/api/permissoes",            None,                     "gerenciar_usuarios"),
     ("/api/equipe",                None,                     "chat_equipe"),

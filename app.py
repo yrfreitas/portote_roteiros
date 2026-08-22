@@ -11,12 +11,14 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from database import IS_PG, bump_revisao, db_conn, init_db, ler_revisao
+from database import IS_PG, bump_revisao, db_conn, fetch_one, init_db, ler_revisao
 from extensions import VERSAO_APP, limiter
 from routes.auth import auth_bp
 from routes.chat import chat_bp
+from routes.clientes import clientes_bp
 from routes.cotacoes import cotacoes_bp
 from routes.estoque import estoque_bp
+from routes.ordens_servico import TERMOS_PADRAO, ordens_servico_bp
 from routes.fichas import fichas_bp
 from routes.pedidos import pedidos_bp
 from routes.rastreio import rastreio_bp
@@ -91,6 +93,8 @@ app.register_blueprint(rastreio_bp, url_prefix="/api")
 app.register_blueprint(chat_bp, url_prefix="/api")
 app.register_blueprint(estoque_bp, url_prefix="/api")
 app.register_blueprint(cotacoes_bp, url_prefix="/api")
+app.register_blueprint(clientes_bp, url_prefix="/api")
+app.register_blueprint(ordens_servico_bp, url_prefix="/api")
 
 
 def _e_api() -> bool:
@@ -357,6 +361,39 @@ def acompanhar(token):
     porque lá tudo vive sob /api — isto é HTML.
     """
     return render_template("acompanhar.html", token=token)
+
+
+@app.route("/os/<int:os_id>/imprimir")
+def imprimir_os(os_id):
+    """Documento da OS pronto pra impressão. Exige login (não está nos
+    caminhos públicos) — é documento interno, diferente do link de
+    acompanhamento do cliente."""
+    with db_conn() as conn:
+        ordem = fetch_one(conn, """
+            SELECT os.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone,
+                   c.email AS cliente_email, c.cpf_cnpj AS cliente_cpf_cnpj,
+                   c.endereco AS cliente_endereco, c.numero AS cliente_numero,
+                   c.complemento AS cliente_complemento, c.bairro AS cliente_bairro,
+                   c.cidade AS cliente_cidade, c.estado AS cliente_estado,
+                   c.cep AS cliente_cep
+              FROM ordens_servico os
+              JOIN clientes c ON c.id = os.cliente_id
+             WHERE os.id = ?
+        """, (os_id,))
+        if not ordem:
+            return "<h1>Ordem de serviço não encontrada</h1>", 404
+
+        visita = fetch_one(conn, """
+            SELECT f.dia_semana, f.data_referencia, t.nome AS tecnico_nome
+              FROM servicos s
+              JOIN fichas f ON f.id = s.ficha_id
+              LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+             WHERE s.ordem_servico_id = ?
+             ORDER BY s.id DESC LIMIT 1
+        """, (os_id,))
+
+    return render_template("os_imprimir.html", ordem=ordem, visita=visita,
+                           termos=TERMOS_PADRAO)
 
 
 # ─── Auto-refresh: quem está com a tela aberta vê a mudança sozinho ──────

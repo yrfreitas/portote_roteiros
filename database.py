@@ -693,6 +693,8 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_rastreios_ativo   ON rastreios(ativo)",
     "CREATE INDEX IF NOT EXISTS idx_mensagens_sala    ON mensagens(sala, id)",
     "CREATE INDEX IF NOT EXISTS idx_estoque_mov_item   ON estoque_movimentos(item_id, id)",
+    "CREATE INDEX IF NOT EXISTS idx_os_cliente          ON ordens_servico(cliente_id)",
+    "CREATE INDEX IF NOT EXISTS idx_servicos_os         ON servicos(ordem_servico_id)",
 ]
 
 _MIGRACOES_PG = [
@@ -767,6 +769,51 @@ _MIGRACOES_PG = [
     # Código separado do texto livre de "peça": desfecho de cotação exige os
     # dois campos, e código é o que casa exato com a compra depois.
     "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS codigo TEXT",
+
+    # Cadastro de cliente PRÓPRIO — decisão de 2026-08-21 de não depender do
+    # AgoraOS pra isso. Antes só existia "servicos.cliente", texto solto sem
+    # CPF/telefone/endereço, redigitado a cada atendimento.
+    """CREATE TABLE IF NOT EXISTS clientes (
+        id            SERIAL PRIMARY KEY,
+        nome          TEXT NOT NULL,
+        tipo_pessoa   TEXT DEFAULT 'PF',
+        cpf_cnpj      TEXT,
+        telefone      TEXT,
+        email         TEXT,
+        cep           TEXT,
+        endereco      TEXT,
+        numero        TEXT,
+        complemento   TEXT,
+        bairro        TEXT,
+        cidade        TEXT,
+        estado        TEXT,
+        indicacao     TEXT,
+        obs           TEXT,
+        cadastrado_por TEXT,
+        criado_em     TEXT DEFAULT CURRENT_TIMESTAMP,
+        atualizado_em TEXT
+    )""",
+    # A OS é o documento; o atendimento em campo (ficha/servico) é só UMA
+    # visita dela — pode haver mais de uma (voltou pra buscar peça). Por isso
+    # o vínculo mora em servicos->ordem_servico_id, não o contrário.
+    """CREATE TABLE IF NOT EXISTS ordens_servico (
+        id                SERIAL PRIMARY KEY,
+        cliente_id        INTEGER NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
+        atendente         TEXT,
+        tipo_aparelho     TEXT,
+        marca             TEXT,
+        modelo            TEXT,
+        numero_serie      TEXT,
+        acessorios        TEXT,
+        defeito_declarado TEXT,
+        taxa_avaliacao    DOUBLE PRECISION DEFAULT 0,
+        status            TEXT DEFAULT 'aberta',
+        observacao        TEXT,
+        criado_em         TEXT DEFAULT CURRENT_TIMESTAMP,
+        criado_por        TEXT,
+        atualizado_em     TEXT
+    )""",
+    "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS ordem_servico_id INTEGER REFERENCES ordens_servico(id) ON DELETE SET NULL",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -799,6 +846,44 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE usuarios ADD COLUMN permissoes TEXT",
     "ALTER TABLE erros_cliente ADD COLUMN status TEXT DEFAULT 'novo'",
     "ALTER TABLE erros_cliente ADD COLUMN obs TEXT",
+    """CREATE TABLE IF NOT EXISTS clientes (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome          TEXT NOT NULL,
+        tipo_pessoa   TEXT DEFAULT 'PF',
+        cpf_cnpj      TEXT,
+        telefone      TEXT,
+        email         TEXT,
+        cep           TEXT,
+        endereco      TEXT,
+        numero        TEXT,
+        complemento   TEXT,
+        bairro        TEXT,
+        cidade        TEXT,
+        estado        TEXT,
+        indicacao     TEXT,
+        obs           TEXT,
+        cadastrado_por TEXT,
+        criado_em     TEXT DEFAULT CURRENT_TIMESTAMP,
+        atualizado_em TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS ordens_servico (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente_id        INTEGER NOT NULL,
+        atendente         TEXT,
+        tipo_aparelho     TEXT,
+        marca             TEXT,
+        modelo            TEXT,
+        numero_serie      TEXT,
+        acessorios        TEXT,
+        defeito_declarado TEXT,
+        taxa_avaliacao    REAL DEFAULT 0,
+        status            TEXT DEFAULT 'aberta',
+        observacao        TEXT,
+        criado_em         TEXT DEFAULT CURRENT_TIMESTAMP,
+        criado_por        TEXT,
+        atualizado_em     TEXT
+    )""",
+    "ALTER TABLE servicos ADD COLUMN ordem_servico_id INTEGER",
     """CREATE TABLE IF NOT EXISTS cotacoes (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         codigo        TEXT,

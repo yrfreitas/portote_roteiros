@@ -97,7 +97,11 @@
 //       QUALQUER atendimento pelo painel estava dando erro 500. Também
 //       adiciona "Cotação de peça" nas listas do painel (concluir manual,
 //       selo do desfecho, cartão de Atendimentos).
-const CACHE_VERSAO = 'portotec-roteiros-v66';
+// v67 = Ordens de Serviço, do zero, sem depender do AgoraOS: cadastro de
+//       cliente próprio (nome, CPF, contato, endereço, indicação), abrir OS
+//       (equipamento, defeito declarado, taxa de avaliação, atendente),
+//       agendar visita reaproveitando fichas/técnicos, e impressão da OS.
+const CACHE_VERSAO = 'portotec-roteiros-v67';
 
 const ARQUIVOS_CASCA = [
   '/',

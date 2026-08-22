@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OS #{{ ordem.id }} · Porto Tec</title>
+<style>
+  /* Pensado pra impressão/PDF, não pra tela — fundo branco fixo de propósito,
+     sem tema escuro: ninguém imprime papel preto. */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #fff; color: #1a1a1a;
+    font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.5;
+  }
+  .folha { max-width: 800px; margin: 0 auto; padding: 28px 32px; }
+
+  .topo {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    border-bottom: 3px solid #1a1a1a; padding-bottom: 14px; margin-bottom: 18px;
+  }
+  .topo h1 { margin: 0; font-size: 20px; letter-spacing: -.3px; }
+  .topo .sub { font-size: 11.5px; color: #555; margin-top: 2px; }
+  .os-numero { text-align: right; }
+  .os-numero .n { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .os-numero .d { font-size: 11px; color: #555; }
+
+  h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
+    color: #555; margin: 18px 0 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px;
+  }
+  .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; }
+  .campo { padding: 3px 0; }
+  .campo .rot { font-size: 10px; text-transform: uppercase; color: #777; display: block; }
+  .campo .val { font-size: 13px; }
+  .largura-total { grid-column: 1 / -1; }
+
+  .caixa {
+    border: 1px solid #ccc; border-radius: 6px; padding: 10px 12px;
+    min-height: 40px; white-space: pre-wrap;
+  }
+
+  .status-selo {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 700; background: #eee; border: 1px solid #ccc;
+  }
+
+  .termos { font-size: 10.5px; color: #444; line-height: 1.6; text-align: justify; }
+
+  .assinaturas {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
+    margin-top: 46px;
+  }
+  .linha-assinatura { border-top: 1px solid #1a1a1a; padding-top: 5px; text-align: center; font-size: 11px; }
+
+  .rodape { margin-top: 24px; text-align: center; font-size: 10px; color: #999; }
+
+  .botao-imprimir {
+    position: fixed; top: 16px; right: 16px; padding: 10px 16px;
+    background: #1a1a1a; color: #fff; border: 0; border-radius: 8px;
+    font-size: 13px; cursor: pointer;
+  }
+  @media print {
+    .botao-imprimir { display: none; }
+    .folha { padding: 0; max-width: none; }
+    body { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<button class="botao-imprimir" onclick="window.print()">Imprimir</button>
+
+<div class="folha">
+  <div class="topo">
+    <div>
+      <h1>Porto Tec Assistência Técnica</h1>
+      <div class="sub">Ordem de Serviço</div>
+    </div>
+    <div class="os-numero">
+      <div class="n">OS #{{ '%06d' % ordem.id }}</div>
+      <div class="d">{{ (ordem.criado_em or '')[:10] }} · <span class="status-selo">{{ ordem.status }}</span></div>
+    </div>
+  </div>
+
+  <h2>Cliente</h2>
+  <div class="grade">
+    <div class="campo"><span class="rot">Nome</span><span class="val">{{ ordem.cliente_nome }}</span></div>
+    <div class="campo"><span class="rot">CPF/CNPJ</span><span class="val">{{ ordem.cliente_cpf_cnpj or '—' }}</span></div>
+    <div class="campo"><span class="rot">Telefone</span><span class="val">{{ ordem.cliente_telefone or '—' }}</span></div>
+    <div class="campo"><span class="rot">E-mail</span><span class="val">{{ ordem.cliente_email or '—' }}</span></div>
+    <div class="campo largura-total">
+      <span class="rot">Endereço</span>
+      <span class="val">
+        {{ ordem.cliente_endereco or '' }}{% if ordem.cliente_numero %}, {{ ordem.cliente_numero }}{% endif %}
+        {% if ordem.cliente_complemento %} — {{ ordem.cliente_complemento }}{% endif %}
+        {% if ordem.cliente_bairro %} · {{ ordem.cliente_bairro }}{% endif %}
+        {% if ordem.cliente_cidade %} · {{ ordem.cliente_cidade }}{% if ordem.cliente_estado %}/{{ ordem.cliente_estado }}{% endif %}{% endif %}
+        {% if ordem.cliente_cep %} · CEP {{ ordem.cliente_cep }}{% endif %}
+        {% if not ordem.cliente_endereco %}—{% endif %}
+      </span>
+    </div>
+  </div>
+
+  <h2>Equipamento</h2>
+  <div class="grade">
+    <div class="campo"><span class="rot">Tipo</span><span class="val">{{ ordem.tipo_aparelho or '—' }}</span></div>
+    <div class="campo"><span class="rot">Marca</span><span class="val">{{ ordem.marca or '—' }}</span></div>
+    <div class="campo"><span class="rot">Modelo</span><span class="val">{{ ordem.modelo or '—' }}</span></div>
+    <div class="campo"><span class="rot">Número de série</span><span class="val">{{ ordem.numero_serie or '—' }}</span></div>
+    <div class="campo largura-total"><span class="rot">Acessórios entregues</span><span class="val">{{ ordem.acessorios or '—' }}</span></div>
+  </div>
+
+  <h2>Defeito declarado pelo cliente</h2>
+  <div class="caixa">{{ ordem.defeito_declarado or '—' }}</div>
+
+  {% if ordem.observacao %}
+  <h2>Observação interna</h2>
+  <div class="caixa">{{ ordem.observacao }}</div>
+  {% endif %}
+
+  <h2>Atendimento</h2>
+  <div class="grade">
+    <div class="campo"><span class="rot">Atendente</span><span class="val">{{ ordem.atendente or '—' }}</span></div>
+    <div class="campo"><span class="rot">Taxa de avaliação</span><span class="val">R$ {{ '%.2f' % (ordem.taxa_avaliacao or 0) }}</span></div>
+    <div class="campo"><span class="rot">Técnico designado</span><span class="val">{{ (visita.tecnico_nome if visita else None) or 'a definir' }}</span></div>
+    <div class="campo"><span class="rot">Data agendada</span>
+      <span class="val">
+        {% if visita and visita.data_referencia %}{{ visita.data_referencia.split('-')[::-1] | join('/') }}{% elif visita %}{{ visita.dia_semana }}{% else %}a definir{% endif %}
+      </span>
+    </div>
+  </div>
+
+  <h2>Termos</h2>
+  <div class="termos">{{ termos }}</div>
+
+  <div class="assinaturas">
+    <div class="linha-assinatura">Assinatura do Cliente</div>
+    <div class="linha-assinatura">Assinatura do Atendente</div>
+  </div>
+
+  <div class="rodape">Porto Tec Assistência Técnica — documento gerado em {{ ordem.criado_em }}</div>
+</div>
+
+</body>
+</html>

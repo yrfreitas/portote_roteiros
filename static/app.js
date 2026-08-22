@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v66';
+const VERSAO_PAINEL = 'v67';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -484,6 +484,7 @@ function switchMainTab(tab) {
   const isDiag      = tab === 'diagnostico';
   const isAtend     = tab === 'atendimentos';
   const isEstoque   = tab === 'estoque';
+  const isOS        = tab === 'os';
 
   document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
   document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
@@ -493,6 +494,7 @@ function switchMainTab(tab) {
   document.getElementById('panel-diagnostico').style.display = isDiag ? 'block' : 'none';
   document.getElementById('panel-atendimentos').style.display = isAtend ? 'block' : 'none';
   document.getElementById('panel-estoque').style.display = isEstoque ? 'block' : 'none';
+  document.getElementById('panel-os').style.display = isOS ? 'block' : 'none';
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
@@ -501,6 +503,7 @@ function switchMainTab(tab) {
   document.getElementById('mtab-diagnostico').classList.toggle('active', isDiag);
   document.getElementById('mtab-atendimentos').classList.toggle('active', isAtend);
   document.getElementById('mtab-estoque').classList.toggle('active', isEstoque);
+  document.getElementById('mtab-os').classList.toggle('active', isOS);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
@@ -521,6 +524,9 @@ function switchMainTab(tab) {
   }
   if (isEstoque) {
     abrirEstoqueRaiz();
+  }
+  if (isOS) {
+    carregarOS();
   }
 }
 
@@ -1065,6 +1071,7 @@ async function carregarUsuarioLogado() {
   mostra('mtab-diagnostico', podeUsuario('diagnostico'));
   mostra('mtab-estoque', podeUsuario('estoque_ver'));
   mostra('mtab-pecas', podeUsuario('pecas'));
+  mostra('mtab-os', podeUsuario('ordens_servico'));
   mostra('cotacao-details', podeUsuario('cotacao'));
 
   const marca = document.getElementById('usuario-logado');
@@ -5233,6 +5240,281 @@ async function salvarEdicaoServico() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = 'Salvar Alterações';
+  }
+}
+
+// ═══ Ordens de Serviço ═══════════════════════════════════════════════════
+// A OS é o documento (cliente, equipamento, defeito, status). QUEM atende e
+// QUANDO continuam sendo o sistema de fichas/técnicos — a OS só se liga a um
+// servico (ver rotas/ordens_servico.py) em vez de duplicar agenda.
+const OS_STATUS_ROTULO = {
+  aguardando_agendamento: 'Aguardando agendamento',
+  agendada:               'Agendada',
+  em_atendimento:         'Em atendimento',
+  aguardando_peca:        'Aguardando peça',
+  aguardando_orcamento:   'Aguardando orçamento',
+  aguardando_aprovacao:   'Aguardando aprovação',
+  aprovada:               'Aprovada',
+  finalizada:             'Finalizada',
+  cancelada:              'Cancelada',
+};
+
+let _osFiltroStatus = '';
+let _osClienteSelecionado = null;   // {id, nome} — null enquanto não escolhido
+let _osBuscaClienteTimer = null;
+let _osIndicacoesCarregadas = false;
+
+async function carregarOS() {
+  const mount = document.getElementById('os-conteudo');
+  if (!mount) return;
+  mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
+
+  let r;
+  try {
+    r = await api(`/ordens-servico${_osFiltroStatus ? '?status=' + _osFiltroStatus : ''}`);
+  } catch (e) {
+    mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const cartoes = Object.entries(OS_STATUS_ROTULO).map(([chave, rotulo]) => `
+    <button class="os-cartao${_osFiltroStatus === chave ? ' ativo' : ''}" onclick="osFiltrar('${chave}')">
+      <div class="n">${r.contagem[chave] ?? 0}</div>
+      <div class="rot">${rotulo}</div>
+    </button>`).join('');
+
+  if (r.ordens.length === 0) {
+    mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>
+      <div class="historico-vazio">${icone('check', 'icone-24')}
+        <p>${_osFiltroStatus ? 'Nenhuma OS nesse status.' : 'Nenhuma ordem de serviço aberta ainda.'}</p></div>`;
+    return;
+  }
+
+  const linhas = r.ordens.map(o => `
+    <div class="os-linha" onclick="abrirOSDetalhe(${o.id})">
+      <div class="num">OS #${String(o.id).padStart(6, '0')}</div>
+      <div>
+        <div class="cliente">${esc(o.cliente_nome)}</div>
+        <div class="aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || '—'}</div>
+      </div>
+      <div class="defeito">${esc(o.defeito_declarado || '—')}</div>
+      <span class="conc-tag ${o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso'}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
+    </div>`).join('');
+
+  mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${linhas}`;
+}
+
+function osFiltrar(status) {
+  _osFiltroStatus = (_osFiltroStatus === status) ? '' : status;
+  carregarOS();
+}
+
+async function abrirModalNovaOS() {
+  _osClienteSelecionado = null;
+  ['os-nome','os-cpf','os-telefone','os-email','os-cep','os-numero','os-bairro',
+   'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
+   'os-serie','os-acessorios','os-defeito','os-obs'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('os-taxa').value = '0';
+  document.getElementById('os-busca-cliente').value = '';
+  document.getElementById('os-resultado-cliente').innerHTML = '';
+  osEscolherModoCliente('existente');
+
+  if (!_osIndicacoesCarregadas) {
+    try {
+      const r = await api('/clientes/indicacoes');
+      const sel = document.getElementById('os-indicacao');
+      sel.innerHTML = '<option value="">Selecione...</option>' +
+        r.indicacoes.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
+      _osIndicacoesCarregadas = true;
+    } catch { /* select fica só com "Selecione..." se falhar */ }
+  }
+
+  document.getElementById('modal-nova-os').classList.add('open');
+}
+
+function osEscolherModoCliente(modo) {
+  document.querySelectorAll('#os-cliente-modo .pecas-filtro').forEach(b =>
+    b.classList.toggle('ativo', b.dataset.modo === modo));
+  document.getElementById('os-cliente-existente').style.display = modo === 'existente' ? '' : 'none';
+  document.getElementById('os-cliente-novo').style.display = modo === 'novo' ? '' : 'none';
+}
+
+function osBuscarCliente(termo) {
+  clearTimeout(_osBuscaClienteTimer);
+  const alvo = document.getElementById('os-resultado-cliente');
+  if (!termo || termo.trim().length < 2) {
+    alvo.innerHTML = '';
+    return;
+  }
+  _osBuscaClienteTimer = setTimeout(async () => {
+    let r;
+    try {
+      r = await api(`/clientes?busca=${encodeURIComponent(termo.trim())}`);
+    } catch (e) {
+      alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+      return;
+    }
+    if (r.clientes.length === 0) {
+      alvo.innerHTML = `<p class="t-df-ajuda" style="margin-top:8px;">Ninguém encontrado — use "Cliente novo".</p>`;
+      return;
+    }
+    alvo.innerHTML = r.clientes.map(c => `
+      <div class="os-resultado-item${_osClienteSelecionado?.id === c.id ? ' selecionado' : ''}"
+           onclick='osSelecionarCliente(${c.id}, ${JSON.stringify(c.nome)})'>
+        <b>${esc(c.nome)}</b>
+        <span>${esc(c.telefone || '')}${c.cpf_cnpj ? ' · ' + esc(c.cpf_cnpj) : ''}</span>
+      </div>`).join('');
+  }, 350);
+}
+
+function osSelecionarCliente(id, nome) {
+  _osClienteSelecionado = { id, nome };
+  document.querySelectorAll('.os-resultado-item').forEach(el => el.classList.remove('selecionado'));
+  osBuscarCliente(document.getElementById('os-busca-cliente').value);
+}
+
+async function osCriar() {
+  const modo = document.querySelector('#os-cliente-modo .pecas-filtro.ativo')?.dataset.modo;
+  const corpo = {
+    tipo_aparelho: document.getElementById('os-tipo-aparelho').value.trim(),
+    marca: document.getElementById('os-marca').value.trim(),
+    modelo: document.getElementById('os-modelo').value.trim(),
+    numero_serie: document.getElementById('os-serie').value.trim(),
+    acessorios: document.getElementById('os-acessorios').value.trim(),
+    defeito_declarado: document.getElementById('os-defeito').value.trim(),
+    taxa_avaliacao: document.getElementById('os-taxa').value || 0,
+    observacao: document.getElementById('os-obs').value.trim(),
+  };
+
+  if (modo === 'existente') {
+    if (!_osClienteSelecionado) {
+      toast('Escolha um cliente na busca, ou mude pra "Cliente novo"', 'error');
+      return;
+    }
+    corpo.cliente_id = _osClienteSelecionado.id;
+  } else {
+    const nome = document.getElementById('os-nome').value.trim();
+    if (!nome) {
+      toast('Informe o nome do cliente', 'error');
+      return;
+    }
+    corpo.cliente_novo = {
+      nome, cpf_cnpj: document.getElementById('os-cpf').value.trim(),
+      telefone: document.getElementById('os-telefone').value.trim(),
+      email: document.getElementById('os-email').value.trim(),
+      cep: document.getElementById('os-cep').value.trim(),
+      numero: document.getElementById('os-numero').value.trim(),
+      bairro: document.getElementById('os-bairro').value.trim(),
+      cidade: document.getElementById('os-cidade').value.trim(),
+      endereco: document.getElementById('os-endereco').value.trim(),
+      estado: document.getElementById('os-estado').value.trim(),
+      indicacao: document.getElementById('os-indicacao').value,
+    };
+  }
+
+  try {
+    const resp = await api('/ordens-servico', { method: 'POST', body: JSON.stringify(corpo) });
+    toast('OS aberta com sucesso', 'success');
+    fecharModais();
+    carregarOS();
+    abrirOSDetalhe(resp.id);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function abrirOSDetalhe(id) {
+  let r;
+  try {
+    r = await api(`/ordens-servico/${id}`);
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
+  const o = r.ordem;
+  document.getElementById('os-detalhe-titulo').textContent =
+    `OS #${String(o.id).padStart(6, '0')} · ${o.cliente_nome}`;
+
+  const visitas = r.visitas.length === 0
+    ? `<p class="t-df-ajuda">Nenhuma visita agendada ainda.</p>`
+    : r.visitas.map(v => `
+        <div class="os-visita-linha">
+          <span>${esc(v.tecnico_nome || 'sem técnico')} · ${esc(v.data_referencia ? v.data_referencia.split('-').reverse().join('/') : v.dia_semana)}</span>
+          <span class="conc-tag ${v.desfecho === 'resolvido' ? 'ok' : v.status === 'concluido' ? 'aviso' : 'neutro'}">${esc(v.desfecho ? (DESFECHO_ROTULO[v.desfecho]?.txt || v.desfecho) : (v.status === 'concluido' ? 'concluído' : 'pendente'))}</span>
+        </div>`).join('');
+
+  const opcoesStatus = Object.entries(OS_STATUS_ROTULO)
+    .map(([v, t]) => `<option value="${v}"${o.status === v ? ' selected' : ''}>${t}</option>`).join('');
+
+  const opcoesTecnico = tecnicos.map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('');
+
+  document.getElementById('os-detalhe-corpo').innerHTML = `
+    <div class="os-detalhe-secao">
+      <label class="form-label">Status</label>
+      <select class="form-input" onchange="osAtualizarStatus(${o.id}, this.value)">${opcoesStatus}</select>
+    </div>
+    <div class="os-detalhe-secao">
+      <p class="form-separador">Equipamento</p>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;">
+        <div><span class="peca-rot">Tipo</span><div>${esc(o.tipo_aparelho) || '—'}</div></div>
+        <div><span class="peca-rot">Marca/Modelo</span><div>${esc([o.marca, o.modelo].filter(Boolean).join(' ')) || '—'}</div></div>
+      </div>
+      <p style="margin:8px 0 0;font-size:12.5px;color:var(--text-muted);">${esc(o.defeito_declarado) || 'sem defeito declarado'}</p>
+    </div>
+    <div class="os-detalhe-secao">
+      <p class="form-separador">Visitas agendadas</p>
+      ${visitas}
+    </div>
+    <div class="os-detalhe-secao">
+      <p class="form-separador">Agendar nova visita</p>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="os-agendar-tecnico">Técnico</label>
+          <select class="form-input" id="os-agendar-tecnico">${opcoesTecnico}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="os-agendar-data">Data</label>
+          <input class="form-input" type="date" id="os-agendar-data" min="${new Date().toISOString().slice(0,10)}">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="osAgendar(${o.id})">Agendar</button>
+    </div>
+    <div class="os-detalhe-secao">
+      <a class="btn btn-ghost btn-sm" href="/os/${o.id}/imprimir" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Imprimir OS</a>
+    </div>`;
+
+  document.getElementById('modal-os-detalhe').classList.add('open');
+}
+
+async function osAtualizarStatus(id, status) {
+  try {
+    await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+    toast('Status atualizado', 'success');
+    carregarOS();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function osAgendar(id) {
+  const tecnicoId = document.getElementById('os-agendar-tecnico').value;
+  const data = document.getElementById('os-agendar-data').value;
+  if (!tecnicoId || !data) {
+    toast('Escolha técnico e data', 'error');
+    return;
+  }
+  try {
+    await api(`/ordens-servico/${id}/agendar`, {
+      method: 'POST', body: JSON.stringify({ tecnico_id: Number(tecnicoId), nova_data: data }),
+    });
+    toast('Visita agendada', 'success');
+    abrirOSDetalhe(id);
+    carregarOS();
+  } catch (e) {
+    toast(e.message, 'error');
   }
 }
 
