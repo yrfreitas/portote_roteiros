@@ -122,7 +122,11 @@
 // v74 = auditoria (itens "Alto"): validação de data também na criação de
 //       ficha (não só na edição), e botão de adicionar atendimento não
 //       trava mais em "Geocodificando..." quando falta escolher o setor.
-const CACHE_VERSAO = 'portotec-roteiros-v74';
+// v75 = impressão da OS apertada pra caber numa folha A4 só (estava
+//       vazando pra segunda página) — @page A4 explícito + espaçamento e
+//       fontes reduzidos em cada seção, com conta somada à mão pra caber
+//       nos ~271mm úteis mesmo no pior caso (observação preenchida).
+const CACHE_VERSAO = 'portotec-roteiros-v75';
 
 const ARQUIVOS_CASCA = [
   '/',
