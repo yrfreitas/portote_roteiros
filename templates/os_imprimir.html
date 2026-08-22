@@ -3,82 +3,111 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OS #{{ ordem.id }} · Porto Tec</title>
+<title>OS #{{ '%06d' % ordem.id }} · Porto Tec</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
 <style>
   /* Pensado pra impressão/PDF, não pra tela — fundo branco fixo de propósito,
-     sem tema escuro: ninguém imprime papel preto. */
+     sem tema escuro: ninguém imprime papel preto. Cor de destaque (azul) é a
+     mesma do painel, pra ser reconhecível como o mesmo sistema. */
+  :root { --tinta: #12161c; --tinta-2: #5a6270; --linha: #dfe3e8; --azul: #1d5fae; }
   * { box-sizing: border-box; }
   body {
-    margin: 0; background: #fff; color: #1a1a1a;
-    font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.5;
+    margin: 0; background: #f2f4f7; color: var(--tinta);
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 13px; line-height: 1.55;
   }
-  .folha { max-width: 800px; margin: 0 auto; padding: 28px 32px; }
+  .folha {
+    max-width: 780px; margin: 24px auto; padding: 36px 40px 30px;
+    background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
 
   .topo {
     display: flex; justify-content: space-between; align-items: flex-start;
-    border-bottom: 3px solid #1a1a1a; padding-bottom: 14px; margin-bottom: 18px;
+    padding-bottom: 18px; margin-bottom: 20px; border-bottom: 2px solid var(--tinta);
   }
-  .topo h1 { margin: 0; font-size: 20px; letter-spacing: -.3px; }
-  .topo .sub { font-size: 11.5px; color: #555; margin-top: 2px; }
+  .marca { display: flex; align-items: center; gap: 12px; }
+  .marca img { width: 46px; height: 46px; border-radius: 10px; display: block; }
+  .marca h1 { margin: 0; font-size: 18px; letter-spacing: -.2px; }
+  .marca .sub { font-size: 11.5px; color: var(--tinta-2); margin-top: 1px; }
+
   .os-numero { text-align: right; }
-  .os-numero .n { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .os-numero .d { font-size: 11px; color: #555; }
+  .os-numero .n {
+    font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums;
+    color: var(--azul); letter-spacing: -.3px;
+  }
+  .os-numero .d { font-size: 11px; color: var(--tinta-2); margin-top: 2px; }
 
   h2 {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
-    color: #555; margin: 18px 0 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px;
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .9px; font-weight: 700;
+    color: #fff; background: var(--tinta); display: inline-block;
+    padding: 3px 10px; border-radius: 5px; margin: 20px 0 10px;
   }
-  .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; }
-  .campo { padding: 3px 0; }
-  .campo .rot { font-size: 10px; text-transform: uppercase; color: #777; display: block; }
-  .campo .val { font-size: 13px; }
+  h2:first-of-type { margin-top: 4px; }
+
+  .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 24px; }
+  .campo { padding: 4px 0; border-bottom: 1px solid #f0f1f3; }
+  .campo .rot { font-size: 9.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--tinta-2); display: block; }
+  .campo .val { font-size: 13px; font-weight: 500; }
   .largura-total { grid-column: 1 / -1; }
 
   .caixa {
-    border: 1px solid #ccc; border-radius: 6px; padding: 10px 12px;
-    min-height: 40px; white-space: pre-wrap;
+    border: 1px solid var(--linha); border-radius: 8px; padding: 12px 14px;
+    min-height: 20px; white-space: pre-wrap; background: #fafbfc; font-size: 13px;
   }
 
   .status-selo {
-    display: inline-block; padding: 3px 10px; border-radius: 20px;
-    font-size: 11px; font-weight: 700; background: #eee; border: 1px solid #ccc;
+    display: inline-block; padding: 3px 11px; border-radius: 20px;
+    font-size: 10.5px; font-weight: 700; background: #eaf1fb; color: var(--azul);
+    text-transform: uppercase; letter-spacing: .3px;
   }
 
-  .termos { font-size: 10.5px; color: #444; line-height: 1.6; text-align: justify; }
+  .destaque-taxa {
+    display: inline-block; margin-top: 4px; font-size: 17px; font-weight: 800; color: var(--azul);
+  }
+
+  .termos { font-size: 10px; color: #666; line-height: 1.65; text-align: justify; }
 
   .assinaturas {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
-    margin-top: 46px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 50px;
+    margin-top: 56px;
   }
-  .linha-assinatura { border-top: 1px solid #1a1a1a; padding-top: 5px; text-align: center; font-size: 11px; }
+  .linha-assinatura { border-top: 1px solid var(--tinta); padding-top: 6px; text-align: center; }
+  .linha-assinatura .nome { font-size: 11.5px; font-weight: 600; }
+  .linha-assinatura .cargo { font-size: 10px; color: var(--tinta-2); }
 
-  .rodape { margin-top: 24px; text-align: center; font-size: 10px; color: #999; }
+  .rodape {
+    margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--linha);
+    text-align: center; font-size: 9.5px; color: #999;
+  }
 
   .botao-imprimir {
-    position: fixed; top: 16px; right: 16px; padding: 10px 16px;
-    background: #1a1a1a; color: #fff; border: 0; border-radius: 8px;
-    font-size: 13px; cursor: pointer;
+    position: fixed; top: 18px; right: 18px; padding: 11px 18px;
+    background: var(--azul); color: #fff; border: 0; border-radius: 9px;
+    font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 3px 10px rgba(29,95,174,.35);
   }
   @media print {
     .botao-imprimir { display: none; }
-    .folha { padding: 0; max-width: none; }
-    body { font-size: 12px; }
+    body { background: #fff; }
+    .folha { margin: 0; padding: 0; box-shadow: none; border-radius: 0; max-width: none; }
   }
 </style>
 </head>
 <body>
 
-<button class="botao-imprimir" onclick="window.print()">Imprimir</button>
+<button class="botao-imprimir" onclick="window.print()">🖨 Imprimir</button>
 
 <div class="folha">
   <div class="topo">
-    <div>
-      <h1>Porto Tec Assistência Técnica</h1>
-      <div class="sub">Ordem de Serviço</div>
+    <div class="marca">
+      <img src="/static/logo.png" alt="Porto Tec">
+      <div>
+        <h1>Porto Tec Assistência Técnica</h1>
+        <div class="sub">Ordem de Serviço</div>
+      </div>
     </div>
     <div class="os-numero">
       <div class="n">OS #{{ '%06d' % ordem.id }}</div>
-      <div class="d">{{ (ordem.criado_em or '')[:10] }} · <span class="status-selo">{{ ordem.status }}</span></div>
+      <div class="d">Aberta em {{ data_abertura_br }} · <span class="status-selo">{{ ordem.status.replace('_', ' ') }}</span></div>
     </div>
   </div>
 
@@ -90,14 +119,13 @@
     <div class="campo"><span class="rot">E-mail</span><span class="val">{{ ordem.cliente_email or '—' }}</span></div>
     <div class="campo largura-total">
       <span class="rot">Endereço</span>
-      <span class="val">
-        {{ ordem.cliente_endereco or '' }}{% if ordem.cliente_numero %}, {{ ordem.cliente_numero }}{% endif %}
-        {% if ordem.cliente_complemento %} — {{ ordem.cliente_complemento }}{% endif %}
-        {% if ordem.cliente_bairro %} · {{ ordem.cliente_bairro }}{% endif %}
-        {% if ordem.cliente_cidade %} · {{ ordem.cliente_cidade }}{% if ordem.cliente_estado %}/{{ ordem.cliente_estado }}{% endif %}{% endif %}
-        {% if ordem.cliente_cep %} · CEP {{ ordem.cliente_cep }}{% endif %}
-        {% if not ordem.cliente_endereco %}—{% endif %}
-      </span>
+      {%- set partes = [] -%}
+      {%- if ordem.cliente_endereco %}{% set _ = partes.append(ordem.cliente_endereco + (', ' + ordem.cliente_numero if ordem.cliente_numero else '')) %}{% endif -%}
+      {%- if ordem.cliente_complemento %}{% set _ = partes.append(ordem.cliente_complemento) %}{% endif -%}
+      {%- if ordem.cliente_bairro %}{% set _ = partes.append(ordem.cliente_bairro) %}{% endif -%}
+      {%- if ordem.cliente_cidade %}{% set _ = partes.append(ordem.cliente_cidade + ('/' + ordem.cliente_estado if ordem.cliente_estado else '')) %}{% endif -%}
+      {%- if ordem.cliente_cep %}{% set _ = partes.append('CEP ' + ordem.cliente_cep) %}{% endif -%}
+      <span class="val">{{ partes | join(' · ') if partes else '—' }}</span>
     </div>
   </div>
 
@@ -121,12 +149,14 @@
   <h2>Atendimento</h2>
   <div class="grade">
     <div class="campo"><span class="rot">Atendente</span><span class="val">{{ ordem.atendente or '—' }}</span></div>
-    <div class="campo"><span class="rot">Taxa de avaliação</span><span class="val">R$ {{ '%.2f' % (ordem.taxa_avaliacao or 0) }}</span></div>
     <div class="campo"><span class="rot">Técnico designado</span><span class="val">{{ (visita.tecnico_nome if visita else None) or 'a definir' }}</span></div>
-    <div class="campo"><span class="rot">Data agendada</span>
-      <span class="val">
-        {% if visita and visita.data_referencia %}{{ visita.data_referencia.split('-')[::-1] | join('/') }}{% elif visita %}{{ visita.dia_semana }}{% else %}a definir{% endif %}
-      </span>
+    <div class="campo">
+      <span class="rot">Data agendada</span>
+      <span class="val">{{ visita.data_referencia_br if (visita and visita.data_referencia_br) else (visita.dia_semana if visita else 'a definir') }}</span>
+    </div>
+    <div class="campo">
+      <span class="rot">Taxa de avaliação</span>
+      <div class="destaque-taxa">R$ {{ taxa_br }}</div>
     </div>
   </div>
 
@@ -134,11 +164,17 @@
   <div class="termos">{{ termos }}</div>
 
   <div class="assinaturas">
-    <div class="linha-assinatura">Assinatura do Cliente</div>
-    <div class="linha-assinatura">Assinatura do Atendente</div>
+    <div class="linha-assinatura">
+      <div class="nome">{{ ordem.cliente_nome }}</div>
+      <div class="cargo">Cliente</div>
+    </div>
+    <div class="linha-assinatura">
+      <div class="nome">{{ ordem.atendente or '—' }}</div>
+      <div class="cargo">Atendente · Porto Tec</div>
+    </div>
   </div>
 
-  <div class="rodape">Porto Tec Assistência Técnica — documento gerado em {{ ordem.criado_em }}</div>
+  <div class="rodape">Porto Tec Assistência Técnica · documento gerado em {{ gerado_em_br }}</div>
 </div>
 
 </body>

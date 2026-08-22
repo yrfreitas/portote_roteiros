@@ -5,7 +5,7 @@ load_dotenv()
 import logging
 import os
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import HTTPException
@@ -392,8 +392,29 @@ def imprimir_os(os_id):
              ORDER BY s.id DESC LIMIT 1
         """, (os_id,))
 
-    return render_template("os_imprimir.html", ordem=ordem, visita=visita,
-                           termos=TERMOS_PADRAO)
+    # Formatação BR feita aqui, não no template: "%.2f" de Python usa ponto
+    # decimal, e um documento pra cliente assinar com "R$ 90.00" e data em
+    # ISO (2026-08-22) parece rascunho de sistema, não papel de assistência
+    # técnica de verdade.
+    def _data_br(iso: str) -> str:
+        try:
+            return datetime.strptime((iso or "")[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            return iso or "—"
+
+    def _moeda_br(valor) -> str:
+        return f"{float(valor or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    if visita and visita.get("data_referencia"):
+        visita = dict(visita)
+        visita["data_referencia_br"] = _data_br(visita["data_referencia"])
+
+    return render_template(
+        "os_imprimir.html", ordem=ordem, visita=visita, termos=TERMOS_PADRAO,
+        data_abertura_br=_data_br(ordem.get("criado_em")),
+        taxa_br=_moeda_br(ordem.get("taxa_avaliacao")),
+        gerado_em_br=datetime.now().strftime("%d/%m/%Y %H:%M"),
+    )
 
 
 # ─── Auto-refresh: quem está com a tela aberta vê a mudança sozinho ──────

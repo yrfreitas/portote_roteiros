@@ -103,7 +103,9 @@
 //       agendar visita reaproveitando fichas/técnicos, e impressão da OS.
 // v68 = CEP no formulário de cliente preenche rua/bairro/cidade/estado
 //       sozinho (ViaCEP), na abertura de OS.
-const CACHE_VERSAO = 'portotec-roteiros-v68';
+// v69 = impressão da OS redesenhada (logo, layout mais profissional) e
+//       corrigido formato de moeda/data pro padrão brasileiro.
+const CACHE_VERSAO = 'portotec-roteiros-v69';
 
 const ARQUIVOS_CASCA = [
   '/',
