@@ -211,7 +211,7 @@ def alterar_status_servico(servico_id):
 
     with db_conn(commit=True) as conn:
         servico = fetch_one(conn, """
-            SELECT sv.id, sv.ficha_id, f.tecnico_id
+            SELECT sv.id, sv.ficha_id, sv.ordem_servico_id, f.tecnico_id
               FROM servicos sv JOIN fichas f ON f.id = sv.ficha_id
              WHERE sv.id = ?
         """, (servico_id,))
@@ -225,7 +225,8 @@ def alterar_status_servico(servico_id):
         desfecho = _gravar_desfecho(conn, servico_id, servico["ficha_id"],
                                     servico["tecnico_id"], novo_status,
                                     data.get("desfecho"),
-                                    (session.get("usuario_nome") or "").strip())
+                                    (session.get("usuario_nome") or "").strip(),
+                                    servico.get("ordem_servico_id"))
 
     return jsonify({"mensagem": f"Serviço marcado como {novo_status}",
                     "status": novo_status, "desfecho": desfecho})

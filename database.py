@@ -814,6 +814,10 @@ _MIGRACOES_PG = [
         atualizado_em     TEXT
     )""",
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS ordem_servico_id INTEGER REFERENCES ordens_servico(id) ON DELETE SET NULL",
+    # Separado de atualizado_em (que muda em QUALQUER edição): sem uma marca
+    # própria pro momento exato em que virou 'finalizada', a métrica de tempo
+    # médio até finalizar não tem como ser calculada.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS finalizada_em TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -884,6 +888,7 @@ _MIGRACOES_SQLITE = [
         atualizado_em     TEXT
     )""",
     "ALTER TABLE servicos ADD COLUMN ordem_servico_id INTEGER",
+    "ALTER TABLE ordens_servico ADD COLUMN finalizada_em TEXT",
     """CREATE TABLE IF NOT EXISTS cotacoes (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         codigo        TEXT,

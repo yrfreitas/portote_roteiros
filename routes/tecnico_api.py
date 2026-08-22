@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
@@ -176,7 +176,8 @@ def status_servico_tecnico(token, servico_id):
         desfecho_gravado = _gravar_desfecho(conn, servico_id, servico["ficha_id"],
                                             tecnico["id"], novo_status,
                                             data.get("desfecho"),
-                                            tecnico.get("nome") or "")
+                                            tecnico.get("nome") or "",
+                                            servico.get("ordem_servico_id"))
 
     return jsonify({"mensagem": f"Serviço marcado como {novo_status}",
                     "status": novo_status, "desfecho": desfecho_gravado})
@@ -307,7 +308,40 @@ def _mover_para_reagendamento(conn, servico_id, ficha_origem_id, ficha_destino_i
             recalcular_rota(conn, fid, f)
 
 
-def _gravar_desfecho(conn, servico_id, ficha_id, tecnico_id, novo_status, desfecho, quem):
+# Desfecho -> status da OS. Fechado de propósito: "resolvido" encerra,
+# peça pendente trava esperando, e reagendamento volta pra fila — a mesma
+# leitura que uma pessoa faria olhando o desfecho, só que automática.
+_STATUS_OS_POR_DESFECHO = {
+    "resolvido": "finalizada",
+    "precisa_peca": "aguardando_peca",
+    "cotacao_peca": "aguardando_peca",
+    "volto_depois": "agendada",
+    "nao_atendido": "agendada",
+}
+
+
+def _atualizar_status_os(conn, ordem_servico_id, tipo):
+    if not ordem_servico_id:
+        return
+    novo = _STATUS_OS_POR_DESFECHO.get(tipo)
+    if not novo:
+        return
+    # UTC de propósito: ordens_servico.criado_em é gravado em UTC
+    # (routes/ordens_servico.py), e a métrica de tempo médio até finalizar
+    # compara os dois — hora local aqui faria a duração dar negativa.
+    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    if novo == "finalizada":
+        execute(conn, sql(
+            "UPDATE ordens_servico SET status = ?, atualizado_em = ?, "
+            "finalizada_em = ? WHERE id = ?"), (novo, agora, agora, ordem_servico_id))
+    else:
+        execute(conn, sql(
+            "UPDATE ordens_servico SET status = ?, atualizado_em = ? WHERE id = ?"),
+            (novo, agora, ordem_servico_id))
+
+
+def _gravar_desfecho(conn, servico_id, ficha_id, tecnico_id, novo_status, desfecho, quem,
+                     ordem_servico_id=None):
     """Guarda o que aconteceu no atendimento, junto com a conclusão.
 
     Vem na MESMA requisição do status, e não num endpoint próprio, porque o
@@ -372,6 +406,8 @@ def _gravar_desfecho(conn, servico_id, ficha_id, tecnico_id, novo_status, desfec
             aviso_reagendamento = erro
         elif ficha_destino_id:
             _mover_para_reagendamento(conn, servico_id, ficha_id, ficha_destino_id)
+
+    _atualizar_status_os(conn, ordem_servico_id, tipo)
 
     resultado = {"tipo": tipo, "motivo": motivo, "peca": peca, "observacao": observacao}
     if aviso_reagendamento:

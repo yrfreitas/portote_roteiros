@@ -253,6 +253,15 @@
         <span class="visao-geral-title">Ordens de Serviço</span>
         <button class="btn btn-primary btn-sm" onclick="abrirModalNovaOS()">+ Nova OS</button>
       </div>
+      <input class="pecas-busca" id="os-busca" type="search" autocomplete="off"
+             placeholder="Buscar por número da OS ou nome do cliente..."
+             style="margin-bottom:14px;max-width:380px;" oninput="osBuscar(this.value)">
+
+      <details class="cotacao-details" id="os-metricas-details" ontoggle="if(this.open) carregarOSMetricas()">
+        <summary class="cotacao-summary"><span>Métricas</span></summary>
+        <div id="os-metricas-conteudo"></div>
+      </details>
+
       <div id="os-conteudo"></div>
     </div>
   </main>
@@ -883,6 +892,7 @@
                oninput="osBuscarCliente(this.value)" placeholder="Digite pra buscar...">
       </div>
       <div id="os-resultado-cliente"></div>
+      <div id="os-historico-cliente"></div>
     </div>
 
     <div id="os-cliente-novo" style="display:none;">

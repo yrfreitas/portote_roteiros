@@ -455,6 +455,8 @@ header {
   .os-linha { grid-template-columns: 1fr; }
 }
 
+.ajuda-texto { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
+
 .os-detalhe-secao { margin-top: 16px; }
 .os-detalhe-secao:first-child { margin-top: 0; }
 .os-visita-linha {

@@ -111,7 +111,11 @@
 // v71 = impressão da OS, terceira passada: fonte única, mais espaço em
 //       branco, cor de marca usada com moderação — estilo fatura moderna
 //       em vez de card de app ou formulário de repartição.
-const CACHE_VERSAO = 'portotec-roteiros-v71';
+// v72 = melhorias na aba OS: status segue o desfecho do técnico sozinho,
+//       peças usadas vinculadas (dá baixa no estoque, aceita mais de uma),
+//       busca por número/cliente, histórico do cliente na Nova OS, e
+//       métricas (por mês, tempo médio até finalizar, indicação).
+const CACHE_VERSAO = 'portotec-roteiros-v72';
 
 const ARQUIVOS_CASCA = [
   '/',

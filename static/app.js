@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v71';
+const VERSAO_PAINEL = 'v72';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5260,18 +5260,32 @@ const OS_STATUS_ROTULO = {
 };
 
 let _osFiltroStatus = '';
+let _osBuscaTexto = '';
+let _osBuscaTimer = null;
 let _osClienteSelecionado = null;   // {id, nome} — null enquanto não escolhido
 let _osBuscaClienteTimer = null;
 let _osIndicacoesCarregadas = false;
+
+function osBuscar(valor) {
+  clearTimeout(_osBuscaTimer);
+  _osBuscaTimer = setTimeout(() => {
+    _osBuscaTexto = valor.trim();
+    carregarOS();
+  }, 300);
+}
 
 async function carregarOS() {
   const mount = document.getElementById('os-conteudo');
   if (!mount) return;
   mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
 
+  const params = new URLSearchParams();
+  if (_osFiltroStatus) params.set('status', _osFiltroStatus);
+  if (_osBuscaTexto) params.set('busca', _osBuscaTexto);
+
   let r;
   try {
-    r = await api(`/ordens-servico${_osFiltroStatus ? '?status=' + _osFiltroStatus : ''}`);
+    r = await api(`/ordens-servico${params.toString() ? '?' + params.toString() : ''}`);
   } catch (e) {
     mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
     return;
@@ -5304,6 +5318,65 @@ async function carregarOS() {
   mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${linhas}`;
 }
 
+async function carregarOSMetricas() {
+  const mount = document.getElementById('os-metricas-conteudo');
+  if (!mount) return;
+  mount.innerHTML = `<p class="ajuda-texto">carregando...</p>`;
+
+  let r;
+  try {
+    r = await api('/ordens-servico/metricas');
+  } catch (e) {
+    mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const mesNome = (m) => {
+    const [ano, mes] = m.split('-');
+    const nomes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    return `${nomes[Number(mes) - 1]}/${ano.slice(2)}`;
+  };
+
+  const cartoes = `
+    <div class="os-cartoes" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
+      <div class="os-cartao" style="cursor:default;">
+        <div class="n">${r.total_geral}</div>
+        <div class="rot">OS no total</div>
+      </div>
+      <div class="os-cartao" style="cursor:default;">
+        <div class="n">${r.tempo_medio_dias ?? '—'}${r.tempo_medio_dias !== null ? 'd' : ''}</div>
+        <div class="rot">Tempo médio até finalizar${r.os_finalizadas_com_tempo ? ' (' + r.os_finalizadas_com_tempo + ' OS)' : ''}</div>
+      </div>
+    </div>`;
+
+  const porMes = r.por_mes.length === 0 ? `<p class="ajuda-texto">Sem dados ainda.</p>` : `
+    <div style="display:flex;gap:8px;align-items:flex-end;height:70px;margin-top:6px;">
+      ${(() => {
+        const maior = Math.max(...r.por_mes.map(m => m.total), 1);
+        return r.por_mes.map(m => `
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <span style="font-size:11px;color:var(--text-muted);">${m.total}</span>
+            <div style="width:100%;background:var(--accent);border-radius:4px 4px 0 0;height:${Math.max(4, (m.total / maior) * 44)}px;"></div>
+            <span style="font-size:10px;color:var(--text-muted);">${mesNome(m.mes)}</span>
+          </div>`).join('');
+      })()}
+    </div>`;
+
+  const porIndicacao = r.por_indicacao.length === 0 ? `<p class="ajuda-texto">Sem indicação registrada ainda.</p>` :
+    r.por_indicacao.map(i => `
+      <div class="os-visita-linha">
+        <span>${esc(i.indicacao)}</span>
+        <span class="badge accent">${i.total}</span>
+      </div>`).join('');
+
+  mount.innerHTML = `
+    ${cartoes}
+    <p class="form-separador">OS abertas por mês</p>
+    ${porMes}
+    <p class="form-separador">De onde vêm os clientes</p>
+    ${porIndicacao}`;
+}
+
 function osFiltrar(status) {
   _osFiltroStatus = (_osFiltroStatus === status) ? '' : status;
   carregarOS();
@@ -5322,6 +5395,7 @@ async function abrirModalNovaOS() {
   _osCepUltimo = '';
   document.getElementById('os-busca-cliente').value = '';
   document.getElementById('os-resultado-cliente').innerHTML = '';
+  document.getElementById('os-historico-cliente').innerHTML = '';
   osEscolherModoCliente('existente');
 
   if (!_osIndicacoesCarregadas) {
@@ -5388,7 +5462,7 @@ function osBuscarCliente(termo) {
       return;
     }
     if (r.clientes.length === 0) {
-      alvo.innerHTML = `<p class="t-df-ajuda" style="margin-top:8px;">Ninguém encontrado — use "Cliente novo".</p>`;
+      alvo.innerHTML = `<p class="ajuda-texto" style="margin-top:8px;">Ninguém encontrado — use "Cliente novo".</p>`;
       return;
     }
     alvo.innerHTML = r.clientes.map(c => `
@@ -5400,10 +5474,34 @@ function osBuscarCliente(termo) {
   }, 350);
 }
 
-function osSelecionarCliente(id, nome) {
+async function osSelecionarCliente(id, nome) {
   _osClienteSelecionado = { id, nome };
   document.querySelectorAll('.os-resultado-item').forEach(el => el.classList.remove('selecionado'));
   osBuscarCliente(document.getElementById('os-busca-cliente').value);
+
+  // Cliente que já veio antes é sinal — "trouxe a mesma geladeira 3 vezes"
+  // é informação que muda a conversa com quem está atendendo agora.
+  const alvo = document.getElementById('os-historico-cliente');
+  alvo.innerHTML = `<p class="ajuda-texto">carregando histórico...</p>`;
+  try {
+    const r = await api(`/clientes/${id}`);
+    const anteriores = r.ordens_servico || [];
+    if (anteriores.length === 0) {
+      alvo.innerHTML = `<p class="ajuda-texto">Primeira OS deste cliente.</p>`;
+      return;
+    }
+    alvo.innerHTML = `
+      <p class="ajuda-texto" style="margin-bottom:6px;">
+        ${anteriores.length} OS anterior${anteriores.length !== 1 ? 'es' : ''} deste cliente:
+      </p>
+      ${anteriores.map(o => `
+        <div class="os-visita-linha">
+          <span>OS #${String(o.id).padStart(6, '0')} · ${esc([o.tipo_aparelho, o.modelo].filter(Boolean).join(' ')) || 'sem aparelho'} — ${esc(o.defeito_declarado || '')}</span>
+          <span class="conc-tag ${o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso'}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
+        </div>`).join('')}`;
+  } catch {
+    alvo.innerHTML = '';
+  }
 }
 
 async function osCriar() {
@@ -5469,7 +5567,7 @@ async function abrirOSDetalhe(id) {
     `OS #${String(o.id).padStart(6, '0')} · ${o.cliente_nome}`;
 
   const visitas = r.visitas.length === 0
-    ? `<p class="t-df-ajuda">Nenhuma visita agendada ainda.</p>`
+    ? `<p class="ajuda-texto">Nenhuma visita agendada ainda.</p>`
     : r.visitas.map(v => `
         <div class="os-visita-linha">
           <span>${esc(v.tecnico_nome || 'sem técnico')} · ${esc(v.data_referencia ? v.data_referencia.split('-').reverse().join('/') : v.dia_semana)}</span>
@@ -5499,6 +5597,22 @@ async function abrirOSDetalhe(id) {
       ${visitas}
     </div>
     <div class="os-detalhe-secao">
+      <p class="form-separador">Peças usadas</p>
+      <div id="os-pecas-lista">${osRenderPecas(r.pecas)}</div>
+      <div class="form-row" style="margin-top:8px;">
+        <div class="form-group">
+          <label class="form-label" for="os-peca-codigo">Código (do estoque)</label>
+          <input class="form-input" id="os-peca-codigo" autocomplete="off"
+                 onkeydown="if(event.key==='Enter') osAdicionarPeca(${o.id})">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="os-peca-qtd">Qtd</label>
+          <input class="form-input" type="number" min="1" step="1" value="1" id="os-peca-qtd">
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="osAdicionarPeca(${o.id})">+ Adicionar peça</button>
+    </div>
+    <div class="os-detalhe-secao">
       <p class="form-separador">Agendar nova visita</p>
       <div class="form-row">
         <div class="form-group">
@@ -5517,6 +5631,39 @@ async function abrirOSDetalhe(id) {
     </div>`;
 
   document.getElementById('modal-os-detalhe').classList.add('open');
+}
+
+function osRenderPecas(pecas) {
+  if (!pecas || pecas.length === 0) {
+    return `<p class="ajuda-texto" style="margin:0;">Nenhuma peça baixada ainda.</p>`;
+  }
+  return pecas.map(p => `
+    <div class="os-visita-linha">
+      <span><b>${esc(p.codigo)}</b>${p.descricao ? ' — ' + esc(p.descricao) : ''} · ${Number(p.quantidade)}x</span>
+      <span style="color:var(--text-muted);font-size:11px;">${esc((p.criado_em || '').split(' ')[0].split('-').reverse().join('/'))}</span>
+    </div>`).join('');
+}
+
+async function osAdicionarPeca(id) {
+  const codigo = document.getElementById('os-peca-codigo').value.trim();
+  const qtd = document.getElementById('os-peca-qtd').value || 1;
+  if (!codigo) {
+    toast('Informe o código da peça', 'error');
+    return;
+  }
+  try {
+    await api(`/ordens-servico/${id}/pecas`, {
+      method: 'POST', body: JSON.stringify({ codigo, quantidade: qtd }),
+    });
+    toast('Peça baixada do estoque', 'success');
+    document.getElementById('os-peca-codigo').value = '';
+    document.getElementById('os-peca-qtd').value = '1';
+    const r = await api(`/ordens-servico/${id}`);
+    document.getElementById('os-pecas-lista').innerHTML = osRenderPecas(r.pecas);
+    document.getElementById('os-peca-codigo').focus();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
 }
 
 async function osAtualizarStatus(id, status) {
