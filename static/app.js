@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v73';
+const VERSAO_PAINEL = 'v74';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4524,18 +4524,20 @@ async function adicionarServico() {
 
   if (cep.length !== 8) { toast('Informe um CEP válido', 'error'); return; }
 
-  const btn = document.getElementById('btn-add-servico');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner"></div> Geocodificando...';
-
-  // Valida antes de chamar o servidor. O backend também recusa, mas avisar
-  // aqui evita o usuário perder o formulário preenchido numa ida e volta.
+  // Valida ANTES de travar o botão — as duas checagens têm que vir antes de
+  // qualquer `btn.disabled = true`, senão um retorno antecipado aqui deixa o
+  // botão preso em "Geocodificando..." pra sempre (o `finally` só cobre o
+  // `try` que vem depois; um `return` daqui nunca passa por ele).
   const setorEscolhido = document.getElementById('add-setor').value;
   if (!setorEscolhido) {
     toast('Escolha o setor do atendimento.', 'error');
     document.getElementById('add-setor').focus();
     return;
   }
+
+  const btn = document.getElementById('btn-add-servico');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Geocodificando...';
 
   try {
     const r = await api(`/fichas/${fichaId}/servicos`, {

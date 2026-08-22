@@ -202,6 +202,17 @@ def criar_ficha():
     except (TypeError, ValueError):
         return jsonify({"erro": "tecnico_id inválido"}), 400
 
+    # Mesma validação de editar_ficha — sem ela, criar direto pela API (sem
+    # passar pelo <input type="date"> da tela) reabre o bug que a validação
+    # da edição já fechou: "ficha com 2006 no lugar de 2026 encabeçando a
+    # lista pra sempre", porque data_referencia ordena tudo como texto.
+    data_referencia = (data.get("data_referencia") or "").strip()
+    if data_referencia:
+        try:
+            datetime.strptime(data_referencia, "%Y-%m-%d")
+        except ValueError:
+            return jsonify({"erro": "Data inválida. Use o formato AAAA-MM-DD."}), 400
+
     partida = (data.get("ponto_partida") or "").strip()
     partida_cep = "".join(c for c in (data.get("ponto_partida_cep") or "") if c.isdigit())
     numero_partida = (data.get("ponto_partida_numero") or "").strip()
@@ -230,7 +241,7 @@ def criar_ficha():
                 (tecnico_id, dia_semana, data_referencia, ponto_partida,
                  ponto_partida_cep, ponto_partida_lat, ponto_partida_lng)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (tecnico_id, dia, data.get("data_referencia", ""),
+        """, (tecnico_id, dia, data_referencia,
               partida, partida_cep, lat_p, lng_p))
 
     notificar_tecnico(
