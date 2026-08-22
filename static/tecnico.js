@@ -1044,14 +1044,37 @@
   function conferirVersaoDoApp(versaoServidor) {
     if (!versaoServidor || versaoServidor === VERSAO_TELA) return;
 
+    // Trava de UMA recarga por versão. Sem isto, se o JS servido continuar
+    // desatualizado depois do reload (cache do navegador, deploy ainda
+    // propagando), o app entra num laço de recarregar pra sempre — a tela
+    // "piscando" que já aconteceu. Uma tentativa só; se não resolver, avisa
+    // parado em vez de continuar tentando sozinho.
+    if (sessionStorage.getItem('tRecarregouPara') === versaoServidor) {
+      avisarVersaoTravada();
+      return;
+    }
+
     const ocupado = document.querySelector('.t-folha-fundo')
       || (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));
     if (ocupado) return;  // tenta de novo no próximo ciclo, daqui a 20s
 
     // Marca antes de recarregar: se algo der errado no reload, o selo na tela
     // continua mostrando a versão velha e o diagnóstico não mente.
+    sessionStorage.setItem('tRecarregouPara', versaoServidor);
     toast('Atualizando o aplicativo...');
     setTimeout(() => location.reload(), 600);
+  }
+
+  function avisarVersaoTravada() {
+    if (document.getElementById('t-aviso-versao')) return;
+    const aviso = document.createElement('div');
+    aviso.id = 't-aviso-versao';
+    aviso.className = 't-aviso-versao';
+    aviso.setAttribute('role', 'status');
+    aviso.innerHTML = `
+      <span>Nova versão disponível</span>
+      <button type="button" onclick="location.reload()">Recarregar</button>`;
+    document.body.appendChild(aviso);
   }
 
   async function verificarRevisao() {

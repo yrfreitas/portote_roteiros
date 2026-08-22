@@ -134,7 +134,7 @@ def _exigir_autenticacao():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", versao=VERSAO_APP)
 
 
 @app.route("/api/health")

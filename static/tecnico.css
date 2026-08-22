@@ -523,3 +523,16 @@ button.t-ponto-link-waze {
   margin-top: 6px; padding-left: 9px; font-size: 12px; line-height: 1.45;
   color: #9aacc6; border-left: 2px solid rgba(255,255,255,.14);
 }
+
+.t-aviso-versao {
+  position: fixed; left: 14px; right: 14px; bottom: 14px; z-index: 950;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; border-radius: 12px;
+  background: #151b25; border: 1px solid rgba(255,255,255,.14);
+  color: #eef3fa; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4);
+}
+.t-aviso-versao button {
+  border: 0; border-radius: 9px; cursor: pointer; flex: none;
+  background: #4f8dfb; color: #fff; font: 700 12.5px inherit;
+  font-family: inherit; padding: 9px 14px;
+}

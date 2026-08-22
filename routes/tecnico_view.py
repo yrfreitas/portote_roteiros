@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template
 
 from database import db_conn, fetch_one
+from extensions import VERSAO_APP
 from services.push import VAPID_PUBLIC_KEY
 
 tecnico_view_bp = Blueprint("tecnico_view", __name__)
@@ -15,5 +16,6 @@ def pagina_tecnico(token):
         return render_template("tecnico_invalido.html"), 404
 
     return render_template(
-        "tecnico.html", tecnico=tecnico, token=token, vapid_public_key=VAPID_PUBLIC_KEY
+        "tecnico.html", tecnico=tecnico, token=token, vapid_public_key=VAPID_PUBLIC_KEY,
+        versao=VERSAO_APP,
     )
