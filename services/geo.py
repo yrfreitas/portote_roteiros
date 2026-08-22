@@ -261,6 +261,31 @@ def _nominatim_cep(cep: str, dados_cep: dict) -> Optional[GeoResult]:
     return None
 
 
+def consultar_cep(cep: str) -> Optional[dict]:
+    """CEP -> endereço (rua/bairro/cidade/estado), sem geocodificar.
+
+    Usado no formulário de cliente: a pessoa digita o CEP e o resto do
+    endereço se preenche sozinho, sem precisar de latitude/longitude (isso só
+    importa quando o CEP vira ponto de rota, em geocode_cep). Função própria
+    e mais leve em vez de chamar geocode_cep aqui, que faria três tentativas
+    de geocodificação à toa.
+    """
+    cep_limpo = "".join(c for c in str(cep or "") if c.isdigit())
+    if len(cep_limpo) != 8:
+        return None
+
+    dados = _viacep(cep_limpo)
+    if not dados:
+        return None
+
+    return {
+        "endereco": dados.get("logradouro") or "",
+        "bairro": dados.get("bairro") or "",
+        "cidade": dados.get("localidade") or "",
+        "estado": dados.get("uf") or "",
+    }
+
+
 def _viacep(cep: str) -> Optional[dict]:
     try:
         r = _sessao.get(VIACEP_URL.format(cep=cep), timeout=TIMEOUT_VIACEP)

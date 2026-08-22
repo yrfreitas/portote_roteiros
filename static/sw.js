@@ -101,7 +101,9 @@
 //       cliente próprio (nome, CPF, contato, endereço, indicação), abrir OS
 //       (equipamento, defeito declarado, taxa de avaliação, atendente),
 //       agendar visita reaproveitando fichas/técnicos, e impressão da OS.
-const CACHE_VERSAO = 'portotec-roteiros-v67';
+// v68 = CEP no formulário de cliente preenche rua/bairro/cidade/estado
+//       sozinho (ViaCEP), na abertura de OS.
+const CACHE_VERSAO = 'portotec-roteiros-v68';
 
 const ARQUIVOS_CASCA = [
   '/',

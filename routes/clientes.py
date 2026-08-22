@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, session
 
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
+from services.geo import consultar_cep
 
 clientes_bp = Blueprint("clientes", __name__)
 
@@ -72,6 +73,14 @@ def criar_cliente(conn, dados: dict) -> int:
           campos["numero"], campos["complemento"], campos["bairro"],
           campos["cidade"], campos["estado"], campos["indicacao"] or None,
           campos["obs"], _quem(), agora))
+
+
+@clientes_bp.route("/clientes/cep/<cep>", methods=["GET"])
+def buscar_cep(cep):
+    endereco = consultar_cep(cep)
+    if not endereco:
+        return jsonify({"erro": "CEP não encontrado"}), 404
+    return jsonify(endereco)
 
 
 @clientes_bp.route("/clientes/indicacoes", methods=["GET"])

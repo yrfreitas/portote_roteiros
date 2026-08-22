@@ -900,7 +900,8 @@
       </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label" for="os-cep">CEP</label>
-          <input class="form-input" id="os-cep"></div>
+          <input class="form-input" id="os-cep" maxlength="9" oninput="osBuscarCep(this.value)">
+          <span id="os-cep-status" style="display:block;margin-top:4px;font-size:11.5px;color:var(--text-muted);"></span></div>
         <div class="form-group"><label class="form-label" for="os-numero">Número</label>
           <input class="form-input" id="os-numero"></div>
       </div>

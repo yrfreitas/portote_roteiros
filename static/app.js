@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v67';
+const VERSAO_PAINEL = 'v68';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5318,6 +5318,8 @@ async function abrirModalNovaOS() {
     if (el) el.value = '';
   });
   document.getElementById('os-taxa').value = '0';
+  document.getElementById('os-cep-status').textContent = '';
+  _osCepUltimo = '';
   document.getElementById('os-busca-cliente').value = '';
   document.getElementById('os-resultado-cliente').innerHTML = '';
   osEscolherModoCliente('existente');
@@ -5333,6 +5335,34 @@ async function abrirModalNovaOS() {
   }
 
   document.getElementById('modal-nova-os').classList.add('open');
+}
+
+let _osCepUltimo = '';
+
+async function osBuscarCep(valor) {
+  const cep = (valor || '').replace(/\D/g, '');
+  const status = document.getElementById('os-cep-status');
+  if (cep.length !== 8) {
+    status.textContent = '';
+    return;
+  }
+  if (cep === _osCepUltimo) return;  // já buscou esse CEP, não repete a toa
+  _osCepUltimo = cep;
+
+  status.textContent = 'buscando endereço...';
+  try {
+    const r = await api(`/clientes/cep/${cep}`);
+    document.getElementById('os-endereco').value = r.endereco || '';
+    document.getElementById('os-bairro').value = r.bairro || '';
+    document.getElementById('os-cidade').value = r.cidade || '';
+    document.getElementById('os-estado').value = r.estado || '';
+    status.textContent = r.endereco ? '' : 'CEP achado, mas sem rua (preencha na mão)';
+    // Foco vai pro número: é o único dado que o CEP nunca traz, e a pessoa
+    // já está com a mão no teclado — economiza um clique.
+    document.getElementById('os-numero').focus();
+  } catch {
+    status.textContent = 'CEP não encontrado — preencha o endereço na mão';
+  }
 }
 
 function osEscolherModoCliente(modo) {
