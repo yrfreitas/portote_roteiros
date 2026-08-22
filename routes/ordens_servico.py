@@ -7,9 +7,12 @@ liga a um `servico` (routes/servicos.py) em vez de duplicar agenda. Uma OS
 pode ter mais de uma visita ligada a ela com o tempo (voltou pra buscar
 peça), por isso o vínculo mora em servicos.ordem_servico_id.
 """
-from datetime import datetime, timezone
+import io
+from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, send_file, session
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
 from routes.clientes import criar_cliente
@@ -126,10 +129,12 @@ def listar_status():
 def listar():
     """?status filtra; ?cliente_id filtra por cliente; ?busca acha por número
     da OS ou nome do cliente — telefone toca e alguém pergunta "cadê a OS 12",
-    não dá pra obrigar a procurar folheando por status."""
+    não dá pra obrigar a procurar folheando por status. ?dias=N filtra pelas
+    abertas nos últimos N dias — mesma convenção de /desfechos e /historico."""
     status = (request.args.get("status") or "").strip()
     cliente_id = request.args.get("cliente_id")
     busca = (request.args.get("busca") or "").strip().lower()
+    dias = request.args.get("dias")
 
     condicoes, params = [], []
     if status:
@@ -138,6 +143,10 @@ def listar():
     if cliente_id:
         condicoes.append("os.cliente_id = ?")
         params.append(cliente_id)
+    if dias and str(dias).isdigit() and 1 <= int(dias) <= 3650:
+        corte = (datetime.now(timezone.utc) - timedelta(days=int(dias))).strftime("%Y-%m-%d %H:%M:%S")
+        condicoes.append("os.criado_em >= ?")
+        params.append(corte)
     where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
 
     with db_conn() as conn:
@@ -164,6 +173,88 @@ def listar():
         ]
 
     return jsonify({"ordens": ordens, "contagem": contagem, "total": len(ordens)})
+
+
+@ordens_servico_bp.route("/ordens-servico/exportar", methods=["GET"])
+def exportar():
+    """Mesmos filtros de listar() (status/dias/busca), em .xlsx — pra
+    contabilidade ou reunião, sem precisar copiar linha por linha da tela."""
+    status = (request.args.get("status") or "").strip()
+    busca = (request.args.get("busca") or "").strip().lower()
+    dias = request.args.get("dias")
+
+    condicoes, params = [], []
+    if status:
+        condicoes.append("os.status = ?")
+        params.append(status)
+    if dias and str(dias).isdigit() and 1 <= int(dias) <= 3650:
+        corte = (datetime.now(timezone.utc) - timedelta(days=int(dias))).strftime("%Y-%m-%d %H:%M:%S")
+        condicoes.append("os.criado_em >= ?")
+        params.append(corte)
+    where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
+
+    with db_conn() as conn:
+        ordens = fetch_all(conn, f"""
+            SELECT os.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone,
+                   c.cpf_cnpj AS cliente_cpf_cnpj,
+                   t.nome AS tecnico_nome, f.data_referencia, f.dia_semana
+              FROM ordens_servico os
+              JOIN clientes c ON c.id = os.cliente_id
+              LEFT JOIN servicos sv ON sv.id = (
+                  SELECT s2.id FROM servicos s2
+                   WHERE s2.ordem_servico_id = os.id ORDER BY s2.id DESC LIMIT 1
+              )
+              LEFT JOIN fichas f ON f.id = sv.ficha_id
+              LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+              {where}
+             ORDER BY os.id DESC
+        """, tuple(params))
+
+    if busca:
+        numero = busca.lstrip("#").lstrip("0") or "0"
+        ordens = [
+            o for o in ordens
+            if busca in (o.get("cliente_nome") or "").lower()
+            or (numero.isdigit() and str(o["id"]) == numero)
+        ]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ordens de Serviço"
+
+    cabecalho = ["Nº OS", "Status", "Cliente", "CPF/CNPJ", "Telefone",
+                "Aparelho", "Marca", "Modelo", "Defeito declarado",
+                "Taxa de avaliação", "Atendente", "Técnico", "Dia agendado",
+                "Aberta em", "Finalizada em"]
+    ws.append(cabecalho)
+    for celula in ws[1]:
+        celula.font = Font(bold=True, color="FFFFFF")
+        celula.fill = PatternFill(start_color="1A6FD4", end_color="1A6FD4", fill_type="solid")
+
+    for o in ordens:
+        dia_agendado = o.get("data_referencia") or o.get("dia_semana") or ""
+        ws.append([
+            f"OS #{o['id']:06d}", (o["status"] or "").replace("_", " "),
+            o.get("cliente_nome") or "", o.get("cliente_cpf_cnpj") or "",
+            o.get("cliente_telefone") or "", o.get("tipo_aparelho") or "",
+            o.get("marca") or "", o.get("modelo") or "",
+            o.get("defeito_declarado") or "", round(o.get("taxa_avaliacao") or 0, 2),
+            o.get("atendente") or "", o.get("tecnico_nome") or "", dia_agendado,
+            (o.get("criado_em") or "")[:16], (o.get("finalizada_em") or "")[:16],
+        ])
+
+    for i, largura in enumerate([11, 20, 22, 16, 15, 14, 12, 14, 30, 12, 14, 14, 13, 16, 16], start=1):
+        ws.column_dimensions[chr(64 + i)].width = largura
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    nome_arquivo = f"ordens-servico-{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    return send_file(
+        buffer, as_attachment=True, download_name=nome_arquivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 def _pecas_da_os(conn, os_id) -> list:
@@ -406,3 +497,39 @@ def agendar(os_id):
 
     return jsonify({"mensagem": "Visita agendada", "ficha_id": ficha_id,
                     "servico_id": servico_id}), 201
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/desagendar/<int:servico_id>", methods=["DELETE"])
+def desagendar(os_id, servico_id):
+    """Desfaz um agendamento feito com técnico/dia errado.
+
+    Só mexe em visita ainda PENDENTE — uma já concluída tem desfecho e
+    histórico reais, desagendar isso apagaria trabalho que aconteceu de
+    verdade. A visita errada é removida (nunca chegou a acontecer, não há o
+    que preservar); se não sobrar nenhuma outra visita pendente ou
+    concluída, a OS volta pra 'aguardando_agendamento'.
+    """
+    with db_conn(commit=True) as conn:
+        servico = fetch_one(conn, """
+            SELECT * FROM servicos WHERE id = ? AND ordem_servico_id = ?
+        """, (servico_id, os_id))
+        if not servico:
+            return jsonify({"erro": "Visita não encontrada nesta OS"}), 404
+        if servico["status"] != "pendente":
+            return jsonify({"erro": "Só dá pra desagendar uma visita que ainda não aconteceu"}), 400
+
+        ficha_id = servico["ficha_id"]
+        execute(conn, "DELETE FROM servicos WHERE id = ?", (servico_id,))
+
+        restantes = fetch_one(conn, """
+            SELECT COUNT(*) AS total FROM servicos WHERE ordem_servico_id = ?
+        """, (os_id,))["total"]
+        if not restantes:
+            execute(conn, "UPDATE ordens_servico SET status = ?, atualizado_em = ? WHERE id = ?",
+                   ("aguardando_agendamento", _agora(), os_id))
+
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
+        if ficha:
+            recalcular_rota(conn, ficha_id, ficha)
+
+    return jsonify({"mensagem": "Visita desagendada"})

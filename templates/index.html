@@ -251,6 +251,13 @@
     <div class="historico-wrap">
       <div class="historico-header">
         <span class="visao-geral-title">Ordens de Serviço</span>
+        <div class="at-periodo" id="os-periodo">
+          <button class="at-per ativo" data-dias=""   onclick="osMudarPeriodo('')">Todas</button>
+          <button class="at-per"       data-dias="7"  onclick="osMudarPeriodo(7)">7 dias</button>
+          <button class="at-per"       data-dias="30" onclick="osMudarPeriodo(30)">30 dias</button>
+          <button class="at-per"       data-dias="90" onclick="osMudarPeriodo(90)">90 dias</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="osExportar()">Exportar</button>
         <button class="btn btn-primary btn-sm" onclick="abrirModalNovaOS()">+ Nova OS</button>
       </div>
       <input class="pecas-busca" id="os-busca" type="search" autocomplete="off"

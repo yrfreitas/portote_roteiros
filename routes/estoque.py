@@ -356,6 +356,25 @@ def remover_grupo(grupo_id):
                     "sub_estoques_movidos": subiram})
 
 
+def _os_aguardando_esta_peca(conn, codigo: str) -> list:
+    """OS em 'aguardando_peca' cujo desfecho de Cotação de peça pediu esse
+    MESMO código. Só cobre o desfecho 'cotacao_peca' — é o único que grava
+    código estruturado; 'precisa_peca' é texto livre e não dá pra casar com
+    segurança (mesmo risco que o AgoraOS já documentou: nome parecido não é
+    nome igual)."""
+    codigo = _norm_codigo(codigo)
+    if not codigo:
+        return []
+    return fetch_all(conn, """
+        SELECT DISTINCT os.id, os.tipo_aparelho, os.modelo, c.nome AS cliente_nome
+          FROM ordens_servico os
+          JOIN servicos sv ON sv.ordem_servico_id = os.id
+          JOIN servico_desfecho sd ON sd.servico_id = sv.id
+          JOIN clientes c ON c.id = os.cliente_id
+         WHERE os.status = 'aguardando_peca' AND UPPER(sd.codigo) = ?
+    """, (codigo,))
+
+
 @estoque_bp.route("/estoque/entrada", methods=["POST"])
 def entrada():
     if not session.get("admin"):
@@ -374,9 +393,10 @@ def entrada():
                             marca=d.get("marca"), aparelho=d.get("aparelho"),
                             modelo=d.get("modelo"), preco_venda=d.get("preco_venda"),
                             **kw)
+            os_esperando = _os_aguardando_esta_peca(conn, d.get("codigo"))
     except (ValueError, TypeError) as exc:
         return jsonify({"erro": str(exc)}), 400
-    return jsonify({"mensagem": "Entrada registrada", **r}), 201
+    return jsonify({"mensagem": "Entrada registrada", "os_esperando": os_esperando, **r}), 201
 
 
 @estoque_bp.route("/estoque/saida", methods=["POST"])
@@ -556,13 +576,17 @@ def entrada_nota():
                                 it.get("quantidade") or 1, it.get("custo_unit") or 0,
                                 origem="nota", referencia=referencia or None, **kw)
                 entraram += 1
-                resultados.append({"codigo": codigo, "status": "ok", "saldo": r["saldo"]})
+                os_esperando = _os_aguardando_esta_peca(conn, codigo)
+                resultados.append({"codigo": codigo, "status": "ok", "saldo": r["saldo"],
+                                   "os_esperando": os_esperando})
     except (ValueError, TypeError) as exc:
         return jsonify({"erro": str(exc)}), 400
+
+    total_esperando = sum(len(r.get("os_esperando") or []) for r in resultados)
     return jsonify({"mensagem": f"{entraram} peça(s) no estoque"
                     + (f", {pulados} já estavam" if pulados else ""),
                     "entraram": entraram, "pulados": pulados,
-                    "resultados": resultados}), 201
+                    "resultados": resultados, "total_os_esperando": total_esperando}), 201
 
 
 @estoque_bp.route("/estoque/<int:item_id>", methods=["PUT"])

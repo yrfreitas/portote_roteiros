@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v76';
+const VERSAO_PAINEL = 'v77';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5266,6 +5266,7 @@ const OS_STATUS_ROTULO = {
 };
 
 let _osFiltroStatus = '';
+let _osFiltroDias = '';
 let _osBuscaTexto = '';
 let _osBuscaTimer = null;
 let _osClienteSelecionado = null;   // {id, nome} — null enquanto não escolhido
@@ -5288,6 +5289,7 @@ async function carregarOS() {
   const params = new URLSearchParams();
   if (_osFiltroStatus) params.set('status', _osFiltroStatus);
   if (_osBuscaTexto) params.set('busca', _osBuscaTexto);
+  if (_osFiltroDias) params.set('dias', _osFiltroDias);
 
   let r;
   try {
@@ -5381,6 +5383,34 @@ async function carregarOSMetricas() {
     ${porMes}
     <p class="form-separador">De onde vêm os clientes</p>
     ${porIndicacao}`;
+}
+
+// Chamado depois de QUALQUER entrada no estoque (manual, nota, bipar). A
+// peça que acabou de chegar pode ser exatamente a que uma OS em "aguardando
+// peça" está esperando — sem isso, ninguém lembra de olhar a lista de OS
+// depois de guardar a caixa na prateleira.
+function osAvisarEsperando(lista) {
+  (lista || []).forEach(o => {
+    const aparelho = [o.tipo_aparelho, o.modelo].filter(Boolean).join(' ');
+    toast(`Peça chegou — OS #${String(o.id).padStart(6, '0')} (${esc(o.cliente_nome)}${aparelho ? ', ' + esc(aparelho) : ''}) estava esperando`, 'info');
+  });
+}
+
+function osExportar() {
+  const params = new URLSearchParams();
+  if (_osFiltroStatus) params.set('status', _osFiltroStatus);
+  if (_osBuscaTexto) params.set('busca', _osBuscaTexto);
+  if (_osFiltroDias) params.set('dias', _osFiltroDias);
+  // Exportação é download direto, não JSON — mesmos filtros da tela, mas
+  // fora do api() (que espera resposta JSON).
+  window.open(`${BASE}/api/ordens-servico/exportar${params.toString() ? '?' + params.toString() : ''}`, '_blank');
+}
+
+function osMudarPeriodo(dias) {
+  _osFiltroDias = dias;
+  document.querySelectorAll('#os-periodo .at-per').forEach(b =>
+    b.classList.toggle('ativo', b.dataset.dias === String(dias)));
+  carregarOS();
 }
 
 function osFiltrar(status) {
@@ -5577,7 +5607,10 @@ async function abrirOSDetalhe(id) {
     : r.visitas.map(v => `
         <div class="os-visita-linha">
           <span>${esc(v.tecnico_nome || 'sem técnico')} · ${esc(v.data_referencia ? v.data_referencia.split('-').reverse().join('/') : v.dia_semana)}</span>
-          <span class="conc-tag ${v.desfecho === 'resolvido' ? 'ok' : v.status === 'concluido' ? 'aviso' : 'neutro'}">${esc(v.desfecho ? (DESFECHO_ROTULO[v.desfecho]?.txt || v.desfecho) : (v.status === 'concluido' ? 'concluído' : 'pendente'))}</span>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <span class="conc-tag ${v.desfecho === 'resolvido' ? 'ok' : v.status === 'concluido' ? 'aviso' : 'neutro'}">${esc(v.desfecho ? (DESFECHO_ROTULO[v.desfecho]?.txt || v.desfecho) : (v.status === 'concluido' ? 'concluído' : 'pendente'))}</span>
+            ${v.status === 'pendente' ? `<button class="btn-remove" title="Desagendar — escolheu técnico/dia errado" onclick="osDesagendar(${id}, ${v.id})">${icone('x', 'icone-11')}</button>` : ''}
+          </span>
         </div>`).join('');
 
   const opcoesStatus = Object.entries(OS_STATUS_ROTULO)
@@ -5592,11 +5625,29 @@ async function abrirOSDetalhe(id) {
     </div>
     <div class="os-detalhe-secao">
       <p class="form-separador">Equipamento</p>
-      <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;">
-        <div><span class="peca-rot">Tipo</span><div>${esc(o.tipo_aparelho) || '—'}</div></div>
-        <div><span class="peca-rot">Marca/Modelo</span><div>${esc([o.marca, o.modelo].filter(Boolean).join(' ')) || '—'}</div></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label" for="os-ed-tipo">Tipo</label>
+          <input class="form-input" id="os-ed-tipo" value="${esc(o.tipo_aparelho)}"></div>
+        <div class="form-group"><label class="form-label" for="os-ed-marca">Marca</label>
+          <input class="form-input" id="os-ed-marca" value="${esc(o.marca)}"></div>
       </div>
-      <p style="margin:8px 0 0;font-size:12.5px;color:var(--text-muted);">${esc(o.defeito_declarado) || 'sem defeito declarado'}</p>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label" for="os-ed-modelo">Modelo</label>
+          <input class="form-input" id="os-ed-modelo" value="${esc(o.modelo)}"></div>
+        <div class="form-group"><label class="form-label" for="os-ed-serie">Nº de série</label>
+          <input class="form-input" id="os-ed-serie" value="${esc(o.numero_serie)}"></div>
+      </div>
+      <div class="form-group"><label class="form-label" for="os-ed-acessorios">Acessórios</label>
+        <input class="form-input" id="os-ed-acessorios" value="${esc(o.acessorios)}"></div>
+      <div class="form-group"><label class="form-label" for="os-ed-defeito">Defeito declarado</label>
+        <textarea class="form-input" id="os-ed-defeito" rows="2">${esc(o.defeito_declarado)}</textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label" for="os-ed-taxa">Taxa de avaliação (R$)</label>
+          <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa" value="${o.taxa_avaliacao ?? 0}"></div>
+      </div>
+      <div class="form-group"><label class="form-label" for="os-ed-obs">Observação interna</label>
+        <textarea class="form-input" id="os-ed-obs" rows="2">${esc(o.observacao)}</textarea></div>
+      <button class="btn btn-primary btn-sm" onclick="osSalvarEdicao(${o.id})">Salvar alterações</button>
     </div>
     <div class="os-detalhe-secao">
       <p class="form-separador">Visitas agendadas</p>
@@ -5667,6 +5718,38 @@ async function osAdicionarPeca(id) {
     const r = await api(`/ordens-servico/${id}`);
     document.getElementById('os-pecas-lista').innerHTML = osRenderPecas(r.pecas);
     document.getElementById('os-peca-codigo').focus();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function osSalvarEdicao(id) {
+  const corpo = {
+    tipo_aparelho: document.getElementById('os-ed-tipo').value.trim(),
+    marca: document.getElementById('os-ed-marca').value.trim(),
+    modelo: document.getElementById('os-ed-modelo').value.trim(),
+    numero_serie: document.getElementById('os-ed-serie').value.trim(),
+    acessorios: document.getElementById('os-ed-acessorios').value.trim(),
+    defeito_declarado: document.getElementById('os-ed-defeito').value.trim(),
+    taxa_avaliacao: document.getElementById('os-ed-taxa').value || 0,
+    observacao: document.getElementById('os-ed-obs').value.trim(),
+  };
+  try {
+    await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify(corpo) });
+    toast('OS atualizada', 'success');
+    carregarOS();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function osDesagendar(osId, servicoId) {
+  if (!confirm('Desagendar esta visita? (técnico/dia errado — some da rota dele)')) return;
+  try {
+    await api(`/ordens-servico/${osId}/desagendar/${servicoId}`, { method: 'DELETE' });
+    toast('Visita desagendada', 'success');
+    abrirOSDetalhe(osId);
+    carregarOS();
   } catch (e) {
     toast(e.message, 'error');
   }
@@ -6402,15 +6485,17 @@ async function salvarMovEstoque() {
         // Entrada carimbada com a nota fiscal: usa o endpoint idempotente, que
         // não duplica se a mesma nota já tiver lançado esta peça.
         const c = cat();
-        await api('/estoque/entrada-nota', { method: 'POST', body: JSON.stringify({
+        const rn = await api('/estoque/entrada-nota', { method: 'POST', body: JSON.stringify({
           referencia, grupo_id: c.grupo_id,
           itens: [{ codigo, descricao: val('estoque-mov-desc').trim(), quantidade: qtd, custo_unit }] }) });
         toast('Entrada da nota no estoque.', 'success');
+        osAvisarEsperando((rn.resultados || []).flatMap(x => x.os_esperando || []));
       } else {
-        await api('/estoque/entrada', { method: 'POST', body: JSON.stringify({
+        const re = await api('/estoque/entrada', { method: 'POST', body: JSON.stringify({
           codigo, descricao: val('estoque-mov-desc').trim(),
           quantidade: qtd, custo_unit, obs, ...cat() }) });
         toast('Entrada registrada.', 'success');
+        osAvisarEsperando(re.os_esperando);
       }
     } else if (estoqueMovModo === 'saida') {
       await api('/estoque/saida', { method: 'POST', body: JSON.stringify({
@@ -6713,6 +6798,7 @@ async function confirmarEntradaNota() {
       itens: biparItens,
     }) });
     toast(r.mensagem || 'Peças no estoque.', 'success');
+    osAvisarEsperando((r.resultados || []).flatMap(x => x.os_esperando || []));
     fecharBiparNota();
     carregarEstoque();
   } catch (e) {

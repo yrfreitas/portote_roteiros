@@ -129,7 +129,10 @@
 // v76 = impressão da OS: meio-termo entre "vazava pra 2 folhas" (v70) e
 //       "compacto demais" (v75) — devolve ~100-125px de respiro (fonte e
 //       espaçamento) mantendo folga confortável dentro da A4.
-const CACHE_VERSAO = 'portotec-roteiros-v76';
+// v77 = OS: editar campos pela tela, desagendar visita marcada errada,
+//       filtro por período, aviso quando peça esperada chega no estoque
+//       (entrada manual, por nota e bipada), exportar lista em Excel.
+const CACHE_VERSAO = 'portotec-roteiros-v77';
 
 const ARQUIVOS_CASCA = [
   '/',
