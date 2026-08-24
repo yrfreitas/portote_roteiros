@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v79';
+const VERSAO_PAINEL = 'v80';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4503,6 +4503,16 @@ async function criarFicha() {
     if (r.aviso) toast(r.aviso, 'info');
     await carregarTecnicos();
     await selecionarFicha(r.id);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function corrigirPartidaPadrao() {
+  if (!confirm('Preencher com o CEP da loja todas as fichas que estão sem ponto de partida?')) return;
+
+  try {
+    const r = await api('/fichas/corrigir-partida-padrao', { method: 'POST' });
+    toast(r.mensagem, r.corrigidas > 0 ? 'success' : 'info');
+    if (r.corrigidas > 0) await carregarTecnicos();
   } catch (e) { toast(e.message, 'error'); }
 }
 

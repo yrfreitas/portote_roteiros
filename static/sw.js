@@ -141,7 +141,12 @@
 //       sem ficha aberta no dia, reagendar e agendar OS criavam ficha sem
 //       NENHUM CEP de partida (obter_ou_criar_ficha não tinha fallback).
 //       Agora cai no CEP da loja (08021000) quando ninguém informa um.
-const CACHE_VERSAO = 'portotec-roteiros-v79';
+// v80 = transferir FICHA INTEIRA de técnico (botão "Transferir") agora
+//       também sana ponto de partida ausente — antes só trocava o dono e
+//       mantinha a ficha sem CEP pra sempre. Botão novo na barra de
+//       técnicos ("Corrigir ponto de partida") pra aplicar o CEP padrão
+//       em toda ficha antiga que nunca teve nenhum, sem precisar de SQL.
+const CACHE_VERSAO = 'portotec-roteiros-v80';
 
 const ARQUIVOS_CASCA = [
   '/',

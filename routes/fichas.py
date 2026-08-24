@@ -36,6 +36,26 @@ CEP_PARTIDA_PADRAO = "08021000"
 _trava_ficha = threading.Lock()
 
 
+def _aplicar_partida_padrao(extras: dict) -> None:
+    """Preenche (in-place) ponto_partida_cep/lat/lng com o CEP da loja quando
+    quem chamou não informou nenhum. Compartilhado entre criar ficha nova
+    (obter_ou_criar_ficha) e transferir ficha existente pra outro técnico
+    (transferir_ficha) — os dois jeitos de uma ficha acabar sem CEP.
+    """
+    cep_extra = "".join(c for c in str(extras.get("ponto_partida_cep") or "") if c.isdigit())
+    if cep_extra:
+        extras["ponto_partida_cep"] = cep_extra
+        return
+    extras["ponto_partida_cep"] = CEP_PARTIDA_PADRAO
+    if extras.get("ponto_partida_lat") is None:
+        geo = geocode_cep(CEP_PARTIDA_PADRAO)
+        if geo:
+            extras["ponto_partida_lat"] = geo.lat
+            extras["ponto_partida_lng"] = geo.lng
+            if not extras.get("ponto_partida"):
+                extras["ponto_partida"] = geo.endereco
+
+
 def obter_ou_criar_ficha(conn, tecnico_id, dia_semana, data_referencia=None, **extras):
     """Devolve (ficha_id, criou_ficha). Reaproveita ficha aberta do mesmo
     técnico/dia/data se existir; senão cria. `extras` são colunas opcionais
@@ -57,17 +77,7 @@ def obter_ou_criar_ficha(conn, tecnico_id, dia_semana, data_referencia=None, **e
     chamada de rede (cacheada por CEP, então só pesa na primeira vez), e
     não precisa estar serializada — só o check-then-insert precisa.
     """
-    cep_extra = "".join(c for c in str(extras.get("ponto_partida_cep") or "") if c.isdigit())
-    if not cep_extra:
-        cep_extra = CEP_PARTIDA_PADRAO
-        if extras.get("ponto_partida_lat") is None:
-            geo = geocode_cep(cep_extra)
-            if geo:
-                extras["ponto_partida_lat"] = geo.lat
-                extras["ponto_partida_lng"] = geo.lng
-                if not extras.get("ponto_partida"):
-                    extras["ponto_partida"] = geo.endereco
-    extras["ponto_partida_cep"] = cep_extra
+    _aplicar_partida_padrao(extras)
 
     with _trava_ficha:
         existente = fetch_one(conn, sql("""
@@ -286,6 +296,47 @@ def criar_ficha():
     if aviso:
         resposta["aviso"] = aviso
     return jsonify(resposta), 201
+
+
+@fichas_bp.route("/fichas/corrigir-partida-padrao", methods=["POST"])
+def corrigir_partida_padrao():
+    """Aplica o CEP_PARTIDA_PADRAO em toda ficha que nunca teve ponto de
+    partida — pedido do Kalebe em 2026-08-24, feito de fichas criadas antes
+    do fallback existir (ver obter_ou_criar_ficha/criar_ficha/transferir_ficha).
+
+    Ação manual, disparada por um clique no painel — de propósito NÃO roda
+    sozinha em background nem em migração automática de startup: escrever em
+    massa sobre dado de produção merece um clique consciente de quem está
+    olhando o resultado, não silêncio.
+    """
+    with db_conn(commit=True) as conn:
+        pendentes = fetch_all(conn, sql("""
+            SELECT id, ponto_partida, ponto_partida_lat, ponto_partida_lng
+              FROM fichas
+             WHERE ponto_partida_cep IS NULL OR ponto_partida_cep = ''
+        """))
+
+        for f in pendentes:
+            campos = {
+                "ponto_partida_lat": f.get("ponto_partida_lat"),
+                "ponto_partida_lng": f.get("ponto_partida_lng"),
+                "ponto_partida":     f.get("ponto_partida"),
+            }
+            _aplicar_partida_padrao(campos)
+            execute(conn, sql("""
+                UPDATE fichas
+                   SET ponto_partida_cep = ?, ponto_partida_lat = ?,
+                       ponto_partida_lng = ?, ponto_partida = ?
+                 WHERE id = ?
+            """), (campos["ponto_partida_cep"], campos["ponto_partida_lat"],
+                  campos["ponto_partida_lng"], campos["ponto_partida"], f["id"]))
+
+    n = len(pendentes)
+    return jsonify({
+        "corrigidas": n,
+        "mensagem": (f"{n} ficha(s) corrigida(s) com o CEP padrão da loja."
+                     if n else "Nenhuma ficha estava sem ponto de partida."),
+    })
 
 
 @fichas_bp.route("/fichas/<int:ficha_id>", methods=["GET"])
@@ -641,7 +692,11 @@ def transferir_ficha(ficha_id):
     técnico, nunca casava com quem de fato estava indo.
 
     A rota em si não muda: os pontos, a ordem e o ponto de partida são da
-    FICHA, não de quem a executa. Só troca o dono.
+    FICHA, não de quem a executa. Só troca o dono — MAS se essa ficha nunca
+    teve ponto de partida (comum em fichas antigas, de antes do CEP virar
+    obrigatório em toda criação), aproveita o momento pra também sanar isso.
+    Sem isso a ficha seguiria pra sempre sem partida: transferir de dono
+    nunca mais mexeria nela de novo.
     """
     data = request.get_json(silent=True) or {}
     try:
@@ -671,10 +726,22 @@ def transferir_ficha(ficha_id):
                             (ficha_id,)):
             encerrar_por_servico(conn, sv["id"])
 
+        campos = {
+            "ponto_partida_cep": ficha.get("ponto_partida_cep"),
+            "ponto_partida_lat": ficha.get("ponto_partida_lat"),
+            "ponto_partida_lng": ficha.get("ponto_partida_lng"),
+            "ponto_partida":     ficha.get("ponto_partida"),
+        }
+        _aplicar_partida_padrao(campos)
+
         execute(conn, """
-            UPDATE fichas SET tecnico_id = ?, updated_at = CURRENT_TIMESTAMP
+            UPDATE fichas
+               SET tecnico_id = ?, updated_at = CURRENT_TIMESTAMP,
+                   ponto_partida_cep = ?, ponto_partida_lat = ?,
+                   ponto_partida_lng = ?, ponto_partida = ?
              WHERE id = ?
-        """, (novo_tecnico, ficha_id))
+        """, (novo_tecnico, campos["ponto_partida_cep"], campos["ponto_partida_lat"],
+              campos["ponto_partida_lng"], campos["ponto_partida"], ficha_id))
 
     return jsonify({"mensagem": f"Ficha transferida para {destino['nome']}",
                     "tecnico_id": novo_tecnico})
