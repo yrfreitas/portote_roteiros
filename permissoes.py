@@ -145,6 +145,16 @@ def pode(acao: str) -> bool:
 def checar_acesso(path: str, metodo: str):
     """Devolve a ação exigida se o path/método for barrado para quem chama, ou
     None se pode passar. Usado no before_request para bloquear no servidor."""
+    # Peça no carro do técnico (/api/tecnicos/<id>/carro) é ESTOQUE, não
+    # cadastro de técnico — mas o id no meio do path impede casar isso por
+    # prefixo em REGRAS (que só faz startswith), daí o caso especial aqui,
+    # ANTES do loop. Sem isso o POST caía na regra genérica de
+    # /api/tecnicos e exigia gerenciar_tecnicos: quem só mexe em estoque
+    # ficava travado, e quem só gerencia técnico dava entrada/saída de peça
+    # sem ter permissão nenhuma de estoque.
+    if path.startswith("/api/tecnicos/") and path.endswith("/carro") and metodo.upper() == "POST":
+        return None if pode("estoque_editar") else "estoque_editar"
+
     for prefixo, metodos, acao in REGRAS:
         if not path.startswith(prefixo):
             continue

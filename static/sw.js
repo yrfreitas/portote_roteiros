@@ -132,7 +132,12 @@
 // v77 = OS: editar campos pela tela, desagendar visita marcada errada,
 //       filtro por período, aviso quando peça esperada chega no estoque
 //       (entrada manual, por nota e bipada), exportar lista em Excel.
-const CACHE_VERSAO = 'portotec-roteiros-v77';
+// v78 = auditoria local: CSS duplicado (.vcep-score-num/.vcep-motivos)
+//       colidindo e quebrando o card de "por que essa pontuação?",
+//       permissão do carro do técnico caindo em gerenciar_tecnicos em vez
+//       de estoque_editar, e N+1 na caixa de chat que buscava a última
+//       mensagem de TODA conversa antes de cortar pras 50 exibidas.
+const CACHE_VERSAO = 'portotec-roteiros-v78';
 
 const ARQUIVOS_CASCA = [
   '/',

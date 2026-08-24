@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v77';
+const VERSAO_PAINEL = 'v78';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4233,7 +4233,7 @@ function _vcepExpandir(i, r, prefixo = '') {
   const icones = { pos: icone('check', 'icone-12'), neu: icone('minus', 'icone-12'), neg: icone('x', 'icone-12') };
 
   const motHtml = _motivos(s, i).map(m => `
-    <div class="vcep-motivo vcep-motivo-${m.tipo}">
+    <div class="vcep-motivo-item vcep-motivo-item-${m.tipo}">
       <div class="vcep-motivo-icon vcep-motivo-icon-${m.tipo}">${icones[m.tipo]}</div>
       <div>
         <div class="vcep-motivo-titulo">${esc(m.titulo)}</div>
@@ -4244,7 +4244,7 @@ function _vcepExpandir(i, r, prefixo = '') {
   el.innerHTML = `
     <div class="vcep-detalhe-body">
       <div class="vcep-detalhe-titulo">Por que essa pontuação?</div>
-      <div class="vcep-motivos">${motHtml}</div>
+      <div class="vcep-motivos-detalhe">${motHtml}</div>
       <div class="vcep-metricas">
         <div class="vcep-metrica"><div class="vcep-met-val">${fmtKm(s.dist_minima)}</div><div class="vcep-met-lbl">km do mais próximo</div></div>
         <div class="vcep-metrica"><div class="vcep-met-val">${s.pontos_mesma_zona}</div><div class="vcep-met-lbl">pts mesma zona</div></div>

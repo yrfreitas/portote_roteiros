@@ -124,7 +124,14 @@ def conversas():
              ORDER BY MAX(m.id) DESC
         """)
 
-    # Última mensagem de cada conversa, para a lista mostrar prévia.
+    # Não lidas conta em CIMA de todas as conversas — corta antes disso e o
+    # badge do painel mentiria pro que ficou de fora dos 50 primeiros.
+    total_nao_lidas = sum(int(l.get("nao_lidas") or 0) for l in linhas)
+    linhas = linhas[:50]
+
+    # Última mensagem de cada conversa, para a lista mostrar prévia. Só depois
+    # do corte: buscar isso pra TODA conversa e descartar o resto no final era
+    # 1 SELECT a mais por conversa que nunca aparecia na tela.
     with db_conn() as conn:
         for l in linhas:
             ult = fetch_one(conn, """
@@ -133,8 +140,7 @@ def conversas():
             """, (l["sala"],))
             l["ultima"] = ult or {}
 
-    total_nao_lidas = sum(int(l.get("nao_lidas") or 0) for l in linhas)
-    return jsonify({"conversas": linhas[:50], "nao_lidas": total_nao_lidas})
+    return jsonify({"conversas": linhas, "nao_lidas": total_nao_lidas})
 
 
 @chat_bp.route("/chat/<sala>/responder", methods=["POST"])
