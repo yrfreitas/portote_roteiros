@@ -146,7 +146,13 @@
 //       mantinha a ficha sem CEP pra sempre. Botão novo na barra de
 //       técnicos ("Corrigir ponto de partida") pra aplicar o CEP padrão
 //       em toda ficha antiga que nunca teve nenhum, sem precisar de SQL.
-const CACHE_VERSAO = 'portotec-roteiros-v80';
+// v81 = aba Peças reescrita pra clareza: pipeline numerado explicando a
+//       ordem (compra -> vincular cliente -> marcar chegada -> registrar
+//       no estoque, esse último opcional), renomeado "-> estoque" pra
+//       "Registrar no estoque", e nota cruzada distinguindo Peças x
+//       Estoque x Cotação — eram 3 conceitos com nome parecido e nada
+//       explicando a diferença entre eles.
+const CACHE_VERSAO = 'portotec-roteiros-v81';
 
 const ARQUIVOS_CASCA = [
   '/',

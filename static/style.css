@@ -2854,6 +2854,35 @@ select:focus-visible,
 }
 .pecas-toggle input { accent-color: var(--accent); cursor: pointer; }
 
+/* Pipeline explicado em passos — substitui o parágrafo corrido. Numerado
+   pra deixar claro que é uma SEQUÊNCIA (compra -> vínculo -> chegada ->
+   estoque), não uma lista de recursos soltos. */
+.pecas-explicador {
+  display: flex; flex-direction: column; gap: 6px;
+  list-style: none; counter-reset: passo;
+  margin: 0 0 10px; padding: 12px 14px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; font-size: 12px; line-height: 1.5;
+  color: var(--text-muted, #8fa3bf);
+}
+.pecas-explicador li {
+  counter-increment: passo;
+  padding-left: 22px; position: relative;
+}
+.pecas-explicador li::before {
+  content: counter(passo);
+  position: absolute; left: 0; top: 0;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent-dim); color: var(--accent-text, #a6c8ff);
+  font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.pecas-explicador b { color: var(--text, #e6edf7); font-weight: 600; }
+
+.pecas-nota-cotacao {
+  font-size: 11.5px; color: var(--text-muted); margin: 0 0 16px;
+}
+
 .peca-card {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
@@ -4218,6 +4247,7 @@ select:focus-visible,
   font-size: 10px; font-weight: 600; cursor: pointer;
   color: var(--accent-text); background: transparent;
   border: 1px solid var(--border-bright); border-radius: 7px; padding: 4px 9px;
+  max-width: 132px; white-space: normal; line-height: 1.3; text-align: center;
 }
 .peca-estoque-btn:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-dim); }
 

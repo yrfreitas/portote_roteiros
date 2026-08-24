@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v80';
+const VERSAO_PAINEL = 'v81';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2238,9 +2238,10 @@ async function carregarPecas() {
              oninput="filtrarPecas(this.value)">
       <span class="pecas-contagem" id="pecas-contagem">${pedidos.length} compra${pedidos.length !== 1 ? 's' : ''}</span>
       ${r.sugestao_peca_ativa
-        ? `<span class="conc-tag ok" title="A peça é lida do XML da nota fiscal que a Panasonic envia">peça automática ligada</span>`
-        : `<span class="conc-tag neutro" title="Sem IMAP configurado, a peça não é lida da nota fiscal — os pedidos da loja VTEX já trazem a peça no próprio e-mail">peça automática desligada</span>`}
-      <button class="btn btn-ghost btn-sm" onclick="revisarAmarelas()">Revisar amarelas</button>
+        ? `<span class="conc-tag ok" title="O código/descrição da peça é lido sozinho da nota fiscal (XML) que a Panasonic envia por e-mail — só preencha à mão se vier em branco">campo "Peça" preenche sozinho</span>`
+        : `<span class="conc-tag neutro" title="Leitura automática da nota fiscal desligada neste ambiente — preencha o campo Peça à mão">campo "Peça" é preenchido à mão</span>`}
+      <button class="btn btn-ghost btn-sm" onclick="revisarAmarelas()"
+              title="Compras que a planilha vinculou a um cliente só pelo nome (sem confirmar pelo número da OS ou modelo) — vale conferir se não casou errado">Conferir vínculos incertos</button>
     </div>
     <div id="pecas-revisao"></div>
   ` + pedidos.map(p => `
@@ -2293,9 +2294,9 @@ async function carregarPecas() {
           ${p.chegou_em ? '📦 chegou' : 'marcar chegada'}
         </button>
         <button class="peca-estoque-btn" id="peca-estoque-btn-${p.linha}"
-                title="Dar entrada desta peça no estoque (com o custo da nota)"
+                title="Opcional: soma essa peça ao saldo da aba Estoque, já com o custo desta nota preenchido. Vincular ao cliente (acima) NÃO faz isso sozinho."
                 onclick="darEntradaEstoqueDaPeca(${p.linha})">
-          → estoque
+          Registrar no estoque
         </button>
       </div>
 
@@ -5836,6 +5837,12 @@ function atualizarSeloCotacao(qtd) {
 
 function renderCotacoes(mount, itens, todas) {
   const cabecalho = `
+    <p class="pecas-nota-cotacao" style="margin-top:0;">
+      Registre aqui peça que o técnico pediu preço mas <b>ainda não foi
+      comprada</b>. Assim que você comprar de verdade, ela aparece sozinha
+      lá em cima, na lista de "Peças Compradas" — não precisa copiar nada
+      daqui pra lá.
+    </p>
     <div class="cotacao-form">
       <div class="form-group">
         <label class="form-label">Código da peça</label>
@@ -6055,7 +6062,9 @@ async function abrirEstoqueRaiz() {
   document.getElementById('estoque-titulo').textContent = 'Meus Estoques';
   document.getElementById('estoque-subtitulo').style.display = '';
   document.getElementById('estoque-subtitulo').innerHTML =
-    'Cada estoque é uma prateleira sua (Electrolux, Panasonic...). Abra um para ver e adicionar as peças dele.';
+    'Cada estoque é uma prateleira sua (Electrolux, Panasonic...). Abra um ' +
+    'para ver e adicionar as peças dele. Isso é o saldo de verdade — ' +
+    'diferente da aba "Peças", que só concilia compra com cliente.';
   document.getElementById('estoque-topo-acoes').innerHTML = podeUsuario('estoque_editar')
     ? '<button class="btn btn-ghost btn-sm" onclick="abrirBiparNota()">📷 Bipar nota fiscal</button>'
       + '<button class="btn btn-primary btn-sm" onclick="abrirCriarGrupo()">+ Criar estoque</button>'

@@ -282,15 +282,35 @@
         <span class="visao-geral-title">Peças Compradas</span>
         <label class="pecas-toggle">
           <input type="checkbox" id="pecas-mostrar-todas" onchange="carregarPecas()">
-          mostrar já vinculadas
+          mostrar as que já têm cliente também
         </label>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin:-4px 0 16px;">
-        Compras de peça na Panasonic (loja VTEX e CrediPay). Escreva de qual
-        cliente é cada peça e <b>a planilha atualiza sozinha</b> ao sair do
-        campo — não precisa clicar em nada. Concluída a rota, a baixa acontece
-        em seguida.
+
+      <!-- Explica o pipeline em vez de um parágrafo corrido: a dúvida não é
+           "o que essa tela faz", é "em que ordem as coisas acontecem" — e um
+           parágrafo não deixa isso escaneável. Fica sempre visível (não em
+           <details>) porque "como funciona" é a pergunta que trouxe a queixa,
+           não algo pra esconder atrás de um clique. -->
+      <ol class="pecas-explicador">
+        <li><b>Toda compra na Panasonic cai aqui sozinha</b> — um robô lê o
+          e-mail de confirmação e grava a linha; ninguém digita nada até
+          aqui.</li>
+        <li><b>Você diz de qual cliente é</b> — escreve nos dois campos
+          (peça + cliente) e sai do campo: grava na planilha na hora, sem
+          precisar clicar em nada.</li>
+        <li><b>Quando a caixa chegar de verdade na oficina</b>, aperte
+          "chegou" — a Panasonic só avisa até "enviado", quem sabe se
+          chegou na mão é você.</li>
+        <li><b>"Registrar no estoque" é opcional</b> — só use se quiser que
+          essa peça conte no saldo da aba <b>Estoque</b> (tela separada,
+          o inventário de verdade). Vincular ao cliente aqui não mexe no
+          estoque sozinho.</li>
+      </ol>
+      <p class="pecas-nota-cotacao">
+        Precisa só saber o preço de uma peça <i>antes</i> de comprar? Isso é
+        a aba <b>Cotação</b>, mais abaixo — lista diferente desta.
       </p>
+
       <div id="pecas-lista"></div>
 
       <!-- Compacta de propósito: cotação é consulta rápida ("quanto custa
@@ -314,7 +334,8 @@
           <span class="visao-geral-title" id="estoque-titulo">Meus Estoques</span>
           <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;" id="estoque-subtitulo">
             Cada estoque é uma prateleira sua (Electrolux, Panasonic...). Abra um
-            para ver e adicionar as peças dele.
+            para ver e adicionar as peças dele. Isso é o saldo de verdade —
+            diferente da aba "Peças", que só concilia compra com cliente.
           </p>
         </div>
         <div class="estoque-topo-acoes" id="estoque-topo-acoes"></div>
