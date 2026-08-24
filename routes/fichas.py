@@ -16,6 +16,14 @@ log = logging.getLogger("portotec.fichas")
 
 fichas_bp = Blueprint("fichas", __name__)
 
+# CEP da loja, usado como ponto de partida padrão quando ninguém informa um.
+# Antes disso, transferir atendimento pra técnico sem ficha aberta no dia e
+# reagendar/agendar OS criavam a ficha nova SEM ponto_partida_cep nenhum
+# (obter_ou_criar_ficha não tinha fallback e os dois call-sites de
+# tecnico_api.py/ordens_servico.py nunca passavam um) — rota impossível de
+# otimizar até alguém notar e corrigir na mão. Pedido do Kalebe em 2026-08-24.
+CEP_PARTIDA_PADRAO = "08021000"
+
 # Trava única pra "reaproveita a ficha se já existe, senão cria" — o mesmo
 # problema que services/agoraos.py já resolveu pro token: Procfile roda
 # --workers 1 --threads 8, várias threads no mesmo processo. Sem isto, duas
@@ -41,7 +49,26 @@ def obter_ou_criar_ficha(conn, tecnico_id, dia_semana, data_referencia=None, **e
     "não existe" antes de qualquer uma commitar). Ficha ficar criada mesmo
     se o resto da requisição falhar depois é um custo aceitável — uma ficha
     vazia não corrompe nada; ficha duplicada, sim.
+
+    Se quem chamou não informou (ou informou vazio) ponto_partida_cep, cai no
+    CEP_PARTIDA_PADRAO (loja) — sem isso, transferir atendimento pra técnico
+    sem ficha aberta no dia, reagendar ou agendar OS criavam ficha nova sem
+    NENHUM ponto de partida. Geocodifica fora da trava de propósito: é
+    chamada de rede (cacheada por CEP, então só pesa na primeira vez), e
+    não precisa estar serializada — só o check-then-insert precisa.
     """
+    cep_extra = "".join(c for c in str(extras.get("ponto_partida_cep") or "") if c.isdigit())
+    if not cep_extra:
+        cep_extra = CEP_PARTIDA_PADRAO
+        if extras.get("ponto_partida_lat") is None:
+            geo = geocode_cep(cep_extra)
+            if geo:
+                extras["ponto_partida_lat"] = geo.lat
+                extras["ponto_partida_lng"] = geo.lng
+                if not extras.get("ponto_partida"):
+                    extras["ponto_partida"] = geo.endereco
+    extras["ponto_partida_cep"] = cep_extra
+
     with _trava_ficha:
         existente = fetch_one(conn, sql("""
             SELECT id FROM fichas
@@ -216,6 +243,12 @@ def criar_ficha():
     partida = (data.get("ponto_partida") or "").strip()
     partida_cep = "".join(c for c in (data.get("ponto_partida_cep") or "") if c.isdigit())
     numero_partida = (data.get("ponto_partida_numero") or "").strip()
+
+    # Sem CEP nenhum informado, cai no CEP da loja — ficha sem ponto de
+    # partida não tem como ter rota otimizada. Ver CEP_PARTIDA_PADRAO.
+    if not partida_cep:
+        partida_cep = CEP_PARTIDA_PADRAO
+        numero_partida = ""
 
     lat_p = lng_p = None
     aviso = None

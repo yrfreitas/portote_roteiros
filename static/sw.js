@@ -137,7 +137,11 @@
 //       permissão do carro do técnico caindo em gerenciar_tecnicos em vez
 //       de estoque_editar, e N+1 na caixa de chat que buscava a última
 //       mensagem de TODA conversa antes de cortar pras 50 exibidas.
-const CACHE_VERSAO = 'portotec-roteiros-v78';
+// v79 = ficha nova sem ponto de partida: transferir atendimento pra técnico
+//       sem ficha aberta no dia, reagendar e agendar OS criavam ficha sem
+//       NENHUM CEP de partida (obter_ou_criar_ficha não tinha fallback).
+//       Agora cai no CEP da loja (08021000) quando ninguém informa um.
+const CACHE_VERSAO = 'portotec-roteiros-v79';
 
 const ARQUIVOS_CASCA = [
   '/',
