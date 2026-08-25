@@ -65,6 +65,12 @@ POSICAO_FRESCA_SEG = 180
 PRECISAO_MAXIMA_M = 500
 
 _ATIVO = "ativo IS TRUE" if IS_PG else "ativo = 1"
+# Mesma condição, mas qualificada com o alias de `rastreios` — obrigatório
+# em qualquer JOIN que também traga uma tabela com coluna `ativo` própria
+# (tecnicos, setores, usuarios...), senão vira "ambiguous column name" tanto
+# no Postgres quanto no SQLite. Achado em produção em 2026-08-25: /api/avisos
+# junta rastreios + tecnicos e quebrava desde que `tecnicos.ativo` existe.
+_ATIVO_RA = "ra.ativo IS TRUE" if IS_PG else "ra.ativo = 1"
 
 
 def _agora():
@@ -843,7 +849,7 @@ def avisos():
               FROM rastreios ra
               JOIN servicos sv ON sv.id = ra.servico_id
               JOIN tecnicos t  ON t.id = ra.tecnico_id
-             WHERE {_ATIVO} AND sv.status <> 'concluido'
+             WHERE {_ATIVO_RA} AND sv.status <> 'concluido'
         """)
 
     for r in abertos:

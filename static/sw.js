@@ -152,7 +152,7 @@
 //       "Registrar no estoque", e nota cruzada distinguindo Peças x
 //       Estoque x Cotação — eram 3 conceitos com nome parecido e nada
 //       explicando a diferença entre eles.
-const CACHE_VERSAO = 'portotec-roteiros-v81';
+const CACHE_VERSAO = 'portotec-roteiros-v82';
 
 const ARQUIVOS_CASCA = [
   '/',
