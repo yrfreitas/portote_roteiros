@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v87';
+const VERSAO_PAINEL = 'v88';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3211,6 +3211,7 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
           <div class="roteiro-cep" style="color:${cor}">${esc(formatCEP(s.cep))}</div>
           <div class="roteiro-endereco">${s.numero ? `<strong>Nº ${esc(s.numero)}</strong> · ` : ''}${esc(s.endereco_completo) || '—'}</div>
           ${s.cliente ? `<div class="roteiro-cliente">${icone('usuario', 'icone-11')} ${esc(s.cliente)}${s.descricao ? ' · ' + esc(s.descricao) : ''}</div>` : ''}
+          ${s.telefone ? `<div class="roteiro-cliente">${icone('telefone', 'icone-11')} <a href="tel:${esc(s.telefone.replace(/\D/g, ''))}" onclick="event.stopPropagation()">${esc(s.telefone)}</a></div>` : ''}
           ${aparelho ? `<div class="roteiro-aparelho">${icone('ferramenta', 'icone-11')} ${esc(aparelho)}</div>` : ''}
           ${(() => {
             const st = setorPorId(s.setor_id);
@@ -4604,6 +4605,13 @@ async function adicionarServico() {
     return;
   }
 
+  const telefone = document.getElementById('add-telefone').value.trim();
+  if (!telefone) {
+    toast('Informe o telefone do cliente.', 'error');
+    document.getElementById('add-telefone').focus();
+    return;
+  }
+
   const btn = document.getElementById('btn-add-servico');
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div> Geocodificando...';
@@ -4615,6 +4623,7 @@ async function adicionarServico() {
         cep,
         numero:        document.getElementById('add-numero').value,
         cliente:       document.getElementById('add-cliente').value,
+        telefone,
         descricao:     document.getElementById('add-descricao').value,
         tipo_aparelho: document.getElementById('add-tipo-aparelho').value,
         modelo:        document.getElementById('add-modelo').value,
@@ -5101,7 +5110,7 @@ function abrirModalNovaFicha(tecnicoId) {
 
 function abrirModalAddServico(fichaId) {
   document.getElementById('add-ficha-id').value = fichaId;
-  ['add-cep','add-numero','add-cliente','add-descricao','add-tipo-aparelho','add-modelo','add-numero-os']
+  ['add-cep','add-numero','add-cliente','add-telefone','add-descricao','add-tipo-aparelho','add-modelo','add-numero-os']
     .forEach(id => { document.getElementById(id).value = ''; });
   preencherSelectSetor('add-setor');
   document.getElementById('modal-add-servico').classList.add('open');
@@ -5117,6 +5126,7 @@ function abrirModalEditarServico(servicoId) {
   document.getElementById('edit-cep').value = formatCEP(s.cep);
   document.getElementById('edit-numero').value = s.numero || '';
   document.getElementById('edit-cliente').value = s.cliente || '';
+  document.getElementById('edit-telefone').value = s.telefone || '';
   document.getElementById('edit-tipo-aparelho').value = s.tipo_aparelho || '';
   document.getElementById('edit-modelo').value = s.modelo || '';
   document.getElementById('edit-numero-os').value = s.numero_os || '';
@@ -5254,16 +5264,27 @@ async function salvarEdicaoServico() {
 
   if (cep.length !== 8) { toast('Informe um CEP válido', 'error'); return; }
 
-  const btn = document.getElementById('btn-editar-servico');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner"></div> Salvando...';
-
+  // As duas checagens vêm ANTES de travar o botão — um retorno antecipado
+  // depois do `btn.disabled = true` deixava "Salvando..." preso pra sempre,
+  // já que o `finally` só cobre o `try` que vem depois (mesmo defeito que
+  // adicionarServico() teve e foi corrigido em 2026-08-13).
   const setorEditado = document.getElementById('edit-setor').value;
   if (!setorEditado) {
     toast('Escolha o setor do atendimento.', 'error');
     document.getElementById('edit-setor').focus();
     return;
   }
+
+  const telefoneEditado = document.getElementById('edit-telefone').value.trim();
+  if (!telefoneEditado) {
+    toast('Informe o telefone do cliente.', 'error');
+    document.getElementById('edit-telefone').focus();
+    return;
+  }
+
+  const btn = document.getElementById('btn-editar-servico');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Salvando...';
 
   try {
     await api(`/servicos/${servicoId}`, {
@@ -5272,6 +5293,7 @@ async function salvarEdicaoServico() {
         cep,
         numero:        document.getElementById('edit-numero').value,
         cliente:       document.getElementById('edit-cliente').value,
+        telefone:      telefoneEditado,
         descricao:     document.getElementById('edit-descricao').value,
         tipo_aparelho: document.getElementById('edit-tipo-aparelho').value,
         modelo:        document.getElementById('edit-modelo').value,
@@ -7085,6 +7107,16 @@ function selecionarDia(el, dia) {
 function formatarCEP(input) {
   let v = input.value.replace(/\D/g, '').slice(0, 8);
   if (v.length > 5) v = v.slice(0, 5) + '-' + v.slice(5);
+  input.value = v;
+}
+
+// (11) 99999-9999 pra celular, (11) 9999-9999 pra fixo — decide pelo
+// tamanho enquanto a pessoa digita, sem exigir escolher o formato antes.
+function formatarTelefone(input) {
+  let v = input.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 10) v = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+  else if (v.length > 6) v = `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
+  else if (v.length > 2) v = `(${v.slice(0, 2)}) ${v.slice(2)}`;
   input.value = v;
 }
 

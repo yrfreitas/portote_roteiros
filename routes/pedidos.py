@@ -222,6 +222,15 @@ def listar():
         # e abrir uma segunda OS pra mesma peça.
         p["agendamento_os_id"] = (registro or {}).get("ordem_servico_id")
 
+    # Já foi mandado pra fila de Agendar Clientes? some da lista padrão desta
+    # aba. O trabalho daqui (vincular a peça a um cliente) está feito, e o que
+    # falta (marcar visita) já mora na outra tela — a mesma peça aparecendo
+    # nas duas ao mesmo tempo é exatamente a duplicação que confunde quem
+    # olha as duas abas. "mostrar todas" continua trazendo de volta, pra
+    # quem quer conferir o histórico do que já foi enviado.
+    if not todos:
+        pedidos = [p for p in pedidos if not p["agendamento_os_id"]]
+
     # Liga cada compra a quem pediu aquela peça em campo.
     with db_conn() as conn:
         _sugerir_cliente(pedidos, _solicitacoes_abertas(conn))

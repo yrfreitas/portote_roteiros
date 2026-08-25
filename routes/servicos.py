@@ -70,9 +70,16 @@ def adicionar_servico(ficha_id):
 
     cep = "".join(c for c in (data.get("cep") or "") if c.isdigit())
     numero = (data.get("numero") or "").strip()
+    telefone = (data.get("telefone") or "").strip()
 
     if len(cep) != 8:
         return jsonify({"erro": "Informe um CEP válido com 8 dígitos"}), 400
+
+    # Obrigatório desde 2026-08-25: sem número de contato, confirmar horário
+    # ou avisar atraso dependia de achar o telefone em outro lugar (papel,
+    # WhatsApp antigo) bem na hora que o técnico já estava a caminho.
+    if not telefone:
+        return jsonify({"erro": "Informe o telefone do cliente"}), 400
 
     # Setor virou obrigatório em 2026-08-13. Era opcional e ficava no fim do
     # formulário: 32 dos 38 pontos em aberto (84%) estavam sem classificação
@@ -99,8 +106,9 @@ def adicionar_servico(ficha_id):
         execute(conn, """
             INSERT INTO servicos
                 (ficha_id, cep, endereco_completo, lat, lng,
-                 cliente, descricao, numero, tipo_aparelho, modelo, numero_os, setor_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cliente, descricao, numero, tipo_aparelho, modelo, numero_os,
+                 setor_id, telefone)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (ficha_id, cep, geo.endereco, geo.lat, geo.lng,
               (data.get("cliente") or "").strip(),
               (data.get("descricao") or "").strip(),
@@ -108,7 +116,7 @@ def adicionar_servico(ficha_id):
               (data.get("tipo_aparelho") or "").strip(),
               (data.get("modelo") or "").strip(),
               (data.get("numero_os") or "").strip(),
-              setor_id))
+              setor_id, telefone))
 
         ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
         resultado = recalcular_rota(conn, ficha_id, ficha)
@@ -148,6 +156,14 @@ def editar_servico(servico_id):
     if erro_setor:
         return jsonify({"erro": erro_setor}), 400
 
+    # Mesma régua do setor: telefone virou obrigatório em 2026-08-25, então
+    # editar um ponto de antes dessa data também força preencher — sem isso
+    # o campo nunca seria corrigido pra quem já passou pela tela uma vez.
+    telefone = (data.get("telefone") if "telefone" in data
+                else servico.get("telefone") or "").strip()
+    if not telefone:
+        return jsonify({"erro": "Informe o telefone do cliente"}), 400
+
     cep_novo = "".join(c for c in (data.get("cep") or servico["cep"]) if c.isdigit())
     numero_novo = (data.get("numero") if data.get("numero") is not None
                    else servico.get("numero") or "").strip()
@@ -173,7 +189,7 @@ def editar_servico(servico_id):
                SET cep = ?, numero = ?, endereco_completo = ?,
                    lat = ?, lng = ?, cliente = ?, descricao = ?,
                    tipo_aparelho = ?, modelo = ?, numero_os = ?,
-                   setor_id = ?
+                   setor_id = ?, telefone = ?
              WHERE id = ?
         """, (cep_novo, numero_novo, endereco, lat, lng,
               (data.get("cliente") if data.get("cliente") is not None
@@ -186,7 +202,7 @@ def editar_servico(servico_id):
                else servico.get("modelo") or ""),
               (data.get("numero_os") if data.get("numero_os") is not None
                else servico.get("numero_os") or ""),
-              setor_id,
+              setor_id, telefone,
               servico_id))
 
         ficha_id = servico["ficha_id"]

@@ -999,6 +999,7 @@
   // metade das checagens é metade do consumo de dados e de bateria.
   const INTERVALO_REVISAO = 20000;
   let revisaoConhecida = null;
+  let revisaoPendente = null;
 
   // O que este aparelho vai contar sobre si mesmo no ping de versao. Sem isto
   // nao ha como saber, do servidor, que versao o celular do tecnico roda nem se
@@ -1092,23 +1093,56 @@
       return;
     }
     if (revisao === revisaoConhecida) return;
-    revisaoConhecida = revisao;
 
-    // Recarrega exatamente a tela em que o técnico está: se ele abriu uma
-    // rota, mantém a rota aberta em vez de jogá-lo de volta para a lista.
-    if (fichaAbertaId !== null) {
-      await abrirFicha(fichaAbertaId);
-    } else {
-      await carregarFichas();
-    }
-    toast('Rota atualizada');
+    // NUNCA redesenha sozinho — só avisa. Antes recarregava a tela na hora
+    // que a revisão mudava, e como QUALQUER escrita no site inteiro (o
+    // Kalebe no painel, outro técnico, uma peça vinculada) bumpa essa mesma
+    // revisão, num dia ativo isso disparava a cada 20-40s: exatamente o
+    // "fica piscando" relatado em 2026-08-25 — só pra quem usa este app,
+    // porque o painel (app.js) já tinha passado por essa mesma correção.
+    // Redesenhar fica a cargo de quem toca "Atualizar" no aviso abaixo.
+    revisaoPendente = revisao;
+    mostrarAvisoDadosNovos();
+  }
+
+  // Aviso discreto, parado no canto — não redesenha nada sozinho, não rouba
+  // foco, não some sozinho. Mesmo padrão do aviso de versão nova, mas pra
+  // dado (rota/ficha), não pra código do app.
+  function mostrarAvisoDadosNovos() {
+    if (document.getElementById('t-aviso-dados')) return;
+    const aviso = document.createElement('div');
+    aviso.id = 't-aviso-dados';
+    aviso.className = 't-aviso-versao';
+    aviso.setAttribute('role', 'status');
+    aviso.innerHTML = `
+      <span>Rota atualizada disponível</span>
+      <span style="display:flex;gap:8px;">
+        <button type="button" id="t-aviso-dados-dispensar"
+                style="background:transparent;color:#9aacc6;">Depois</button>
+        <button type="button" id="t-aviso-dados-atualizar">Atualizar</button>
+      </span>`;
+    document.body.appendChild(aviso);
+
+    document.getElementById('t-aviso-dados-atualizar').onclick = async () => {
+      revisaoConhecida = revisaoPendente;
+      aviso.remove();
+      if (fichaAbertaId !== null) await abrirFicha(fichaAbertaId);
+      else await carregarFichas();
+      toast('Rota atualizada');
+    };
+    // Dispensar aceita a revisão sem redesenhar: quem dispensou não quer ser
+    // perguntado de novo pelo mesmo lote de mudanças (mesma lógica do painel).
+    document.getElementById('t-aviso-dados-dispensar').onclick = () => {
+      revisaoConhecida = revisaoPendente;
+      aviso.remove();
+    };
   }
 
   // Selo de versão no rodapé. Sem ele não há como saber, olhando o celular do
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v87';
+  const VERSAO_TELA = 'v88';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

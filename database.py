@@ -825,6 +825,10 @@ _MIGRACOES_PG = [
     # Trava contra "Agendar cliente" duplicar OS da mesma peça: uma vez que a
     # linha já tem OS aberta, o botão vira "já enviada" em vez de criar outra.
     "ALTER TABLE pecas_chegada ADD COLUMN IF NOT EXISTS ordem_servico_id INTEGER REFERENCES ordens_servico(id) ON DELETE SET NULL",
+    # Telefone virou obrigatório ao adicionar atendimento em 2026-08-25: sem
+    # ele, confirmar horário ou avisar atraso dependia de achar o número em
+    # outro lugar (papel, memória) na hora do técnico já estar a caminho.
+    "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS telefone TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -914,6 +918,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE cotacoes ADD COLUMN servico_id INTEGER",
     "ALTER TABLE servico_desfecho ADD COLUMN codigo TEXT",
     "ALTER TABLE pecas_chegada ADD COLUMN ordem_servico_id INTEGER",
+    "ALTER TABLE servicos ADD COLUMN telefone TEXT",
 ]
 
 

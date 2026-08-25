@@ -183,7 +183,16 @@
 //       aparelho e defeito, com botão "Agendar visita" no card. Antes faltava
 //       telefone e visualmente era só a lista da OS colada ali, sem nada que
 //       ajudasse a decidir quem atender primeiro.
-const CACHE_VERSAO = 'portotec-roteiros-v87';
+// v88 = quatro correções: (1) telefone vira obrigatório ao adicionar/editar
+//       atendimento na ficha do roteiro; (2) peça já enviada pra Agendar
+//       Clientes some da aba Peças em vez de aparecer nas duas telas ao
+//       mesmo tempo; (3) o app do técnico ganha o mesmo "não redesenha
+//       sozinho, só avisa" que o painel já tinha -- verificarRevisao()
+//       recarregava a tela toda sozinha a cada mudança em QUALQUER lugar do
+//       site, e isso é o "site pisca" que só quem usa o app do técnico via
+//       (o painel já tinha sido corrigido antes); (4) corrige botão de
+//       editar atendimento que travava em "Salvando..." se faltasse setor.
+const CACHE_VERSAO = 'portotec-roteiros-v88';
 
 const ARQUIVOS_CASCA = [
   '/',
