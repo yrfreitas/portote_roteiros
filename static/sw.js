@@ -152,7 +152,13 @@
 //       "Registrar no estoque", e nota cruzada distinguindo Peças x
 //       Estoque x Cotação — eram 3 conceitos com nome parecido e nada
 //       explicando a diferença entre eles.
-const CACHE_VERSAO = 'portotec-roteiros-v82';
+// v83 = tela de acompanhamento do cliente (/acompanhar) e o painel deixam de
+//       depender do CDN unpkg.com pro Leaflet -- agora self-hosted em
+//       /static/vendor/leaflet. Clientes reportaram tela preta piscando (o
+//       mapa nunca desenhava e o ciclo de atualizacao morria silencioso se o
+//       CDN falhasse); tambem endureceu o loop de /acompanhar pra nao travar
+//       pra sempre se o mapa der erro por qualquer outro motivo.
+const CACHE_VERSAO = 'portotec-roteiros-v83';
 
 const ARQUIVOS_CASCA = [
   '/',

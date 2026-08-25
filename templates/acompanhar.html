@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Acompanhe seu atendimento · Porto Tec</title>
   <link rel="icon" href="/static/assets/favicon-32x32.png">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -145,7 +145,7 @@
     </form>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
   <script>
     (function () {
       const TOKEN = {{ token | tojson }};
@@ -308,26 +308,42 @@
         const destino = d.destino || {};
         const temDestino = destino.lat != null && destino.lng != null;
 
+        // Tudo que toca o Leaflet (iniciarMapa/marcadores/desenharTecnico) fica
+        // protegido por try/catch daqui pra frente. Antes, se o script do mapa
+        // nao tivesse carregado -- rede ruim, bloqueio no aparelho do cliente,
+        // CDN fora -- o erro derrubava a funcao INTEIRA sem cair em catch
+        // nenhum: o ciclo() nunca chegava no proximo setTimeout, a tela ficava
+        // travada pra sempre com o mapa preto (o fundo escuro do <div id=mapa>
+        // sem tile nenhum em cima), e so a bolinha verde continuava piscando
+        // (ela e CSS puro, roda mesmo com o JS travado) -- exatamente a dupla
+        // "tela preta + piscando" que os clientes reportaram em 2026-08-25.
+        // Isolar aqui garante que o texto de estado/previsao (que nao depende
+        // do Leaflet) sempre atualiza, com ou sem mapa.
+
         // O mapa nasce no destino quando ele existe; se o CEP nao foi
         // geocodificado, nasce na posicao do tecnico. Antes, sem destino nao
         // havia mapa nenhum — e o cliente ficava sem ver nada, mesmo com o
         // tecnico reportando posicao.
-        if (!mapa && !temDestino && d.posicao) {
-          iniciarMapa([d.posicao.lat, d.posicao.lng]);
-          jaEnquadrou = true;  // sem destino nao ha o que enquadrar junto
-        }
+        try {
+          if (!mapa && !temDestino && d.posicao) {
+            iniciarMapa([d.posicao.lat, d.posicao.lng]);
+            jaEnquadrou = true;  // sem destino nao ha o que enquadrar junto
+          }
 
-        if (!mapa && temDestino) {
-          iniciarMapa([destino.lat, destino.lng]);
-          L.marker([destino.lat, destino.lng], {
-            icon: L.divIcon({
-              className: '',
-              html: `<div style="width:32px;height:32px;border-radius:50%;background:#e02020;
-                     border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;
-                     align-items:center;justify-content:center;font-size:15px;">🏠</div>`,
-              iconSize: [32, 32], iconAnchor: [16, 16],
-            }),
-          }).addTo(mapa).bindTooltip('Seu endereco', { direction: 'top' });
+          if (!mapa && temDestino) {
+            iniciarMapa([destino.lat, destino.lng]);
+            L.marker([destino.lat, destino.lng], {
+              icon: L.divIcon({
+                className: '',
+                html: `<div style="width:32px;height:32px;border-radius:50%;background:#e02020;
+                       border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;
+                       align-items:center;justify-content:center;font-size:15px;">🏠</div>`,
+                iconSize: [32, 32], iconAnchor: [16, 16],
+              }),
+            }).addTo(mapa).bindTooltip('Seu endereco', { direction: 'top' });
+          }
+        } catch (e) {
+          console.warn('Mapa indisponivel:', e);
         }
 
         const estadoTxt = document.getElementById('estado-txt');
@@ -355,7 +371,10 @@
         mostrarCabecalhoTecnico(d);
 
         const pos = d.posicao;
-        if (pos) desenharTecnico(pos, destino);
+        if (pos) {
+          try { desenharTecnico(pos, destino); }
+          catch (e) { console.warn('Mapa indisponivel:', e); }
+        }
 
         estadoTxt.textContent = pos && pos.ao_vivo
           ? `${d.tecnico} esta a caminho`
@@ -490,7 +509,16 @@
       setInterval(chatBuscar, 8000);
 
       async function ciclo() {
-        const r = await atualizar();
+        // Rede de seguranca de ultima instancia: qualquer excecao nao prevista
+        // dentro de atualizar() para de propagar aqui, e o ciclo continua
+        // tentando de novo em vez de morrer pra sempre (o que deixaria a tela
+        // parada com o ultimo estado exibido, indefinidamente).
+        let r = false;
+        try {
+          r = await atualizar();
+        } catch (e) {
+          console.warn('Falha no ciclo de atualizacao:', e);
+        }
         if (r === true) return;  // acabou: chegou ou link encerrado
         setTimeout(ciclo, r === 'aovivo' ? INTERVALO_AO_VIVO : INTERVALO_PREVISAO);
       }
