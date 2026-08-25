@@ -560,6 +560,27 @@ def marcar_chegada():
     return jsonify({"chave": chave, "chegou_em": agora, "registrado_por": quem})
 
 
+@pedidos_bp.route("/pedidos/clientes", methods=["POST"])
+def cadastrar_cliente_rapido():
+    """Cadastra um cliente direto da aba Peças — pelo mesmo formulário mínimo
+    do "+" ao lado do campo Cliente da linha.
+
+    Rota própria em vez de reaproveitar POST /api/clientes na cara: aquela
+    exige a permissão `ordens_servico`, e quem só mexe em Peças (permissão
+    `pecas`) ficaria travado num botão da própria tela dele. Aqui dentro de
+    /api/pedidos herda `pecas`, que é a permissão certa pra essa ação.
+    """
+    from routes.clientes import criar_cliente
+
+    dados = request.get_json(silent=True) or {}
+    try:
+        with db_conn(commit=True) as conn:
+            novo_id = criar_cliente(conn, dados)
+    except ValueError as exc:
+        return jsonify({"erro": str(exc)}), 400
+    return jsonify({"mensagem": "Cliente cadastrado", "id": novo_id}), 201
+
+
 @pedidos_bp.route("/pedidos/<int:linha>/agendar-cliente", methods=["POST"])
 def agendar_cliente(linha):
     """Manda o cliente dessa compra pra fila de "Agendar Clientes": acha (ou

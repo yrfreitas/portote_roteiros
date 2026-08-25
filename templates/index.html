@@ -923,6 +923,28 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-cliente-rapido" role="dialog" aria-modal="true" aria-label="Cadastrar cliente">
+  <div class="modal">
+    <div class="modal-title">Cadastrar cliente</div>
+    <p class="ajuda-texto" style="margin:0 0 12px;">
+      Pra quando a peça é de alguém que ainda não tem cadastro no site — o
+      nome não precisa ter vindo de um roteiro de técnico.
+    </p>
+    <div class="form-group">
+      <label class="form-label" for="cliente-rapido-nome">Nome</label>
+      <input class="form-input" id="cliente-rapido-nome" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="cliente-rapido-telefone">Telefone (opcional)</label>
+      <input class="form-input" id="cliente-rapido-telefone" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="cliente-rapido-salvar" onclick="salvarClienteRapido()">Cadastrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-nova-os" role="dialog" aria-modal="true" aria-label="Nova Ordem de Serviço">
   <div class="modal modal-lg">
     <div class="modal-title">Nova Ordem de Serviço</div>

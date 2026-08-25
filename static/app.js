@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v85';
+const VERSAO_PAINEL = 'v86';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2200,6 +2200,56 @@ function exportarHistorico() {
 // ficar idêntico ao do site — e aí a baixa ao concluir a rota casa exato.
 let clientesConhecidos = [];
 
+// ─── Cadastrar cliente na hora, direto da linha da peça ─────────────
+// A sugestão da lista (datalist acima) só sabe quem já apareceu num roteiro
+// de técnico — mas quem comprou a peça pode nunca ter tido atendimento
+// nenhum ainda. Sem isso, a única saída era digitar um nome solto no campo
+// (que grava na planilha, mas não vira cliente de verdade em lugar nenhum).
+let _clienteRapidoLinha = null;
+
+function abrirClienteRapido(linha) {
+  _clienteRapidoLinha = linha;
+  document.getElementById('cliente-rapido-nome').value =
+    document.getElementById(`peca-cliente-${linha}`)?.value.trim() || '';
+  document.getElementById('cliente-rapido-telefone').value = '';
+  document.getElementById('modal-cliente-rapido').classList.add('open');
+  setTimeout(() => document.getElementById('cliente-rapido-nome').focus(), 80);
+}
+
+async function salvarClienteRapido() {
+  const nome = document.getElementById('cliente-rapido-nome').value.trim();
+  if (!nome) { toast('Informe o nome do cliente', 'error'); return; }
+  const telefone = document.getElementById('cliente-rapido-telefone').value.trim();
+
+  const btn = document.getElementById('cliente-rapido-salvar');
+  btn.disabled = true;
+  btn.textContent = 'Cadastrando...';
+
+  try {
+    await api('/pedidos/clientes', { method: 'POST', body: JSON.stringify({ nome, telefone }) });
+    toast(`${nome} cadastrado`, 'success');
+
+    // Some pra lista de sugestão na hora, sem precisar recarregar a aba.
+    if (!clientesConhecidos.some(c => c.nome === nome)) {
+      clientesConhecidos.push({ nome, aparelho: '', modelo: '' });
+      const datalist = document.getElementById('lista-clientes');
+      if (datalist) datalist.insertAdjacentHTML('beforeend', `<option value="${esc(nome)}"></option>`);
+    }
+
+    const campo = document.getElementById(`peca-cliente-${_clienteRapidoLinha}`);
+    if (campo) {
+      campo.value = nome;
+      campo.dispatchEvent(new Event('change')); // grava na planilha (salvarPecaInline)
+    }
+    fecharModais();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Cadastrar';
+  }
+}
+
 async function carregarPecas() {
   const lista = document.getElementById('pecas-lista');
   if (!lista) return;
@@ -2292,10 +2342,18 @@ async function carregarPecas() {
 
       <div class="peca-campo">
         <label class="peca-rot" for="peca-cliente-${p.linha}">Cliente</label>
-        <input class="form-input peca-input" list="lista-clientes"
-               id="peca-cliente-${p.linha}" value="${esc(p.cliente_final)}"
-               placeholder="Escolha ou digite..."
-               onchange="salvarPecaInline(${p.linha})">
+        <div class="peca-cliente-linha">
+          <input class="form-input peca-input" list="lista-clientes"
+                 id="peca-cliente-${p.linha}" value="${esc(p.cliente_final)}"
+                 placeholder="Escolha ou digite..."
+                 onchange="salvarPecaInline(${p.linha})">
+          <!-- A lista sugere quem já apareceu num roteiro de técnico, mas o
+               dono da peça nem sempre é essa pessoa (pode ser cliente de
+               balcão, de outra marca, sem atendimento nenhum ainda) — daqui
+               cadastra de verdade em vez de só digitar um nome solto. -->
+          <button type="button" class="peca-cliente-add" title="Cadastrar um cliente novo"
+                  onclick="abrirClienteRapido(${p.linha})">+</button>
+        </div>
       </div>
 
       <!-- Estado da gravação. Fica NA LINHA, e não num toast, porque o toast

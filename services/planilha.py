@@ -397,7 +397,16 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
             "peca": col(COL_DESCRICAO_PECA),
         }
 
-    pedidos = list(por_nota.values())
+    # CRIADO é o pedido no carrinho, antes do pagamento ser aprovado — pode
+    # nunca virar compra de verdade (cliente desiste, cartão recusa). Enquanto
+    # não veio nota nem APROVADO, o robô às vezes grava um segundo evento pra
+    # essa mesma compra com uma chave diferente da que o CRIADO ficou (ex.:
+    # quando a nota fiscal por fim chega, a linha nova casa pela NOTA, não
+    # pelo nº do pedido) — e as duas apareciam juntas na tela, como se fossem
+    # duas peças. Peça que ninguém pagou ainda não deveria aparecer pra
+    # vincular cliente de qualquer jeito: mostrar antes de pagar é oferecer
+    # algo que pode nunca chegar.
+    pedidos = [p for p in por_nota.values() if p["status_compra"].strip().upper() != "CRIADO"]
     if apenas_pendentes:
         pedidos = [p for p in pedidos if not p["cliente_final"]]
 

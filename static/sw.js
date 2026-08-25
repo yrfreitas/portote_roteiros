@@ -170,7 +170,15 @@
 //       cria um novo, reaproveitando o agendar() da OS. Limpeza: removida
 //       função morta salvarPeca/salvarPecasEmLote/usarSugestao (sem botão
 //       vivo apontando pra elas, sobra de uma versão antiga da tela).
-const CACHE_VERSAO = 'portotec-roteiros-v85';
+// v86 = três correções pedidas: (1) barra de abas do cabeçalho ganhou
+//       rolagem própria no desktop -- sem isso, a aba "Agendar Clientes" nova
+//       fazia a barra vazar por cima da data/status ("estoque sobrepondo a
+//       data"); (2) aba Peças só mostra compra já paga/aprovada -- pedido
+//       ainda "CRIADO" (carrinho, antes do pagamento) aparecia às vezes como
+//       se fosse uma segunda peça da mesma compra; (3) campo Cliente da linha
+//       da peça ganha botão "+" pra cadastrar cliente novo na hora, sem
+//       depender de já ter aparecido num roteiro de técnico.
+const CACHE_VERSAO = 'portotec-roteiros-v86';
 
 const ARQUIVOS_CASCA = [
   '/',

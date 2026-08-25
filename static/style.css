@@ -294,6 +294,20 @@ header {
 }
 .peca-input { width: 100%; }
 
+/* Campo Cliente + botão de cadastro rápido lado a lado. O input segue
+   ocupando o espaço todo (flex:1); o "+" é de tamanho fixo, sempre visível
+   ao lado, pra não competir com o autocomplete da lista. */
+.peca-cliente-linha { display: flex; gap: 5px; align-items: center; min-width: 0; }
+.peca-cliente-linha .peca-input { flex: 1; min-width: 0; }
+.peca-cliente-add {
+  flex: none; width: 26px; height: 26px; border-radius: 7px;
+  border: 1px dashed var(--border-bright); background: transparent;
+  color: var(--text-muted, #8fa3bf); font-size: 15px; font-weight: 700;
+  line-height: 1; cursor: pointer; display: flex; align-items: center;
+  justify-content: center; padding: 0;
+}
+.peca-cliente-add:hover { border-style: solid; border-color: var(--accent); color: var(--text-primary); background: var(--accent-dim); }
+
 .peca-estado { font-size: 11px; text-align: right; white-space: nowrap; align-self: end; padding-bottom: 9px; }
 .peca-estado .ok { color: var(--success-text, #86efac); }
 .peca-estado .salvando { color: var(--text-muted, #8fa3bf); }
@@ -552,7 +566,15 @@ header::after {
   backdrop-filter: blur(8px);
   margin-left: 8px;
   min-width: 0;
+  /* Antes só o breakpoint de celular tinha rolagem — no desktop, sem
+     overflow nenhum, as abas simplesmente vazavam por cima da data/status
+     à direita (.header-meta) quando o número de abas cresceu (entrada da
+     "Agendar Clientes"). flex-shrink:0 nos botões garante que quem encolhe
+     é a rolagem da barra, não cada letra do texto espremendo. */
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.main-tabs::-webkit-scrollbar { display: none; }
 .main-tab {
   height: 36px;
   padding: 0 18px;
@@ -565,6 +587,7 @@ header::after {
   font-family: var(--font-body);
   cursor: pointer;
   white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.18s;
 }
 .main-tab:hover { color: var(--text-secondary); }
