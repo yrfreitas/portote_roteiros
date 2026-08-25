@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v84';
+const VERSAO_PAINEL = 'v85';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -453,6 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
   carregarTecnicos();
   _vcepRenderHistorico();
   carregarSeloPecas();
+  carregarSeloAgendar();
   carregarSetores();
 });
 
@@ -485,6 +486,7 @@ function switchMainTab(tab) {
   const isAtend     = tab === 'atendimentos';
   const isEstoque   = tab === 'estoque';
   const isOS        = tab === 'os';
+  const isAgendar   = tab === 'agendar';
 
   document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
   document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
@@ -495,6 +497,7 @@ function switchMainTab(tab) {
   document.getElementById('panel-atendimentos').style.display = isAtend ? 'block' : 'none';
   document.getElementById('panel-estoque').style.display = isEstoque ? 'block' : 'none';
   document.getElementById('panel-os').style.display = isOS ? 'block' : 'none';
+  document.getElementById('panel-agendar').style.display = isAgendar ? 'block' : 'none';
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
@@ -504,6 +507,7 @@ function switchMainTab(tab) {
   document.getElementById('mtab-atendimentos').classList.toggle('active', isAtend);
   document.getElementById('mtab-estoque').classList.toggle('active', isEstoque);
   document.getElementById('mtab-os').classList.toggle('active', isOS);
+  document.getElementById('mtab-agendar').classList.toggle('active', isAgendar);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
@@ -527,6 +531,9 @@ function switchMainTab(tab) {
   }
   if (isOS) {
     carregarOS();
+  }
+  if (isAgendar) {
+    carregarAgendarClientes();
   }
 }
 
@@ -1082,6 +1089,7 @@ async function carregarUsuarioLogado() {
   mostra('mtab-estoque', podeUsuario('estoque_ver'));
   mostra('mtab-pecas', podeUsuario('pecas'));
   mostra('mtab-os', podeUsuario('ordens_servico'));
+  mostra('mtab-agendar', podeUsuario('ordens_servico'));
   mostra('cotacao-details', podeUsuario('cotacao'));
 
   const marca = document.getElementById('usuario-logado');
@@ -2308,6 +2316,7 @@ async function carregarPecas() {
                 onclick="darEntradaEstoqueDaPeca(${p.linha})">
           Registrar no estoque
         </button>
+        ${botaoAgendarPeca(p)}
       </div>
 
       ${sugestaoDeCliente(p)}
@@ -2398,6 +2407,57 @@ async function darEntradaEstoqueDaPeca(linha) {
   _labelQtd('Quantidade');
   document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById('estoque-mov-qtd').select(), 80);
+}
+
+// Botão "Agendar cliente": manda o cliente desta compra pra fila de Agendar
+// Clientes (aba própria). Só faz sentido depois que a peça chegou — por isso
+// fica escondido por CSS (.peca-linha:not(.chegou) .peca-agendar) enquanto o
+// estágio não é "chegou", e some sozinho quando alternarChegada() alterna
+// essa classe na linha, sem precisar recarregar a lista inteira.
+function botaoAgendarPeca(p) {
+  if (p.agendamento_os_id) {
+    return `
+      <button class="peca-agendar enviado" onclick="abrirOSDetalhe(${p.agendamento_os_id})"
+              title="Já está na fila de Agendar Clientes — clique pra abrir a OS">
+        ✓ enviado p/ agendar
+      </button>`;
+  }
+  return `
+    <button class="peca-agendar" id="peca-agendar-${p.linha}"
+            title="Manda este cliente pra fila de Agendar Clientes, pra marcar a visita de instalação/revisita"
+            onclick="enviarParaAgendar(${p.linha})">
+      Agendar cliente
+    </button>`;
+}
+
+async function enviarParaAgendar(linha) {
+  const linhaEl = document.getElementById(`peca-${linha}`);
+  const cliente = document.getElementById(`peca-cliente-${linha}`)?.value.trim();
+  const peca = document.getElementById(`peca-desc-${linha}`)?.value.trim() || '';
+  if (!cliente) {
+    toast('Preencha o cliente antes de mandar pra Agendar Clientes.', 'error');
+    return;
+  }
+  const btn = document.getElementById(`peca-agendar-${linha}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+
+  try {
+    const r = await api(`/pedidos/${linha}/agendar-cliente`, {
+      method: 'POST',
+      body: JSON.stringify({ chave: linhaEl?.dataset.chave, cliente, peca }),
+    });
+    toast(r.mensagem, 'success');
+    if (btn) {
+      btn.outerHTML = `
+        <button class="peca-agendar enviado" onclick="abrirOSDetalhe(${r.id})">
+          ✓ enviado p/ agendar
+        </button>`;
+    }
+    carregarSeloAgendar();
+  } catch (e) {
+    toast(e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Agendar cliente'; }
+  }
 }
 
 // Busca as peças no XML das notas fiscais e injeta nos cards já renderizados.
@@ -2495,16 +2555,6 @@ async function desfazerBaixa(linha) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-function usarSugestao(linha, botao) {
-  const campo = document.getElementById(`peca-desc-${linha}`);
-  const sugestao = campo?.dataset.sugestao || '';
-  if (campo && sugestao) {
-    campo.value = sugestao;
-    botao.textContent = 'Aplicado';
-    botao.disabled = true;
-  }
-}
-
 // Selo com quantas peças estão esperando vínculo — sem isso ninguém lembra
 // de abrir a aba, e a baixa simplesmente não acontece no dia seguinte.
 function atualizarSeloPecas(qtd) {
@@ -2525,38 +2575,6 @@ async function carregarSeloPecas() {
     const r = await api('/pedidos/pendentes');
     if (r.configurada) atualizarSeloPecas(r.pendentes);
   } catch (e) { /* integração desligada: sem selo, sem barulho */ }
-}
-
-async function salvarPecasEmLote() {
-  const cards = Array.from(document.querySelectorAll('.peca-card'));
-  const itens = cards.map(c => {
-    const linha = parseInt(c.dataset.linha, 10);
-    return {
-      linha,
-      cliente: document.getElementById(`peca-cliente-${linha}`)?.value.trim() || '',
-      peca: document.getElementById(`peca-desc-${linha}`)?.value.trim() || '',
-    };
-  }).filter(i => i.cliente);
-
-  if (itens.length === 0) {
-    toast('Preencha o cliente de pelo menos uma peça', 'error');
-    return;
-  }
-  if (!confirm(`Vincular ${itens.length} peça(s) de uma vez?`)) return;
-
-  try {
-    const r = await api('/pedidos/lote', {
-      method: 'PUT',
-      body: JSON.stringify({ itens }),
-    });
-    toast(r.mensagem, (r.falhas || []).length ? 'error' : 'success');
-    (r.falhas || []).forEach(f => toast(`Linha ${f.linha}: ${f.erro}`, 'error'));
-    // Em lote não abre modal por linha — seriam N interrupções seguidas. As
-    // duvidosas viram aviso e ficam pra resolver uma a uma pelo vínculo normal.
-    (r.revisar_agoraos || []).forEach(x =>
-      toast(`Linha ${x.linha} não foi pro AgoraOS: ${x.motivo}`, 'error'));
-    await carregarPecas();
-  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ─── Peças: gravar direto, sem botão ────────────────────────────────
@@ -2766,35 +2784,6 @@ function formatarValorPeca(bruto) {
   const numero = parseFloat(texto.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.'));
   if (!isFinite(numero)) return texto;
   return numero.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-async function salvarPeca(linha) {
-  const cliente = document.getElementById(`peca-cliente-${linha}`).value.trim();
-  const peca = document.getElementById(`peca-desc-${linha}`).value.trim();
-
-  if (!cliente) { toast('Escolha ou digite o cliente', 'error'); return; }
-
-  const card = document.getElementById(`peca-${linha}`);
-  const btn = card.querySelector('button');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner"></div> Gravando...';
-
-  try {
-    const r = await api(`/pedidos/${linha}`, {
-      method: 'PUT',
-      body: JSON.stringify({ cliente, peca }),
-    });
-    toast(`Peça vinculada a ${cliente}`, 'success');
-    // A resposta do AgoraOS é lida ANTES do reload: carregarPecas() tira o
-    // card da lista (a peça deixou de estar pendente) e levaria a prévia junto.
-    const ag = r.agoraos;
-    await carregarPecas();
-    tratarRetornoAgoraOS(linha, cliente, peca, ag);
-  } catch (e) {
-    toast(e.message, 'error');
-    btn.disabled = false;
-    btn.textContent = 'Vincular';
-  }
 }
 
 // ─── Baixa no AgoraOS ───────────────────────────────────────────────
@@ -5347,6 +5336,75 @@ async function carregarOS() {
   mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${linhas}`;
 }
 
+// ─── Agendar Clientes: fila de quem está pronto pra ter visita marcada ──
+//
+// É a mesma OS que a aba OS já lista, só que fixada no status
+// 'aguardando_agendamento' — toda OS nova nasce nesse status, e uma peça
+// que chegou (aba Peças) também cai aqui via /pedidos/<linha>/agendar-cliente.
+// Uma fila só, em vez de duas listas que ninguém sabe qual conferir.
+async function carregarAgendarClientes() {
+  const mount = document.getElementById('agendar-conteudo');
+  if (!mount) return;
+  mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
+
+  let r;
+  try {
+    r = await api('/ordens-servico?status=aguardando_agendamento');
+  } catch (e) {
+    mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  atualizarSeloAgendar(r.ordens.length);
+
+  if (r.ordens.length === 0) {
+    mount.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
+      <p>Ninguém esperando agendamento no momento.</p></div>`;
+    return;
+  }
+
+  mount.innerHTML = r.ordens.map(o => `
+    <div class="os-linha" onclick="abrirOSDetalhe(${o.id})">
+      <div class="num">OS #${String(o.id).padStart(6, '0')}</div>
+      <div>
+        <div class="cliente">${esc(o.cliente_nome)}</div>
+        <div class="aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || '—'}</div>
+      </div>
+      <div class="defeito">${esc(o.defeito_declarado || '—')}</div>
+      <span class="conc-tag aviso">aguardando agendamento</span>
+    </div>`).join('');
+}
+
+// Selo com quantos clientes esperam agendamento — sem isso a fila só é vista
+// por quem lembra de clicar na aba, e é exatamente o que não pode acontecer
+// com peça já na mão do cliente esperando.
+function atualizarSeloAgendar(qtd) {
+  const aba = document.getElementById('mtab-agendar');
+  if (!aba) return;
+  aba.querySelector('.aba-selo')?.remove();
+  if (qtd > 0) {
+    const selo = document.createElement('span');
+    selo.className = 'aba-selo';
+    selo.textContent = qtd;
+    selo.title = `${qtd} cliente(s) esperando agendamento`;
+    aba.appendChild(selo);
+  }
+}
+
+async function carregarSeloAgendar() {
+  // Se a aba já está aberta na tela, redesenha a lista de verdade (não só o
+  // selo) — sem isso, agendar um cliente pela aba OS deixava o card dele
+  // fantasma na fila de Agendar Clientes até alguém trocar de aba e voltar.
+  if (document.getElementById('panel-agendar')?.style.display !== 'none') {
+    carregarAgendarClientes();
+    return;
+  }
+  try {
+    const r = await api('/ordens-servico?status=aguardando_agendamento');
+    atualizarSeloAgendar(r.ordens.length);
+  } catch (e) { /* sem selo, sem barulho — a aba já mostra ao abrir */ }
+}
+
 async function carregarOSMetricas() {
   const mount = document.getElementById('os-metricas-conteudo');
   if (!mount) return;
@@ -5605,6 +5663,7 @@ async function osCriar() {
     toast('OS aberta com sucesso', 'success');
     fecharModais();
     carregarOS();
+    carregarSeloAgendar(); // toda OS nova nasce aguardando agendamento
     abrirOSDetalhe(resp.id);
   } catch (e) {
     toast(e.message, 'error');
@@ -5771,6 +5830,7 @@ async function osDesagendar(osId, servicoId) {
     toast('Visita desagendada', 'success');
     abrirOSDetalhe(osId);
     carregarOS();
+    carregarSeloAgendar(); // pode ter voltado pra 'aguardando_agendamento'
   } catch (e) {
     toast(e.message, 'error');
   }
@@ -5781,6 +5841,7 @@ async function osAtualizarStatus(id, status) {
     await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
     toast('Status atualizado', 'success');
     carregarOS();
+    carregarSeloAgendar();
   } catch (e) {
     toast(e.message, 'error');
   }
@@ -5800,6 +5861,7 @@ async function osAgendar(id) {
     toast('Visita agendada', 'success');
     abrirOSDetalhe(id);
     carregarOS();
+    carregarSeloAgendar(); // saiu de 'aguardando_agendamento'
   } catch (e) {
     toast(e.message, 'error');
   }

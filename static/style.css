@@ -4251,6 +4251,23 @@ select:focus-visible,
 }
 .peca-estoque-btn:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-dim); }
 
+/* Elo com a aba Agendar Clientes. Só faz sentido depois que a peça chegou —
+   por isso fica escondido até a linha ganhar a classe .chegou (a mesma que
+   alternarChegada() já alterna sem redesenhar a lista inteira). */
+.peca-linha:not(.chegou) .peca-agendar { display: none; }
+.peca-agendar {
+  font-size: 10px; font-weight: 600; cursor: pointer;
+  color: var(--accent-text); background: transparent;
+  border: 1px solid var(--border-bright); border-radius: 7px; padding: 4px 9px;
+  max-width: 132px; white-space: normal; line-height: 1.3; text-align: center;
+}
+.peca-agendar:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-dim); }
+.peca-agendar:disabled { opacity: .6; cursor: default; }
+.peca-agendar.enviado {
+  border-style: solid; border-color: var(--accent-2, #22d3ee);
+  background: rgba(34,211,238,.12); color: #7de3f4;
+}
+
 /* Estados auxiliares reutilizados pela aba */
 .carregando { padding: 30px; text-align: center; color: var(--text-muted); font-size: 13px; }
 .vazio-box {

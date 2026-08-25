@@ -16,7 +16,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request, session
 
 from database import (bump_revisao, db_conn, execute, fetch_all, fetch_one,
-                      sql)
+                      insert_returning_id, sql)
 
 log = logging.getLogger("portotec.pedidos")
 
@@ -207,8 +207,8 @@ def listar():
             marcadores = ",".join(["?"] * len(chaves))
             for l in fetch_all(
                 conn,
-                sql(f"SELECT chave, chegou_em, observacao FROM pecas_chegada "
-                    f"WHERE chave IN ({marcadores})"),
+                sql(f"SELECT chave, chegou_em, observacao, ordem_servico_id "
+                    f"FROM pecas_chegada WHERE chave IN ({marcadores})"),
                 tuple(chaves),
             ):
                 chegadas[l["chave"]] = l
@@ -217,6 +217,10 @@ def listar():
         p["chave"] = chave
         p["chegou_em"] = (registro or {}).get("chegou_em") or ""
         p["chegou_obs"] = (registro or {}).get("observacao") or ""
+        # Já foi mandado pra fila de Agendar Clientes? guarda o id da OS pra
+        # tela trocar o botão por "já enviado" em vez de deixar clicar de novo
+        # e abrir uma segunda OS pra mesma peça.
+        p["agendamento_os_id"] = (registro or {}).get("ordem_servico_id")
 
     # Liga cada compra a quem pediu aquela peça em campo.
     with db_conn() as conn:
@@ -510,75 +514,6 @@ def diagnostico_agoraos():
     return jsonify(agoraos.diagnostico())
 
 
-@pedidos_bp.route("/pedidos/lote", methods=["PUT"])
-def vincular_lote():
-    """Vincula várias linhas de uma vez. Cada item: {linha, cliente, peca}.
-
-    Grava uma por uma e relata individualmente: se a 3ª falhar, as duas
-    primeiras continuam valendo e o usuário vê exatamente qual não foi.
-    """
-    from services.planilha import atualizar_pedido, planilha_configurada
-
-    if not planilha_configurada():
-        return jsonify({"erro": "Integração com a planilha não está configurada."}), 503
-
-    itens = (request.get_json(silent=True) or {}).get("itens") or []
-    if not isinstance(itens, list) or not itens:
-        return jsonify({"erro": "Nada para vincular"}), 400
-
-    gravados, falhas = [], []
-    lancadas, revisar = [], []
-    for item in itens:
-        try:
-            linha = int(item.get("linha"))
-        except (TypeError, ValueError):
-            falhas.append({"linha": item.get("linha"), "erro": "linha inválida"})
-            continue
-
-        cliente = (item.get("cliente") or "").strip()
-        if not cliente or linha < 2:
-            falhas.append({"linha": linha, "erro": "cliente vazio ou linha inválida"})
-            continue
-
-        peca = (item.get("peca") or "").strip()
-        numero_os = (item.get("numero_os") or "").strip()
-
-        try:
-            atualizar_pedido(linha, cliente, peca, numero_os)
-            gravados.append(linha)
-        except Exception as exc:
-            log.exception("Falha ao vincular linha %s em lote", linha)
-            falhas.append({"linha": linha, "erro": str(exc)})
-            continue
-
-        # Mesma regra do vínculo individual: o AgoraOS entra depois da
-        # planilha e não derruba nada. Em lote isso importa mais ainda —
-        # 20 linhas não podem parar porque uma peça não existe no catálogo.
-        r = _tentar_lancar(linha, cliente, peca, numero_os,
-                           (item.get("modelo") or "").strip(),
-                           item.get("qtd") or 1)
-        if r.get("estado") in ("revisar", "erro"):
-            revisar.append({"linha": linha, "motivo": r.get("mensagem")})
-        elif r.get("estado") == "lancada":
-            lancadas.append(linha)
-
-    mensagem = f"{len(gravados)} peça(s) vinculada(s)"
-    if falhas:
-        mensagem += f", {len(falhas)} com erro"
-    if lancadas:
-        mensagem += f", {len(lancadas)} lançada(s) no AgoraOS"
-    if revisar:
-        mensagem += f", {len(revisar)} para revisar"
-
-    return jsonify({
-        "gravados": gravados,
-        "falhas": falhas,
-        "lancadas_agoraos": lancadas,
-        "revisar_agoraos": revisar,
-        "mensagem": mensagem,
-    })
-
-
 @pedidos_bp.route("/pedidos/chegada", methods=["POST"])
 def marcar_chegada():
     """Registra que a peça chegou fisicamente na oficina — ou desfaz.
@@ -623,3 +558,74 @@ def marcar_chegada():
         bump_revisao(conn)
 
     return jsonify({"chave": chave, "chegou_em": agora, "registrado_por": quem})
+
+
+@pedidos_bp.route("/pedidos/<int:linha>/agendar-cliente", methods=["POST"])
+def agendar_cliente(linha):
+    """Manda o cliente dessa compra pra fila de "Agendar Clientes": acha (ou
+    cadastra) o cliente no cadastro do site e abre uma Ordem de Serviço em
+    'aguardando_agendamento' — a mesma fila que toda OS nova cai antes de ter
+    uma visita marcada.
+
+    Fecha um buraco real: a peça chega, tem dono (o campo Cliente já
+    preenchido aqui), e até agora não havia pra onde levar isso sem redigitar
+    cliente/aparelho na mão em Roteiros. Uma OS por peça — a trava é
+    `pecas_chegada.ordem_servico_id`: clicar duas vezes na mesma linha não
+    abre duas OS, só aponta pra que já existe.
+    """
+    from routes.clientes import criar_cliente
+
+    data = request.get_json(silent=True) or {}
+    chave = (data.get("chave") or "").strip()
+    cliente_nome = (data.get("cliente") or "").strip()
+    peca = (data.get("peca") or "").strip()
+    if not chave or not cliente_nome:
+        return jsonify({"erro": "Falta a chave da compra ou o nome do cliente"}), 400
+
+    with db_conn(commit=True) as conn:
+        registro = fetch_one(conn, sql(
+            "SELECT chave, ordem_servico_id FROM pecas_chegada WHERE chave = ?"),
+            (chave,))
+        if registro and registro.get("ordem_servico_id"):
+            return jsonify({
+                "erro": "Essa peça já está na fila de Agendar Clientes",
+                "id": registro["ordem_servico_id"],
+            }), 409
+
+        existente = fetch_one(conn, sql(
+            "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
+        if existente:
+            cliente_id = existente["id"]
+        else:
+            try:
+                cliente_id = criar_cliente(conn, {"nome": cliente_nome})
+            except ValueError as exc:
+                return jsonify({"erro": str(exc)}), 400
+
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        quem = (session.get("usuario_nome") or "Administrador").strip()[:80]
+        os_id = insert_returning_id(conn, sql("""
+            INSERT INTO ordens_servico
+                (cliente_id, atendente, defeito_declarado, taxa_avaliacao,
+                 status, observacao, criado_em, criado_por)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """), (cliente_id, quem,
+               f"Peça chegou: {peca}" if peca else "Peça chegou — agendar revisita",
+               0, "aguardando_agendamento",
+               f"Vindo da aba Peças (linha {linha} da planilha).", agora, quem))
+
+        if registro:
+            execute(conn, sql(
+                "UPDATE pecas_chegada SET ordem_servico_id = ? WHERE chave = ?"),
+                (os_id, chave))
+        else:
+            # A peça foi mandada pra agendar sem passar por "marcar chegada"
+            # antes (a tela permite, já que o cliente já está preenchido) —
+            # cria o registro na hora, já com a chegada implícita em agora.
+            execute(conn, sql(
+                "INSERT INTO pecas_chegada (chave, chegou_em, ordem_servico_id) "
+                "VALUES (?, ?, ?)"), (chave, agora, os_id))
+        bump_revisao(conn)
+
+    return jsonify({"mensagem": f"{cliente_nome} enviado para Agendar Clientes",
+                    "id": os_id, "cliente_id": cliente_id}), 201

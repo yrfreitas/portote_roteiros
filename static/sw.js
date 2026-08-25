@@ -163,7 +163,14 @@
 //       aparecer e sumir -- era o "site pisca no login de outros usuarios"
 //       reportado em 2026-08-25 (mais visivel com internet mais lenta que a
 //       do admin, que carrega rapido o bastante pra nao notar o flash).
-const CACHE_VERSAO = 'portotec-roteiros-v84';
+// v85 = nova aba "Agendar Clientes": peça que chegou na aba Peças ganha botão
+//       pra abrir uma OS em aguardando_agendamento pro cliente (acha ou
+//       cadastra pelo nome), e uma fila própria lista todo mundo pronto pra
+//       marcar visita — clica, escolhe técnico e cai num dia que já existe ou
+//       cria um novo, reaproveitando o agendar() da OS. Limpeza: removida
+//       função morta salvarPeca/salvarPecasEmLote/usarSugestao (sem botão
+//       vivo apontando pra elas, sobra de uma versão antiga da tela).
+const CACHE_VERSAO = 'portotec-roteiros-v85';
 
 const ARQUIVOS_CASCA = [
   '/',

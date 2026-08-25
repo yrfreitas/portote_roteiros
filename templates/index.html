@@ -63,6 +63,10 @@
         <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
         OS
       </button>
+      <button class="main-tab" id="mtab-agendar" style="display:none" onclick="switchMainTab('agendar')">
+        <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Agendar Clientes
+      </button>
       <button class="main-tab" id="mtab-pecas" style="display:none" onclick="switchMainTab('pecas')">
         <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.42l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.94 7.94l-6.9 6.9a2.12 2.12 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.94-7.94z"/></svg>
         Peças
@@ -273,6 +277,20 @@
       </details>
 
       <div id="os-conteudo"></div>
+    </div>
+  </main>
+
+  <main class="main" id="panel-agendar" style="display:none; grid-row: 2; grid-column: 1 / -1;">
+    <div class="historico-wrap">
+      <div class="historico-header">
+        <span class="visao-geral-title">Agendar Clientes</span>
+      </div>
+      <p class="ajuda-texto" style="margin:0 0 14px;">
+        Clientes prontos pra ter uma visita marcada — peça chegou, OS aberta
+        sem visita ainda, ou reagendamento pendente. Clique num cliente pra
+        escolher técnico e colocar num dia que já existe ou criar um novo.
+      </p>
+      <div id="agendar-conteudo"></div>
     </div>
   </main>
 
