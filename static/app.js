@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v88';
+const VERSAO_PAINEL = 'v89';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1126,6 +1126,7 @@ async function carregarAcessos() {
           ${_selo(admin ? 'ok' : 'aviso', admin ? 'administrador' : 'técnico')}
           ${admin ? '' : `<span class="diag-detalhe" style="grid-column:auto;">${liberadas} permiss${liberadas === 1 ? 'ão' : 'ões'}</span>`}
           ${admin ? '' : `<button class="btn btn-primary btn-sm" onclick="abrirEditorPermissoes(${u.id})">Permissões</button>`}
+          ${admin ? '' : `<button class="btn btn-ghost btn-sm" onclick="liberarTudo(${u.id}, '${esc(u.nome)}')" title="Marca todas as permissões do catálogo pra essa pessoa, sem abrir o editor">Liberar tudo</button>`}
           <button class="btn btn-ghost btn-sm" onclick="trocarSenhaUsuario(${u.id}, '${esc(u.nome)}')">Trocar senha</button>
           <button class="btn btn-ghost btn-sm" onclick="removerUsuario(${u.id}, '${esc(u.nome)}')">Remover</button>
         </div>
@@ -1137,6 +1138,29 @@ async function carregarAcessos() {
     }).join('')}
     <button class="btn btn-primary btn-sm" style="margin-top:10px;"
             onclick="criarUsuario()">+ Novo acesso</button>`;
+}
+
+// Atalho pra "essa pessoa está travada em tudo, só me deixa ela ver o site
+// inteiro": marca TODAS as ações do catálogo de uma vez, sem precisar abrir
+// o editor e clicar item por item. Existe porque criar um acesso novo já
+// nasce sem nenhuma permissão (PADRAO_TECNICO é vazio de propósito), e até
+// alguém lembrar de configurar cada área, a pessoa não consegue fazer nada
+// no site — o que por fora parece "o site tá travado", quando na verdade
+// é falta de permissão nunca dada, não bug nenhum.
+async function liberarTudo(usuarioId, nome) {
+  if (!confirm(`Liberar TODAS as permissões pra ${nome}? Dá pra restringir de novo depois pelo editor.`)) return;
+  if (!_permCatalogo) {
+    try { _permCatalogo = (await api('/permissoes/catalogo')).catalogo || []; }
+    catch (e) { toast(e.message, 'error'); return; }
+  }
+  const perms = {};
+  _permCatalogo.forEach(c => { perms[c.chave] = true; });
+  try {
+    await api(`/usuarios/${usuarioId}/permissoes`, { method: 'PUT',
+      body: JSON.stringify({ permissoes: perms }) });
+    toast(`${nome} agora vê tudo`, 'success');
+    carregarAcessos();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ─── Editor de permissões (drawer lateral) ──────────────────────────────
@@ -1158,7 +1182,13 @@ async function abrirEditorPermissoes(usuarioId) {
   // Agrupa por área para ficar legível.
   const areas = {};
   _permCatalogo.forEach(c => { (areas[c.area] = areas[c.area] || []).push(c); });
-  document.getElementById('perm-drawer-corpo').innerHTML = Object.entries(areas).map(([area, itens]) => `
+  document.getElementById('perm-drawer-corpo').innerHTML = `
+    <label class="perm-linha" style="border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:4px;">
+      <input type="checkbox" id="perm-marcar-todas"
+             onchange="document.querySelectorAll('#perm-drawer-corpo .perm-check').forEach(ch => ch.checked = this.checked)">
+      <span><b>Marcar todas</b></span>
+    </label>
+  ` + Object.entries(areas).map(([area, itens]) => `
     <div class="perm-area">
       <div class="perm-area-titulo">${esc(area)}</div>
       ${itens.map(c => `

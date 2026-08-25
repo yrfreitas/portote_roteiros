@@ -192,7 +192,15 @@
 //       site, e isso é o "site pisca" que só quem usa o app do técnico via
 //       (o painel já tinha sido corrigido antes); (4) corrige botão de
 //       editar atendimento que travava em "Salvando..." se faltasse setor.
-const CACHE_VERSAO = 'portotec-roteiros-v88';
+// v89 = duas coisas: (1) aba Peças funde compra que troca de identidade
+//       quando a nota fiscal chega numa linha nova da planilha (chave por nº
+//       de pedido, não só por nota) -- pega o caso que o filtro de CRIADO
+//       (v86) não pegava, porque a linha antiga já costuma estar como
+//       APROVADO, não CRIADO, quando a nota sai; (2) Acessos ganha "Liberar
+//       tudo" por pessoa e "Marcar todas" no editor -- login novo nasce SEM
+//       nenhuma permissão de propósito, e até alguém configurar cada área a
+//       pessoa não consegue fazer nada, o que por fora parece o site travado.
+const CACHE_VERSAO = 'portotec-roteiros-v89';
 
 const ARQUIVOS_CASCA = [
   '/',

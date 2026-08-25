@@ -360,9 +360,21 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
         # A coluna A guarda o identificador do registro (`nota#STATUS` no
         # formato antigo, `PED{pedido}#STATUS` no novo). Sem nota, ele é a
         # identidade da compra.
-        chave = nota or col(1).rsplit("#", 1)[0]
+        identificador = col(1)
+        chave = nota or identificador.rsplit("#", 1)[0]
         if not chave:
             continue
+
+        # Número do pedido puro, quando a coluna A segue o formato novo
+        # ("PED12345#STATUS") — existe INDEPENDENTE de ter nota ou não, pra
+        # servir de elo entre a linha de antes de faturar (chave = "PED12345")
+        # e a linha de depois (chave = a própria nota, uma vez que ela chega).
+        # Sem esse elo, as duas viravam duas entradas em por_nota — a mesma
+        # compra "duplicada" na tela, o que o Kalebe segue reportando mesmo
+        # depois do filtro de CRIADO (que não pega esse caso: a linha antiga
+        # muitas vezes já está como APROVADO, não CRIADO, quando a nota chega).
+        pedido_num = (identificador.split("#", 1)[0][3:]
+                     if identificador.startswith("PED") else "")
 
         cliente_final = col(COL_NOME_CLIENTE_FINAL)
         situacao = col(COL_SITUACAO_OS)
@@ -381,6 +393,7 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
         por_nota[chave] = {
             "linha": numero_linha,
             "nota_fiscal": nota,
+            "_pedido_num": pedido_num,
             # Número do pedido na loja, quando a compra ainda não tem nota.
             # É o que a tela mostra no lugar do "NF ..." para não exibir um
             # rótulo vazio.
@@ -397,18 +410,52 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
             "peca": col(COL_DESCRICAO_PECA),
         }
 
+    # Funde entradas que são a MESMA compra sob chaves diferentes: uma sem
+    # nota (identificada só pelo nº do pedido) e outra já com nota (chave =
+    # a própria nota, uma vez que ela chega). Sem isso as duas ficavam em
+    # por_nota como se fossem peças diferentes — a duplicata que persistia
+    # mesmo com o filtro de CRIADO, porque a linha sem nota já costuma estar
+    # como APROVADO quando a nota sai, não CRIADO.
+    por_pedido = {}
+    for chave, p in list(por_nota.items()):
+        num = p.get("_pedido_num")
+        if not num:
+            continue
+        rival = por_pedido.get(num)
+        if rival is None:
+            por_pedido[num] = chave
+            continue
+        anterior = por_nota[rival]
+        # A que já tem nota fiscal é a mais avançada (faturada de verdade);
+        # entre duas sem nota, fica a de linha mais recente.
+        atual_vence = bool(p["nota_fiscal"]) or (
+            not anterior["nota_fiscal"] and p["linha"] > anterior["linha"]
+        )
+        vencedora, perdedora = (p, anterior) if atual_vence else (anterior, p)
+        chave_vencedora, chave_perdedora = (chave, rival) if atual_vence else (rival, chave)
+
+        # A perdedora pode já ter o que a vencedora ainda não tem — o vínculo
+        # com cliente é o caso real: alguém já digitou o nome na linha sem
+        # nota, e a linha da nota (mais nova) chega vazia. Herda em vez de
+        # jogar fora um trabalho que já foi feito.
+        for campo in ("cliente_final", "numero_os", "situacao_os", "peca"):
+            if not vencedora.get(campo) and perdedora.get(campo):
+                vencedora[campo] = perdedora[campo]
+
+        del por_nota[chave_perdedora]
+        por_pedido[num] = chave_vencedora
+
     # CRIADO é o pedido no carrinho, antes do pagamento ser aprovado — pode
-    # nunca virar compra de verdade (cliente desiste, cartão recusa). Enquanto
-    # não veio nota nem APROVADO, o robô às vezes grava um segundo evento pra
-    # essa mesma compra com uma chave diferente da que o CRIADO ficou (ex.:
-    # quando a nota fiscal por fim chega, a linha nova casa pela NOTA, não
-    # pelo nº do pedido) — e as duas apareciam juntas na tela, como se fossem
-    # duas peças. Peça que ninguém pagou ainda não deveria aparecer pra
-    # vincular cliente de qualquer jeito: mostrar antes de pagar é oferecer
-    # algo que pode nunca chegar.
+    # nunca virar compra de verdade (cliente desiste, cartão recusa). Peça
+    # que ninguém pagou ainda não deveria aparecer pra vincular cliente de
+    # qualquer jeito: mostrar antes de pagar é oferecer algo que pode nunca
+    # chegar.
     pedidos = [p for p in por_nota.values() if p["status_compra"].strip().upper() != "CRIADO"]
     if apenas_pendentes:
         pedidos = [p for p in pedidos if not p["cliente_final"]]
+
+    for p in pedidos:
+        p.pop("_pedido_num", None)
 
     pedidos.sort(key=lambda p: p["linha"], reverse=True)
     return pedidos
