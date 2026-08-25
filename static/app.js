@@ -31,6 +31,7 @@ const ICONES = {
   concluir:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
   historico:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
   navegacao:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>',
+  telefone:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
 };
 
 function icone(nome, cls = '') {
@@ -246,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v86';
+const VERSAO_PAINEL = 'v87';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5422,15 +5423,41 @@ async function carregarAgendarClientes() {
   }
 
   mount.innerHTML = r.ordens.map(o => `
-    <div class="os-linha" onclick="abrirOSDetalhe(${o.id})">
-      <div class="num">OS #${String(o.id).padStart(6, '0')}</div>
-      <div>
-        <div class="cliente">${esc(o.cliente_nome)}</div>
-        <div class="aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || '—'}</div>
+    <div class="agendar-card" onclick="abrirOSDetalhe(${o.id})">
+      <div class="agendar-card-topo">
+        <div class="agendar-cliente">${esc(o.cliente_nome)}</div>
+        <span class="agendar-espera">${esperandoHa(o.criado_em)}</span>
       </div>
-      <div class="defeito">${esc(o.defeito_declarado || '—')}</div>
-      <span class="conc-tag aviso">aguardando agendamento</span>
+      <div class="agendar-linha-info">
+        ${icone('telefone', 'icone-13')}
+        ${o.cliente_telefone
+          ? `<a href="tel:${esc(o.cliente_telefone.replace(/\D/g, ''))}" onclick="event.stopPropagation()">${esc(o.cliente_telefone)}</a>`
+          : `<span class="agendar-sem-info">sem telefone cadastrado</span>`}
+        <span class="agendar-sep">·</span>
+        <span>OS #${String(o.id).padStart(6, '0')}</span>
+      </div>
+      <div class="agendar-linha-info">
+        <span class="agendar-aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || 'aparelho não informado'}</span>
+      </div>
+      ${o.defeito_declarado ? `<div class="agendar-defeito">${esc(o.defeito_declarado)}</div>` : ''}
+      <button type="button" class="btn btn-primary btn-sm agendar-btn"
+              onclick="event.stopPropagation(); abrirOSDetalhe(${o.id})">
+        Agendar visita →
+      </button>
     </div>`).join('');
+}
+
+// "há 3 dias" / "hoje" / "há 2h" — pra fila mostrar quem está esperando há
+// mais tempo sem ter que abrir cada card pra ler a data por extenso.
+function esperandoHa(criadoEmTxt) {
+  const d = parseDataBanco(criadoEmTxt);
+  if (!d) return '';
+  const min = Math.round((new Date() - d) / 60000);
+  if (min < 60) return 'há pouco';
+  const horas = Math.round(min / 60);
+  if (horas < 24) return `há ${horas}h`;
+  const dias = Math.round(horas / 24);
+  return dias === 1 ? 'há 1 dia' : `há ${dias} dias`;
 }
 
 // Selo com quantos clientes esperam agendamento — sem isso a fila só é vista

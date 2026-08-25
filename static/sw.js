@@ -178,7 +178,12 @@
 //       se fosse uma segunda peça da mesma compra; (3) campo Cliente da linha
 //       da peça ganha botão "+" pra cadastrar cliente novo na hora, sem
 //       depender de já ter aparecido num roteiro de técnico.
-const CACHE_VERSAO = 'portotec-roteiros-v86';
+// v87 = Agendar Clientes ganha card de verdade em vez de reaproveitar a linha
+//       crua da aba OS: mostra telefone (clicável, tel:), tempo esperando,
+//       aparelho e defeito, com botão "Agendar visita" no card. Antes faltava
+//       telefone e visualmente era só a lista da OS colada ali, sem nada que
+//       ajudasse a decidir quem atender primeiro.
+const CACHE_VERSAO = 'portotec-roteiros-v87';
 
 const ARQUIVOS_CASCA = [
   '/',
