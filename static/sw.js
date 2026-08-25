@@ -158,7 +158,12 @@
 //       mapa nunca desenhava e o ciclo de atualizacao morria silencioso se o
 //       CDN falhasse); tambem endureceu o loop de /acompanhar pra nao travar
 //       pra sempre se o mapa der erro por qualquer outro motivo.
-const CACHE_VERSAO = 'portotec-roteiros-v83';
+// v84 = aba Diagnostico/OS/Pecas/Estoque/Cotacao nascem escondidas no HTML e
+//       so aparecem depois que /api/eu confirma a permissao, em vez de
+//       aparecer e sumir -- era o "site pisca no login de outros usuarios"
+//       reportado em 2026-08-25 (mais visivel com internet mais lenta que a
+//       do admin, que carrega rapido o bastante pra nao notar o flash).
+const CACHE_VERSAO = 'portotec-roteiros-v84';
 
 const ARQUIVOS_CASCA = [
   '/',

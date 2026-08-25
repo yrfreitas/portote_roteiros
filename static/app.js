@@ -246,7 +246,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v83';
+const VERSAO_PAINEL = 'v84';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1050,6 +1050,16 @@ function iniciarChatPainel() {
 // app.py). Esconder aqui é sobre não oferecer o que a pessoa não pode usar —
 // menu escondido sozinho seria decoração, porque quem souber o endereço entra
 // do mesmo jeito.
+//
+// As 5 abas que mostra() controla (Diagnóstico/OS/Peças/Estoque/Cotação)
+// nascem com display:none no HTML (ver templates/index.html) — de propósito,
+// porque esta função só roda depois que /api/eu responde. Elas apareciam
+// visíveis por padrão e SUMIAM quando a resposta chegava dizendo que a pessoa
+// não podia: um "pisca" real pra quem tem menos permissão, mais visível com
+// internet mais lenta (o motivo do Kalebe achar que só o login dele "não
+// piscava" — o dele carrega rápido o bastante pra não notar). Nascer escondido
+// e mostra() REVELAR em vez de esconder tira o pisca e ainda é mais seguro:
+// falha ao carregar permissão deixa oculto, não visível.
 let usuarioLogado = { papel: 'admin', nome: '', permissoes: {} };
 
 // Atalho: a pessoa PODE fazer a ação? Admin cai em tudo true pelo servidor,
