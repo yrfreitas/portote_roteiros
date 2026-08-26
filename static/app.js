@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v91';
+const VERSAO_PAINEL = 'v92';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -658,6 +658,18 @@ function setorPorId(id) {
   return setores.find(s => String(s.id) === String(id)) || null;
 }
 
+// Preenche o select de setor garantindo que a lista já chegou do servidor.
+// Sem isto, abrir "Adicionar Atendimento" rápido demais (ex: logo depois de
+// criar um dia novo, antes do carregarSetores() do carregamento da página
+// terminar) mostrava o select vazio — só o placeholder, nenhuma opção — e
+// travava o cadastro por completo, porque setor é obrigatório. A aba
+// "Verificar CEP" já tinha essa proteção; os modais de adicionar/editar
+// atendimento e a classificação em lote não tinham.
+async function preencherSelectSetorSeguro(idSelect, selecionado = null) {
+  if (!setores.length) await carregarSetores();
+  preencherSelectSetor(idSelect, selecionado);
+}
+
 // ─── Classificação em lote dos pontos órfãos ────────────────────────
 // Tornar o setor obrigatório resolve daqui pra frente. Não conserta os 32
 // pontos que já entraram sem classificação — e mandar o usuário abrir ponto
@@ -669,7 +681,7 @@ async function abrirClassificacaoEmLote() {
 
   modal.classList.add('open');
   corpo.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:20px;"><div class="spinner"></div> Procurando atendimentos sem setor...</div>`;
-  preencherSelectSetor('lote-setor');
+  await preencherSelectSetorSeguro('lote-setor');
 
   let r;
   try {
@@ -5151,16 +5163,19 @@ function abrirModalNovaFicha(tecnicoId) {
   document.getElementById('modal-nova-ficha').classList.add('open');
 }
 
-function abrirModalAddServico(fichaId) {
+async function abrirModalAddServico(fichaId) {
   document.getElementById('add-ficha-id').value = fichaId;
   ['add-cep','add-numero','add-cliente','add-telefone','add-descricao','add-tipo-aparelho','add-modelo','add-numero-os']
     .forEach(id => { document.getElementById(id).value = ''; });
-  preencherSelectSetor('add-setor');
+  if (!setores.length) {
+    document.getElementById('add-setor').innerHTML = '<option value="">Carregando setores...</option>';
+  }
   document.getElementById('modal-add-servico').classList.add('open');
   setTimeout(() => document.getElementById('add-cep').focus(), 100);
+  await preencherSelectSetorSeguro('add-setor');
 }
 
-function abrirModalEditarServico(servicoId) {
+async function abrirModalEditarServico(servicoId) {
   const s = servicosAtuais.find(x => x.id === servicoId);
   if (!s) { toast('Atendimento não encontrado — recarregue a ficha', 'error'); return; }
 
@@ -5173,13 +5188,16 @@ function abrirModalEditarServico(servicoId) {
   document.getElementById('edit-tipo-aparelho').value = s.tipo_aparelho || '';
   document.getElementById('edit-modelo').value = s.modelo || '';
   document.getElementById('edit-numero-os').value = s.numero_os || '';
-  preencherSelectSetor('edit-setor', s.setor_id);
+  if (!setores.length) {
+    document.getElementById('edit-setor').innerHTML = '<option value="">Carregando setores...</option>';
+  }
   document.getElementById('edit-descricao').value = s.descricao || '';
 
   montarReagendar();
 
   document.getElementById('modal-editar-servico').classList.add('open');
   setTimeout(() => document.getElementById('edit-cliente').focus(), 100);
+  await preencherSelectSetorSeguro('edit-setor', s.setor_id);
 }
 
 // ─── Reagendar: técnico + dia num lugar só ──────────────────────────

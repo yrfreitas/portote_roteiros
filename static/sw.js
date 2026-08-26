@@ -211,7 +211,14 @@
 //       campo nenhum pra telefone -- todo mundo que adicionava cliente por
 //       ali levava "Informe o telefone" sem ter onde digitar. Campo
 //       adicionado no formulário do Verificar CEP também.
-const CACHE_VERSAO = 'portotec-roteiros-v91';
+// v92 = select de Setor vazio ao abrir "Adicionar Atendimento" logo depois
+//       de criar um dia novo (ou editar/classificar em lote rápido demais):
+//       a lista de setores só era lida da memória, sem esperar o
+//       carregarSetores() do carregamento da página terminar. A aba
+//       Verificar CEP já tinha essa proteção; agora os 3 outros lugares
+//       (adicionar, editar, classificar em lote) também buscam de novo se a
+//       lista ainda estiver vazia, em vez de mostrar um select sem opções.
+const CACHE_VERSAO = 'portotec-roteiros-v92';
 
 const ARQUIVOS_CASCA = [
   '/',
