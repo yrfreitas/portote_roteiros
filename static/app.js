@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v92';
+const VERSAO_PAINEL = 'v93';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4584,12 +4584,13 @@ async function vcepCriarNovoDia() {
     mostrarDetalhe();
     await renderFichaDetalhe(r.id);
 
-    document.getElementById('add-ficha-id').value  = r.id;
-    document.getElementById('add-cep').value       = formatCEP(verificacaoAtual.cep);
-    document.getElementById('add-numero').value    = '';
-    document.getElementById('add-cliente').value   = '';
-    document.getElementById('add-descricao').value = '';
-    document.getElementById('modal-add-servico').classList.add('open');
+    // Reaproveita abrirModalAddServico() em vez de preencher os campos na mão:
+    // essa era a única das quatro telas que abre este modal SEM passar por ela
+    // — por isso nunca puxava a lista de setores (o mesmo defeito relatado na
+    // aba Roteiros) nem limpava o campo telefone (que ficava com o valor de
+    // uma ficha anterior, arriscando gravar o número errado de cliente).
+    await abrirModalAddServico(r.id);
+    document.getElementById('add-cep').value = formatCEP(verificacaoAtual.cep);
     setTimeout(() => document.getElementById('add-numero').focus(), 150);
 
   } catch (e) { toast(e.message, 'error'); }

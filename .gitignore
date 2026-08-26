@@ -10,3 +10,7 @@ venv/
 # arquivos de teste que eu (Bia) criei por engano na raiz
 local*.log
 t3*.py
+
+# saída do /graphify (grafo de conhecimento do código) — análise local,
+# não faz parte do app, não precisa ir pro repositório
+graphify-out/

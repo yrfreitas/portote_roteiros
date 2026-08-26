@@ -218,7 +218,12 @@
 //       Verificar CEP já tinha essa proteção; agora os 3 outros lugares
 //       (adicionar, editar, classificar em lote) também buscam de novo se a
 //       lista ainda estiver vazia, em vez de mostrar um select sem opções.
-const CACHE_VERSAO = 'portotec-roteiros-v92';
+// v93 = a tela "Verificar CEP", ao criar um dia novo, abria o modal de
+//       Adicionar Atendimento preenchendo os campos na mão em vez de chamar
+//       abrirModalAddServico() -- por isso nunca puxava a lista de Setor
+//       (mesmo defeito relatado antes na aba Roteiros) nem limpava o
+//       telefone entre uma ficha e outra. Agora reaproveita a função certa.
+const CACHE_VERSAO = 'portotec-roteiros-v93';
 
 const ARQUIVOS_CASCA = [
   '/',
