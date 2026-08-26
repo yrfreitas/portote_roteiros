@@ -200,7 +200,12 @@
 //       tudo" por pessoa e "Marcar todas" no editor -- login novo nasce SEM
 //       nenhuma permissão de propósito, e até alguém configurar cada área a
 //       pessoa não consegue fazer nada, o que por fora parece o site travado.
-const CACHE_VERSAO = 'portotec-roteiros-v89';
+// v90 = pedido explícito do Kalebe: todo login não-admin passa a ter o MESMO
+//       acesso do admin por padrão (PADRAO_TECNICO virou "tudo", não mais
+//       vazio) -- sem precisar clicar em "Liberar tudo" pessoa por pessoa.
+//       Continua dando pra restringir alguém específico depois pelo editor
+//       de permissões, que sempre vence sobre este padrão.
+const CACHE_VERSAO = 'portotec-roteiros-v90';
 
 const ARQUIVOS_CASCA = [
   '/',

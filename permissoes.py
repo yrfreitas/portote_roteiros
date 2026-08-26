@@ -46,9 +46,18 @@ CATALOGO = [
 
 TODAS = [c["chave"] for c in CATALOGO]
 
-# O que um TÉCNICO recebe por padrão (sem nenhum ajuste). Vazio: por padrão o
-# técnico continua só com o trabalho de campo (rotas via token, fora daqui).
-PADRAO_TECNICO = set()
+# O que um TÉCNICO recebe por padrão (sem nenhum ajuste explícito na pessoa).
+#
+# Era vazio de propósito (nasce sem nada, alguém libera cada área na mão) —
+# só que login novo nasce sem NENHUMA permissão, e enquanto ninguém entra em
+# Acessos e configura, a pessoa não consegue fazer nada no site. Isso é
+# exatamente o "site travado/piscando pros outros logins" que o Kalebe
+# reportou repetidas vezes em 2026-08-25/26: não era bug, era permissão nunca
+# dada. Pedido explícito dele em 2026-08-26: todo mundo com o mesmo acesso
+# que ele. Agora o padrão é TUDO liberado, e restringir alguém específico
+# continua possível — quem editar as permissões dessa pessoa no painel grava
+# um "false" explícito, que sempre vence sobre este padrão (ver `efetivas`).
+PADRAO_TECNICO = set(TODAS)
 
 # Portão central: (prefixo_da_rota, métodos ou None p/ todos, ação exigida).
 # É avaliado em ordem; a PRIMEIRA regra cujo prefixo casa decide. Por isso as
