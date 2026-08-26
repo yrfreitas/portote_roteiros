@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v90';
+const VERSAO_PAINEL = 'v91';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4385,6 +4385,11 @@ function _vcepAdd(r) {
           <input class="vcep-input" type="text" id="vadd-cli" placeholder="Nome do cliente">
         </div>
         <div class="vcep-fg vcep-fg-half">
+          <label class="vcep-lbl">Telefone *</label>
+          <input class="vcep-input" type="tel" id="vadd-telefone" placeholder="(11) 99999-9999"
+                 inputmode="numeric" oninput="formatarTelefone(this)">
+        </div>
+        <div class="vcep-fg vcep-fg-half">
           <label class="vcep-lbl">Tipo de Aparelho</label>
           <select class="vcep-select" id="vadd-tipo">
             <option value="">Selecione...</option>
@@ -4489,6 +4494,13 @@ async function vcepAdicionarServico() {
     return;
   }
 
+  const telefone = document.getElementById('vadd-telefone')?.value.trim();
+  if (!telefone) {
+    toast('Informe o telefone do cliente.', 'error');
+    document.getElementById('vadd-telefone')?.focus();
+    return;
+  }
+
   const btn = document.getElementById('vcep-btn-add-svc');
   if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner"></div> Geocodificando...'; }
 
@@ -4499,6 +4511,7 @@ async function vcepAdicionarServico() {
         cep: cep.replace(/\D/g, ''),
         numero:        document.getElementById('vadd-num')?.value || '',
         cliente:       document.getElementById('vadd-cli')?.value || '',
+        telefone,
         descricao:     document.getElementById('vadd-desc')?.value || '',
         tipo_aparelho: document.getElementById('vadd-tipo')?.value || '',
         modelo:        document.getElementById('vadd-modelo')?.value || '',

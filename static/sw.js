@@ -205,7 +205,13 @@
 //       vazio) -- sem precisar clicar em "Liberar tudo" pessoa por pessoa.
 //       Continua dando pra restringir alguém específico depois pelo editor
 //       de permissões, que sempre vence sobre este padrão.
-const CACHE_VERSAO = 'portotec-roteiros-v90';
+// v91 = corrige regressão: telefone virou obrigatório (v88) só no modal
+//       "Adicionar Atendimento", mas a tela "Verificar CEP" tem seu PRÓPRIO
+//       formulário de adicionar servico (mesma rota de backend) e ficou sem
+//       campo nenhum pra telefone -- todo mundo que adicionava cliente por
+//       ali levava "Informe o telefone" sem ter onde digitar. Campo
+//       adicionado no formulário do Verificar CEP também.
+const CACHE_VERSAO = 'portotec-roteiros-v91';
 
 const ARQUIVOS_CASCA = [
   '/',
