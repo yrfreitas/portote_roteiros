@@ -184,6 +184,12 @@
       <div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>
     </div>
 
+    {% if tipo_os_rotulo %}
+    <hr class="linha-divisoria">
+    <h2>Termos</h2>
+    <div class="termos">{{ termos }}</div>
+    {% endif %}
+
   {% elif ordem.modelo_os == 'orcamento' %}
 
     <h2>Nossa solução</h2>
@@ -208,6 +214,12 @@
       </tbody>
       <tfoot><tr><td>Total</td><td class="col-valor">R$ {{ total_orcamento_br }}</td></tr></tfoot>
     </table>
+
+    {% if tipo_os_rotulo %}
+    <hr class="linha-divisoria">
+    <h2>Termos</h2>
+    <div class="termos">{{ termos }}</div>
+    {% endif %}
 
   {% else %}
 

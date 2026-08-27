@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v108';
+const VERSAO_PAINEL = 'v109';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5888,7 +5888,11 @@ function osEscolherModelo(modelo) {
   document.querySelectorAll('.modelo-os-btn').forEach(b =>
     b.classList.toggle('ativo', b.dataset.modelo === modelo));
 
-  document.getElementById('os-campos-tipo-padrao').style.display = modelo === 'os' ? '' : 'none';
+  // Tipo de OS/termo fica disponível nos três modelos — só a OBRIGAÇÃO de
+  // escolher (ver validação em osCriar) muda: "Ordens de Serviço" exige,
+  // Chamado Técnico e Orçamento deixam em aberto pra quem quiser um termo
+  // jurídico junto mesmo assim (ex: um orçamento amparado por garantia).
+  document.getElementById('os-tipo-obrigatorio').style.display = modelo === 'os' ? '' : 'none';
   document.getElementById('os-campos-taxa').style.display = modelo === 'os' ? '' : 'none';
   document.getElementById('os-campos-solucao').style.display = modelo === 'os' ? 'none' : '';
   document.getElementById('os-campos-chamado').style.display = modelo === 'chamado_tecnico' ? '' : 'none';
@@ -6097,6 +6101,7 @@ async function osAbrirNovoFilho(paiId, clienteId, clienteNome) {
 }
 
 async function osCriar() {
+  const modo = document.querySelector('#os-cliente-modo .pecas-filtro.ativo')?.dataset.modo;
   const corpo = {
     modelo_os: _novaOSModelo,
     tipo_aparelho: document.getElementById('os-tipo-aparelho').value.trim(),
@@ -6196,11 +6201,19 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="form-group"><label class="form-label" for="os-ed-obs">Observação${o.modelo_os === 'os' ? ' interna' : ''}</label>
       <textarea class="form-input" id="os-ed-obs" rows="2">${esc(o.observacao)}</textarea></div>`;
 
+  // Fora do modelo "Ordens de Serviço" o tipo/termo é OPCIONAL — dá pra
+  // amarrar um termo jurídico a um Chamado Técnico ou Orçamento mesmo assim,
+  // só não trava o salvamento se ficar em branco (ver editar() no backend).
+  const tipoOsOpcional = `
+    <div class="form-group"><label class="form-label" for="os-ed-tipo-os-opcional">Tipo de OS / termo (opcional)</label>
+      <select class="form-input" id="os-ed-tipo-os-opcional">${opcoesTipoOs}</select></div>`;
+
   if (o.modelo_os === 'chamado_tecnico') {
     return `
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
+      ${tipoOsOpcional}
       <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
         <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
       <div class="form-group"><label class="form-label" for="os-ed-tecnico">Técnico que atendeu</label>
@@ -6224,6 +6237,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
+      ${tipoOsOpcional}
       <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
         <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
       ${observacao}
@@ -6335,6 +6349,7 @@ async function osSalvarEdicaoChamado(id) {
     numero_serie: document.getElementById('os-ed-serie').value.trim(),
     acessorios: document.getElementById('os-ed-acessorios').value.trim(),
     defeito_declarado: document.getElementById('os-ed-defeito').value.trim(),
+    tipo_os: document.getElementById('os-ed-tipo-os-opcional').value,
     solucao: document.getElementById('os-ed-solucao').value.trim(),
     tecnico_atendeu_id: document.getElementById('os-ed-tecnico').value || null,
     observacao: document.getElementById('os-ed-obs').value.trim(),
@@ -6359,6 +6374,7 @@ async function osSalvarEdicaoOrcamento(id) {
     numero_serie: document.getElementById('os-ed-serie').value.trim(),
     acessorios: document.getElementById('os-ed-acessorios').value.trim(),
     defeito_declarado: document.getElementById('os-ed-defeito').value.trim(),
+    tipo_os: document.getElementById('os-ed-tipo-os-opcional').value,
     solucao: document.getElementById('os-ed-solucao').value.trim(),
     observacao: document.getElementById('os-ed-obs').value.trim(),
   };

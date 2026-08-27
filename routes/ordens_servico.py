@@ -1142,9 +1142,11 @@ def criar():
     cliente novo ligando pela primeira vez).
 
     ?modelo_os decide qual conjunto de campos vale (ver MODELOS_OS): 'os'
-    (padrão) exige tipo_os pro termo jurídico; 'chamado_tecnico' e
-    'orcamento' não usam tipo_os/termo nenhum, e aceitam solucao/foto/
-    tecnico_atendeu_id e, no caso do orçamento, uma lista inicial de itens.
+    (padrão) EXIGE tipo_os pro termo jurídico; 'chamado_tecnico' e
+    'orcamento' aceitam solucao/foto/tecnico_atendeu_id e, no caso do
+    orçamento, uma lista inicial de itens — tipo_os aí é OPCIONAL (dá pra
+    amarrar um termo de garantia a um orçamento, por exemplo, mas não é
+    obrigatório like na OS padrão).
     """
     d = request.get_json(silent=True) or {}
     campos = _campos_os(d)
@@ -1161,6 +1163,12 @@ def criar():
         erro_tipo_os, tipo_os = _validar_tipo_os(d.get("tipo_os"))
         if erro_tipo_os:
             return jsonify({"erro": erro_tipo_os}), 400
+    else:
+        tipo_os_bruto = (d.get("tipo_os") or "").strip()
+        if tipo_os_bruto:
+            if tipo_os_bruto not in TIPOS_OS:
+                return jsonify({"erro": "Tipo de OS inválido."}), 400
+            tipo_os = tipo_os_bruto
 
     solucao = (d.get("solucao") or "").strip()
     foto = _foto_valida(d.get("foto")) if modelo_os == "chamado_tecnico" else None
@@ -1232,9 +1240,12 @@ def editar(os_id):
     d = request.get_json(silent=True) or {}
 
     with db_conn(commit=True) as conn:
-        existe = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (os_id,))
+        existe = fetch_one(conn, "SELECT id, modelo_os FROM ordens_servico WHERE id = ?", (os_id,))
         if not existe:
             return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        # Efetivo = o modelo que a OS vai TER depois deste PUT (se modelo_os
+        # também estiver no corpo) — decide se tipo_os é obrigatório ou não.
+        modelo_efetivo = (d.get("modelo_os") or existe.get("modelo_os") or "os").strip()
 
         campos, valores = [], []
         for chave in ("tipo_aparelho", "marca", "modelo", "numero_serie",
@@ -1255,9 +1266,17 @@ def editar(os_id):
                 campos.append("finalizada_em = ?")
                 valores.append(_agora())
         if "tipo_os" in d:
-            erro_tipo_os, tipo_os = _validar_tipo_os(d.get("tipo_os"))
-            if erro_tipo_os:
-                return jsonify({"erro": erro_tipo_os}), 400
+            if modelo_efetivo == "os":
+                erro_tipo_os, tipo_os = _validar_tipo_os(d.get("tipo_os"))
+                if erro_tipo_os:
+                    return jsonify({"erro": erro_tipo_os}), 400
+            else:
+                # Opcional fora do modelo "Ordens de Serviço": dá pra deixar
+                # em branco (limpa o termo) sem travar o salvamento.
+                tipo_os_bruto = (d.get("tipo_os") or "").strip()
+                if tipo_os_bruto and tipo_os_bruto not in TIPOS_OS:
+                    return jsonify({"erro": "Tipo de OS inválido."}), 400
+                tipo_os = tipo_os_bruto or None
             campos.append("tipo_os = ?")
             valores.append(tipo_os)
         if "modelo_os" in d:
