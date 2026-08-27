@@ -986,6 +986,18 @@
     <div class="modal-title">Nova Ordem de Serviço</div>
 
     <div class="form-group">
+      <label class="form-label">O que é este documento? <span class="form-obrigatorio">*</span></label>
+      <div class="modelo-os-botoes">
+        <button type="button" class="modelo-os-btn ativo" data-modelo="os"
+                onclick="osEscolherModelo('os')">Ordens de Serviço</button>
+        <button type="button" class="modelo-os-btn" data-modelo="chamado_tecnico"
+                onclick="osEscolherModelo('chamado_tecnico')">Chamado Técnico</button>
+        <button type="button" class="modelo-os-btn" data-modelo="orcamento"
+                onclick="osEscolherModelo('orcamento')">Fazer Orçamento</button>
+      </div>
+    </div>
+
+    <div class="form-group" id="os-campos-tipo-padrao">
       <label class="form-label" for="os-tipo">Tipo de OS <span class="form-obrigatorio">*</span></label>
       <select class="form-input" id="os-tipo">
         <option value="">Selecione...</option>
@@ -1084,10 +1096,54 @@
       <label class="form-label" for="os-defeito">Defeito declarado pelo cliente</label>
       <textarea class="form-input" id="os-defeito" rows="3"></textarea>
     </div>
-    <div class="form-row">
+
+    <div class="form-row" id="os-campos-taxa">
       <div class="form-group"><label class="form-label" for="os-taxa">Taxa de avaliação (R$)</label>
         <input class="form-input" type="number" step="0.01" min="0" id="os-taxa" value="0"></div>
     </div>
+
+    <div id="os-campos-solucao" style="display:none;">
+      <div class="form-group">
+        <label class="form-label" for="os-solucao">Nossa solução</label>
+        <textarea class="form-input" id="os-solucao" rows="3" placeholder="O que foi feito / o que será feito"></textarea>
+      </div>
+    </div>
+
+    <div id="os-campos-chamado" style="display:none;">
+      <div class="form-group">
+        <label class="form-label" for="os-chamado-tecnico">Técnico que atendeu</label>
+        <select class="form-input" id="os-chamado-tecnico"><option value="">Selecione...</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="os-chamado-foto">Foto do produto</label>
+        <input class="form-input" type="file" accept="image/*" capture="environment" id="os-chamado-foto"
+               onchange="osEscolherFotoChamado(this)">
+        <div id="os-chamado-foto-status" style="margin-top:6px;font-size:11.5px;color:var(--text-muted);"></div>
+      </div>
+    </div>
+
+    <div id="os-campos-orcamento-itens" style="display:none;">
+      <p class="form-separador">Itens do orçamento</p>
+      <div id="os-orc-itens-lista"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="os-orc-item-nome">Serviço</label>
+          <input class="form-input" id="os-orc-item-nome" autocomplete="off"
+                 list="os-orc-catalogo" placeholder="Ex: Troca de resistência"
+                 oninput="osPreencherValorDoCatalogo(this.value)"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault(); osAdicionarItemOrcamentoNovo();}">
+          <datalist id="os-orc-catalogo"></datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="os-orc-item-valor">Valor (R$)</label>
+          <input class="form-input" type="number" step="0.01" min="0" id="os-orc-item-valor"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault(); osAdicionarItemOrcamentoNovo();}">
+        </div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="osAdicionarItemOrcamentoNovo()">+ Adicionar serviço</button>
+      <div class="os-orc-total" id="os-orc-total"></div>
+    </div>
+
     <div class="form-group">
       <label class="form-label" for="os-obs">Observação interna (opcional)</label>
       <textarea class="form-input" id="os-obs" rows="2"></textarea>

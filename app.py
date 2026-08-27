@@ -11,15 +11,17 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from database import IS_PG, bump_revisao, db_conn, fetch_one, init_db, ler_revisao
+from database import (IS_PG, bump_revisao, db_conn, fetch_all, fetch_one,
+                      init_db, ler_revisao)
 from extensions import VERSAO_APP, limiter
 from routes.auth import auth_bp
 from routes.chat import chat_bp
 from routes.clientes import clientes_bp
 from routes.cotacoes import cotacoes_bp
 from routes.estoque import estoque_bp
-from routes.ordens_servico import (TERMOS_PADRAO, TERMOS_POR_TIPO,
-                                   TIPOS_OS_ROTULO, ordens_servico_bp)
+from routes.ordens_servico import (MODELOS_OS_ROTULO, TERMOS_PADRAO,
+                                   TERMOS_POR_TIPO, TIPOS_OS_ROTULO,
+                                   ordens_servico_bp)
 from routes.fichas import fichas_bp
 from routes.pedidos import pedidos_bp
 from routes.rastreio import rastreio_bp
@@ -393,6 +395,20 @@ def imprimir_os(os_id):
              ORDER BY s.id DESC LIMIT 1
         """, (os_id,))
 
+        # Só busca o que o modelo do documento realmente usa — impressão de
+        # OS padrão não tem por que juntar itens de orçamento que não existem.
+        itens = []
+        tecnico_atendeu_nome = None
+        if ordem.get("modelo_os") == "orcamento":
+            itens = fetch_all(conn, """
+                SELECT nome, valor FROM ordem_servico_itens
+                 WHERE ordem_servico_id = ? ORDER BY id
+            """, (os_id,))
+        elif ordem.get("modelo_os") == "chamado_tecnico" and ordem.get("tecnico_atendeu_id"):
+            tecnico_row = fetch_one(conn, "SELECT nome FROM tecnicos WHERE id = ?",
+                                    (ordem["tecnico_atendeu_id"],))
+            tecnico_atendeu_nome = tecnico_row["nome"] if tecnico_row else None
+
     # Formatação BR feita aqui, não no template: "%.2f" de Python usa ponto
     # decimal, e um documento pra cliente assinar com "R$ 90.00" e data em
     # ISO (2026-08-22) parece rascunho de sistema, não papel de assistência
@@ -412,10 +428,16 @@ def imprimir_os(os_id):
 
     termos = TERMOS_POR_TIPO.get(ordem.get("tipo_os"), TERMOS_PADRAO)
     tipo_os_rotulo = TIPOS_OS_ROTULO.get(ordem.get("tipo_os"), "")
+    modelo_os_rotulo = MODELOS_OS_ROTULO.get(ordem.get("modelo_os"), MODELOS_OS_ROTULO["os"])
+
+    itens_com_valor_br = [{"nome": i["nome"], "valor_br": _moeda_br(i["valor"])} for i in itens]
+    total_orcamento_br = _moeda_br(sum(float(i["valor"] or 0) for i in itens))
 
     return render_template(
         "os_imprimir.html", ordem=ordem, visita=visita, termos=termos,
-        tipo_os_rotulo=tipo_os_rotulo,
+        tipo_os_rotulo=tipo_os_rotulo, modelo_os_rotulo=modelo_os_rotulo,
+        itens=itens_com_valor_br, total_orcamento_br=total_orcamento_br,
+        tecnico_atendeu_nome=tecnico_atendeu_nome,
         data_abertura_br=_data_br(ordem.get("criado_em")),
         taxa_br=_moeda_br(ordem.get("taxa_avaliacao")),
         gerado_em_br=datetime.now().strftime("%d/%m/%Y %H:%M"),

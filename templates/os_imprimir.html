@@ -71,6 +71,17 @@
 
   .termos { font-size: 9.5px; color: var(--tinta-3); line-height: 1.55; text-align: justify; white-space: pre-line; }
 
+  .foto-produto { max-width: 260px; max-height: 200px; border-radius: 8px; border: 1px solid var(--linha); display: block; margin-top: 4px; }
+
+  .tabela-itens { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  .tabela-itens th {
+    text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+    color: var(--tinta-3); font-weight: 700; padding: 0 0 6px; border-bottom: 1px solid var(--linha);
+  }
+  .tabela-itens th.col-valor, .tabela-itens td.col-valor { text-align: right; }
+  .tabela-itens td { font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--linha); }
+  .tabela-itens tfoot td { border-bottom: 0; padding-top: 10px; font-weight: 700; font-size: 13.5px; }
+
   .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 55px; margin-top: 40px; }
   .linha-assinatura { border-top: 1px solid var(--tinta); padding-top: 6px; }
   .linha-assinatura .nome { font-size: 11.5px; font-weight: 600; }
@@ -103,7 +114,7 @@
       <img src="/static/logo.png" alt="Porto Tec">
       <div>
         <h1>Porto Tec Assistência Técnica</h1>
-        <div class="sub">Ordem de Serviço</div>
+        <div class="sub">{{ modelo_os_rotulo }}</div>
       </div>
     </div>
     <div class="os-numero">
@@ -150,28 +161,80 @@
   <h2>Defeito declarado pelo cliente</h2>
   <div class="caixa-texto">{{ ordem.defeito_declarado or '—' }}</div>
 
-  {% if ordem.observacao %}
-  <h2>Observação interna</h2>
-  <div class="caixa-texto">{{ ordem.observacao }}</div>
-  {% endif %}
+  {% if ordem.modelo_os == 'chamado_tecnico' %}
 
-  <hr class="linha-divisoria">
+    {% if ordem.foto %}
+    <h2>Foto do produto</h2>
+    <img class="foto-produto" src="{{ ordem.foto }}" alt="Foto do produto">
+    {% endif %}
 
-  <h2>Atendimento</h2>
-  <div class="grade">
-    <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
-    <div class="campo"><div class="rot">Técnico</div><div class="val">{{ (visita.tecnico_nome if visita else None) or 'a definir' }}</div></div>
-    <div class="campo"><div class="rot">Data agendada</div><div class="val">{{ visita.data_referencia_br if (visita and visita.data_referencia_br) else (visita.dia_semana if visita else 'a definir') }}</div></div>
-    <div class="campo">
-      <div class="rot">Taxa de avaliação</div>
-      <div class="taxa-bloco"><span class="valor">R$ {{ taxa_br }}</span></div>
+    <h2>Nossa solução</h2>
+    <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
+
+    {% if ordem.observacao %}
+    <h2>Observação</h2>
+    <div class="caixa-texto">{{ ordem.observacao }}</div>
+    {% endif %}
+
+    <hr class="linha-divisoria">
+
+    <h2>Atendimento</h2>
+    <div class="grade">
+      <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
+      <div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>
     </div>
-  </div>
 
-  <hr class="linha-divisoria">
+  {% elif ordem.modelo_os == 'orcamento' %}
 
-  <h2>Termos</h2>
-  <div class="termos">{{ termos }}</div>
+    <h2>Nossa solução</h2>
+    <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
+
+    {% if ordem.observacao %}
+    <h2>Observação</h2>
+    <div class="caixa-texto">{{ ordem.observacao }}</div>
+    {% endif %}
+
+    <hr class="linha-divisoria">
+
+    <h2>Itens do orçamento</h2>
+    <table class="tabela-itens">
+      <thead><tr><th>Serviço</th><th class="col-valor">Valor</th></tr></thead>
+      <tbody>
+        {% for item in itens %}
+        <tr><td>{{ item.nome }}</td><td class="col-valor">R$ {{ item.valor_br }}</td></tr>
+        {% else %}
+        <tr><td colspan="2" style="color:var(--tinta-3);">Nenhum item lançado.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Total</td><td class="col-valor">R$ {{ total_orcamento_br }}</td></tr></tfoot>
+    </table>
+
+  {% else %}
+
+    {% if ordem.observacao %}
+    <h2>Observação interna</h2>
+    <div class="caixa-texto">{{ ordem.observacao }}</div>
+    {% endif %}
+
+    <hr class="linha-divisoria">
+
+    <h2>Atendimento</h2>
+    <div class="grade">
+      <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
+      <div class="campo"><div class="rot">Técnico</div><div class="val">{{ (visita.tecnico_nome if visita else None) or 'a definir' }}</div></div>
+      <div class="campo"><div class="rot">Data agendada</div><div class="val">{{ visita.data_referencia_br if (visita and visita.data_referencia_br) else (visita.dia_semana if visita else 'a definir') }}</div></div>
+      <div class="campo">
+        <div class="rot">Taxa de avaliação</div>
+        <div class="taxa-bloco"><span class="valor">R$ {{ taxa_br }}</span></div>
+      </div>
+    </div>
+
+    <hr class="linha-divisoria">
+
+    <h2>Termos</h2>
+    <div class="termos">{{ termos }}</div>
+
+  {% endif %}
 
   <div class="assinaturas">
     <div class="linha-assinatura">

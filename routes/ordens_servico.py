@@ -638,6 +638,46 @@ TERMOS_POR_TIPO = {
 }
 
 
+# Modelo do documento — pedido de 2026-08-27. A mesma tabela ordens_servico
+# serve pros três, porque os três compartilham cliente/equipamento/status;
+# o que muda é qual conjunto de campos extra se aplica e qual seção some ou
+# aparece na impressão (ver templates/os_imprimir.html):
+#   "os"              — o padrão de sempre: tipo_os + termo jurídico + taxa.
+#   "chamado_tecnico" — registro pontual de atendimento: foto, defeito,
+#                       solução, técnico que atendeu.
+#   "orcamento"       — proposta de preço: defeito, solução, lista de itens
+#                       (serviço + valor) em ordem_servico_itens.
+MODELOS_OS = ["os", "chamado_tecnico", "orcamento"]
+
+MODELOS_OS_ROTULO = {
+    "os": "Ordens de Serviço",
+    "chamado_tecnico": "Chamado Técnico",
+    "orcamento": "Fazer Orçamento",
+}
+
+FOTO_MAXIMA = 900 * 1024
+PREFIXOS_FOTO = ("data:image/jpeg;base64,", "data:image/png;base64,",
+                 "data:image/webp;base64,")
+
+
+def _foto_valida(foto):
+    if not isinstance(foto, str) or not foto.startswith(PREFIXOS_FOTO):
+        return None
+    if len(foto) > FOTO_MAXIMA:
+        return None
+    return foto
+
+
+def _validar_modelo_os(valor):
+    """Devolve (mensagem_de_erro, modelo). Vazio ('' -> None) cai no padrão
+    'os' — toda OS de antes desse recurso é desse modelo, e a maioria das
+    novas continua sendo."""
+    modelo = (valor or "os").strip()
+    if modelo not in MODELOS_OS:
+        return "Modelo de OS inválido.", None
+    return "", modelo
+
+
 def _agora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -738,6 +778,54 @@ def listar_status():
 @ordens_servico_bp.route("/ordens-servico/tipos", methods=["GET"])
 def listar_tipos():
     return jsonify({"tipos": [{"chave": t, "rotulo": TIPOS_OS_ROTULO[t]} for t in TIPOS_OS]})
+
+
+@ordens_servico_bp.route("/ordens-servico/modelos", methods=["GET"])
+def listar_modelos():
+    return jsonify({"modelos": [{"chave": m, "rotulo": MODELOS_OS_ROTULO[m]} for m in MODELOS_OS]})
+
+
+@ordens_servico_bp.route("/catalogo-servicos", methods=["GET"])
+def listar_catalogo_servicos():
+    """Lista de serviço+valor já cadastrados antes, pra reaproveitar num
+    orçamento novo sem redigitar — ordenado por uso mais recente primeiro."""
+    with db_conn() as conn:
+        itens = fetch_all(conn, "SELECT * FROM catalogo_servicos ORDER BY id DESC")
+    return jsonify({"itens": itens})
+
+
+@ordens_servico_bp.route("/catalogo-servicos", methods=["POST"])
+def criar_catalogo_servico():
+    d = request.get_json(silent=True) or {}
+    nome = (d.get("nome") or "").strip()
+    if not nome:
+        return jsonify({"erro": "Informe o nome do serviço"}), 400
+    valor = _num(d.get("valor"))
+
+    with db_conn(commit=True) as conn:
+        existente = fetch_one(conn, "SELECT id FROM catalogo_servicos WHERE LOWER(nome) = LOWER(?)",
+                              (nome,))
+        if existente:
+            # Reaproveita em vez de duplicar: dois itens "Troca de resistência"
+            # com valores diferentes na lista de sugestão só confundiria na
+            # hora de escolher qual usar. Atualiza o valor pro mais recente.
+            execute(conn, "UPDATE catalogo_servicos SET valor = ? WHERE id = ?",
+                   (valor, existente["id"]))
+            return jsonify({"mensagem": "Serviço já existia — valor atualizado",
+                            "id": existente["id"]})
+        item_id = insert_returning_id(conn, """
+            INSERT INTO catalogo_servicos (nome, valor, criado_em, criado_por)
+            VALUES (?, ?, ?, ?)
+        """, (nome, valor, _agora(), _quem()))
+
+    return jsonify({"mensagem": "Serviço adicionado ao catálogo", "id": item_id}), 201
+
+
+@ordens_servico_bp.route("/catalogo-servicos/<int:item_id>", methods=["DELETE"])
+def remover_catalogo_servico(item_id):
+    with db_conn(commit=True) as conn:
+        execute(conn, "DELETE FROM catalogo_servicos WHERE id = ?", (item_id,))
+    return jsonify({"mensagem": "Removido do catálogo"})
 
 
 @ordens_servico_bp.route("/ordens-servico", methods=["GET"])
@@ -901,6 +989,67 @@ def _pecas_da_os(conn, os_id) -> list:
     """, (str(os_id),))
 
 
+def _itens_do_orcamento(conn, os_id) -> list:
+    return fetch_all(conn, """
+        SELECT * FROM ordem_servico_itens WHERE ordem_servico_id = ? ORDER BY id
+    """, (os_id,))
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/itens", methods=["GET"])
+def listar_itens_orcamento(os_id):
+    with db_conn() as conn:
+        return jsonify({"itens": _itens_do_orcamento(conn, os_id)})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/itens", methods=["POST"])
+def adicionar_item_orcamento(os_id):
+    """Linha de serviço+valor no orçamento. ?salvar_catalogo=true (no corpo)
+    também grava/atualiza em catalogo_servicos, pro nome aparecer como
+    sugestão da próxima vez — sem isso, cada orçamento redigitaria os mesmos
+    serviços do zero."""
+    d = request.get_json(silent=True) or {}
+    nome = (d.get("nome") or "").strip()
+    if not nome:
+        return jsonify({"erro": "Informe o nome do serviço"}), 400
+    valor = _num(d.get("valor"))
+
+    with db_conn(commit=True) as conn:
+        existe = fetch_one(conn, "SELECT id, modelo_os FROM ordens_servico WHERE id = ?", (os_id,))
+        if not existe:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+
+        item_id = insert_returning_id(conn, """
+            INSERT INTO ordem_servico_itens (ordem_servico_id, nome, valor, criado_em)
+            VALUES (?, ?, ?, ?)
+        """, (os_id, nome, valor, _agora()))
+
+        if d.get("salvar_catalogo"):
+            catalogado = fetch_one(conn, "SELECT id FROM catalogo_servicos WHERE LOWER(nome) = LOWER(?)",
+                                   (nome,))
+            if catalogado:
+                execute(conn, "UPDATE catalogo_servicos SET valor = ? WHERE id = ?",
+                       (valor, catalogado["id"]))
+            else:
+                execute(conn, """
+                    INSERT INTO catalogo_servicos (nome, valor, criado_em, criado_por)
+                    VALUES (?, ?, ?, ?)
+                """, (nome, valor, _agora(), _quem()))
+
+        itens = _itens_do_orcamento(conn, os_id)
+
+    return jsonify({"mensagem": "Item adicionado ao orçamento", "id": item_id,
+                    "itens": itens}), 201
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/itens/<int:item_id>", methods=["DELETE"])
+def remover_item_orcamento(os_id, item_id):
+    with db_conn(commit=True) as conn:
+        execute(conn, "DELETE FROM ordem_servico_itens WHERE id = ? AND ordem_servico_id = ?",
+               (item_id, os_id))
+        itens = _itens_do_orcamento(conn, os_id)
+    return jsonify({"mensagem": "Item removido", "itens": itens})
+
+
 @ordens_servico_bp.route("/ordens-servico/<int:os_id>/pecas", methods=["GET"])
 def listar_pecas(os_id):
     with db_conn() as conn:
@@ -961,25 +1110,46 @@ def obter(os_id):
         """, (os_id,))
 
         pecas = _pecas_da_os(conn, os_id)
+        itens = _itens_do_orcamento(conn, os_id) if os_row.get("modelo_os") == "orcamento" else []
 
     termos = TERMOS_POR_TIPO.get(os_row.get("tipo_os"), TERMOS_PADRAO)
-    return jsonify({"ordem": os_row, "visitas": visitas, "pecas": pecas, "termos": termos})
+    return jsonify({"ordem": os_row, "visitas": visitas, "pecas": pecas,
+                    "itens": itens, "termos": termos})
 
 
 @ordens_servico_bp.route("/ordens-servico", methods=["POST"])
 def criar():
     """Body: {cliente_id} OU {cliente_novo: {...}} — abrir OS com cliente que
     já existe, ou cadastrar e abrir na mesma tacada (é o caminho mais comum:
-    cliente novo ligando pela primeira vez)."""
+    cliente novo ligando pela primeira vez).
+
+    ?modelo_os decide qual conjunto de campos vale (ver MODELOS_OS): 'os'
+    (padrão) exige tipo_os pro termo jurídico; 'chamado_tecnico' e
+    'orcamento' não usam tipo_os/termo nenhum, e aceitam solucao/foto/
+    tecnico_atendeu_id e, no caso do orçamento, uma lista inicial de itens.
+    """
     d = request.get_json(silent=True) or {}
     campos = _campos_os(d)
 
     if not campos["tipo_aparelho"] and not campos["defeito_declarado"]:
         return jsonify({"erro": "Informe ao menos o aparelho ou o defeito declarado"}), 400
 
-    erro_tipo_os, tipo_os = _validar_tipo_os(d.get("tipo_os"))
-    if erro_tipo_os:
-        return jsonify({"erro": erro_tipo_os}), 400
+    erro_modelo, modelo_os = _validar_modelo_os(d.get("modelo_os"))
+    if erro_modelo:
+        return jsonify({"erro": erro_modelo}), 400
+
+    tipo_os = None
+    if modelo_os == "os":
+        erro_tipo_os, tipo_os = _validar_tipo_os(d.get("tipo_os"))
+        if erro_tipo_os:
+            return jsonify({"erro": erro_tipo_os}), 400
+
+    solucao = (d.get("solucao") or "").strip()
+    foto = _foto_valida(d.get("foto")) if modelo_os == "chamado_tecnico" else None
+    try:
+        tecnico_atendeu_id = int(d["tecnico_atendeu_id"]) if d.get("tecnico_atendeu_id") else None
+    except (TypeError, ValueError):
+        tecnico_atendeu_id = None
 
     with db_conn(commit=True) as conn:
         cliente_id = d.get("cliente_id")
@@ -999,13 +1169,24 @@ def criar():
             INSERT INTO ordens_servico
                 (cliente_id, atendente, tipo_aparelho, marca, modelo,
                  numero_serie, acessorios, defeito_declarado, taxa_avaliacao,
-                 status, observacao, criado_em, criado_por, tipo_os)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, observacao, criado_em, criado_por, tipo_os,
+                 modelo_os, solucao, foto, tecnico_atendeu_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
-              tipo_os))
+              tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id))
+
+        if modelo_os == "orcamento":
+            for item in (d.get("itens") or []):
+                nome_item = (item.get("nome") or "").strip()
+                if not nome_item:
+                    continue
+                execute(conn, """
+                    INSERT INTO ordem_servico_itens (ordem_servico_id, nome, valor, criado_em)
+                    VALUES (?, ?, ?, ?)
+                """, (os_id, nome_item, _num(item.get("valor")), agora))
 
     return jsonify({"mensagem": "Ordem de serviço aberta", "id": os_id,
                     "cliente_id": cliente_id}), 201
@@ -1022,7 +1203,7 @@ def editar(os_id):
 
         campos, valores = [], []
         for chave in ("tipo_aparelho", "marca", "modelo", "numero_serie",
-                     "acessorios", "defeito_declarado", "observacao"):
+                     "acessorios", "defeito_declarado", "observacao", "solucao"):
             if chave in d:
                 campos.append(f"{chave} = ?")
                 valores.append((d.get(chave) or "").strip())
@@ -1044,6 +1225,16 @@ def editar(os_id):
                 return jsonify({"erro": erro_tipo_os}), 400
             campos.append("tipo_os = ?")
             valores.append(tipo_os)
+        if "foto" in d:
+            campos.append("foto = ?")
+            valores.append(_foto_valida(d.get("foto")))
+        if "tecnico_atendeu_id" in d:
+            try:
+                tecnico_atendeu_id = int(d["tecnico_atendeu_id"]) if d.get("tecnico_atendeu_id") else None
+            except (TypeError, ValueError):
+                tecnico_atendeu_id = None
+            campos.append("tecnico_atendeu_id = ?")
+            valores.append(tecnico_atendeu_id)
 
         if not campos:
             return jsonify({"mensagem": "Nada para mudar"})

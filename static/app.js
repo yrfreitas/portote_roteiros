@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v105';
+const VERSAO_PAINEL = 'v106';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5507,6 +5507,13 @@ const TIPOS_OS_ROTULO = {
   retirado_aprovado:              'Retirado / Aprovado',
 };
 
+// Espelha MODELOS_OS_ROTULO em routes/ordens_servico.py.
+const MODELOS_OS_ROTULO = {
+  os:               'Ordens de Serviço',
+  chamado_tecnico:  'Chamado Técnico',
+  orcamento:        'Fazer Orçamento',
+};
+
 let _osFiltroStatus = '';
 let _osFiltroDias = '';
 let _osBuscaTexto = '';
@@ -5554,16 +5561,23 @@ async function carregarOS() {
     return;
   }
 
-  const linhas = r.ordens.map(o => `
-    <div class="os-linha" onclick="abrirOSDetalhe(${o.id})">
-      <div class="num">OS #${String(o.id).padStart(6, '0')}</div>
+  const linhas = r.ordens.map(o => {
+    const statusClasse = o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso';
+    const modeloClasse = o.modelo_os === 'chamado_tecnico' ? 'chamado' : o.modelo_os === 'orcamento' ? 'orcamento' : '';
+    return `
+    <div class="os-linha status-${statusClasse}" onclick="abrirOSDetalhe(${o.id})">
+      <div class="num-bloco">
+        <div class="num">OS #${String(o.id).padStart(6, '0')}</div>
+        ${modeloClasse ? `<span class="os-modelo-badge ${modeloClasse}">${esc(MODELOS_OS_ROTULO[o.modelo_os] || '')}</span>` : ''}
+      </div>
       <div>
         <div class="cliente">${esc(o.cliente_nome)}</div>
         <div class="aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || '—'}</div>
       </div>
       <div class="defeito">${esc(o.defeito_declarado || '—')}</div>
-      <span class="conc-tag ${o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso'}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
-    </div>`).join('');
+      <span class="conc-tag ${statusClasse}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
+    </div>`;
+  }).join('');
 
   mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${linhas}`;
 }
@@ -5820,11 +5834,16 @@ function osFiltrar(status) {
   carregarOS();
 }
 
+let _novaOSModelo = 'os';
+let _novaOSFoto = null;
+let _novosItensOrcamento = [];
+
 async function abrirModalNovaOS() {
   _osClienteSelecionado = null;
   ['os-nome','os-cpf','os-telefone','os-email','os-cep','os-numero','os-bairro',
    'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
-   'os-serie','os-acessorios','os-defeito','os-obs','os-tipo'].forEach(id => {
+   'os-serie','os-acessorios','os-defeito','os-obs','os-tipo','os-solucao',
+   'os-chamado-tecnico'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -5834,7 +5853,11 @@ async function abrirModalNovaOS() {
   document.getElementById('os-busca-cliente').value = '';
   document.getElementById('os-resultado-cliente').innerHTML = '';
   document.getElementById('os-historico-cliente').innerHTML = '';
+  document.getElementById('os-chamado-foto-status').textContent = '';
+  _novaOSFoto = null;
+  _novosItensOrcamento = [];
   osEscolherModoCliente('existente');
+  osEscolherModelo('os');
 
   if (!_osIndicacoesCarregadas) {
     try {
@@ -5846,7 +5869,108 @@ async function abrirModalNovaOS() {
     } catch { /* select fica só com "Selecione..." se falhar */ }
   }
 
+  const selTecnico = document.getElementById('os-chamado-tecnico');
+  selTecnico.innerHTML = '<option value="">Selecione...</option>' +
+    (tecnicos || []).map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('');
+
+  osCarregarCatalogoDatalist();
+
   document.getElementById('modal-nova-os').classList.add('open');
+}
+
+// Alterna qual conjunto de campos aparece — as três opções mudam o que a OS
+// grava e como ela imprime (ver MODELOS_OS_ROTULO em routes/ordens_servico.py).
+// "Ordens de Serviço" é o padrão de sempre; os outros dois nem usam tipo_os.
+function osEscolherModelo(modelo) {
+  _novaOSModelo = modelo;
+  document.querySelectorAll('.modelo-os-btn').forEach(b =>
+    b.classList.toggle('ativo', b.dataset.modelo === modelo));
+
+  document.getElementById('os-campos-tipo-padrao').style.display = modelo === 'os' ? '' : 'none';
+  document.getElementById('os-campos-taxa').style.display = modelo === 'os' ? '' : 'none';
+  document.getElementById('os-campos-solucao').style.display = modelo === 'os' ? 'none' : '';
+  document.getElementById('os-campos-chamado').style.display = modelo === 'chamado_tecnico' ? '' : 'none';
+  document.getElementById('os-campos-orcamento-itens').style.display = modelo === 'orcamento' ? '' : 'none';
+}
+
+async function osCarregarCatalogoDatalist() {
+  try {
+    const r = await api('/catalogo-servicos');
+    document.getElementById('os-orc-catalogo').innerHTML =
+      r.itens.map(i => `<option value="${esc(i.nome)}" data-valor="${i.valor}">`).join('');
+  } catch { /* datalist fica vazio se falhar — não trava o resto do modal */ }
+}
+
+async function osEscolherFotoChamado(input) {
+  const arquivo = input.files && input.files[0];
+  if (!arquivo) return;
+  const status = document.getElementById('os-chamado-foto-status');
+  status.textContent = 'preparando a foto...';
+  try {
+    _novaOSFoto = await reduzirFotoInteira(arquivo);
+    status.textContent = 'Foto pronta ✓';
+  } catch (e) {
+    _novaOSFoto = null;
+    status.textContent = e.message;
+  } finally {
+    input.value = '';
+  }
+}
+
+// Preenche o valor sozinho quando o nome bate com algo do catálogo — só
+// funciona pra opção escolhida da lista (o navegador copia o texto exato da
+// <option>), então um nome digitado na mão nunca sobrescreve o que a pessoa
+// já tinha começado a digitar no valor. Dois formulários usam isso (Nova OS
+// e o detalhe de uma OS já aberta), daí os ids virem por parâmetro.
+function osPreencherValorDoCatalogo(nome, valorId = 'os-orc-item-valor', datalistId = 'os-orc-catalogo') {
+  const opcoes = document.querySelectorAll(`#${datalistId} option`);
+  for (const op of opcoes) {
+    if (op.value === nome) {
+      const valorEl = document.getElementById(valorId);
+      if (valorEl && !valorEl.value) valorEl.value = op.dataset.valor;
+      return;
+    }
+  }
+}
+
+function osAdicionarItemOrcamentoNovo() {
+  const nomeEl = document.getElementById('os-orc-item-nome');
+  const valorEl = document.getElementById('os-orc-item-valor');
+  const nome = nomeEl.value.trim();
+  if (!nome) { toast('Informe o nome do serviço', 'error'); nomeEl.focus(); return; }
+  const valor = Number(valorEl.value) || 0;
+  _novosItensOrcamento.push({ nome, valor });
+  nomeEl.value = '';
+  valorEl.value = '';
+  nomeEl.focus();
+  _renderItensOrcamentoNovo();
+  // Some no catálogo pra próxima vez sem precisar abrir tela nenhuma —
+  // é o "botão de criar" que o Kalebe pediu, só que automático no uso.
+  api('/catalogo-servicos', { method: 'POST', body: JSON.stringify({ nome, valor }) })
+    .then(osCarregarCatalogoDatalist).catch(() => {});
+}
+
+function osRemoverItemOrcamentoNovo(indice) {
+  _novosItensOrcamento.splice(indice, 1);
+  _renderItensOrcamentoNovo();
+}
+
+function _renderItensOrcamentoNovo() {
+  const lista = document.getElementById('os-orc-itens-lista');
+  const total = document.getElementById('os-orc-total');
+  if (_novosItensOrcamento.length === 0) {
+    lista.innerHTML = `<p class="ajuda-texto" style="margin:0 0 8px;">Nenhum serviço adicionado ainda.</p>`;
+    total.textContent = '';
+    return;
+  }
+  lista.innerHTML = _novosItensOrcamento.map((it, i) => `
+    <div class="os-orc-item-linha">
+      <span>${esc(it.nome)}</span>
+      <span>R$ ${it.valor.toFixed(2).replace('.', ',')}</span>
+      <button type="button" class="btn-remove" onclick="osRemoverItemOrcamentoNovo(${i})">${icone('x', 'icone-11')}</button>
+    </div>`).join('');
+  const soma = _novosItensOrcamento.reduce((s, it) => s + it.valor, 0);
+  total.textContent = `Total: R$ ${soma.toFixed(2).replace('.', ',')}`;
 }
 
 let _osCepUltimo = '';
@@ -5943,25 +6067,34 @@ async function osSelecionarCliente(id, nome) {
 }
 
 async function osCriar() {
-  const tipoOs = document.getElementById('os-tipo').value;
-  if (!tipoOs) {
-    toast('Escolha o tipo de OS.', 'error');
-    document.getElementById('os-tipo').focus();
-    return;
-  }
-
-  const modo = document.querySelector('#os-cliente-modo .pecas-filtro.ativo')?.dataset.modo;
   const corpo = {
-    tipo_os: tipoOs,
+    modelo_os: _novaOSModelo,
     tipo_aparelho: document.getElementById('os-tipo-aparelho').value.trim(),
     marca: document.getElementById('os-marca').value.trim(),
     modelo: document.getElementById('os-modelo').value.trim(),
     numero_serie: document.getElementById('os-serie').value.trim(),
     acessorios: document.getElementById('os-acessorios').value.trim(),
     defeito_declarado: document.getElementById('os-defeito').value.trim(),
-    taxa_avaliacao: document.getElementById('os-taxa').value || 0,
     observacao: document.getElementById('os-obs').value.trim(),
   };
+
+  if (_novaOSModelo === 'os') {
+    const tipoOs = document.getElementById('os-tipo').value;
+    if (!tipoOs) {
+      toast('Escolha o tipo de OS.', 'error');
+      document.getElementById('os-tipo').focus();
+      return;
+    }
+    corpo.tipo_os = tipoOs;
+    corpo.taxa_avaliacao = document.getElementById('os-taxa').value || 0;
+  } else if (_novaOSModelo === 'chamado_tecnico') {
+    corpo.solucao = document.getElementById('os-solucao').value.trim();
+    corpo.tecnico_atendeu_id = document.getElementById('os-chamado-tecnico').value || null;
+    if (_novaOSFoto) corpo.foto = _novaOSFoto;
+  } else if (_novaOSModelo === 'orcamento') {
+    corpo.solucao = document.getElementById('os-solucao').value.trim();
+    corpo.itens = _novosItensOrcamento;
+  }
 
   if (modo === 'existente') {
     if (!_osClienteSelecionado) {
@@ -6001,6 +6134,211 @@ async function osCriar() {
   }
 }
 
+// A seção "miolo" do detalhe da OS muda de cara conforme o modelo (ver
+// MODELOS_OS_ROTULO) — mesma ideia da Nova OS, só que aqui já tem dado
+// salvo pra mostrar. Devolve o HTML pronto; cada modelo grava com sua
+// própria função (osSalvarEdicao / osSalvarEdicaoChamado / osSalvarEdicaoOrcamento).
+function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
+  const equipamento = `
+    <p class="form-separador">Equipamento</p>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label" for="os-ed-tipo">Tipo</label>
+        <input class="form-input" id="os-ed-tipo" value="${esc(o.tipo_aparelho)}"></div>
+      <div class="form-group"><label class="form-label" for="os-ed-marca">Marca</label>
+        <input class="form-input" id="os-ed-marca" value="${esc(o.marca)}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label" for="os-ed-modelo">Modelo</label>
+        <input class="form-input" id="os-ed-modelo" value="${esc(o.modelo)}"></div>
+      <div class="form-group"><label class="form-label" for="os-ed-serie">Nº de série</label>
+        <input class="form-input" id="os-ed-serie" value="${esc(o.numero_serie)}"></div>
+    </div>
+    <div class="form-group"><label class="form-label" for="os-ed-acessorios">Acessórios</label>
+      <input class="form-input" id="os-ed-acessorios" value="${esc(o.acessorios)}"></div>`;
+
+  const defeito = `
+    <div class="form-group"><label class="form-label" for="os-ed-defeito">Defeito declarado</label>
+      <textarea class="form-input" id="os-ed-defeito" rows="2">${esc(o.defeito_declarado)}</textarea></div>`;
+
+  const observacao = `
+    <div class="form-group"><label class="form-label" for="os-ed-obs">Observação${o.modelo_os === 'os' ? ' interna' : ''}</label>
+      <textarea class="form-input" id="os-ed-obs" rows="2">${esc(o.observacao)}</textarea></div>`;
+
+  if (o.modelo_os === 'chamado_tecnico') {
+    return `
+    <div class="os-detalhe-secao">
+      ${equipamento}
+      ${defeito}
+      <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
+        <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
+      <div class="form-group"><label class="form-label" for="os-ed-tecnico">Técnico que atendeu</label>
+        <select class="form-input" id="os-ed-tecnico">
+          <option value="">Selecione...</option>
+          ${tecnicos.map(t => `<option value="${t.id}"${o.tecnico_atendeu_id === t.id ? ' selected' : ''}>${esc(t.nome)}</option>`).join('')}
+        </select></div>
+      <div class="form-group">
+        <label class="form-label" for="os-ed-foto">Foto do produto</label>
+        ${o.foto ? `<img src="${o.foto}" alt="Foto do produto" style="max-width:220px;border-radius:8px;display:block;margin-bottom:8px;">` : ''}
+        <input class="form-input" type="file" accept="image/*" capture="environment" id="os-ed-foto"
+               onchange="osEscolherFotoEdicao(this)">
+      </div>
+      ${observacao}
+      <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoChamado(${o.id})">Salvar alterações</button>
+    </div>`;
+  }
+
+  if (o.modelo_os === 'orcamento') {
+    return `
+    <div class="os-detalhe-secao">
+      ${equipamento}
+      ${defeito}
+      <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
+        <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
+      ${observacao}
+      <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoOrcamento(${o.id})">Salvar alterações</button>
+    </div>
+    <div class="os-detalhe-secao">
+      <p class="form-separador">Itens do orçamento</p>
+      <div id="os-det-itens-lista">${osRenderItensOrcamento(_osItensAtuais)}</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="os-det-item-nome">Serviço</label>
+          <input class="form-input" id="os-det-item-nome" autocomplete="off"
+                 list="os-det-orc-catalogo" placeholder="Ex: Troca de resistência"
+                 oninput="osPreencherValorDoCatalogo(this.value, 'os-det-item-valor', 'os-det-orc-catalogo')"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault(); osAdicionarItemOrcamento(${o.id});}">
+          <datalist id="os-det-orc-catalogo"></datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="os-det-item-valor">Valor (R$)</label>
+          <input class="form-input" type="number" step="0.01" min="0" id="os-det-item-valor"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault(); osAdicionarItemOrcamento(${o.id});}">
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="osAdicionarItemOrcamento(${o.id})">+ Adicionar serviço</button>
+      <div class="os-orc-total" id="os-det-orc-total"></div>
+    </div>`;
+  }
+
+  return `
+    <div class="os-detalhe-secao">
+      <label class="form-label" for="os-ed-tipo-os">Tipo de OS</label>
+      <select class="form-input" id="os-ed-tipo-os">${opcoesTipoOs}</select>
+    </div>
+    <div class="os-detalhe-secao">
+      ${equipamento}
+      ${defeito}
+      <div class="form-row">
+        <div class="form-group"><label class="form-label" for="os-ed-taxa">Taxa de avaliação (R$)</label>
+          <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa" value="${o.taxa_avaliacao ?? 0}"></div>
+      </div>
+      ${observacao}
+      <button class="btn btn-primary btn-sm" onclick="osSalvarEdicao(${o.id})">Salvar alterações</button>
+    </div>`;
+}
+
+function osRenderItensOrcamento(itens) {
+  if (!itens || itens.length === 0) {
+    return `<p class="ajuda-texto" style="margin:0 0 8px;">Nenhum serviço lançado ainda.</p>`;
+  }
+  const soma = itens.reduce((s, it) => s + Number(it.valor || 0), 0);
+  setTimeout(() => {
+    const total = document.getElementById('os-det-orc-total');
+    if (total) total.textContent = `Total: R$ ${soma.toFixed(2).replace('.', ',')}`;
+  }, 0);
+  return itens.map(it => `
+    <div class="os-orc-item-linha">
+      <span>${esc(it.nome)}</span>
+      <span>R$ ${Number(it.valor).toFixed(2).replace('.', ',')}</span>
+      <button type="button" class="btn-remove" onclick="osRemoverItemOrcamento(${it.ordem_servico_id}, ${it.id})">${icone('x', 'icone-11')}</button>
+    </div>`).join('');
+}
+
+let _osItensAtuais = [];
+let _osEdicaoFoto = undefined;   // undefined = não mexeu; null = foto inválida; string = nova foto
+
+function osEscolherFotoEdicao(input) {
+  const arquivo = input.files && input.files[0];
+  if (!arquivo) return;
+  reduzirFotoInteira(arquivo).then(foto => {
+    _osEdicaoFoto = foto;
+    toast('Foto pronta — clique em Salvar alterações', 'success');
+  }).catch(e => toast(e.message, 'error'))
+    .finally(() => { input.value = ''; });
+}
+
+async function osAdicionarItemOrcamento(osId) {
+  const nomeEl = document.getElementById('os-det-item-nome');
+  const valorEl = document.getElementById('os-det-item-valor');
+  const nome = nomeEl.value.trim();
+  if (!nome) { toast('Informe o nome do serviço', 'error'); nomeEl.focus(); return; }
+  try {
+    const r = await api(`/ordens-servico/${osId}/itens`, {
+      method: 'POST',
+      body: JSON.stringify({ nome, valor: Number(valorEl.value) || 0, salvar_catalogo: true }),
+    });
+    _osItensAtuais = r.itens;
+    document.getElementById('os-det-itens-lista').innerHTML = osRenderItensOrcamento(_osItensAtuais);
+    nomeEl.value = ''; valorEl.value = ''; nomeEl.focus();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function osRemoverItemOrcamento(osId, itemId) {
+  try {
+    const r = await api(`/ordens-servico/${osId}/itens/${itemId}`, { method: 'DELETE' });
+    _osItensAtuais = r.itens;
+    document.getElementById('os-det-itens-lista').innerHTML = osRenderItensOrcamento(_osItensAtuais);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function osSalvarEdicaoChamado(id) {
+  const corpo = {
+    tipo_aparelho: document.getElementById('os-ed-tipo').value.trim(),
+    marca: document.getElementById('os-ed-marca').value.trim(),
+    modelo: document.getElementById('os-ed-modelo').value.trim(),
+    numero_serie: document.getElementById('os-ed-serie').value.trim(),
+    acessorios: document.getElementById('os-ed-acessorios').value.trim(),
+    defeito_declarado: document.getElementById('os-ed-defeito').value.trim(),
+    solucao: document.getElementById('os-ed-solucao').value.trim(),
+    tecnico_atendeu_id: document.getElementById('os-ed-tecnico').value || null,
+    observacao: document.getElementById('os-ed-obs').value.trim(),
+  };
+  if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
+  try {
+    await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify(corpo) });
+    toast('OS atualizada', 'success');
+    _osEdicaoFoto = undefined;
+    carregarOS();
+    abrirOSDetalhe(id);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function osSalvarEdicaoOrcamento(id) {
+  const corpo = {
+    tipo_aparelho: document.getElementById('os-ed-tipo').value.trim(),
+    marca: document.getElementById('os-ed-marca').value.trim(),
+    modelo: document.getElementById('os-ed-modelo').value.trim(),
+    numero_serie: document.getElementById('os-ed-serie').value.trim(),
+    acessorios: document.getElementById('os-ed-acessorios').value.trim(),
+    defeito_declarado: document.getElementById('os-ed-defeito').value.trim(),
+    solucao: document.getElementById('os-ed-solucao').value.trim(),
+    observacao: document.getElementById('os-ed-obs').value.trim(),
+  };
+  try {
+    await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify(corpo) });
+    toast('OS atualizada', 'success');
+    carregarOS();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
 async function abrirOSDetalhe(id) {
   let r;
   try {
@@ -6010,6 +6348,8 @@ async function abrirOSDetalhe(id) {
     return;
   }
   const o = r.ordem;
+  _osItensAtuais = r.itens || [];
+  _osEdicaoFoto = undefined;
   document.getElementById('os-detalhe-titulo').textContent =
     `OS #${String(o.id).padStart(6, '0')} · ${o.cliente_nome}`;
 
@@ -6032,9 +6372,13 @@ async function abrirOSDetalhe(id) {
 
   const opcoesTecnico = tecnicos.map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('');
 
+  const modeloBadge = o.modelo_os && o.modelo_os !== 'os'
+    ? `<span class="os-modelo-badge ${o.modelo_os === 'chamado_tecnico' ? 'chamado' : 'orcamento'}" style="margin-left:8px;">${esc(MODELOS_OS_ROTULO[o.modelo_os])}</span>`
+    : '';
+
   document.getElementById('os-detalhe-corpo').innerHTML = `
     <div class="os-detalhe-secao">
-      <label class="form-label">Status</label>
+      <label class="form-label">Status ${modeloBadge}</label>
       <select class="form-input" onchange="osAtualizarStatus(${o.id}, this.value)">${opcoesStatus}</select>
       ${o.status === 'aguardando_agendamento' && o.oculta_fila_em ? `
         <p class="ajuda-texto" style="margin:8px 0 0;">
@@ -6043,36 +6387,7 @@ async function abrirOSDetalhe(id) {
                   onclick="osReexibirFila(${o.id})">Devolver pra fila</button>
         </p>` : ''}
     </div>
-    <div class="os-detalhe-secao">
-      <label class="form-label" for="os-ed-tipo-os">Tipo de OS</label>
-      <select class="form-input" id="os-ed-tipo-os">${opcoesTipoOs}</select>
-    </div>
-    <div class="os-detalhe-secao">
-      <p class="form-separador">Equipamento</p>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label" for="os-ed-tipo">Tipo</label>
-          <input class="form-input" id="os-ed-tipo" value="${esc(o.tipo_aparelho)}"></div>
-        <div class="form-group"><label class="form-label" for="os-ed-marca">Marca</label>
-          <input class="form-input" id="os-ed-marca" value="${esc(o.marca)}"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label" for="os-ed-modelo">Modelo</label>
-          <input class="form-input" id="os-ed-modelo" value="${esc(o.modelo)}"></div>
-        <div class="form-group"><label class="form-label" for="os-ed-serie">Nº de série</label>
-          <input class="form-input" id="os-ed-serie" value="${esc(o.numero_serie)}"></div>
-      </div>
-      <div class="form-group"><label class="form-label" for="os-ed-acessorios">Acessórios</label>
-        <input class="form-input" id="os-ed-acessorios" value="${esc(o.acessorios)}"></div>
-      <div class="form-group"><label class="form-label" for="os-ed-defeito">Defeito declarado</label>
-        <textarea class="form-input" id="os-ed-defeito" rows="2">${esc(o.defeito_declarado)}</textarea></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label" for="os-ed-taxa">Taxa de avaliação (R$)</label>
-          <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa" value="${o.taxa_avaliacao ?? 0}"></div>
-      </div>
-      <div class="form-group"><label class="form-label" for="os-ed-obs">Observação interna</label>
-        <textarea class="form-input" id="os-ed-obs" rows="2">${esc(o.observacao)}</textarea></div>
-      <button class="btn btn-primary btn-sm" onclick="osSalvarEdicao(${o.id})">Salvar alterações</button>
-    </div>
+    ${_osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico)}
     <div class="os-detalhe-secao">
       <p class="form-separador">Visitas agendadas</p>
       ${visitas}
@@ -6110,6 +6425,14 @@ async function abrirOSDetalhe(id) {
     <div class="os-detalhe-secao">
       <a class="btn btn-ghost btn-sm" href="/os/${o.id}/imprimir" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Imprimir OS</a>
     </div>`;
+
+  if (o.modelo_os === 'orcamento') {
+    try {
+      const rc = await api('/catalogo-servicos');
+      const dl = document.getElementById('os-det-orc-catalogo');
+      if (dl) dl.innerHTML = rc.itens.map(i => `<option value="${esc(i.nome)}" data-valor="${i.valor}">`).join('');
+    } catch { /* datalist fica vazio se falhar */ }
+  }
 
   document.getElementById('modal-os-detalhe').classList.add('open');
 }

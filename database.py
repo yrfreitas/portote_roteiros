@@ -838,6 +838,31 @@ _MIGRACOES_PG = [
     # já foram tratados por fora (cliente ligou direto, por exemplo) sem forçar
     # um status que não é verdade ('agendada' mentiria que já tem visita).
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS oculta_fila_em TEXT",
+    # Três modelos de documento na mesma tabela — pedido de 2026-08-27: "os"
+    # é o padrão de sempre (com tipo_os e termos), "chamado_tecnico" é um
+    # registro de atendimento pontual (foto, defeito, solução, técnico),
+    # "orcamento" é uma proposta de preço (itens em ordem_servico_itens).
+    # Default 'os' porque toda OS já existente é desse tipo.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS modelo_os TEXT DEFAULT 'os'",
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS solucao TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS foto TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS tecnico_atendeu_id INTEGER REFERENCES tecnicos(id) ON DELETE SET NULL",
+    """CREATE TABLE IF NOT EXISTS ordem_servico_itens (
+        id                SERIAL PRIMARY KEY,
+        ordem_servico_id  INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
+        nome              TEXT NOT NULL,
+        valor             DOUBLE PRECISION DEFAULT 0,
+        criado_em         TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
+    # Catálogo de serviços do orçamento: reaproveitável entre orçamentos
+    # diferentes, pra não redigitar "Troca de resistência — R$ 120" toda vez.
+    """CREATE TABLE IF NOT EXISTS catalogo_servicos (
+        id         SERIAL PRIMARY KEY,
+        nome       TEXT NOT NULL UNIQUE,
+        valor      DOUBLE PRECISION DEFAULT 0,
+        criado_em  TEXT DEFAULT CURRENT_TIMESTAMP,
+        criado_por TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -930,6 +955,25 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE servicos ADD COLUMN telefone TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN tipo_os TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN oculta_fila_em TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN modelo_os TEXT DEFAULT 'os'",
+    "ALTER TABLE ordens_servico ADD COLUMN solucao TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN foto TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN tecnico_atendeu_id INTEGER",
+    """CREATE TABLE IF NOT EXISTS ordem_servico_itens (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        ordem_servico_id  INTEGER NOT NULL,
+        nome              TEXT NOT NULL,
+        valor             REAL DEFAULT 0,
+        criado_em         TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS catalogo_servicos (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome       TEXT NOT NULL UNIQUE,
+        valor      REAL DEFAULT 0,
+        criado_em  TEXT DEFAULT CURRENT_TIMESTAMP,
+        criado_por TEXT
+    )""",
 ]
 
 

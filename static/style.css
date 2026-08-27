@@ -457,19 +457,56 @@ header {
 .os-cartao .rot { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
 .os-linha {
-  display: grid; grid-template-columns: 90px 1.4fr 1fr 130px; gap: 12px; align-items: center;
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
-  padding: 12px 14px; margin-bottom: 8px; cursor: pointer;
-  transition: background .14s ease, border-color .14s ease;
+  display: grid; grid-template-columns: 100px 1.4fr 1fr 150px; gap: 14px; align-items: center;
+  background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--border);
+  border-radius: 13px; padding: 13px 16px; margin-bottom: 9px; cursor: pointer;
+  transition: background .14s ease, border-color .14s ease, box-shadow .14s ease, transform .14s ease;
 }
-.os-linha:hover { background: var(--bg-elevated); border-color: var(--border-bright); }
+.os-linha:hover {
+  background: var(--bg-elevated); border-color: var(--border-bright);
+  box-shadow: 0 6px 18px rgba(0,0,0,.14); transform: translateY(-1px);
+}
+.os-linha.status-ok { border-left-color: var(--success-text, #2aa05c); }
+.os-linha.status-aviso { border-left-color: var(--accent); }
+.os-linha.status-neutro { border-left-color: var(--text-muted); }
+.os-linha .num-bloco { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .os-linha .num { font-family: var(--font-mono); font-weight: 700; font-size: 13px; }
 .os-linha .cliente { font-weight: 650; font-size: 13.5px; }
 .os-linha .aparelho { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .os-linha .defeito { font-size: 12px; color: var(--text-secondary); }
+.os-modelo-badge {
+  display: inline-flex; align-items: center; font-size: 9.5px; font-weight: 700;
+  letter-spacing: .3px; text-transform: uppercase; padding: 2px 8px; border-radius: 20px;
+  background: var(--glass-fill, rgba(255,255,255,.06)); color: var(--text-muted);
+  border: 1px solid var(--border); white-space: nowrap;
+}
+.os-modelo-badge.chamado { color: var(--accent-text, #4f8dfb); border-color: var(--accent); }
+.os-modelo-badge.orcamento { color: var(--gold, #d4a94f); border-color: var(--gold, #d4a94f); }
 @media (max-width: 760px) {
   .os-linha { grid-template-columns: 1fr; }
 }
+
+/* ─── Modo de OS (Nova OS): três documentos, um seletor só ────────────── */
+.modelo-os-botoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.modelo-os-btn {
+  flex: 1 1 150px; padding: 11px 14px; border-radius: 10px; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 650; text-align: center;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary);
+  transition: all .14s ease;
+}
+.modelo-os-btn:hover { border-color: var(--border-bright); background: var(--bg-elevated); }
+.modelo-os-btn.ativo {
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: var(--on-accent); border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), var(--glow-accent-sm);
+}
+
+.os-orc-item-linha {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
+  padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 6px;
+  font-size: 12.5px;
+}
+.os-orc-total { font-weight: 700; font-size: 14px; margin-top: 8px; text-align: right; }
 
 /* ─── Agendar Clientes: card de ação, não linha de tabela ─────────────
    Diferente da lista da aba OS (que é consulta), esta é uma fila de fazer:
