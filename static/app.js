@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v95';
+const VERSAO_PAINEL = 'v96';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5573,29 +5573,75 @@ async function carregarOS() {
 // É a mesma OS que a aba OS já lista, só que fixada no status
 // 'aguardando_agendamento' — toda OS nova nasce nesse status, e uma peça
 // que chegou (aba Peças) também cai aqui via /pedidos/<linha>/agendar-cliente.
-// Uma fila só, em vez de duas listas que ninguém sabe qual conferir.
+// Dividida em duas abas — igual o Verificador de CEP — porque são dois
+// fluxos de origem bem diferentes (peça que chegou x atendimento que não
+// rolou e precisa de outra visita): misturado numa lista só, quem confere a
+// fila não sabe se aquele card é "compra pronta esperando" ou "revisita".
+let _agendarDados = { peca: [], reagendamento: [] };
+let _agendarTab = 'reagendamento';
+let _agendarFiltroTexto = '';
+
 async function carregarAgendarClientes() {
   const mount = document.getElementById('agendar-conteudo');
   if (!mount) return;
   mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
 
-  let r;
+  let rReag, rPeca;
   try {
-    r = await api('/ordens-servico?status=aguardando_agendamento');
+    [rReag, rPeca] = await Promise.all([
+      api('/ordens-servico?status=aguardando_agendamento&fonte=reagendamento'),
+      api('/ordens-servico?status=aguardando_agendamento&fonte=peca'),
+    ]);
   } catch (e) {
     mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
     return;
   }
 
-  atualizarSeloAgendar(r.ordens.length);
+  _agendarDados = { reagendamento: rReag.ordens, peca: rPeca.ordens };
+  atualizarSeloAgendar(rReag.ordens.length + rPeca.ordens.length);
+  _renderAgendarTabs();
+}
 
-  if (r.ordens.length === 0) {
+function agendarSwitchTab(tab) {
+  _agendarTab = tab;
+  _renderAgendarTabs();
+}
+
+function agendarFiltrar(valor) {
+  _agendarFiltroTexto = (valor || '').trim().toLowerCase();
+  _renderAgendarLista();
+}
+
+function _renderAgendarTabs() {
+  ['reagendamento', 'peca'].forEach(t => {
+    const btn = document.getElementById('atab-' + t);
+    if (btn) btn.classList.toggle('active', t === _agendarTab);
+    const cont = document.getElementById('atab-' + t + '-cont');
+    if (cont) cont.textContent = (_agendarDados[t] || []).length || '';
+  });
+  _renderAgendarLista();
+}
+
+function _renderAgendarLista() {
+  const mount = document.getElementById('agendar-conteudo');
+  if (!mount) return;
+
+  let ordens = _agendarDados[_agendarTab] || [];
+  if (_agendarFiltroTexto) {
+    ordens = ordens.filter(o => [
+      o.cliente_nome, o.tipo_aparelho, o.marca, o.modelo, `os${o.id}`, `#${o.id}`,
+    ].filter(Boolean).join(' ').toLowerCase().includes(_agendarFiltroTexto));
+  }
+
+  if (ordens.length === 0) {
     mount.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
-      <p>Ninguém esperando agendamento no momento.</p></div>`;
+      <p>${_agendarFiltroTexto ? 'Nada encontrado com esse filtro.'
+        : _agendarTab === 'peca' ? 'Nenhuma peça esperando cliente ser agendado.'
+        : 'Ninguém esperando reagendamento no momento.'}</p></div>`;
     return;
   }
 
-  mount.innerHTML = r.ordens.map(o => `
+  mount.innerHTML = ordens.map(o => `
     <div class="agendar-card" onclick="abrirOSDetalhe(${o.id})">
       <div class="agendar-card-topo">
         <div class="agendar-cliente">${esc(o.cliente_nome)}</div>

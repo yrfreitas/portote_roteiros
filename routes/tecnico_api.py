@@ -7,9 +7,8 @@ log = logging.getLogger("portotec.tecnico_api")
 
 from database import (db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id, ler_revisao, sql)
-from routes.fichas import (STATUS_VALIDOS, nome_dia_semana, obter_ou_criar_ficha,
-                           ordenar_por_semana,
-                           recalcular_distancia_ordem_fixa, recalcular_rota)
+from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
+                           recalcular_distancia_ordem_fixa)
 from routes.servicos import STATUS_SERVICO_VALIDOS, aplicar_status_servico
 
 tecnico_api_bp = Blueprint("tecnico_api", __name__)
@@ -174,11 +173,9 @@ def status_servico_tecnico(token, servico_id):
             return jsonify({"erro": "Serviço não encontrado"}), 404
 
         aplicar_status_servico(conn, servico_id, novo_status)
-        desfecho_gravado = _gravar_desfecho(conn, servico_id, servico["ficha_id"],
-                                            tecnico["id"], novo_status,
+        desfecho_gravado = _gravar_desfecho(conn, servico, novo_status,
                                             data.get("desfecho"),
-                                            tecnico.get("nome") or "",
-                                            servico.get("ordem_servico_id"))
+                                            tecnico.get("nome") or "")
 
     return jsonify({"mensagem": f"Serviço marcado como {novo_status}",
                     "status": novo_status, "desfecho": desfecho_gravado})
@@ -235,80 +232,77 @@ def _criar_cotacao_do_desfecho(conn, servico_id, codigo, nome_peca, foto, quem):
           quem, foto, servico_id))
 
 
-def _resolver_ficha_reagendamento(conn, reagendar, tecnico_id):
-    """Devolve o id da ficha de destino do reagendamento, criando-a se preciso.
-
-    Duas formas de escolher, do jeito que o técnico decide em campo:
-    'ficha_id' — já existe um dia aberto que serve (ex: já tem rota pra
-    sexta que vem); 'nova_data' — não tem nada marcado ainda, cria um dia
-    novo só com essa data. Nos dois casos a ficha tem que ser DESTE técnico:
-    trocar de técnico tem rota própria (/tecnico), aqui só muda o dia.
-    """
-    if not isinstance(reagendar, dict):
-        return None, None
-
-    ficha_id = reagendar.get("ficha_id")
-    if ficha_id:
-        try:
-            ficha_id = int(ficha_id)
-        except (TypeError, ValueError):
-            return None, "Dia de destino inválido"
-        destino = fetch_one(conn, "SELECT * FROM fichas WHERE id = ? AND tecnico_id = ?",
-                            (ficha_id, tecnico_id))
-        if not destino:
-            return None, "Esse dia não é seu ou não existe mais"
-        if destino.get("status") == "concluida":
-            return None, "Esse dia já foi concluído, escolha outro"
-        return destino["id"], None
-
-    nova_data = (reagendar.get("nova_data") or "").strip()
-    if nova_data:
-        try:
-            dia = nome_dia_semana(nova_data)
-        except ValueError:
-            return None, "Data inválida"
-        # Reaproveita ficha já existente NESSA data pro mesmo técnico, em vez
-        # de criar uma duplicada — o técnico pode já ter outros clientes
-        # marcados pro mesmo dia. Travado contra dois reagendamentos quase
-        # simultâneos criarem ficha dobrada — ver obter_ou_criar_ficha.
-        novo_id, _ = obter_ou_criar_ficha(conn, tecnico_id, dia, nova_data)
-        return novo_id, None
-
-    return None, None
-
-
-def _mover_para_reagendamento(conn, servico_id, ficha_origem_id, ficha_destino_id):
-    """Re-parenta o atendimento pro dia novo, igual o admin já faz em
-    routes/servicos.py (mover_servico) — sem apagar e recriar, preservando
-    nº da OS e histórico. Volta pra 'pendente': o desfecho registrado marcou
-    ESTA tentativa como concluída, mas o atendimento em si ainda não
-    aconteceu — só vai acontecer no dia novo."""
-    from routes.rastreio import encerrar_por_servico
-    encerrar_por_servico(conn, servico_id)
-
-    ultima = fetch_one(conn, "SELECT MAX(ordem) AS m FROM servicos WHERE ficha_id = ?",
-                       (ficha_destino_id,))
-    execute(conn, """
-        UPDATE servicos SET ficha_id = ?, ordem = ?, status = 'pendente',
-               concluido_em = NULL WHERE id = ?
-    """, (ficha_destino_id, (ultima or {}).get("m") or 0, servico_id))
-
-    for fid in (ficha_origem_id, ficha_destino_id):
-        f = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (fid,))
-        if f:
-            recalcular_rota(conn, fid, f)
-
-
 # Desfecho -> status da OS. Fechado de propósito: "resolvido" encerra,
-# peça pendente trava esperando, e reagendamento volta pra fila — a mesma
-# leitura que uma pessoa faria olhando o desfecho, só que automática.
+# peça pendente trava esperando, e reagendamento volta pra fila de Agendar
+# Clientes — a mesma leitura que uma pessoa faria olhando o desfecho, só que
+# automática.
+#
+# Até 2026-08-27, "volto_depois"/"nao_atendido" iam direto pra "agendada":
+# o PRÓPRIO TÉCNICO escolhia o dia novo ali na hora (blocoReagendar() no
+# tecnico.js). Isso saiu — quem decide o dia agora é o escritório, olhando a
+# aba Agendar Clientes, não o técnico na calçada com uma mão ocupada. O
+# desfecho só marca "precisa de nova visita"; agendar virou ação separada.
 _STATUS_OS_POR_DESFECHO = {
     "resolvido": "finalizada",
     "precisa_peca": "aguardando_peca",
     "cotacao_peca": "aguardando_peca",
-    "volto_depois": "agendada",
-    "nao_atendido": "agendada",
+    "volto_depois": "aguardando_agendamento",
+    "nao_atendido": "aguardando_agendamento",
 }
+
+_MOTIVO_DESFECHO_ROTULO = {
+    "volto_depois": "Técnico esteve no local e vai voltar depois",
+    "nao_atendido": "Não atendido — precisa remarcar",
+}
+
+
+def _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem):
+    """Quando o atendimento reagendável NÃO tem OS (ponto adicionado direto
+    em Roteiros/Verificar CEP, sem passar pela aba OS), cria uma na hora —
+    do contrário esse cliente não tem pra onde ir na aba Agendar Clientes,
+    que só lista Ordem de Serviço. Mesma lógica de
+    routes/pedidos.py:agendar_cliente() (achar ou cadastrar cliente pelo
+    nome): aqui repetida, e não importada, porque os dois pontos de entrada
+    (peça chegou vs. técnico não atendeu) não têm por que depender um do
+    outro.
+    """
+    cliente_nome = (servico.get("cliente") or "").strip()
+    if not cliente_nome:
+        return  # sem nome não dá nem pra cadastrar cliente — fica só no log do atendimento
+
+    from routes.clientes import criar_cliente
+
+    existente = fetch_one(conn, sql(
+        "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
+    if existente:
+        cliente_id = existente["id"]
+    else:
+        try:
+            cliente_id = criar_cliente(conn, {"nome": cliente_nome})
+        except ValueError:
+            return
+
+    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    partes_defeito = [_MOTIVO_DESFECHO_ROTULO.get(tipo, "Precisa de nova visita")]
+    if motivo:
+        partes_defeito.append(motivo)
+    if servico.get("descricao"):
+        partes_defeito.append(servico["descricao"])
+
+    os_id = insert_returning_id(conn, sql("""
+        INSERT INTO ordens_servico
+            (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
+             taxa_avaliacao, status, observacao, criado_em, criado_por)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """), (cliente_id, quem, servico.get("tipo_aparelho") or "",
+          servico.get("modelo") or "", " — ".join(partes_defeito), 0,
+          "aguardando_agendamento", observacao or "", agora, quem))
+
+    # Amarra o atendimento na OS nova — sem isso não teria como saber, mais
+    # tarde, que esse servico já gerou uma OS de reagendamento (evita
+    # duplicar se o técnico registrar desfecho de novo no mesmo serviço).
+    execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
+           (os_id, servico["id"]))
 
 
 def _atualizar_status_os(conn, ordem_servico_id, tipo):
@@ -331,8 +325,7 @@ def _atualizar_status_os(conn, ordem_servico_id, tipo):
             (novo, agora, ordem_servico_id))
 
 
-def _gravar_desfecho(conn, servico_id, ficha_id, tecnico_id, novo_status, desfecho, quem,
-                     ordem_servico_id=None):
+def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
     """Guarda o que aconteceu no atendimento, junto com a conclusão.
 
     Vem na MESMA requisição do status, e não num endpoint próprio, porque o
@@ -343,6 +336,8 @@ def _gravar_desfecho(conn, servico_id, ficha_id, tecnico_id, novo_status, desfec
     Reabrir o atendimento apaga o desfecho: ele descreve uma conclusão que
     deixou de existir.
     """
+    servico_id = servico["id"]
+    ordem_servico_id = servico.get("ordem_servico_id")
     if novo_status != "concluido":
         execute(conn, sql("DELETE FROM servico_desfecho WHERE servico_id = ?"),
                 (servico_id,))
@@ -389,20 +384,16 @@ def _gravar_desfecho(conn, servico_id, ficha_id, tecnico_id, novo_status, desfec
     if tipo == "cotacao_peca":
         _criar_cotacao_do_desfecho(conn, servico_id, codigo, nome_peca, foto, quem)
 
-    aviso_reagendamento = None
-    if tipo in DESFECHOS_REAGENDAVEIS:
-        ficha_destino_id, erro = _resolver_ficha_reagendamento(
-            conn, desfecho.get("reagendar"), tecnico_id)
-        if erro:
-            aviso_reagendamento = erro
-        elif ficha_destino_id:
-            _mover_para_reagendamento(conn, servico_id, ficha_id, ficha_destino_id)
-
-    _atualizar_status_os(conn, ordem_servico_id, tipo)
+    # Reagendável com OS: só muda o status, ela reaparece em Agendar Clientes
+    # sozinha. Reagendável SEM OS (ponto solto de Roteiros/Verificar CEP):
+    # cria uma OS na hora, porque sem OS não existe como aparecer lá — quem
+    # marca o dia novo agora é o escritório, não mais o técnico em campo.
+    if tipo in DESFECHOS_REAGENDAVEIS and not ordem_servico_id:
+        _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem)
+    else:
+        _atualizar_status_os(conn, ordem_servico_id, tipo)
 
     resultado = {"tipo": tipo, "motivo": motivo, "peca": peca, "observacao": observacao}
-    if aviso_reagendamento:
-        resultado["aviso_reagendamento"] = aviso_reagendamento
     return resultado
 
 

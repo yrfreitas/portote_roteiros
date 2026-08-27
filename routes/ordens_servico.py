@@ -194,11 +194,20 @@ def listar():
     """?status filtra; ?cliente_id filtra por cliente; ?busca acha por número
     da OS ou nome do cliente — telefone toca e alguém pergunta "cadê a OS 12",
     não dá pra obrigar a procurar folheando por status. ?dias=N filtra pelas
-    abertas nos últimos N dias — mesma convenção de /desfechos e /historico."""
+    abertas nos últimos N dias — mesma convenção de /desfechos e /historico.
+
+    ?fonte=peca|reagendamento separa a fila de Agendar Clientes em dois lados,
+    do jeito que o Verificador de CEP já separa em abas: 'peca' é toda OS
+    referenciada por pecas_chegada.ordem_servico_id (peça chegou, aba Peças
+    mandou pra cá); 'reagendamento' é o resto (OS nova nunca agendada, ou
+    técnico marcou volto_depois/reagendar em campo). Sem coluna nova — o
+    próprio pecas_chegada já é a marca de qual lado é qual.
+    """
     status = (request.args.get("status") or "").strip()
     cliente_id = request.args.get("cliente_id")
     busca = (request.args.get("busca") or "").strip().lower()
     dias = request.args.get("dias")
+    fonte = (request.args.get("fonte") or "").strip().lower()
 
     condicoes, params = [], []
     if status:
@@ -211,6 +220,10 @@ def listar():
         corte = (datetime.now(timezone.utc) - timedelta(days=int(dias))).strftime("%Y-%m-%d %H:%M:%S")
         condicoes.append("os.criado_em >= ?")
         params.append(corte)
+    if fonte == "peca":
+        condicoes.append("EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+    elif fonte == "reagendamento":
+        condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
     where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
 
     with db_conn() as conn:

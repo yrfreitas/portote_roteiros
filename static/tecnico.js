@@ -600,9 +600,6 @@
     { tipo: 'volto_depois', rotulo: 'Volto depois',     sub: 'preciso retornar',      icone: '↻' },
     { tipo: 'nao_atendido', rotulo: 'Reagendar',        sub: 'não deu, precisa remarcar', icone: '!' },
   ];
-  // Desfechos onde faz sentido oferecer "quando eu volto" — resolvido e
-  // cotação de peça terminam o atendimento ali, não têm o que reagendar.
-  const REAGENDAVEIS = ['volto_depois', 'nao_atendido'];
   const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                    'Aparelho sem defeito', 'Sem acesso ao local'];
 
@@ -618,9 +615,6 @@
   let _desfechoServicoId = null;
   let _desfechoTipo = null;
   let _desfechoFoto = null;
-  // null = "ainda não sei quando volta" (reagendamento fica opcional).
-  // {ficha_id} = escolheu um dia que já existe. {nova_data} = vai criar um dia novo.
-  let _desfechoReagendar = null;
 
   // Reduz mantendo a imagem INTEIRA — sem recorte.
   //
@@ -714,63 +708,10 @@
       <div id="t-df-previa" class="t-df-previa"></div>`;
   }
 
-  // Oferece reagendar SEM obrigar: o técnico pode não saber ainda quando
-  // volta, e travar o confirmar por isso empurraria gente a inventar uma
-  // data só pra sair da tela. Two caminhos: um dia que já existe na agenda
-  // dele, ou uma data nova (vira ficha nova pro mesmo técnico).
-  function blocoReagendar() {
-    return `
-      <label class="t-df-rotulo">Já sabe quando volta? <small>(opcional)</small></label>
-      <div class="t-df-reagendar-opcoes">
-        <button type="button" class="t-df-reagendar-btn" data-modo="existente"
-                onclick="window._tModoReagendar('existente')">Dia já marcado</button>
-        <button type="button" class="t-df-reagendar-btn" data-modo="novo"
-                onclick="window._tModoReagendar('novo')">Marcar dia novo</button>
-      </div>
-      <div id="t-df-reagendar-corpo"></div>`;
-  }
-
-  window._tModoReagendar = function (modo) {
-    document.querySelectorAll('.t-df-reagendar-btn').forEach(b =>
-      b.classList.toggle('ativa', b.dataset.modo === modo));
-    const corpo = document.getElementById('t-df-reagendar-corpo');
-    if (!corpo) return;
-
-    if (modo === 'existente') {
-      const abertas = fichas.filter(f => f.status !== 'concluida' && f.id !== fichaAbertaId);
-      corpo.innerHTML = abertas.length === 0
-        ? `<p class="t-df-ajuda">Você não tem outro dia em aberto — crie um novo.</p>`
-        : `<select class="t-df-input" id="t-df-reagendar-ficha" onchange="window._tSelecionarReagendar()">
-             <option value="">Selecione o dia...</option>
-             ${abertas.map(f => `<option value="${f.id}">${esc(f.dia_semana)}${
-               f.data_referencia ? ' · ' + esc(f.data_referencia.split('-').reverse().join('/')) : ''
-             }</option>`).join('')}
-           </select>`;
-    } else {
-      corpo.innerHTML = `
-        <input type="date" class="t-df-input" id="t-df-reagendar-data"
-               min="${dataDeHoje()}" onchange="window._tSelecionarReagendar()">`;
-    }
-    window._tSelecionarReagendar();
-  };
-
-  window._tSelecionarReagendar = function () {
-    const ficha = document.getElementById('t-df-reagendar-ficha');
-    const data = document.getElementById('t-df-reagendar-data');
-    if (ficha && ficha.value) {
-      _desfechoReagendar = { ficha_id: Number(ficha.value) };
-    } else if (data && data.value) {
-      _desfechoReagendar = { nova_data: data.value };
-    } else {
-      _desfechoReagendar = null;
-    }
-  };
-
   window._tAbrirDesfecho = function (servicoId) {
     _desfechoServicoId = servicoId;
     _desfechoTipo = null;
     _desfechoFoto = null;
-    _desfechoReagendar = null;
     const folha = document.getElementById('t-folha-desfecho');
     if (!folha) return;
     folha.querySelector('.t-folha-corpo').innerHTML = `
@@ -796,7 +737,6 @@
 
   window._tEscolherDesfecho = function (tipo) {
     _desfechoTipo = tipo;
-    _desfechoReagendar = null;
     document.querySelectorAll('.t-df-opcao').forEach(b =>
       b.classList.toggle('ativa', b.dataset.tipo === tipo));
 
@@ -828,10 +768,9 @@
             <button class="t-df-motivo" data-motivo="${esc(m)}"
                     onclick="window._tEscolherMotivo(this)">${esc(m)}</button>`).join('')}
         </div>
-        ${blocoFoto(false)}
-        ${blocoReagendar()}`;
+        ${blocoFoto(false)}`;
     } else if (tipo === 'volto_depois') {
-      extra.innerHTML = `${blocoFoto(false)}${blocoReagendar()}`;
+      extra.innerHTML = blocoFoto(false);
     } else {
       extra.innerHTML = blocoFoto(false);
     }
@@ -874,9 +813,6 @@
     if (_desfechoTipo === 'nao_atendido') {
       desfecho.motivo = document.querySelector('.t-df-motivo.ativa')?.dataset.motivo || '';
     }
-    if (REAGENDAVEIS.includes(_desfechoTipo) && _desfechoReagendar) {
-      desfecho.reagendar = _desfechoReagendar;
-    }
     const obs = document.getElementById('t-df-obs')?.value.trim();
     if (obs) desfecho.observacao = obs;
     if (_desfechoFoto) desfecho.foto = _desfechoFoto;
@@ -898,14 +834,9 @@
     if (novoStatus === 'concluido') pararEnvioDePosicao();
 
     try {
-      const resp = await api(`/servicos/${servicoId}/status`, opts);
-      const avisoReagendar = resp?.desfecho?.aviso_reagendamento;
-      toast(avisoReagendar
-        ? `Concluído, mas: ${avisoReagendar}`
-        : (novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto'));
+      await api(`/servicos/${servicoId}/status`, opts);
+      toast(novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto');
       if (fichaAbertaId) abrirFicha(fichaAbertaId);
-      // Reagendar pode ter criado uma ficha nova ou tirado este ponto da
-      // ficha atual — a lista de dias na tela anterior precisa refletir isso.
       carregarFichas();
     } catch (e) {
       // TypeError do fetch = não saiu do aparelho. Erro do servidor (regra de
@@ -1142,7 +1073,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v95';
+  const VERSAO_TELA = 'v96';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

@@ -296,6 +296,20 @@
         sem visita ainda, ou reagendamento pendente. Clique num cliente pra
         escolher técnico e colocar num dia que já existe ou criar um novo.
       </p>
+      <div class="vcep-tabs" id="agendar-tabs">
+        <button class="vcep-tab active" id="atab-reagendamento" onclick="agendarSwitchTab('reagendamento')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Reagendamento <span class="agendar-tab-count" id="atab-reagendamento-cont"></span>
+        </button>
+        <button class="vcep-tab" id="atab-peca" onclick="agendarSwitchTab('peca')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24H4a1 1 0 0 0-1 1v5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.82 0l4.6-4.6a2 2 0 0 0 0-2.81z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+          Peça chegou <span class="agendar-tab-count" id="atab-peca-cont"></span>
+        </button>
+      </div>
+      <input class="form-input" id="agendar-filtro" type="search"
+             placeholder="Filtrar por nome, modelo ou número da OS..."
+             autocomplete="off" style="margin-bottom:12px;"
+             oninput="agendarFiltrar(this.value)">
       <div id="agendar-conteudo"></div>
     </div>
   </main>
