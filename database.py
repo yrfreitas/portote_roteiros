@@ -863,6 +863,12 @@ _MIGRACOES_PG = [
         criado_em  TEXT DEFAULT CURRENT_TIMESTAMP,
         criado_por TEXT
     )""",
+    # Pedido de 2026-08-27: Chamado Técnico/Orçamento de um cliente que JÁ
+    # TEM uma OS não vira número novo solto — fica pendurado dentro da OS
+    # existente (auto-referência), pra não empilhar "um monte de OS" do
+    # mesmo caso. NULL = OS de primeiro nível (o normal); preenchido = é
+    # filha de outra. listar() por padrão só mostra as de primeiro nível.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS os_pai_id INTEGER REFERENCES ordens_servico(id) ON DELETE SET NULL",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -974,6 +980,7 @@ _MIGRACOES_SQLITE = [
         criado_em  TEXT DEFAULT CURRENT_TIMESTAMP,
         criado_por TEXT
     )""",
+    "ALTER TABLE ordens_servico ADD COLUMN os_pai_id INTEGER",
 ]
 
 

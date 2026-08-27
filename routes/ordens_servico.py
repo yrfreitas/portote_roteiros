@@ -841,14 +841,25 @@ def listar():
     mandou pra cá); 'reagendamento' é o resto (OS nova nunca agendada, ou
     técnico marcou volto_depois/reagendar em campo). Sem coluna nova — o
     próprio pecas_chegada já é a marca de qual lado é qual.
+
+    Filhas (Chamado Técnico/Orçamento pendurado numa OS já existente — ver
+    os_pai_id) NÃO aparecem aqui por padrão, pra lista principal não
+    empilhar um monte de linha do mesmo caso — só aparecem com
+    ?pai_id=<id>, que devolve exatamente as filhas daquele pai.
     """
     status = (request.args.get("status") or "").strip()
     cliente_id = request.args.get("cliente_id")
     busca = (request.args.get("busca") or "").strip().lower()
     dias = request.args.get("dias")
     fonte = (request.args.get("fonte") or "").strip().lower()
+    pai_id = request.args.get("pai_id")
 
     condicoes, params = [], []
+    if pai_id:
+        condicoes.append("os.os_pai_id = ?")
+        params.append(pai_id)
+    else:
+        condicoes.append("os.os_pai_id IS NULL")
     if status:
         condicoes.append("os.status = ?")
         params.append(status)
@@ -1112,9 +1123,16 @@ def obter(os_id):
         pecas = _pecas_da_os(conn, os_id)
         itens = _itens_do_orcamento(conn, os_id) if os_row.get("modelo_os") == "orcamento" else []
 
+        # Chamado Técnico/Orçamento pendurados nesta OS (ver os_pai_id) — só
+        # existe quando ESTA é uma OS de primeiro nível; uma filha não tem filha.
+        filhas = [] if os_row.get("os_pai_id") else fetch_all(conn, """
+            SELECT id, modelo_os, status, defeito_declarado, criado_em
+              FROM ordens_servico WHERE os_pai_id = ? ORDER BY id DESC
+        """, (os_id,))
+
     termos = TERMOS_POR_TIPO.get(os_row.get("tipo_os"), TERMOS_PADRAO)
     return jsonify({"ordem": os_row, "visitas": visitas, "pecas": pecas,
-                    "itens": itens, "termos": termos})
+                    "itens": itens, "filhas": filhas, "termos": termos})
 
 
 @ordens_servico_bp.route("/ordens-servico", methods=["POST"])
@@ -1164,19 +1182,36 @@ def criar():
             if not existe:
                 return jsonify({"erro": "Cliente não encontrado"}), 404
 
+        # Pendura num caso já aberto do MESMO cliente em vez de virar número
+        # solto — pedido de 2026-08-27, pra Chamado Técnico/Orçamento de
+        # quem já tem OS não empilhar linha nova a cada atendimento. Só
+        # aceita pai de primeiro nível (sem os_pai_id ele mesmo) e do mesmo
+        # cliente — não faz sentido pendurar OS de gente diferente.
+        os_pai_id = None
+        if d.get("os_pai_id"):
+            try:
+                candidato_pai_id = int(d["os_pai_id"])
+            except (TypeError, ValueError):
+                return jsonify({"erro": "OS pai inválida"}), 400
+            pai = fetch_one(conn, "SELECT id, cliente_id, os_pai_id FROM ordens_servico WHERE id = ?",
+                            (candidato_pai_id,))
+            if not pai or pai["cliente_id"] != int(cliente_id) or pai.get("os_pai_id"):
+                return jsonify({"erro": "OS pai inválida"}), 400
+            os_pai_id = pai["id"]
+
         agora = _agora()
         os_id = insert_returning_id(conn, """
             INSERT INTO ordens_servico
                 (cliente_id, atendente, tipo_aparelho, marca, modelo,
                  numero_serie, acessorios, defeito_declarado, taxa_avaliacao,
                  status, observacao, criado_em, criado_por, tipo_os,
-                 modelo_os, solucao, foto, tecnico_atendeu_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
-              tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id))
+              tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id))
 
         if modelo_os == "orcamento":
             for item in (d.get("itens") or []):

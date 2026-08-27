@@ -116,7 +116,8 @@ def obter(cliente_id):
             return jsonify({"erro": "Cliente não encontrado"}), 404
 
         ordens = fetch_all(conn, """
-            SELECT id, status, tipo_aparelho, modelo, defeito_declarado, criado_em
+            SELECT id, status, tipo_aparelho, modelo, defeito_declarado, criado_em,
+                   modelo_os, os_pai_id
               FROM ordens_servico WHERE cliente_id = ? ORDER BY id DESC
         """, (cliente_id,))
 

@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v107';
+const VERSAO_PAINEL = 'v108';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5853,6 +5853,8 @@ async function abrirModalNovaOS() {
   document.getElementById('os-busca-cliente').value = '';
   document.getElementById('os-resultado-cliente').innerHTML = '';
   document.getElementById('os-historico-cliente').innerHTML = '';
+  document.getElementById('os-vincular-pai').style.display = 'none';
+  document.getElementById('os-pai-select').innerHTML = '';
   document.getElementById('os-chamado-foto-status').textContent = '';
   _novaOSFoto = null;
   _novosItensOrcamento = [];
@@ -6045,6 +6047,7 @@ async function osSelecionarCliente(id, nome) {
   // é informação que muda a conversa com quem está atendendo agora.
   const alvo = document.getElementById('os-historico-cliente');
   alvo.innerHTML = `<p class="ajuda-texto">carregando histórico...</p>`;
+  document.getElementById('os-vincular-pai').style.display = 'none';
   try {
     const r = await api(`/clientes/${id}`);
     const anteriores = r.ordens_servico || [];
@@ -6061,9 +6064,36 @@ async function osSelecionarCliente(id, nome) {
           <span>OS #${String(o.id).padStart(6, '0')} · ${esc([o.tipo_aparelho, o.modelo].filter(Boolean).join(' ')) || 'sem aparelho'} — ${esc(o.defeito_declarado || '')}</span>
           <span class="conc-tag ${o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso'}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
         </div>`).join('')}`;
+
+    // Só oferece pendurar em casos de PRIMEIRO NÍVEL (uma filha não tem
+    // filha) — é o que impede o cliente de acumular "um monte de OS":
+    // Chamado Técnico/Orçamento novo vai dentro do caso que já existe.
+    const elegiveis = anteriores.filter(o => !o.os_pai_id);
+    const selPai = document.getElementById('os-pai-select');
+    if (elegiveis.length > 0) {
+      selPai.innerHTML = `<option value="">Nenhuma — criar OS nova</option>` +
+        elegiveis.map(o => `<option value="${o.id}">OS #${String(o.id).padStart(6, '0')} — ${esc(o.defeito_declarado || 'sem defeito informado')}</option>`).join('');
+      document.getElementById('os-vincular-pai').style.display = '';
+    }
   } catch {
     alvo.innerHTML = '';
   }
+}
+
+// Atalho direto do detalhe de uma OS: abre Nova OS já com o cliente
+// escolhido e esta OS marcada como "pai" — resolve o problema de não
+// achar como pendurar um Chamado/Orçamento em quem já tem caso aberto,
+// sem precisar sair, buscar o cliente de novo e escolher na mão.
+async function osAbrirNovoFilho(paiId, clienteId, clienteNome) {
+  fecharModais();
+  await abrirModalNovaOS();
+  osEscolherModoCliente('existente');
+  await osSelecionarCliente(clienteId, clienteNome);
+  document.getElementById('os-busca-cliente').value = clienteNome;
+  const selPai = document.getElementById('os-pai-select');
+  if (selPai) selPai.value = String(paiId);
+  osEscolherModelo('chamado_tecnico');
+  toast('Escolha Chamado Técnico ou Orçamento — o cliente e a OS já estão marcados', 'info');
 }
 
 async function osCriar() {
@@ -6102,6 +6132,8 @@ async function osCriar() {
       return;
     }
     corpo.cliente_id = _osClienteSelecionado.id;
+    const paiSelecionado = document.getElementById('os-pai-select').value;
+    if (paiSelecionado) corpo.os_pai_id = paiSelecionado;
   } else {
     const nome = document.getElementById('os-nome').value.trim();
     if (!nome) {
@@ -6395,6 +6427,24 @@ async function abrirOSDetalhe(id) {
         </p>` : ''}
     </div>
     ${_osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico)}
+    ${!o.os_pai_id ? `
+    <div class="os-detalhe-secao">
+      <p class="form-separador">Chamados e orçamentos deste caso</p>
+      ${(r.filhas || []).length === 0
+        ? `<p class="ajuda-texto">Nenhum ainda — evita abrir OS solta pra quem já tem este caso.</p>`
+        : r.filhas.map(f => `
+          <div class="os-visita-linha" style="cursor:pointer;" onclick="abrirOSDetalhe(${f.id})">
+            <span>
+              <span class="os-modelo-badge ${f.modelo_os === 'chamado_tecnico' ? 'chamado' : 'orcamento'}">${esc(MODELOS_OS_ROTULO[f.modelo_os])}</span>
+              &nbsp;OS #${String(f.id).padStart(6, '0')} — ${esc(f.defeito_declarado || 'sem defeito informado')}
+            </span>
+            <span class="conc-tag ${f.status === 'finalizada' ? 'ok' : f.status === 'cancelada' ? 'neutro' : 'aviso'}">${esc(OS_STATUS_ROTULO[f.status] || f.status)}</span>
+          </div>`).join('')}
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;"
+              onclick="osAbrirNovoFilho(${o.id}, ${o.cliente_id}, ${JSON.stringify(o.cliente_nome)})">
+        + Adicionar Chamado Técnico ou Orçamento aqui
+      </button>
+    </div>` : ''}
     <div class="os-detalhe-secao">
       <p class="form-separador">Visitas agendadas</p>
       ${visitas}
