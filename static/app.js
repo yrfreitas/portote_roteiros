@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v98';
+const VERSAO_PAINEL = 'v99';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7456,18 +7456,22 @@ function toast(msg, type = 'info') {
 // nomeia UM atendimento na linha (singular). Usar o mesmo texto nos dois
 // lugares fazia a linha do cliente dizer "PRECISAM DE PEÇA", no plural,
 // falando de um só.
+// "Voltar depois" e "Reagendar" saíram daqui em 2026-08-27: quem precisa de
+// nova visita agora vai direto pra aba Agendar Clientes (Reagendamento) —
+// manter os dois aqui TAMBÉM duplicava a informação em dois lugares
+// diferentes, um dos quais (aqui) não leva a nenhuma ação.
 const AT_TIPOS = [
   { tipo: 'precisa_peca', rotulo: 'Precisam de peça', curto: 'Precisa de peça',
     classe: 'at-peca',  nota: 'esperando compra' },
   { tipo: 'cotacao_peca', rotulo: 'Cotação de peça',  curto: 'Cotação de peça',
     classe: 'at-cotacao', nota: 'aguardando preço' },
-  { tipo: 'volto_depois', rotulo: 'Voltar depois',    curto: 'Volta depois',
-    classe: 'at-volta', nota: 'precisa de retorno' },
-  { tipo: 'nao_atendido', rotulo: 'Reagendar',        curto: 'Reagendar',
-    classe: 'at-nao',   nota: 'visita perdida, remarcar' },
   { tipo: 'resolvido',    rotulo: 'Resolvidos',       curto: 'Resolvido',
     classe: 'at-ok',    nota: 'fechados na hora' },
 ];
+// Tipos que saíram dos cartões acima mas o servidor ainda devolve (histórico
+// antigo, ou o /desfechos é usado por outra tela) — filtrados da lista aqui,
+// não lá, porque só ESTA tela (Atendimentos) não quer mais mostrá-los.
+const AT_TIPOS_OCULTOS = ['volto_depois', 'nao_atendido'];
 
 let _atDias = 30;
 let _atTipo = '';
@@ -7499,6 +7503,8 @@ async function carregarDesfechos() {
     alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
     return;
   }
+
+  r.atendimentos = r.atendimentos.filter(a => !AT_TIPOS_OCULTOS.includes(a.desfecho));
 
   const cartoes = AT_TIPOS.map(t => `
     <button class="at-cartao ${t.classe} ${_atTipo === t.tipo ? 'ativo' : ''}"
