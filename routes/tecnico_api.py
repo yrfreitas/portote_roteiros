@@ -256,7 +256,7 @@ _MOTIVO_DESFECHO_ROTULO = {
 }
 
 
-def _criar_os_para_reagendamento(servico, tipo, motivo, observacao, quem):
+def _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem):
     """Quando o atendimento reagendável NÃO tem OS (ponto adicionado direto
     em Roteiros/Verificar CEP, sem passar pela aba OS), cria uma na hora —
     do contrário esse cliente não tem pra onde ir na aba Agendar Clientes,
@@ -266,11 +266,11 @@ def _criar_os_para_reagendamento(servico, tipo, motivo, observacao, quem):
     (peça chegou vs. técnico não atendeu) não têm por que depender um do
     outro.
 
-    Roda na PRÓPRIA conexão/transação, separada da que grava o desfecho: é
-    um efeito colateral (abrir OS), não o registro em si — um erro aqui (CEP
-    ruim, nome duplicado, o que for) não pode derrubar a conclusão do
-    atendimento, que é o que realmente importa pro técnico em campo. Ver
-    chamada em _gravar_desfecho, que também blinda contra exceção.
+    Usa a MESMA conexão/transação de _gravar_desfecho — uma conexão separada
+    (testado e revertido em 2026-08-27) fica esperando o lock que a
+    transação principal já segura na mesma linha de `servicos`, deixando o
+    "dar baixa" lento ou parecendo travado. Proteção contra erro aqui vem de
+    SAVEPOINT (ver chamada em _gravar_desfecho), não de isolamento de conexão.
     """
     cliente_nome = (servico.get("cliente") or "").strip()
     if not cliente_nome:
@@ -278,45 +278,40 @@ def _criar_os_para_reagendamento(servico, tipo, motivo, observacao, quem):
 
     from routes.clientes import criar_cliente
 
-    with db_conn(commit=True) as conn:
-        existente = fetch_one(conn, sql(
-            "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
-        if existente:
-            cliente_id = existente["id"]
-        else:
-            try:
-                cliente_id = criar_cliente(conn, {"nome": cliente_nome})
-            except ValueError:
-                return
+    existente = fetch_one(conn, sql(
+        "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
+    if existente:
+        cliente_id = existente["id"]
+    else:
+        try:
+            cliente_id = criar_cliente(conn, {"nome": cliente_nome})
+        except ValueError:
+            return
 
-        agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        partes_defeito = [_MOTIVO_DESFECHO_ROTULO.get(tipo, "Precisa de nova visita")]
-        if motivo:
-            partes_defeito.append(motivo)
-        if servico.get("descricao"):
-            partes_defeito.append(servico["descricao"])
+    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    partes_defeito = [_MOTIVO_DESFECHO_ROTULO.get(tipo, "Precisa de nova visita")]
+    if motivo:
+        partes_defeito.append(motivo)
+    if servico.get("descricao"):
+        partes_defeito.append(servico["descricao"])
 
-        os_id = insert_returning_id(conn, sql("""
-            INSERT INTO ordens_servico
-                (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
-                 taxa_avaliacao, status, observacao, criado_em, criado_por)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """), (cliente_id, quem, servico.get("tipo_aparelho") or "",
-              servico.get("modelo") or "", " — ".join(partes_defeito), 0,
-              "aguardando_agendamento", observacao or "", agora, quem))
+    os_id = insert_returning_id(conn, sql("""
+        INSERT INTO ordens_servico
+            (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
+             taxa_avaliacao, status, observacao, criado_em, criado_por)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """), (cliente_id, quem, servico.get("tipo_aparelho") or "",
+          servico.get("modelo") or "", " — ".join(partes_defeito), 0,
+          "aguardando_agendamento", observacao or "", agora, quem))
 
-        # Amarra o atendimento na OS nova — sem isso não teria como saber, mais
-        # tarde, que esse servico já gerou uma OS de reagendamento (evita
-        # duplicar se o técnico registrar desfecho de novo no mesmo serviço).
-        execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
-               (os_id, servico["id"]))
+    # Amarra o atendimento na OS nova — sem isso não teria como saber, mais
+    # tarde, que esse servico já gerou uma OS de reagendamento (evita
+    # duplicar se o técnico registrar desfecho de novo no mesmo serviço).
+    execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
+           (os_id, servico["id"]))
 
 
-def _atualizar_status_os(ordem_servico_id, tipo):
-    """Roda em conexão própria — mesmo motivo de _criar_os_para_reagendamento:
-    se isso falhar (OS apagada entre uma tela e outra, o que for), não pode
-    deixar a transação principal (que já gravou o desfecho) sem como dar
-    commit. Ver a chamada em _gravar_desfecho, que blinda os dois."""
+def _atualizar_status_os(conn, ordem_servico_id, tipo):
     if not ordem_servico_id:
         return
     novo = _STATUS_OS_POR_DESFECHO.get(tipo)
@@ -326,15 +321,14 @@ def _atualizar_status_os(ordem_servico_id, tipo):
     # (routes/ordens_servico.py), e a métrica de tempo médio até finalizar
     # compara os dois — hora local aqui faria a duração dar negativa.
     agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    with db_conn(commit=True) as conn:
-        if novo == "finalizada":
-            execute(conn, sql(
-                "UPDATE ordens_servico SET status = ?, atualizado_em = ?, "
-                "finalizada_em = ? WHERE id = ?"), (novo, agora, agora, ordem_servico_id))
-        else:
-            execute(conn, sql(
-                "UPDATE ordens_servico SET status = ?, atualizado_em = ? WHERE id = ?"),
-                (novo, agora, ordem_servico_id))
+    if novo == "finalizada":
+        execute(conn, sql(
+            "UPDATE ordens_servico SET status = ?, atualizado_em = ?, "
+            "finalizada_em = ? WHERE id = ?"), (novo, agora, agora, ordem_servico_id))
+    else:
+        execute(conn, sql(
+            "UPDATE ordens_servico SET status = ?, atualizado_em = ? WHERE id = ?"),
+            (novo, agora, ordem_servico_id))
 
 
 def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
@@ -401,19 +395,23 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
     # cria uma OS na hora, porque sem OS não existe como aparecer lá — quem
     # marca o dia novo agora é o escritório, não mais o técnico em campo.
     #
-    # BLINDADO: o desfecho em si (acima) já está gravado nesta transação —
-    # nada daqui pra baixo pode virar "erro interno" pro técnico. Se a OS não
-    # sair ou o status não atualizar, fica só logado; dá pra corrigir na mão
-    # depois. O que NÃO pode acontecer de novo é o técnico ficar sem
-    # conseguir concluir o atendimento por causa de um efeito colateral.
+    # BLINDADO via SAVEPOINT (mesma conexão/transação, não conexão separada —
+    # ver histórico em _criar_os_para_reagendamento): o desfecho em si (acima)
+    # já está gravado nesta transação, e nada daqui pra baixo pode virar
+    # "erro interno" nem travar esperando lock. Se a OS não sair ou o status
+    # não atualizar, só essa parte volta atrás; o resto do commit segue.
+    execute(conn, "SAVEPOINT sp_os_reagendamento")
     try:
         if tipo in DESFECHOS_REAGENDAVEIS and not ordem_servico_id:
-            _criar_os_para_reagendamento(servico, tipo, motivo, observacao, quem)
+            _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem)
         else:
-            _atualizar_status_os(ordem_servico_id, tipo)
+            _atualizar_status_os(conn, ordem_servico_id, tipo)
     except Exception:
+        execute(conn, "ROLLBACK TO SAVEPOINT sp_os_reagendamento")
         log.exception("Falha ao atualizar OS/criar reagendamento pro serviço %s (tipo=%s)",
                       servico_id, tipo)
+    else:
+        execute(conn, "RELEASE SAVEPOINT sp_os_reagendamento")
 
     resultado = {"tipo": tipo, "motivo": motivo, "peca": peca, "observacao": observacao}
     return resultado
