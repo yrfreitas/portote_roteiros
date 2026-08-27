@@ -8,17 +8,21 @@
    ──────────────────────────────────────────────────────────────── */
 /* ─── TOKENS ──────────────────────────────────────────────────── */
 :root {
-  /* Superfícies — navy noturno com nuance quente no bg profundo */
-  --bg:            #060911;
-  --bg-deep:       #04070d;
-  --bg-panel:      #0d1524;
-  --bg-card:       #111c31;
-  --bg-elevated:   #18294a;
-  --bg-hover:      #1e335b;
-  --bg-input:      #080e1a;
+  /* Superfícies — navy noturno com nuance quente no bg profundo.
+     Clareado em 2026-08-27 (pedido do Kalebe: "está muito escuro") — mesma
+     hierarquia de tons, só que uns 3 tons mais claros cada, pra tirar o
+     "quase preto" sem virar tema claro de verdade (que exigiria revisar
+     cada sombra/glow pensado pra superfície escura). */
+  --bg:            #1c2942;
+  --bg-deep:       #16202f;
+  --bg-panel:      #223454;
+  --bg-card:       #2a3d61;
+  --bg-elevated:   #33496f;
+  --bg-hover:      #3d557d;
+  --bg-input:      #1a2540;
 
-  --border:        rgba(148,178,220,0.07);
-  --border-bright: rgba(148,178,220,0.14);
+  --border:        rgba(180,200,230,0.11);
+  --border-bright: rgba(180,200,230,0.19);
   --border-focus:  rgba(96,165,250,0.6);
 
   /* Azul elétrico + cyan + violeta pra profundidade cromática */
@@ -44,9 +48,9 @@
   --danger-text:   #fca5a5;
 
   --text-primary:   #eaf0fb;
-  --text-secondary: #9aacc6;
-  --text-muted:     #5a6d8a;
-  --text-faint:     #3d4a63;
+  --text-secondary: #aebdd6;
+  --text-muted:     #8496b3;
+  --text-faint:     #64758f;
 
   --font-display: 'Syne', sans-serif;
   --font-serif:   'Fraunces', 'Times New Roman', serif;
