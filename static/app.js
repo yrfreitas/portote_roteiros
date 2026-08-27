@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v111';
+const VERSAO_PAINEL = 'v112';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5842,7 +5842,7 @@ async function abrirModalNovaOS() {
   _osClienteSelecionado = null;
   ['os-nome','os-cpf','os-telefone','os-email','os-cep','os-numero','os-bairro',
    'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
-   'os-serie','os-acessorios','os-defeito','os-obs','os-tipo','os-solucao',
+   'os-serie','os-voltagem','os-acessorios','os-defeito','os-obs','os-tipo','os-solucao',
    'os-chamado-tecnico'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
@@ -6108,6 +6108,7 @@ async function osCriar() {
     marca: document.getElementById('os-marca').value.trim(),
     modelo: document.getElementById('os-modelo').value.trim(),
     numero_serie: document.getElementById('os-serie').value.trim(),
+    voltagem: document.getElementById('os-voltagem').value.trim(),
     acessorios: document.getElementById('os-acessorios').value.trim(),
     defeito_declarado: document.getElementById('os-defeito').value.trim(),
     observacao: document.getElementById('os-obs').value.trim(),
@@ -6190,8 +6191,38 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       <div class="form-group"><label class="form-label" for="os-ed-serie">Nº de série</label>
         <input class="form-input" id="os-ed-serie" value="${esc(o.numero_serie)}"></div>
     </div>
-    <div class="form-group"><label class="form-label" for="os-ed-acessorios">Acessórios</label>
-      <input class="form-input" id="os-ed-acessorios" value="${esc(o.acessorios)}"></div>`;
+    <div class="form-row">
+      <div class="form-group"><label class="form-label" for="os-ed-voltagem">Voltagem</label>
+        <input class="form-input" id="os-ed-voltagem" value="${esc(o.voltagem)}" placeholder="Ex: 127V — nunca arredondar"></div>
+      <div class="form-group"><label class="form-label" for="os-ed-acessorios">Acessórios</label>
+        <input class="form-input" id="os-ed-acessorios" value="${esc(o.acessorios)}"></div>
+    </div>`;
+
+  // Itens/Valores (Serviço, Peças, Mão de obra) — não é mais exclusivo do
+  // Orçamento (ver criar()/obter() no backend); aparece em qualquer modelo,
+  // usando sempre a mesma OS (${o.id}) como dono dos itens.
+  const itensSecao = `
+    <div class="os-detalhe-secao">
+      <p class="form-separador">Itens / Valores</p>
+      <div id="os-det-itens-lista">${osRenderItensOrcamento(_osItensAtuais)}</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="os-det-item-nome">Serviço / peça / mão de obra</label>
+          <input class="form-input" id="os-det-item-nome" autocomplete="off"
+                 list="os-det-orc-catalogo" placeholder="Ex: Troca de resistência"
+                 oninput="osPreencherValorDoCatalogo(this.value, 'os-det-item-valor', 'os-det-orc-catalogo')"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault(); osAdicionarItemOrcamento(${o.id});}">
+          <datalist id="os-det-orc-catalogo"></datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="os-det-item-valor">Valor (R$)</label>
+          <input class="form-input" type="number" step="0.01" min="0" id="os-det-item-valor"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault(); osAdicionarItemOrcamento(${o.id});}">
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="osAdicionarItemOrcamento(${o.id})">+ Adicionar item</button>
+      <div class="os-orc-total" id="os-det-orc-total"></div>
+    </div>`;
 
   const defeito = `
     <div class="form-group"><label class="form-label" for="os-ed-defeito">Defeito declarado</label>
@@ -6229,7 +6260,8 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       </div>
       ${observacao}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoChamado(${o.id})">Salvar alterações</button>
-    </div>`;
+    </div>
+    ${itensSecao}`;
   }
 
   if (o.modelo_os === 'orcamento') {
@@ -6243,27 +6275,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${observacao}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoOrcamento(${o.id})">Salvar alterações</button>
     </div>
-    <div class="os-detalhe-secao">
-      <p class="form-separador">Itens do orçamento</p>
-      <div id="os-det-itens-lista">${osRenderItensOrcamento(_osItensAtuais)}</div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="os-det-item-nome">Serviço</label>
-          <input class="form-input" id="os-det-item-nome" autocomplete="off"
-                 list="os-det-orc-catalogo" placeholder="Ex: Troca de resistência"
-                 oninput="osPreencherValorDoCatalogo(this.value, 'os-det-item-valor', 'os-det-orc-catalogo')"
-                 onkeydown="if(event.key==='Enter'){event.preventDefault(); osAdicionarItemOrcamento(${o.id});}">
-          <datalist id="os-det-orc-catalogo"></datalist>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="os-det-item-valor">Valor (R$)</label>
-          <input class="form-input" type="number" step="0.01" min="0" id="os-det-item-valor"
-                 onkeydown="if(event.key==='Enter'){event.preventDefault(); osAdicionarItemOrcamento(${o.id});}">
-        </div>
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="osAdicionarItemOrcamento(${o.id})">+ Adicionar serviço</button>
-      <div class="os-orc-total" id="os-det-orc-total"></div>
-    </div>`;
+    ${itensSecao}`;
   }
 
   return `
@@ -6274,13 +6286,16 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
+      <div class="form-group"><label class="form-label" for="os-ed-solucao">Solução / diagnóstico</label>
+        <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label" for="os-ed-taxa">Taxa de avaliação (R$)</label>
           <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa" value="${o.taxa_avaliacao ?? 0}"></div>
       </div>
       ${observacao}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicao(${o.id})">Salvar alterações</button>
-    </div>`;
+    </div>
+    ${itensSecao}`;
 }
 
 function osRenderItensOrcamento(itens) {
@@ -6495,8 +6510,10 @@ async function abrirOSDetalhe(id) {
       </div>
       <button class="btn btn-primary btn-sm" onclick="osAgendar(${o.id})">Agendar</button>
     </div>
-    <div class="os-detalhe-secao">
+    <div class="os-detalhe-secao" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
       <a class="btn btn-ghost btn-sm" href="/os/${o.id}/imprimir" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Imprimir OS</a>
+      <button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger-text);"
+              onclick="osApagar(${o.id})">${icone('x', 'icone-13')} Apagar OS</button>
     </div>`;
 
   if (o.modelo_os === 'orcamento') {
@@ -6557,8 +6574,10 @@ async function osSalvarEdicao(id) {
     marca: document.getElementById('os-ed-marca').value.trim(),
     modelo: document.getElementById('os-ed-modelo').value.trim(),
     numero_serie: document.getElementById('os-ed-serie').value.trim(),
+    voltagem: document.getElementById('os-ed-voltagem').value.trim(),
     acessorios: document.getElementById('os-ed-acessorios').value.trim(),
     defeito_declarado: document.getElementById('os-ed-defeito').value.trim(),
+    solucao: document.getElementById('os-ed-solucao').value.trim(),
     taxa_avaliacao: document.getElementById('os-ed-taxa').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
   };
@@ -6589,6 +6608,22 @@ async function osReexibirFila(id) {
     await api(`/ordens-servico/${id}/reexibir-fila`, { method: 'POST' });
     toast('De volta pra fila de Agendar Clientes', 'success');
     abrirOSDetalhe(id);
+    carregarSeloAgendar();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// Apaga de verdade — pedido de 2026-08-27 (só dava pra criar OS, nunca pra
+// remover). Confirmação obrigatória: ao contrário de "remover da fila"
+// (ocultar-fila), isso não tem como desfazer.
+async function osApagar(id) {
+  if (!confirm(`Apagar a OS #${String(id).padStart(6, '0')} de vez? Isso não pode ser desfeito.`)) return;
+  try {
+    await api(`/ordens-servico/${id}`, { method: 'DELETE' });
+    toast('OS apagada', 'success');
+    fecharModais();
+    carregarOS();
     carregarSeloAgendar();
   } catch (e) {
     toast(e.message, 'error');

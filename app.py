@@ -395,16 +395,15 @@ def imprimir_os(os_id):
              ORDER BY s.id DESC LIMIT 1
         """, (os_id,))
 
-        # Só busca o que o modelo do documento realmente usa — impressão de
-        # OS padrão não tem por que juntar itens de orçamento que não existem.
-        itens = []
+        # Itens (Serviço/Peças/Mão de obra) valem pra qualquer modelo agora —
+        # baseado no modelo de impressão do Kalebe, que traz essa seção na
+        # OS padrão também, não só no Orçamento.
+        itens = fetch_all(conn, """
+            SELECT nome, valor FROM ordem_servico_itens
+             WHERE ordem_servico_id = ? ORDER BY id
+        """, (os_id,))
         tecnico_atendeu_nome = None
-        if ordem.get("modelo_os") == "orcamento":
-            itens = fetch_all(conn, """
-                SELECT nome, valor FROM ordem_servico_itens
-                 WHERE ordem_servico_id = ? ORDER BY id
-            """, (os_id,))
-        elif ordem.get("modelo_os") == "chamado_tecnico" and ordem.get("tecnico_atendeu_id"):
+        if ordem.get("tecnico_atendeu_id"):
             tecnico_row = fetch_one(conn, "SELECT nome FROM tecnicos WHERE id = ?",
                                     (ordem["tecnico_atendeu_id"],))
             tecnico_atendeu_nome = tecnico_row["nome"] if tecnico_row else None

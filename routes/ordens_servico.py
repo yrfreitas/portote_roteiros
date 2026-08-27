@@ -692,6 +692,7 @@ def _campos_os(d: dict) -> dict:
         "marca": (d.get("marca") or "").strip(),
         "modelo": (d.get("modelo") or "").strip(),
         "numero_serie": (d.get("numero_serie") or "").strip(),
+        "voltagem": (d.get("voltagem") or "").strip(),
         "acessorios": (d.get("acessorios") or "").strip(),
         "defeito_declarado": (d.get("defeito_declarado") or "").strip(),
         "observacao": (d.get("observacao") or "").strip(),
@@ -1121,7 +1122,9 @@ def obter(os_id):
         """, (os_id,))
 
         pecas = _pecas_da_os(conn, os_id)
-        itens = _itens_do_orcamento(conn, os_id) if os_row.get("modelo_os") == "orcamento" else []
+        # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
+        # Orçamento — qualquer OS pode ter, ver criar().
+        itens = _itens_do_orcamento(conn, os_id)
 
         # Chamado Técnico/Orçamento pendurados nesta OS (ver os_pai_id) — só
         # existe quando ESTA é uma OS de primeiro nível; uma filha não tem filha.
@@ -1211,25 +1214,27 @@ def criar():
         os_id = insert_returning_id(conn, """
             INSERT INTO ordens_servico
                 (cliente_id, atendente, tipo_aparelho, marca, modelo,
-                 numero_serie, acessorios, defeito_declarado, taxa_avaliacao,
+                 numero_serie, voltagem, acessorios, defeito_declarado, taxa_avaliacao,
                  status, observacao, criado_em, criado_por, tipo_os,
                  modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
-              campos["modelo"], campos["numero_serie"], campos["acessorios"],
+              campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
               tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id))
 
-        if modelo_os == "orcamento":
-            for item in (d.get("itens") or []):
-                nome_item = (item.get("nome") or "").strip()
-                if not nome_item:
-                    continue
-                execute(conn, """
-                    INSERT INTO ordem_servico_itens (ordem_servico_id, nome, valor, criado_em)
-                    VALUES (?, ?, ?, ?)
-                """, (os_id, nome_item, _num(item.get("valor")), agora))
+        # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
+        # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
+        # tem essa seção pra qualquer OS. Aceito em qualquer modelo.
+        for item in (d.get("itens") or []):
+            nome_item = (item.get("nome") or "").strip()
+            if not nome_item:
+                continue
+            execute(conn, """
+                INSERT INTO ordem_servico_itens (ordem_servico_id, nome, valor, criado_em)
+                VALUES (?, ?, ?, ?)
+            """, (os_id, nome_item, _num(item.get("valor")), agora))
 
     return jsonify({"mensagem": "Ordem de serviço aberta", "id": os_id,
                     "cliente_id": cliente_id}), 201
@@ -1248,7 +1253,7 @@ def editar(os_id):
         modelo_efetivo = (d.get("modelo_os") or existe.get("modelo_os") or "os").strip()
 
         campos, valores = [], []
-        for chave in ("tipo_aparelho", "marca", "modelo", "numero_serie",
+        for chave in ("tipo_aparelho", "marca", "modelo", "numero_serie", "voltagem",
                      "acessorios", "defeito_declarado", "observacao", "solucao"):
             if chave in d:
                 campos.append(f"{chave} = ?")
@@ -1309,6 +1314,21 @@ def editar(os_id):
         execute(conn, f"UPDATE ordens_servico SET {', '.join(campos)} WHERE id = ?", valores)
 
     return jsonify({"mensagem": "Ordem de serviço atualizada"})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>", methods=["DELETE"])
+def apagar(os_id):
+    """Apaga a OS de verdade — pedido de 2026-08-27 (só dava pra criar,
+    nunca pra remover). Itens (ordem_servico_itens) somem junto por
+    ON DELETE CASCADE; visitas (servicos.ordem_servico_id) e filhas
+    (os_pai_id) só perdem a referência (ON DELETE SET NULL) — apagar uma OS
+    não pode apagar atendimento que aconteceu de verdade nem outra OS."""
+    with db_conn(commit=True) as conn:
+        existe = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (os_id,))
+        if not existe:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        execute(conn, "DELETE FROM ordens_servico WHERE id = ?", (os_id,))
+    return jsonify({"mensagem": "Ordem de serviço apagada"})
 
 
 @ordens_servico_bp.route("/ordens-servico/<int:os_id>/agendar", methods=["POST"])

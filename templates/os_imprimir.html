@@ -6,56 +6,76 @@
 <title>OS #{{ '%06d' % ordem.id }} · Porto Tec</title>
 <link rel="icon" type="image/png" href="/static/logo.png">
 <style>
-  /* Uma fonte só, uma cor de destaque só, régua fina — o que faz um
-     documento parecer bem feito é restrição, não decoração. */
+  /* Layout baseado no modelo impresso que o Kalebe desenhou em 2026-08-27:
+     cabeçalho com logo+contato, seções numeradas em círculo, tabela de
+     itens e garantia em campo de preenchimento manual. */
   :root {
     --tinta: #1b1e24; --tinta-2: #6b7280; --tinta-3: #9aa1ac;
-    --linha: #e5e7eb; --azul: #1d5fae; --azul-fundo: #eef4fc;
+    --linha: #d8dde5; --azul: #1d5fae; --azul-fundo: #eef4fc;
   }
   /* Cabe numa A4 é requisito, não sugestão — cada regra de espaçamento
      abaixo foi somada à mão pra fechar dentro de ~271mm úteis (297mm menos
      margem do @page). Reduzir gap "só um pouco" em três lugares parece
      inofensivo isolado; juntos é a diferença entre uma folha e duas. */
-  @page { size: A4; margin: 13mm 15mm; }
+  @page { size: A4; margin: 12mm 15mm; }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: #f4f5f7; color: var(--tinta);
     font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif;
-    font-size: 12.75px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    font-size: 12.5px; line-height: 1.45; -webkit-font-smoothing: antialiased;
   }
   .folha { max-width: 720px; margin: 24px auto 40px; padding: 0 20px; }
 
-  .topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .topo { display: flex; justify-content: space-between; align-items: flex-start; }
   .marca { display: flex; align-items: center; gap: 12px; }
-  .marca img { width: 58px; height: 58px; border-radius: 10px; display: block; object-fit: contain; }
-  .marca h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.2px; }
-  .marca .sub { font-size: 11px; color: var(--tinta-2); margin-top: 1px; }
-
-  .os-numero { text-align: right; }
-  .os-numero .n {
-    font-size: 12.5px; font-weight: 700; color: var(--tinta-2);
-    font-variant-numeric: tabular-nums; letter-spacing: .2px;
+  .marca img { width: 54px; height: 54px; border-radius: 8px; display: block; object-fit: contain; }
+  .marca .nome-grande { font-size: 21px; font-weight: 800; letter-spacing: -.3px; color: var(--tinta); }
+  .marca .tagline {
+    font-size: 8.5px; font-weight: 700; letter-spacing: 1.6px; color: var(--tinta-2);
+    display: flex; align-items: center; gap: 6px; margin: 1px 0 3px;
   }
-  .os-numero .d { font-size: 11px; color: var(--tinta-3); margin-top: 1px; }
+  .marca .tagline::before, .marca .tagline::after { content: ''; height: 1px; width: 14px; background: var(--tinta-3); }
+  .marca .subnome { font-size: 11.5px; color: var(--tinta); font-weight: 600; }
+  .marca .doctype { font-size: 11px; color: var(--azul); font-weight: 700; }
 
-  .regua { height: 2px; background: var(--azul); border-radius: 2px; margin: 12px 0 16px; }
+  .os-numero { text-align: right; flex-shrink: 0; padding-top: 2px; }
+  .os-numero .rot { font-size: 9px; font-weight: 700; letter-spacing: .5px; color: var(--tinta-3); text-transform: uppercase; }
+  .os-numero .n {
+    font-size: 20px; font-weight: 800; color: var(--azul);
+    font-variant-numeric: tabular-nums; letter-spacing: .2px; margin: 0 0 8px;
+  }
+  .os-numero .d { font-size: 12.5px; color: var(--tinta); font-weight: 600; }
+
+  .contato-barra {
+    display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+    font-size: 10.5px; color: var(--tinta-2);
+    margin: 14px 0 12px; padding: 10px 0; border-top: 1px solid var(--linha); border-bottom: 1px solid var(--linha);
+  }
+  .contato-barra .item { display: flex; align-items: center; gap: 6px; }
+  .contato-barra svg { flex-shrink: 0; }
 
   .tarja-status {
     display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .3px;
     color: var(--azul); background: var(--azul-fundo); padding: 4px 12px;
-    border-radius: 20px; text-transform: capitalize; margin-bottom: 18px;
+    border-radius: 20px; text-transform: capitalize; margin: 0 0 16px;
   }
   .tarja-tipo {
     display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .3px;
     color: var(--tinta-2); background: var(--linha); padding: 4px 12px;
-    border-radius: 20px; margin: 0 0 18px 8px;
+    border-radius: 20px; margin: 0 0 16px 8px;
   }
 
   h2 {
-    font-size: 10px; text-transform: uppercase; letter-spacing: .9px; font-weight: 700;
-    color: var(--tinta-3); margin: 18px 0 8px;
+    display: flex; align-items: center; gap: 9px;
+    font-size: 12px; font-weight: 700; color: var(--azul);
+    margin: 20px 0 10px; letter-spacing: .1px;
   }
   h2:first-of-type { margin-top: 0; }
+  h2 .num-bola {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 19px; height: 19px; border-radius: 50%; background: var(--azul); color: #fff;
+    font-size: 10px; font-weight: 800; flex-shrink: 0;
+  }
 
   .linha-divisoria { border: 0; border-top: 1px solid var(--linha); margin: 18px 0 0; }
 
@@ -64,7 +84,13 @@
   .campo .val { font-size: 12.5px; font-weight: 500; color: var(--tinta); }
   .largura-total { grid-column: 1 / -1; }
 
-  .caixa-texto { font-size: 12.5px; color: var(--tinta); white-space: pre-wrap; line-height: 1.48; }
+  .caixa-texto {
+    font-size: 12.5px; color: var(--tinta); white-space: pre-wrap; line-height: 1.48;
+    min-height: 34px; border: 1px solid var(--linha); border-radius: 6px; padding: 9px 11px;
+  }
+
+  .campo-manual { font-size: 12px; color: var(--tinta-2); display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+  .campo-manual .linha-preenchimento { flex: 1; border-bottom: 1px dotted var(--tinta-3); min-width: 40px; height: 14px; }
 
   .taxa-bloco { display: flex; align-items: baseline; gap: 8px; }
   .taxa-bloco .valor { font-size: 19px; font-weight: 700; letter-spacing: -.3px; }
@@ -82,14 +108,16 @@
   .tabela-itens td { font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--linha); }
   .tabela-itens tfoot td { border-bottom: 0; padding-top: 10px; font-weight: 700; font-size: 13.5px; }
 
-  .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 55px; margin-top: 40px; }
+  .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 55px; margin-top: 36px; }
   .linha-assinatura { border-top: 1px solid var(--tinta); padding-top: 6px; }
   .linha-assinatura .nome { font-size: 11.5px; font-weight: 600; }
   .linha-assinatura .cargo { font-size: 10px; color: var(--tinta-3); margin-top: 1px; }
 
   .rodape {
-    margin-top: 24px; text-align: center; font-size: 9.5px; color: var(--tinta-3);
+    margin-top: 22px; text-align: center; font-size: 10.5px; color: var(--tinta);
   }
+  .rodape .agradecimento { font-weight: 700; color: var(--azul); margin-bottom: 4px; }
+  .rodape .gerado { font-size: 9.5px; color: var(--tinta-3); }
 
   .botao-imprimir {
     position: fixed; top: 22px; right: 22px; padding: 10px 18px;
@@ -113,22 +141,39 @@
     <div class="marca">
       <img src="/static/logo-impressao.png" alt="Porto Tec">
       <div>
-        <h1>Porto Tec Assistência Técnica</h1>
-        <div class="sub">{{ modelo_os_rotulo }}</div>
+        <div class="nome-grande">PORTOTEC</div>
+        <div class="tagline">ASSISTÊNCIA TÉCNICA</div>
+        <div class="subnome">Portotec Assistência Técnica</div>
+        <div class="doctype">{{ modelo_os_rotulo | upper }}</div>
       </div>
     </div>
     <div class="os-numero">
-      <div class="n">Nº {{ '%06d' % ordem.id }}</div>
+      <div class="rot">OS Nº</div>
+      <div class="n">{{ '%06d' % ordem.id }}</div>
+      <div class="rot">Data de abertura</div>
       <div class="d">{{ data_abertura_br }}</div>
     </div>
   </div>
 
-  <div class="regua"></div>
+  <div class="contato-barra">
+    <span class="item">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      (11) 91527-2424
+    </span>
+    <span class="item">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="m22 6-10 7L2 6"/></svg>
+      contato@portotec.com.br
+    </span>
+    <span class="item">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      Rua Catule, 101 - Jd. Santa Terezinha (Zona Leste) · São Paulo/SP - CEP 08191-350
+    </span>
+  </div>
 
   <div class="tarja-status">{{ ordem.status.replace('_', ' ') }}</div>
   {% if tipo_os_rotulo %}<div class="tarja-tipo">{{ tipo_os_rotulo }}</div>{% endif %}
 
-  <h2>Cliente</h2>
+  <h2><span class="num-bola">1</span>Dados do cliente</h2>
   <div class="grade">
     <div class="campo"><div class="rot">Nome</div><div class="val">{{ ordem.cliente_nome }}</div></div>
     <div class="campo"><div class="rot">CPF/CNPJ</div><div class="val">{{ ordem.cliente_cpf_cnpj or '—' }}</div></div>
@@ -147,90 +192,108 @@
 
   <hr class="linha-divisoria">
 
-  <h2>Equipamento</h2>
+  <h2><span class="num-bola">2</span>Equipamento</h2>
   <div class="grade">
     <div class="campo"><div class="rot">Tipo</div><div class="val">{{ ordem.tipo_aparelho or '—' }}</div></div>
     <div class="campo"><div class="rot">Marca</div><div class="val">{{ ordem.marca or '—' }}</div></div>
     <div class="campo"><div class="rot">Modelo</div><div class="val">{{ ordem.modelo or '—' }}</div></div>
     <div class="campo"><div class="rot">Nº de série</div><div class="val">{{ ordem.numero_serie or '—' }}</div></div>
-    <div class="campo largura-total"><div class="rot">Acessórios entregues</div><div class="val">{{ ordem.acessorios or '—' }}</div></div>
+    <div class="campo"><div class="rot">Voltagem</div><div class="val">{{ ordem.voltagem or '—' }}</div></div>
+    <div class="campo"><div class="rot">Acessórios entregues</div><div class="val">{{ ordem.acessorios or '—' }}</div></div>
   </div>
 
   <hr class="linha-divisoria">
 
-  <h2>Defeito declarado pelo cliente</h2>
+  <h2><span class="num-bola">3</span>Defeito declarado pelo cliente</h2>
   <div class="caixa-texto">{{ ordem.defeito_declarado or '—' }}</div>
 
   {% if ordem.modelo_os == 'chamado_tecnico' %}
 
+    <h2><span class="num-bola">4</span>Solução / diagnóstico</h2>
+    <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
+
     {% if ordem.foto %}
-    <h2>Foto do produto</h2>
+    <h2><span class="num-bola">5</span>Foto do produto</h2>
     <img class="foto-produto" src="{{ ordem.foto }}" alt="Foto do produto">
     {% endif %}
 
-    <h2>Nossa solução</h2>
-    <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
-
     {% if ordem.observacao %}
-    <h2>Observação</h2>
+    <h2><span class="num-bola">6</span>Observações complementares</h2>
     <div class="caixa-texto">{{ ordem.observacao }}</div>
     {% endif %}
 
     <hr class="linha-divisoria">
 
-    <h2>Atendimento</h2>
+    <h2><span class="num-bola">7</span>Atendimento</h2>
     <div class="grade">
       <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
       <div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>
     </div>
 
+    {% if itens %}
+    <hr class="linha-divisoria">
+    <h2><span class="num-bola">8</span>Itens / valores</h2>
+    <table class="tabela-itens">
+      <thead><tr><th>Descrição</th><th class="col-valor">Valor (R$)</th></tr></thead>
+      <tbody>
+        {% for item in itens %}
+        <tr><td>{{ item.nome }}</td><td class="col-valor">{{ item.valor_br }}</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Valor total</td><td class="col-valor">R$ {{ total_orcamento_br }}</td></tr></tfoot>
+    </table>
+    {% endif %}
+
     {% if tipo_os_rotulo %}
     <hr class="linha-divisoria">
-    <h2>Termos</h2>
+    <h2><span class="num-bola">9</span>Termos de garantia</h2>
     <div class="termos">{{ termos }}</div>
     {% endif %}
 
   {% elif ordem.modelo_os == 'orcamento' %}
 
-    <h2>Nossa solução</h2>
+    <h2><span class="num-bola">4</span>Solução / diagnóstico</h2>
     <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
-
-    {% if ordem.observacao %}
-    <h2>Observação</h2>
-    <div class="caixa-texto">{{ ordem.observacao }}</div>
-    {% endif %}
 
     <hr class="linha-divisoria">
 
-    <h2>Itens do orçamento</h2>
+    <h2><span class="num-bola">5</span>Itens / valores</h2>
     <table class="tabela-itens">
-      <thead><tr><th>Serviço</th><th class="col-valor">Valor</th></tr></thead>
+      <thead><tr><th>Descrição</th><th class="col-valor">Valor (R$)</th></tr></thead>
       <tbody>
         {% for item in itens %}
-        <tr><td>{{ item.nome }}</td><td class="col-valor">R$ {{ item.valor_br }}</td></tr>
+        <tr><td>{{ item.nome }}</td><td class="col-valor">{{ item.valor_br }}</td></tr>
         {% else %}
         <tr><td colspan="2" style="color:var(--tinta-3);">Nenhum item lançado.</td></tr>
         {% endfor %}
       </tbody>
-      <tfoot><tr><td>Total</td><td class="col-valor">R$ {{ total_orcamento_br }}</td></tr></tfoot>
+      <tfoot><tr><td>Valor total</td><td class="col-valor">R$ {{ total_orcamento_br }}</td></tr></tfoot>
     </table>
+
+    {% if ordem.observacao %}
+    <h2><span class="num-bola">6</span>Observações complementares</h2>
+    <div class="caixa-texto">{{ ordem.observacao }}</div>
+    {% endif %}
 
     {% if tipo_os_rotulo %}
     <hr class="linha-divisoria">
-    <h2>Termos</h2>
+    <h2><span class="num-bola">7</span>Termos de garantia</h2>
     <div class="termos">{{ termos }}</div>
     {% endif %}
 
   {% else %}
 
+    <h2><span class="num-bola">4</span>Solução / diagnóstico</h2>
+    <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
+
     {% if ordem.observacao %}
-    <h2>Observação interna</h2>
+    <h2><span class="num-bola">5</span>Observações complementares</h2>
     <div class="caixa-texto">{{ ordem.observacao }}</div>
     {% endif %}
 
     <hr class="linha-divisoria">
 
-    <h2>Atendimento</h2>
+    <h2><span class="num-bola">6</span>Atendimento</h2>
     <div class="grade">
       <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
       <div class="campo"><div class="rot">Técnico</div><div class="val">{{ (visita.tecnico_nome if visita else None) or 'a definir' }}</div></div>
@@ -243,7 +306,29 @@
 
     <hr class="linha-divisoria">
 
-    <h2>Termos</h2>
+    <h2><span class="num-bola">7</span>Itens / valores</h2>
+    <table class="tabela-itens">
+      <thead><tr><th>Descrição</th><th class="col-valor">Valor (R$)</th></tr></thead>
+      <tbody>
+        {% for item in itens %}
+        <tr><td>{{ item.nome }}</td><td class="col-valor">{{ item.valor_br }}</td></tr>
+        {% else %}
+        <tr><td colspan="2" style="color:var(--tinta-3);">Nenhum item lançado.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Valor total</td><td class="col-valor">R$ {{ total_orcamento_br }}</td></tr></tfoot>
+    </table>
+
+    <hr class="linha-divisoria">
+
+    <h2><span class="num-bola">8</span>Garantia</h2>
+    <div class="campo-manual">Data de início: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
+    <div class="campo-manual">Data final: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
+    <div class="campo-manual">Prazo de garantia: <span class="linha-preenchimento"></span></div>
+
+    <hr class="linha-divisoria">
+
+    <h2><span class="num-bola">9</span>Termos de garantia</h2>
     <div class="termos">{{ termos }}</div>
 
   {% endif %}
@@ -251,15 +336,18 @@
   <div class="assinaturas">
     <div class="linha-assinatura">
       <div class="nome">{{ ordem.cliente_nome }}</div>
-      <div class="cargo">Cliente</div>
+      <div class="cargo">Cliente / Responsável</div>
     </div>
     <div class="linha-assinatura">
       <div class="nome">&nbsp;</div>
-      <div class="cargo">Assinatura Empresa | Técnico Responsável</div>
+      <div class="cargo">Técnico Responsável</div>
     </div>
   </div>
 
-  <div class="rodape">Porto Tec Assistência Técnica &nbsp;·&nbsp; documento gerado em {{ gerado_em_br }}</div>
+  <div class="rodape">
+    <div class="agradecimento">Obrigado pela confiança!</div>
+    <div class="gerado">Porto Tec Assistência Técnica &nbsp;·&nbsp; documento gerado em {{ gerado_em_br }}</div>
+  </div>
 </div>
 
 </body>

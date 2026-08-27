@@ -869,6 +869,12 @@ _MIGRACOES_PG = [
     # mesmo caso. NULL = OS de primeiro nível (o normal); preenchido = é
     # filha de outra. listar() por padrão só mostra as de primeiro nível.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS os_pai_id INTEGER REFERENCES ordens_servico(id) ON DELETE SET NULL",
+    # Voltagem do equipamento — pedido de 2026-08-27, baseado no modelo de
+    # impressão que o Kalebe desenhou. Texto livre, não select: a regra
+    # inviolável é nunca ARREDONDAR 127V pra "110V" (ver CLAUDE.md), o que é
+    # uma responsabilidade de quem digita, não algo que um <select> resolve
+    # sozinho.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS voltagem TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -981,6 +987,7 @@ _MIGRACOES_SQLITE = [
         criado_por TEXT
     )""",
     "ALTER TABLE ordens_servico ADD COLUMN os_pai_id INTEGER",
+    "ALTER TABLE ordens_servico ADD COLUMN voltagem TEXT",
 ]
 
 
