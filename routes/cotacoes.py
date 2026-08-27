@@ -15,6 +15,17 @@ from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
 
 cotacoes_bp = Blueprint("cotacoes", __name__)
 
+# Mesmo teto e mesma validação de routes/tecnico_api.py (_gravar_foto): o
+# navegador já reduz a foto para 1280px de lado maior em JPEG antes de
+# mandar (reduzirFotoInteira em app.js), então 900 KB em base64 é folga
+# larga sem virar porta pra despejarem arquivo grande no banco. Duplicado
+# em vez de importado — mesmo motivo do _SETOR_ATIVO espalhado pelas rotas:
+# são dois pontos de entrada (o técnico em campo, o admin na hora de
+# cadastrar a peça) que não têm por que depender um do outro.
+FOTO_MAXIMA = 900 * 1024
+PREFIXOS_FOTO = ("data:image/jpeg;base64,", "data:image/png;base64,",
+                 "data:image/webp;base64,")
+
 
 def _agora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -22,6 +33,17 @@ def _agora() -> str:
 
 def _autor() -> str:
     return session.get("usuario_nome") or "Administrador"
+
+
+def _foto_valida(foto) -> str:
+    """Devolve a foto se passar na validação, senão None — silencioso de
+    propósito (mesma regra de _gravar_foto): uma foto recusada não pode
+    quebrar o resto do cadastro, só entra sem ela."""
+    if not isinstance(foto, str) or not foto.startswith(PREFIXOS_FOTO):
+        return None
+    if len(foto) > FOTO_MAXIMA:
+        return None
+    return foto
 
 
 @cotacoes_bp.route("/cotacoes", methods=["GET"])
@@ -55,11 +77,13 @@ def criar():
     except (TypeError, ValueError):
         quantidade = 1.0
 
+    foto = _foto_valida(d.get("foto"))
+
     with db_conn(commit=True) as conn:
         novo_id = insert_returning_id(conn, """
-            INSERT INTO cotacoes (codigo, modelo, descricao, quantidade, criado_em, criado_por)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (codigo, modelo, descricao, quantidade, _agora(), _autor()))
+            INSERT INTO cotacoes (codigo, modelo, descricao, quantidade, criado_em, criado_por, foto)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (codigo, modelo, descricao, quantidade, _agora(), _autor(), foto))
 
     return jsonify({"mensagem": "Item adicionado à lista de cotação", "id": novo_id}), 201
 
@@ -92,6 +116,8 @@ def atualizar(item_id):
             valores.append(None if valor in (None, "") else float(valor))
         if "fornecedor" in d:
             campos.append("fornecedor = ?"); valores.append((d.get("fornecedor") or "").strip())
+        if "foto" in d:
+            campos.append("foto = ?"); valores.append(_foto_valida(d.get("foto")))
         if "status" in d:
             status = (d.get("status") or "").strip()
             if status not in ("pendente", "cotado"):

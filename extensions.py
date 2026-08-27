@@ -46,4 +46,4 @@ limiter = Limiter(
 # O app compara este valor com o que ele próprio carregou e se recarrega quando
 # diverge. Subir junto com o CACHE_VERSAO do sw.js e o VERSAO_TELA do
 # tecnico.js — os três têm que contar a mesma história.
-VERSAO_APP = "v94"
+VERSAO_APP = "v95"

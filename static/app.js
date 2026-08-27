@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v94';
+const VERSAO_PAINEL = 'v95';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3036,6 +3036,74 @@ async function selecionarFicha(id) {
   mostrarDetalhe();
   await renderFichaDetalhe(id);
 }
+
+// ─── Busca de cliente/CEP na barra lateral ───────────────────────────
+// Antes, "em que dia o Fulano está?" só tinha resposta abrindo ficha por
+// ficha até achar. Busca direto no servidor porque o sidebar só carrega
+// RESUMO de cada técnico — os atendimentos de verdade só existem na memória
+// depois que uma ficha específica é aberta.
+let _sidebarBuscaTimer = null;
+
+function buscarClienteNaRota(valor) {
+  clearTimeout(_sidebarBuscaTimer);
+  const termo = valor.trim();
+  const caixa = document.getElementById('sidebar-busca-resultados');
+
+  if (termo.length < 3) {
+    caixa.classList.remove('aberto');
+    caixa.innerHTML = '';
+    return;
+  }
+
+  _sidebarBuscaTimer = setTimeout(async () => {
+    let r;
+    try {
+      r = await api(`/servicos/buscar?q=${encodeURIComponent(termo)}`);
+    } catch (e) {
+      caixa.innerHTML = `<div class="sidebar-busca-vazio">${esc(e.message)}</div>`;
+      caixa.classList.add('aberto');
+      return;
+    }
+
+    const itens = r.resultados || [];
+    if (itens.length === 0) {
+      caixa.innerHTML = `<div class="sidebar-busca-vazio">Nenhum atendimento encontrado.</div>`;
+      caixa.classList.add('aberto');
+      return;
+    }
+
+    caixa.innerHTML = itens.map(it => {
+      const quando = it.data_referencia
+        ? it.data_referencia.split('-').reverse().join('/')
+        : (it.dia_semana || 'sem dia');
+      const concluida = it.ficha_status === 'concluida';
+      return `
+        <div class="sidebar-busca-item" onclick="_irParaResultadoBusca(${it.ficha_id})">
+          <span class="cliente">${esc(it.cliente || 'sem nome')}</span>
+          <span class="meta">
+            <span class="bolinha-tec" style="background:${escCor(it.tecnico_cor)}"></span>
+            ${esc(it.tecnico_nome || 'sem técnico')} · ${esc(quando)}${concluida ? ' · concluída' : ''}
+          </span>
+        </div>`;
+    }).join('');
+    caixa.classList.add('aberto');
+  }, 300);
+}
+
+function _irParaResultadoBusca(fichaId) {
+  document.getElementById('sidebar-busca-resultados').classList.remove('aberto');
+  document.getElementById('sidebar-busca-cliente').value = '';
+  selecionarFicha(fichaId);
+}
+
+// Fecha o dropdown ao clicar fora — sem isso ficava aberto até a próxima
+// busca, tampando a lista de técnicos por baixo.
+document.addEventListener('click', (e) => {
+  const caixa = document.getElementById('sidebar-busca-resultados');
+  if (!caixa || !caixa.classList.contains('aberto')) return;
+  if (e.target.closest('.sidebar-busca-wrap')) return;
+  caixa.classList.remove('aberto');
+});
 
 async function renderFichaDetalhe(id) {
   // Aceita o ID ou a FICHA INTEIRA.
@@ -6146,6 +6214,11 @@ function renderCotacoes(mount, itens, todas) {
         <label class="form-label">Qtd</label>
         <input class="form-input" type="number" min="1" value="1" id="cotacao-novo-qtd">
       </div>
+      <div class="form-group cotacao-foto-campo">
+        <label class="form-label" for="cotacao-novo-foto">Foto da peça</label>
+        <input class="form-input" type="file" accept="image/*" capture="environment" id="cotacao-novo-foto">
+        <span class="ajuda-texto" id="cotacao-novo-foto-status"></span>
+      </div>
       <button class="btn btn-primary" onclick="adicionarCotacao()">${icone('plus', 'icone-13')} Adicionar</button>
     </div>`;
 
@@ -6226,17 +6299,36 @@ async function adicionarCotacao() {
   const modelo = document.getElementById('cotacao-novo-modelo').value.trim();
   const descricao = document.getElementById('cotacao-novo-obs').value.trim();
   const quantidade = document.getElementById('cotacao-novo-qtd').value || 1;
+  const campoFoto = document.getElementById('cotacao-novo-foto');
+  const statusFoto = document.getElementById('cotacao-novo-foto-status');
+  const arquivo = campoFoto?.files?.[0];
 
   if (!codigo && !modelo) {
     toast('Informe o código da peça ou o modelo da máquina', 'error');
     return;
   }
 
+  // A foto é opcional aqui (diferente do desfecho do técnico em campo, onde
+  // é obrigatória) — quem está no escritório às vezes só tem o código da
+  // peça em mãos, sem a peça física do lado pra fotografar.
+  let foto = null;
+  if (arquivo) {
+    statusFoto.textContent = 'Processando foto...';
+    try {
+      foto = await reduzirFotoInteira(arquivo);
+    } catch (e) {
+      statusFoto.textContent = '';
+      toast(e.message, 'error');
+      return;
+    }
+  }
+
   try {
-    await api('/cotacoes', { method: 'POST', body: JSON.stringify({ codigo, modelo, descricao, quantidade }) });
+    await api('/cotacoes', { method: 'POST', body: JSON.stringify({ codigo, modelo, descricao, quantidade, foto }) });
     toast('Item adicionado à lista de cotação', 'success');
     carregarCotacoes();
   } catch (e) {
+    statusFoto.textContent = '';
     toast(e.message, 'error');
   }
 }

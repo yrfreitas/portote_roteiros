@@ -43,6 +43,45 @@ def _validar_setor(valor):
     return "", setor_id
 
 
+@servicos_bp.route("/servicos/buscar", methods=["GET"])
+def buscar():
+    """Acha em qual dia e com qual técnico um cliente está, por nome ou CEP —
+    sem precisar abrir ficha por ficha até achar (era assim antes: 20+
+    atendimentos, um por um, pra responder "o Fulano é hoje ou amanhã?").
+
+    ?q= aceita nome parcial (case-insensitive) OU o CEP (com ou sem traço).
+    """
+    termo = (request.args.get("q") or "").strip()
+    if len(termo) < 3:
+        return jsonify({"resultados": []})
+
+    condicoes = ["LOWER(s.cliente) LIKE ?"]
+    params = [f"%{termo.lower()}%"]
+
+    cep_digitos = "".join(c for c in termo if c.isdigit())
+    if len(cep_digitos) >= 5:
+        condicoes.append("s.cep LIKE ?")
+        params.append(f"{cep_digitos}%")
+
+    with db_conn() as conn:
+        # Ficha em aberto primeiro — é quem está procurando "cadê o Fulano"
+        # quer saber a próxima visita, não escavar o histórico de anos atrás.
+        linhas = fetch_all(conn, f"""
+            SELECT s.id AS servico_id, s.cliente, s.cep, s.endereco_completo,
+                   s.status AS servico_status, f.id AS ficha_id, f.dia_semana,
+                   f.data_referencia, f.status AS ficha_status,
+                   t.id AS tecnico_id, t.nome AS tecnico_nome, t.cor AS tecnico_cor
+              FROM servicos s
+              JOIN fichas f ON f.id = s.ficha_id
+              LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+             WHERE {' OR '.join(condicoes)}
+             ORDER BY (CASE WHEN f.status = 'concluida' THEN 1 ELSE 0 END), f.id DESC
+             LIMIT 25
+        """, tuple(params))
+
+    return jsonify({"resultados": linhas})
+
+
 def aplicar_status_servico(conn, servico_id: int, novo_status: str) -> None:
     """UPDATE puro, sem validação — quem chama já garantiu que o status é
     válido e que o serviço existe e pertence a quem está pedindo a mudança.

@@ -231,7 +231,12 @@
 //       genérico). Impressão: logo maior (38px -> 58px) e a segunda
 //       assinatura deixa de mostrar "Administrador" e passa a dizer
 //       "Assinatura Empresa | Técnico Responsável".
-const CACHE_VERSAO = 'portotec-roteiros-v94';
+// v95 = duas coisas na aba Peças/Roteiros: (1) Cotação de peças ganha campo
+//       de foto (opcional) ao cadastrar manualmente, reaproveitando a mesma
+//       validação/compressão já usada no desfecho do técnico em campo; (2)
+//       barra lateral de Roteiros ganha busca por nome de cliente ou CEP,
+//       pra achar em que dia/técnico alguém está sem abrir ficha por ficha.
+const CACHE_VERSAO = 'portotec-roteiros-v95';
 
 const ARQUIVOS_CASCA = [
   '/',
