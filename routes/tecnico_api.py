@@ -256,7 +256,7 @@ _MOTIVO_DESFECHO_ROTULO = {
 }
 
 
-def _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem):
+def _criar_os_para_reagendamento(servico, tipo, motivo, observacao, quem):
     """Quando o atendimento reagendável NÃO tem OS (ponto adicionado direto
     em Roteiros/Verificar CEP, sem passar pela aba OS), cria uma na hora —
     do contrário esse cliente não tem pra onde ir na aba Agendar Clientes,
@@ -265,6 +265,12 @@ def _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem):
     nome): aqui repetida, e não importada, porque os dois pontos de entrada
     (peça chegou vs. técnico não atendeu) não têm por que depender um do
     outro.
+
+    Roda na PRÓPRIA conexão/transação, separada da que grava o desfecho: é
+    um efeito colateral (abrir OS), não o registro em si — um erro aqui (CEP
+    ruim, nome duplicado, o que for) não pode derrubar a conclusão do
+    atendimento, que é o que realmente importa pro técnico em campo. Ver
+    chamada em _gravar_desfecho, que também blinda contra exceção.
     """
     cliente_nome = (servico.get("cliente") or "").strip()
     if not cliente_nome:
@@ -272,37 +278,38 @@ def _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem):
 
     from routes.clientes import criar_cliente
 
-    existente = fetch_one(conn, sql(
-        "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
-    if existente:
-        cliente_id = existente["id"]
-    else:
-        try:
-            cliente_id = criar_cliente(conn, {"nome": cliente_nome})
-        except ValueError:
-            return
+    with db_conn(commit=True) as conn:
+        existente = fetch_one(conn, sql(
+            "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
+        if existente:
+            cliente_id = existente["id"]
+        else:
+            try:
+                cliente_id = criar_cliente(conn, {"nome": cliente_nome})
+            except ValueError:
+                return
 
-    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    partes_defeito = [_MOTIVO_DESFECHO_ROTULO.get(tipo, "Precisa de nova visita")]
-    if motivo:
-        partes_defeito.append(motivo)
-    if servico.get("descricao"):
-        partes_defeito.append(servico["descricao"])
+        agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        partes_defeito = [_MOTIVO_DESFECHO_ROTULO.get(tipo, "Precisa de nova visita")]
+        if motivo:
+            partes_defeito.append(motivo)
+        if servico.get("descricao"):
+            partes_defeito.append(servico["descricao"])
 
-    os_id = insert_returning_id(conn, sql("""
-        INSERT INTO ordens_servico
-            (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
-             taxa_avaliacao, status, observacao, criado_em, criado_por)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """), (cliente_id, quem, servico.get("tipo_aparelho") or "",
-          servico.get("modelo") or "", " — ".join(partes_defeito), 0,
-          "aguardando_agendamento", observacao or "", agora, quem))
+        os_id = insert_returning_id(conn, sql("""
+            INSERT INTO ordens_servico
+                (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
+                 taxa_avaliacao, status, observacao, criado_em, criado_por)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """), (cliente_id, quem, servico.get("tipo_aparelho") or "",
+              servico.get("modelo") or "", " — ".join(partes_defeito), 0,
+              "aguardando_agendamento", observacao or "", agora, quem))
 
-    # Amarra o atendimento na OS nova — sem isso não teria como saber, mais
-    # tarde, que esse servico já gerou uma OS de reagendamento (evita
-    # duplicar se o técnico registrar desfecho de novo no mesmo serviço).
-    execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
-           (os_id, servico["id"]))
+        # Amarra o atendimento na OS nova — sem isso não teria como saber, mais
+        # tarde, que esse servico já gerou uma OS de reagendamento (evita
+        # duplicar se o técnico registrar desfecho de novo no mesmo serviço).
+        execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
+               (os_id, servico["id"]))
 
 
 def _atualizar_status_os(conn, ordem_servico_id, tipo):
@@ -389,7 +396,13 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
     # cria uma OS na hora, porque sem OS não existe como aparecer lá — quem
     # marca o dia novo agora é o escritório, não mais o técnico em campo.
     if tipo in DESFECHOS_REAGENDAVEIS and not ordem_servico_id:
-        _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem)
+        try:
+            _criar_os_para_reagendamento(servico, tipo, motivo, observacao, quem)
+        except Exception:
+            # O desfecho em si (acima) já foi gravado nesta transação — um
+            # erro aqui não pode voltar como falha de "dar baixa" pro
+            # técnico. Fica só logado; a OS pode ser aberta manualmente.
+            log.exception("Falha ao criar OS de reagendamento pro serviço %s", servico_id)
     else:
         _atualizar_status_os(conn, ordem_servico_id, tipo)
 
