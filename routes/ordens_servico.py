@@ -1225,6 +1225,16 @@ def editar(os_id):
                 return jsonify({"erro": erro_tipo_os}), 400
             campos.append("tipo_os = ?")
             valores.append(tipo_os)
+        if "modelo_os" in d:
+            # Retroativo, de propósito: OS aberta antes desse recurso existir
+            # (ou aberta como "Ordens de Serviço" por engano) pode virar
+            # Chamado Técnico ou Orçamento depois — não é só quem entra
+            # daqui pra frente que ganha os três modelos.
+            erro_modelo, modelo_os = _validar_modelo_os(d.get("modelo_os"))
+            if erro_modelo:
+                return jsonify({"erro": erro_modelo}), 400
+            campos.append("modelo_os = ?")
+            valores.append(modelo_os)
         if "foto" in d:
             campos.append("foto = ?")
             valores.append(_foto_valida(d.get("foto")))

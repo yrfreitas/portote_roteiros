@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v106';
+const VERSAO_PAINEL = 'v107';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6372,13 +6372,20 @@ async function abrirOSDetalhe(id) {
 
   const opcoesTecnico = tecnicos.map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('');
 
-  const modeloBadge = o.modelo_os && o.modelo_os !== 'os'
-    ? `<span class="os-modelo-badge ${o.modelo_os === 'chamado_tecnico' ? 'chamado' : 'orcamento'}" style="margin-left:8px;">${esc(MODELOS_OS_ROTULO[o.modelo_os])}</span>`
-    : '';
-
   document.getElementById('os-detalhe-corpo').innerHTML = `
     <div class="os-detalhe-secao">
-      <label class="form-label">Status ${modeloBadge}</label>
+      <label class="form-label">O que é este documento?</label>
+      <div class="modelo-os-botoes">
+        <button type="button" class="modelo-os-btn${o.modelo_os === 'os' || !o.modelo_os ? ' ativo' : ''}"
+                onclick="osTrocarModelo(${o.id}, 'os')">Ordens de Serviço</button>
+        <button type="button" class="modelo-os-btn${o.modelo_os === 'chamado_tecnico' ? ' ativo' : ''}"
+                onclick="osTrocarModelo(${o.id}, 'chamado_tecnico')">Chamado Técnico</button>
+        <button type="button" class="modelo-os-btn${o.modelo_os === 'orcamento' ? ' ativo' : ''}"
+                onclick="osTrocarModelo(${o.id}, 'orcamento')">Fazer Orçamento</button>
+      </div>
+    </div>
+    <div class="os-detalhe-secao">
+      <label class="form-label">Status</label>
       <select class="form-input" onchange="osAtualizarStatus(${o.id}, this.value)">${opcoesStatus}</select>
       ${o.status === 'aguardando_agendamento' && o.oculta_fila_em ? `
         <p class="ajuda-texto" style="margin:8px 0 0;">
@@ -6528,6 +6535,20 @@ async function osAtualizarStatus(id, status) {
     toast('Status atualizado', 'success');
     carregarOS();
     carregarSeloAgendar();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// Troca o modelo de uma OS que JÁ EXISTE — não é só quem abre de agora em
+// diante que ganha Chamado Técnico/Orçamento. Reabre o detalhe depois pra
+// trocar os campos exibidos pelos do modelo novo.
+async function osTrocarModelo(id, modelo) {
+  try {
+    await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify({ modelo_os: modelo }) });
+    toast(`Documento agora é "${MODELOS_OS_ROTULO[modelo]}"`, 'success');
+    carregarOS();
+    abrirOSDetalhe(id);
   } catch (e) {
     toast(e.message, 'error');
   }
