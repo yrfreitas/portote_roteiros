@@ -25,9 +25,9 @@
   }
   .folha { max-width: 720px; margin: 24px auto 40px; padding: 0 20px; }
 
-  .topo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
-  .marca { display: flex; align-items: center; gap: 11px; }
-  .marca img { width: 38px; height: 38px; border-radius: 8px; display: block; }
+  .topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .marca { display: flex; align-items: center; gap: 12px; }
+  .marca img { width: 58px; height: 58px; border-radius: 10px; display: block; object-fit: contain; }
   .marca h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.2px; }
   .marca .sub { font-size: 11px; color: var(--tinta-2); margin-top: 1px; }
 
@@ -44,6 +44,11 @@
     display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .3px;
     color: var(--azul); background: var(--azul-fundo); padding: 4px 12px;
     border-radius: 20px; text-transform: capitalize; margin-bottom: 18px;
+  }
+  .tarja-tipo {
+    display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .3px;
+    color: var(--tinta-2); background: var(--linha); padding: 4px 12px;
+    border-radius: 20px; margin: 0 0 18px 8px;
   }
 
   h2 {
@@ -110,6 +115,7 @@
   <div class="regua"></div>
 
   <div class="tarja-status">{{ ordem.status.replace('_', ' ') }}</div>
+  {% if tipo_os_rotulo %}<div class="tarja-tipo">{{ tipo_os_rotulo }}</div>{% endif %}
 
   <h2>Cliente</h2>
   <div class="grade">
@@ -173,8 +179,8 @@
       <div class="cargo">Cliente</div>
     </div>
     <div class="linha-assinatura">
-      <div class="nome">{{ ordem.atendente or '—' }}</div>
-      <div class="cargo">Atendente · Porto Tec</div>
+      <div class="nome">&nbsp;</div>
+      <div class="cargo">Assinatura Empresa | Técnico Responsável</div>
     </div>
   </div>
 

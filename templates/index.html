@@ -965,6 +965,29 @@
   <div class="modal modal-lg">
     <div class="modal-title">Nova Ordem de Serviço</div>
 
+    <div class="form-group">
+      <label class="form-label" for="os-tipo">Tipo de OS <span class="form-obrigatorio">*</span></label>
+      <select class="form-input" id="os-tipo">
+        <option value="">Selecione...</option>
+        <option value="garantia_3_meses">Garantia 3 meses</option>
+        <option value="entrada_oficina">OS de entrada na oficina</option>
+        <option value="saida_oficina">OS de saída da oficina</option>
+        <option value="garantia_6_meses">OS garantia 6 meses</option>
+        <option value="garantia_1_ano">OS garantia 1 ano</option>
+        <option value="retirada_pre_aprovada">OS de retirada pré-aprovada</option>
+        <option value="vendas">OS de vendas</option>
+        <option value="retirada_aprovada">OS retirada aprovada</option>
+        <option value="retirada_orcamento">OS de retirada para orçamento</option>
+        <option value="acionamento_garantia_interno">Acionamento de garantia interno</option>
+        <option value="acionamento_garantia_externo">Acionamento de garantia externo</option>
+        <option value="avaliacao_tecnica">Avaliação técnica</option>
+        <option value="cancelamento">Cancelamento</option>
+        <option value="pagamento_faturamento">Pagamento / Faturamento</option>
+        <option value="higienizacao">Higienização</option>
+        <option value="retirado_aprovado">Retirado / Aprovado</option>
+      </select>
+    </div>
+
     <div class="pecas-filtros" id="os-cliente-modo">
       <button type="button" class="pecas-filtro ativo" data-modo="existente"
               onclick="osEscolherModoCliente('existente')">Cliente já cadastrado</button>

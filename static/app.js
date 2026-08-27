@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v93';
+const VERSAO_PAINEL = 'v94';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5418,6 +5418,27 @@ const OS_STATUS_ROTULO = {
   cancelada:              'Cancelada',
 };
 
+// Mesma lista do <select id="os-tipo"> da Nova OS — cada tipo imprime um
+// termo diferente na OS (ver TIPOS_OS_ROTULO em routes/ordens_servico.py).
+const TIPOS_OS_ROTULO = {
+  garantia_3_meses:              'Garantia 3 meses',
+  entrada_oficina:                'OS de entrada na oficina',
+  saida_oficina:                  'OS de saída da oficina',
+  garantia_6_meses:               'OS garantia 6 meses',
+  garantia_1_ano:                 'OS garantia 1 ano',
+  retirada_pre_aprovada:          'OS de retirada pré-aprovada',
+  vendas:                         'OS de vendas',
+  retirada_aprovada:              'OS retirada aprovada',
+  retirada_orcamento:             'OS de retirada para orçamento',
+  acionamento_garantia_interno:   'Acionamento de garantia interno',
+  acionamento_garantia_externo:   'Acionamento de garantia externo',
+  avaliacao_tecnica:              'Avaliação técnica',
+  cancelamento:                   'Cancelamento',
+  pagamento_faturamento:          'Pagamento / Faturamento',
+  higienizacao:                   'Higienização',
+  retirado_aprovado:              'Retirado / Aprovado',
+};
+
 let _osFiltroStatus = '';
 let _osFiltroDias = '';
 let _osBuscaTexto = '';
@@ -5670,7 +5691,7 @@ async function abrirModalNovaOS() {
   _osClienteSelecionado = null;
   ['os-nome','os-cpf','os-telefone','os-email','os-cep','os-numero','os-bairro',
    'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
-   'os-serie','os-acessorios','os-defeito','os-obs'].forEach(id => {
+   'os-serie','os-acessorios','os-defeito','os-obs','os-tipo'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -5789,8 +5810,16 @@ async function osSelecionarCliente(id, nome) {
 }
 
 async function osCriar() {
+  const tipoOs = document.getElementById('os-tipo').value;
+  if (!tipoOs) {
+    toast('Escolha o tipo de OS.', 'error');
+    document.getElementById('os-tipo').focus();
+    return;
+  }
+
   const modo = document.querySelector('#os-cliente-modo .pecas-filtro.ativo')?.dataset.modo;
   const corpo = {
+    tipo_os: tipoOs,
     tipo_aparelho: document.getElementById('os-tipo-aparelho').value.trim(),
     marca: document.getElementById('os-marca').value.trim(),
     modelo: document.getElementById('os-modelo').value.trim(),
@@ -5865,12 +5894,19 @@ async function abrirOSDetalhe(id) {
   const opcoesStatus = Object.entries(OS_STATUS_ROTULO)
     .map(([v, t]) => `<option value="${v}"${o.status === v ? ' selected' : ''}>${t}</option>`).join('');
 
+  const opcoesTipoOs = `<option value="">Selecione...</option>` + Object.entries(TIPOS_OS_ROTULO)
+    .map(([v, t]) => `<option value="${v}"${o.tipo_os === v ? ' selected' : ''}>${t}</option>`).join('');
+
   const opcoesTecnico = tecnicos.map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('');
 
   document.getElementById('os-detalhe-corpo').innerHTML = `
     <div class="os-detalhe-secao">
       <label class="form-label">Status</label>
       <select class="form-input" onchange="osAtualizarStatus(${o.id}, this.value)">${opcoesStatus}</select>
+    </div>
+    <div class="os-detalhe-secao">
+      <label class="form-label" for="os-ed-tipo-os">Tipo de OS</label>
+      <select class="form-input" id="os-ed-tipo-os">${opcoesTipoOs}</select>
     </div>
     <div class="os-detalhe-secao">
       <p class="form-separador">Equipamento</p>
@@ -5973,7 +6009,15 @@ async function osAdicionarPeca(id) {
 }
 
 async function osSalvarEdicao(id) {
+  const tipoOsEditado = document.getElementById('os-ed-tipo-os').value;
+  if (!tipoOsEditado) {
+    toast('Escolha o tipo de OS.', 'error');
+    document.getElementById('os-ed-tipo-os').focus();
+    return;
+  }
+
   const corpo = {
+    tipo_os: tipoOsEditado,
     tipo_aparelho: document.getElementById('os-ed-tipo').value.trim(),
     marca: document.getElementById('os-ed-marca').value.trim(),
     modelo: document.getElementById('os-ed-modelo').value.trim(),

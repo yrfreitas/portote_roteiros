@@ -18,7 +18,8 @@ from routes.chat import chat_bp
 from routes.clientes import clientes_bp
 from routes.cotacoes import cotacoes_bp
 from routes.estoque import estoque_bp
-from routes.ordens_servico import TERMOS_PADRAO, ordens_servico_bp
+from routes.ordens_servico import (TERMOS_PADRAO, TERMOS_POR_TIPO,
+                                   TIPOS_OS_ROTULO, ordens_servico_bp)
 from routes.fichas import fichas_bp
 from routes.pedidos import pedidos_bp
 from routes.rastreio import rastreio_bp
@@ -409,8 +410,12 @@ def imprimir_os(os_id):
         visita = dict(visita)
         visita["data_referencia_br"] = _data_br(visita["data_referencia"])
 
+    termos = TERMOS_POR_TIPO.get(ordem.get("tipo_os"), TERMOS_PADRAO)
+    tipo_os_rotulo = TIPOS_OS_ROTULO.get(ordem.get("tipo_os"), "")
+
     return render_template(
-        "os_imprimir.html", ordem=ordem, visita=visita, termos=TERMOS_PADRAO,
+        "os_imprimir.html", ordem=ordem, visita=visita, termos=termos,
+        tipo_os_rotulo=tipo_os_rotulo,
         data_abertura_br=_data_br(ordem.get("criado_em")),
         taxa_br=_moeda_br(ordem.get("taxa_avaliacao")),
         gerado_em_br=datetime.now().strftime("%d/%m/%Y %H:%M"),

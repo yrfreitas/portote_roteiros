@@ -829,6 +829,10 @@ _MIGRACOES_PG = [
     # ele, confirmar horário ou avisar atraso dependia de achar o número em
     # outro lugar (papel, memória) na hora do técnico já estar a caminho.
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS telefone TEXT",
+    # Tipo de OS decide qual termo imprime (garantia, venda, higienização...) —
+    # pedido de 2026-08-26. Nullable: OS abertas antes disso não têm tipo, e
+    # a impressão cai no termo genérico nesse caso (ver TERMOS_POR_TIPO).
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS tipo_os TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -919,6 +923,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE servico_desfecho ADD COLUMN codigo TEXT",
     "ALTER TABLE pecas_chegada ADD COLUMN ordem_servico_id INTEGER",
     "ALTER TABLE servicos ADD COLUMN telefone TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN tipo_os TEXT",
 ]
 
 

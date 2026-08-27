@@ -38,6 +38,54 @@ TERMOS_PADRAO = (
     "dados armazenados no equipamento."
 )
 
+# Tipo de OS: pedido de 2026-08-26. Cada tipo imprime um termo diferente —
+# a mesma folha de OS serve pra garantia, venda, retirada, cancelamento etc.,
+# e cada situação tem uma responsabilidade jurídica distinta. Lista fechada
+# pelo mesmo motivo de sempre (status, setor): dropdown, não campo livre.
+TIPOS_OS = [
+    "garantia_3_meses",
+    "entrada_oficina",
+    "saida_oficina",
+    "garantia_6_meses",
+    "garantia_1_ano",
+    "retirada_pre_aprovada",
+    "vendas",
+    "retirada_aprovada",
+    "retirada_orcamento",
+    "acionamento_garantia_interno",
+    "acionamento_garantia_externo",
+    "avaliacao_tecnica",
+    "cancelamento",
+    "pagamento_faturamento",
+    "higienizacao",
+    "retirado_aprovado",
+]
+
+TIPOS_OS_ROTULO = {
+    "garantia_3_meses": "Garantia 3 meses",
+    "entrada_oficina": "OS de entrada na oficina",
+    "saida_oficina": "OS de saída da oficina",
+    "garantia_6_meses": "OS garantia 6 meses",
+    "garantia_1_ano": "OS garantia 1 ano",
+    "retirada_pre_aprovada": "OS de retirada pré-aprovada",
+    "vendas": "OS de vendas",
+    "retirada_aprovada": "OS retirada aprovada",
+    "retirada_orcamento": "OS de retirada para orçamento",
+    "acionamento_garantia_interno": "Acionamento de garantia interno",
+    "acionamento_garantia_externo": "Acionamento de garantia externo",
+    "avaliacao_tecnica": "Avaliação técnica",
+    "cancelamento": "Cancelamento",
+    "pagamento_faturamento": "Pagamento / Faturamento",
+    "higienizacao": "Higienização",
+    "retirado_aprovado": "Retirado / Aprovado",
+}
+
+# Termo específico de cada tipo — PENDENTE. O Kalebe vai mandar o texto de
+# cada um; até lá, cai no termo genérico (TERMOS_PADRAO) pra impressão nunca
+# sair em branco. Trocar aqui, tipo por tipo, quando os textos chegarem —
+# não precisa mexer em mais nada (obter()/imprimir_os() já leem daqui).
+TERMOS_POR_TIPO = {chave: TERMOS_PADRAO for chave in TIPOS_OS}
+
 
 def _agora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -57,6 +105,17 @@ def _campos_os(d: dict) -> dict:
         "defeito_declarado": (d.get("defeito_declarado") or "").strip(),
         "observacao": (d.get("observacao") or "").strip(),
     }
+
+
+def _validar_tipo_os(valor):
+    """Devolve (mensagem_de_erro, tipo). Erro vazio significa que passou —
+    mesmo padrão de _validar_setor em routes/servicos.py."""
+    tipo = (valor or "").strip()
+    if not tipo:
+        return "Escolha o tipo de OS.", None
+    if tipo not in TIPOS_OS:
+        return "Tipo de OS inválido.", None
+    return "", tipo
 
 
 def _num(v, default=0.0):
@@ -123,6 +182,11 @@ def _parse_data_hora(texto):
 @ordens_servico_bp.route("/ordens-servico/status", methods=["GET"])
 def listar_status():
     return jsonify({"status": STATUS_OS})
+
+
+@ordens_servico_bp.route("/ordens-servico/tipos", methods=["GET"])
+def listar_tipos():
+    return jsonify({"tipos": [{"chave": t, "rotulo": TIPOS_OS_ROTULO[t]} for t in TIPOS_OS]})
 
 
 @ordens_servico_bp.route("/ordens-servico", methods=["GET"])
@@ -332,7 +396,8 @@ def obter(os_id):
 
         pecas = _pecas_da_os(conn, os_id)
 
-    return jsonify({"ordem": os_row, "visitas": visitas, "pecas": pecas, "termos": TERMOS_PADRAO})
+    termos = TERMOS_POR_TIPO.get(os_row.get("tipo_os"), TERMOS_PADRAO)
+    return jsonify({"ordem": os_row, "visitas": visitas, "pecas": pecas, "termos": termos})
 
 
 @ordens_servico_bp.route("/ordens-servico", methods=["POST"])
@@ -345,6 +410,10 @@ def criar():
 
     if not campos["tipo_aparelho"] and not campos["defeito_declarado"]:
         return jsonify({"erro": "Informe ao menos o aparelho ou o defeito declarado"}), 400
+
+    erro_tipo_os, tipo_os = _validar_tipo_os(d.get("tipo_os"))
+    if erro_tipo_os:
+        return jsonify({"erro": erro_tipo_os}), 400
 
     with db_conn(commit=True) as conn:
         cliente_id = d.get("cliente_id")
@@ -364,12 +433,13 @@ def criar():
             INSERT INTO ordens_servico
                 (cliente_id, atendente, tipo_aparelho, marca, modelo,
                  numero_serie, acessorios, defeito_declarado, taxa_avaliacao,
-                 status, observacao, criado_em, criado_por)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, observacao, criado_em, criado_por, tipo_os)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
-              "aguardando_agendamento", campos["observacao"], agora, _quem()))
+              "aguardando_agendamento", campos["observacao"], agora, _quem(),
+              tipo_os))
 
     return jsonify({"mensagem": "Ordem de serviço aberta", "id": os_id,
                     "cliente_id": cliente_id}), 201
@@ -402,6 +472,12 @@ def editar(os_id):
             if status == "finalizada":
                 campos.append("finalizada_em = ?")
                 valores.append(_agora())
+        if "tipo_os" in d:
+            erro_tipo_os, tipo_os = _validar_tipo_os(d.get("tipo_os"))
+            if erro_tipo_os:
+                return jsonify({"erro": erro_tipo_os}), 400
+            campos.append("tipo_os = ?")
+            valores.append(tipo_os)
 
         if not campos:
             return jsonify({"mensagem": "Nada para mudar"})

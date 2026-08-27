@@ -223,7 +223,15 @@
 //       abrirModalAddServico() -- por isso nunca puxava a lista de Setor
 //       (mesmo defeito relatado antes na aba Roteiros) nem limpava o
 //       telefone entre uma ficha e outra. Agora reaproveita a função certa.
-const CACHE_VERSAO = 'portotec-roteiros-v93';
+// v94 = Tipo de OS: 16 opções fechadas (garantia 3/6/12 meses, entrada/saída
+//       da oficina, vendas, retiradas, acionamento de garantia, avaliação
+//       técnica, cancelamento, pagamento/faturamento, higienização...),
+//       escolhido ao abrir a OS e editável depois -- cada tipo vai imprimir
+//       um termo diferente (textos ainda pendentes, hoje cai no termo
+//       genérico). Impressão: logo maior (38px -> 58px) e a segunda
+//       assinatura deixa de mostrar "Administrador" e passa a dizer
+//       "Assinatura Empresa | Técnico Responsável".
+const CACHE_VERSAO = 'portotec-roteiros-v94';
 
 const ARQUIVOS_CASCA = [
   '/',
