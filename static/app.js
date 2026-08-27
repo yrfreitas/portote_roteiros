@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v96';
+const VERSAO_PAINEL = 'v97';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5643,6 +5643,8 @@ function _renderAgendarLista() {
 
   mount.innerHTML = ordens.map(o => `
     <div class="agendar-card" onclick="abrirOSDetalhe(${o.id})">
+      <button type="button" class="agendar-remover" title="Remover da fila (a OS continua no sistema)"
+              onclick="event.stopPropagation(); agendarRemoverDaFila(${o.id})">${icone('x', 'icone-13')}</button>
       <div class="agendar-card-topo">
         <div class="agendar-cliente">${esc(o.cliente_nome)}</div>
         <span class="agendar-espera">${esperandoHa(o.criado_em)}</span>
@@ -5664,6 +5666,23 @@ function _renderAgendarLista() {
         Agendar visita →
       </button>
     </div>`).join('');
+}
+
+// Some da fila sem apagar nada — a OS continua existindo, só marcada pra não
+// aparecer aqui (routes/ordens_servico.py:ocultar_fila). Reversível pelo
+// detalhe da OS (abrirOSDetalhe), pra quem remover sem querer não perder o caso.
+async function agendarRemoverDaFila(id) {
+  try {
+    await api(`/ordens-servico/${id}/ocultar-fila`, { method: 'POST' });
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
+  _agendarDados.reagendamento = _agendarDados.reagendamento.filter(o => o.id !== id);
+  _agendarDados.peca = _agendarDados.peca.filter(o => o.id !== id);
+  atualizarSeloAgendar(_agendarDados.reagendamento.length + _agendarDados.peca.length);
+  toast('Removido da fila — a OS continua no sistema, veja na aba OS', 'success');
+  _renderAgendarTabs();
 }
 
 // "há 3 dias" / "hoje" / "há 2h" — pra fila mostrar quem está esperando há
@@ -6017,6 +6036,12 @@ async function abrirOSDetalhe(id) {
     <div class="os-detalhe-secao">
       <label class="form-label">Status</label>
       <select class="form-input" onchange="osAtualizarStatus(${o.id}, this.value)">${opcoesStatus}</select>
+      ${o.status === 'aguardando_agendamento' && o.oculta_fila_em ? `
+        <p class="ajuda-texto" style="margin:8px 0 0;">
+          Removida da fila de Agendar Clientes em ${esc((o.oculta_fila_em || '').slice(0, 16).replace('T', ' '))}.
+          <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px;"
+                  onclick="osReexibirFila(${o.id})">Devolver pra fila</button>
+        </p>` : ''}
     </div>
     <div class="os-detalhe-secao">
       <label class="form-label" for="os-ed-tipo-os">Tipo de OS</label>
@@ -6158,6 +6183,17 @@ async function osDesagendar(osId, servicoId) {
     abrirOSDetalhe(osId);
     carregarOS();
     carregarSeloAgendar(); // pode ter voltado pra 'aguardando_agendamento'
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function osReexibirFila(id) {
+  try {
+    await api(`/ordens-servico/${id}/reexibir-fila`, { method: 'POST' });
+    toast('De volta pra fila de Agendar Clientes', 'success');
+    abrirOSDetalhe(id);
+    carregarSeloAgendar();
   } catch (e) {
     toast(e.message, 'error');
   }

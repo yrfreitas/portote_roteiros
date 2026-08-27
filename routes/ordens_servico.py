@@ -222,8 +222,10 @@ def listar():
         params.append(corte)
     if fonte == "peca":
         condicoes.append("EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+        condicoes.append("os.oculta_fila_em IS NULL")
     elif fonte == "reagendamento":
         condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+        condicoes.append("os.oculta_fila_em IS NULL")
     where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
 
     with db_conn() as conn:
@@ -622,3 +624,32 @@ def desagendar(os_id, servico_id):
             recalcular_rota(conn, ficha_id, ficha)
 
     return jsonify({"mensagem": "Visita desagendada"})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/ocultar-fila", methods=["POST"])
+def ocultar_fila(os_id):
+    """Some com o cartão em Agendar Clientes sem mexer no status da OS nem
+    apagar nada — pedido de 2026-08-27, pra tirar da vista um caso já
+    resolvido por fora (cliente ligou direto, por exemplo) sem forçar um
+    status que mentiria sobre o que aconteceu de verdade. Reversível via
+    /reexibir-fila: a OS continua inteira, só marcada pra não aparecer ali.
+    """
+    with db_conn(commit=True) as conn:
+        os_row = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (os_id,))
+        if not os_row:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        execute(conn, "UPDATE ordens_servico SET oculta_fila_em = ? WHERE id = ?",
+               (_agora(), os_id))
+    return jsonify({"mensagem": "Removida da fila de Agendar Clientes"})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/reexibir-fila", methods=["POST"])
+def reexibir_fila(os_id):
+    """Desfaz o /ocultar-fila — a OS volta a aparecer em Agendar Clientes se
+    ainda estiver em 'aguardando_agendamento'."""
+    with db_conn(commit=True) as conn:
+        os_row = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (os_id,))
+        if not os_row:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        execute(conn, "UPDATE ordens_servico SET oculta_fila_em = NULL WHERE id = ?", (os_id,))
+    return jsonify({"mensagem": "De volta pra fila de Agendar Clientes"})

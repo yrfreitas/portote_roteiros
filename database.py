@@ -833,6 +833,11 @@ _MIGRACOES_PG = [
     # pedido de 2026-08-26. Nullable: OS abertas antes disso não têm tipo, e
     # a impressão cai no termo genérico nesse caso (ver TERMOS_POR_TIPO).
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS tipo_os TEXT",
+    # "Remover da fila" em Agendar Clientes some o cartão sem apagar a OS nem
+    # mudar o status dela — pedido de 2026-08-27, pra tirar da vista casos que
+    # já foram tratados por fora (cliente ligou direto, por exemplo) sem forçar
+    # um status que não é verdade ('agendada' mentiria que já tem visita).
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS oculta_fila_em TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -924,6 +929,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE pecas_chegada ADD COLUMN ordem_servico_id INTEGER",
     "ALTER TABLE servicos ADD COLUMN telefone TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN tipo_os TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN oculta_fila_em TEXT",
 ]
 
 
