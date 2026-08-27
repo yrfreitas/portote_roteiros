@@ -312,7 +312,11 @@ def _criar_os_para_reagendamento(servico, tipo, motivo, observacao, quem):
                (os_id, servico["id"]))
 
 
-def _atualizar_status_os(conn, ordem_servico_id, tipo):
+def _atualizar_status_os(ordem_servico_id, tipo):
+    """Roda em conexão própria — mesmo motivo de _criar_os_para_reagendamento:
+    se isso falhar (OS apagada entre uma tela e outra, o que for), não pode
+    deixar a transação principal (que já gravou o desfecho) sem como dar
+    commit. Ver a chamada em _gravar_desfecho, que blinda os dois."""
     if not ordem_servico_id:
         return
     novo = _STATUS_OS_POR_DESFECHO.get(tipo)
@@ -322,14 +326,15 @@ def _atualizar_status_os(conn, ordem_servico_id, tipo):
     # (routes/ordens_servico.py), e a métrica de tempo médio até finalizar
     # compara os dois — hora local aqui faria a duração dar negativa.
     agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    if novo == "finalizada":
-        execute(conn, sql(
-            "UPDATE ordens_servico SET status = ?, atualizado_em = ?, "
-            "finalizada_em = ? WHERE id = ?"), (novo, agora, agora, ordem_servico_id))
-    else:
-        execute(conn, sql(
-            "UPDATE ordens_servico SET status = ?, atualizado_em = ? WHERE id = ?"),
-            (novo, agora, ordem_servico_id))
+    with db_conn(commit=True) as conn:
+        if novo == "finalizada":
+            execute(conn, sql(
+                "UPDATE ordens_servico SET status = ?, atualizado_em = ?, "
+                "finalizada_em = ? WHERE id = ?"), (novo, agora, agora, ordem_servico_id))
+        else:
+            execute(conn, sql(
+                "UPDATE ordens_servico SET status = ?, atualizado_em = ? WHERE id = ?"),
+                (novo, agora, ordem_servico_id))
 
 
 def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
@@ -395,16 +400,20 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
     # sozinha. Reagendável SEM OS (ponto solto de Roteiros/Verificar CEP):
     # cria uma OS na hora, porque sem OS não existe como aparecer lá — quem
     # marca o dia novo agora é o escritório, não mais o técnico em campo.
-    if tipo in DESFECHOS_REAGENDAVEIS and not ordem_servico_id:
-        try:
+    #
+    # BLINDADO: o desfecho em si (acima) já está gravado nesta transação —
+    # nada daqui pra baixo pode virar "erro interno" pro técnico. Se a OS não
+    # sair ou o status não atualizar, fica só logado; dá pra corrigir na mão
+    # depois. O que NÃO pode acontecer de novo é o técnico ficar sem
+    # conseguir concluir o atendimento por causa de um efeito colateral.
+    try:
+        if tipo in DESFECHOS_REAGENDAVEIS and not ordem_servico_id:
             _criar_os_para_reagendamento(servico, tipo, motivo, observacao, quem)
-        except Exception:
-            # O desfecho em si (acima) já foi gravado nesta transação — um
-            # erro aqui não pode voltar como falha de "dar baixa" pro
-            # técnico. Fica só logado; a OS pode ser aberta manualmente.
-            log.exception("Falha ao criar OS de reagendamento pro serviço %s", servico_id)
-    else:
-        _atualizar_status_os(conn, ordem_servico_id, tipo)
+        else:
+            _atualizar_status_os(ordem_servico_id, tipo)
+    except Exception:
+        log.exception("Falha ao atualizar OS/criar reagendamento pro serviço %s (tipo=%s)",
+                      servico_id, tipo)
 
     resultado = {"tipo": tipo, "motivo": motivo, "peca": peca, "observacao": observacao}
     return resultado
