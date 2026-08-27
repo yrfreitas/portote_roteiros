@@ -1,4 +1,6 @@
 import logging
+import traceback
+from collections import deque
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
@@ -12,6 +14,35 @@ from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
 from routes.servicos import STATUS_SERVICO_VALIDOS, aplicar_status_servico
 
 tecnico_api_bp = Blueprint("tecnico_api", __name__)
+
+# Diagnóstico temporário (2026-08-27): captura em memória o traceback completo
+# de qualquer falha ao gravar desfecho, pra investigar o "erro interno" que o
+# Kalebe reportou sem acesso ao log do Railway. Deque limitado — não é
+# persistência de verdade, só uma janela curta pra pegar o erro no ato.
+# Remover depois que a causa for confirmada e corrigida.
+_ULTIMOS_ERROS_DESFECHO = deque(maxlen=20)
+
+
+def _registrar_erro_desfecho(contexto: str, servico_id, tipo):
+    _ULTIMOS_ERROS_DESFECHO.appendleft({
+        "quando": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "contexto": contexto,
+        "servico_id": servico_id,
+        "tipo": tipo,
+        "traceback": traceback.format_exc(),
+    })
+
+
+@tecnico_api_bp.route("/_diag/ultimos-erros-desfecho", methods=["GET"])
+def diagnostico_ultimos_erros_desfecho():
+    """Só pra investigação pontual. ATENÇÃO: todo o blueprint /api/t/ é
+    público de propósito (o técnico autentica pelo token na URL, não por
+    sessão — ver _PREFIXOS_PUBLICOS em app.py), então essa rota checa sessão
+    de admin NA MÃO, senão exporia traceback interno pra qualquer um."""
+    from flask import session
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    return jsonify({"erros": list(_ULTIMOS_ERROS_DESFECHO)})
 
 
 def _tecnico_por_token(conn, token):
@@ -159,23 +190,33 @@ def status_servico_tecnico(token, servico_id):
             "erro": f"Status inválido. Use um de: {', '.join(sorted(STATUS_SERVICO_VALIDOS))}"
         }), 400
 
-    with db_conn(commit=True) as conn:
-        tecnico = _tecnico_por_token(conn, token)
-        if not tecnico:
-            return jsonify({"erro": "Link inválido"}), 404
+    try:
+        with db_conn(commit=True) as conn:
+            tecnico = _tecnico_por_token(conn, token)
+            if not tecnico:
+                return jsonify({"erro": "Link inválido"}), 404
 
-        servico = fetch_one(conn, """
-            SELECT s.* FROM servicos s
-            JOIN fichas f ON f.id = s.ficha_id
-            WHERE s.id = ? AND f.tecnico_id = ?
-        """, (servico_id, tecnico["id"]))
-        if not servico:
-            return jsonify({"erro": "Serviço não encontrado"}), 404
+            servico = fetch_one(conn, """
+                SELECT s.* FROM servicos s
+                JOIN fichas f ON f.id = s.ficha_id
+                WHERE s.id = ? AND f.tecnico_id = ?
+            """, (servico_id, tecnico["id"]))
+            if not servico:
+                return jsonify({"erro": "Serviço não encontrado"}), 404
 
-        aplicar_status_servico(conn, servico_id, novo_status)
-        desfecho_gravado = _gravar_desfecho(conn, servico, novo_status,
-                                            data.get("desfecho"),
-                                            tecnico.get("nome") or "")
+            aplicar_status_servico(conn, servico_id, novo_status)
+            desfecho_gravado = _gravar_desfecho(conn, servico, novo_status,
+                                                data.get("desfecho"),
+                                                tecnico.get("nome") or "")
+    except Exception:
+        # Diagnóstico temporário (ver _registrar_erro_desfecho): captura
+        # QUALQUER exceção neste endpoint, não só as já isoladas dentro de
+        # _gravar_desfecho — se o erro que o Kalebe reportou vem de outro
+        # ponto que eu ainda não blindei, é aqui que fica visível. Re-lança
+        # na sequência: o comportamento pro técnico (erro genérico) não muda,
+        # só passa a ficar registrado pra eu conseguir ler depois.
+        _registrar_erro_desfecho("status_servico_tecnico", servico_id, None)
+        raise
 
     return jsonify({"mensagem": f"Serviço marcado como {novo_status}",
                     "status": novo_status, "desfecho": desfecho_gravado})
@@ -414,6 +455,7 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
     except Exception:
         log.exception("Falha ao atualizar OS/criar reagendamento pro serviço %s (tipo=%s)",
                       servico_id, tipo)
+        _registrar_erro_desfecho("atualizar_os_ou_criar_reagendamento", servico_id, tipo)
 
     resultado = {"tipo": tipo, "motivo": motivo, "peca": peca, "observacao": observacao}
     return resultado
