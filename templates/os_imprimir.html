@@ -211,23 +211,27 @@
 
   <h2><span class="num-bola">2</span>Equipamento</h2>
   <div class="grade">
-    <div class="campo"><div class="rot">Tipo</div><div class="val">{{ ordem.tipo_aparelho or '—' }}</div></div>
-    <div class="campo"><div class="rot">Marca</div><div class="val">{{ ordem.marca or '—' }}</div></div>
-    <div class="campo"><div class="rot">Modelo</div><div class="val">{{ ordem.modelo or '—' }}</div></div>
-    <div class="campo"><div class="rot">Nº de série</div><div class="val">{{ ordem.numero_serie or '—' }}</div></div>
-    <div class="campo"><div class="rot">Voltagem</div><div class="val">{{ ordem.voltagem or '—' }}</div></div>
-    <div class="campo"><div class="rot">Acessórios entregues</div><div class="val">{{ ordem.acessorios or '—' }}</div></div>
+    {% if 'tipo_aparelho' not in ocultar_impressao %}<div class="campo"><div class="rot">Tipo</div><div class="val">{{ ordem.tipo_aparelho or '—' }}</div></div>{% endif %}
+    {% if 'marca' not in ocultar_impressao %}<div class="campo"><div class="rot">Marca</div><div class="val">{{ ordem.marca or '—' }}</div></div>{% endif %}
+    {% if 'modelo' not in ocultar_impressao %}<div class="campo"><div class="rot">Modelo</div><div class="val">{{ ordem.modelo or '—' }}</div></div>{% endif %}
+    {% if 'numero_serie' not in ocultar_impressao %}<div class="campo"><div class="rot">Nº de série</div><div class="val">{{ ordem.numero_serie or '—' }}</div></div>{% endif %}
+    {% if 'voltagem' not in ocultar_impressao %}<div class="campo"><div class="rot">Voltagem</div><div class="val">{{ ordem.voltagem or '—' }}</div></div>{% endif %}
+    {% if 'acessorios' not in ocultar_impressao %}<div class="campo"><div class="rot">Acessórios entregues</div><div class="val">{{ ordem.acessorios or '—' }}</div></div>{% endif %}
   </div>
 
   <hr class="linha-divisoria">
 
   {% if ordem.modelo_os == 'chamado_tecnico' %}
 
+    {% if 'defeito_declarado' not in ocultar_impressao %}
     <h2><span class="num-bola">3</span>Defeito declarado pelo cliente</h2>
     <div class="caixa-texto">{{ ordem.defeito_declarado or '—' }}</div>
+    {% endif %}
 
+    {% if 'solucao' not in ocultar_impressao %}
     <h2><span class="num-bola">4</span>Solução / diagnóstico</h2>
     <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
+    {% endif %}
 
     {% if ordem.foto and 'foto' not in ocultar_impressao %}
     <h2><span class="num-bola">5</span>Foto do produto</h2>
@@ -244,11 +248,14 @@
     <h2><span class="num-bola">7</span>Atendimento</h2>
     <div class="grade">
       <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
-      <div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>
+      {% if 'tecnico' not in ocultar_impressao %}<div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>{% endif %}
+      {% if 'taxa' not in ocultar_impressao %}
       <div class="campo">
         <div class="rot">Taxa de vistoria</div>
         <div class="taxa-bloco"><span class="valor">R$ {{ taxa_vistoria_br }}</span></div>
       </div>
+      {% endif %}
+      {% if 'forma_pagamento' not in ocultar_impressao %}
       <div class="campo largura-total">
         <div class="rot">Forma de pagamento</div>
         <div class="val">
@@ -257,6 +264,7 @@
           <span class="opcao-pagamento"><span class="marcador"></span>Cartão</span>
         </div>
       </div>
+      {% endif %}
     </div>
 
     {% if tipo_os_rotulo and 'termos' not in ocultar_impressao %}
@@ -267,11 +275,15 @@
 
   {% elif ordem.modelo_os == 'orcamento' %}
 
+    {% if 'defeito_declarado' not in ocultar_impressao %}
     <h2><span class="num-bola">3</span>Defeito declarado pelo cliente</h2>
     <div class="caixa-texto">{{ ordem.defeito_declarado or '—' }}</div>
+    {% endif %}
 
+    {% if 'solucao' not in ocultar_impressao %}
     <h2><span class="num-bola">4</span>Solução / diagnóstico</h2>
     <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
+    {% endif %}
 
     {% if ordem.foto and 'foto' not in ocultar_impressao %}
     <h2><span class="num-bola">4</span>Foto do produto</h2>
@@ -279,8 +291,8 @@
     {% endif %}
 
     <div class="grade" style="margin-top:10px;">
-      <div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>
-      <div class="campo"><div class="rot">Forma de pagamento</div><div class="val">{{ ordem.forma_pagamento or '—' }}</div></div>
+      {% if 'tecnico' not in ocultar_impressao %}<div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>{% endif %}
+      {% if 'forma_pagamento' not in ocultar_impressao %}<div class="campo"><div class="rot">Forma de pagamento</div><div class="val">{{ ordem.forma_pagamento or '—' }}</div></div>{% endif %}
     </div>
 
     <hr class="linha-divisoria">
@@ -314,21 +326,27 @@
     <h2><span class="num-bola">3</span>Atendimento</h2>
     <div class="grade">
       <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
-      <div class="campo"><div class="rot">Técnico</div><div class="val">{{ (visita.tecnico_nome if visita else None) or tecnico_atendeu_nome or 'a definir' }}</div></div>
+      {% if 'tecnico' not in ocultar_impressao %}<div class="campo"><div class="rot">Técnico</div><div class="val">{{ (visita.tecnico_nome if visita else None) or tecnico_atendeu_nome or 'a definir' }}</div></div>{% endif %}
       <div class="campo"><div class="rot">Data agendada</div><div class="val">{{ visita.data_referencia_br if (visita and visita.data_referencia_br) else (visita.dia_semana if visita else 'a definir') }}</div></div>
+      {% if 'taxa' not in ocultar_impressao %}
       <div class="campo">
         <div class="rot">Taxa de avaliação</div>
         <div class="taxa-bloco"><span class="valor">R$ {{ taxa_br }}</span></div>
       </div>
+      {% endif %}
     </div>
 
     <hr class="linha-divisoria">
 
+    {% if 'defeito_declarado' not in ocultar_impressao %}
     <h2><span class="num-bola">4</span>Defeito declarado pelo cliente</h2>
     <div class="caixa-texto">{{ ordem.defeito_declarado or '—' }}</div>
+    {% endif %}
 
+    {% if 'solucao' not in ocultar_impressao %}
     <h2><span class="num-bola">5</span>Solução / diagnóstico</h2>
     <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
+    {% endif %}
 
     {% if ordem.foto and 'foto' not in ocultar_impressao %}
     <h2><span class="num-bola">6</span>Foto do produto</h2>
@@ -340,15 +358,18 @@
     <div class="caixa-texto">{{ ordem.observacao }}</div>
     {% endif %}
 
-    {% if 'valores' not in ocultar_impressao %}
+    {% if 'valores' not in ocultar_impressao or 'forma_pagamento' not in ocultar_impressao %}
     <hr class="linha-divisoria">
 
     <h2><span class="num-bola">8</span>Valor e forma de pagamento</h2>
     <table class="tabela-total-pagamento">
+      {% if 'valores' not in ocultar_impressao %}
       <tr>
         <td class="rot-tabela">Valor total</td>
         <td>R$ {{ total_orcamento_br }}</td>
       </tr>
+      {% endif %}
+      {% if 'forma_pagamento' not in ocultar_impressao %}
       <tr>
         <td class="rot-tabela">Forma de pagamento</td>
         <td>
@@ -357,6 +378,7 @@
           <span class="opcao-pagamento"><span class="marcador"></span>Cartão</span>
         </td>
       </tr>
+      {% endif %}
     </table>
     {% endif %}
 

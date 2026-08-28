@@ -1107,37 +1107,58 @@
       </div>
     </div>
 
+    <!-- Casinha "imprimir" ao lado de CADA campo (pedido de 2026-08-28,
+         corrigindo a 1ª tentativa que só tinha um checklist solto no fim):
+         desmarcar tira só ESSE campo do papel, o dado continua salvo e
+         editável. Uma classe só (.os-imp-campo) pra o JS coletar tudo de
+         uma vez na hora de salvar, seja lá quantos campos a tela tiver. -->
     <p class="form-separador">Equipamento</p>
     <div class="form-row">
-      <div class="form-group"><label class="form-label" for="os-tipo-aparelho">Tipo</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-tipo-aparelho">Tipo</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="tipo_aparelho" checked> imprimir</label></div>
         <input class="form-input" id="os-tipo-aparelho" placeholder="Ex: Geladeira"></div>
-      <div class="form-group"><label class="form-label" for="os-marca">Marca</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-marca">Marca</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="marca" checked> imprimir</label></div>
         <input class="form-input" id="os-marca" placeholder="Ex: Panasonic"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label" for="os-modelo">Modelo</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-modelo">Modelo</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="modelo" checked> imprimir</label></div>
         <input class="form-input" id="os-modelo"></div>
-      <div class="form-group"><label class="form-label" for="os-serie">Número de série</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-serie">Número de série</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="numero_serie" checked> imprimir</label></div>
         <input class="form-input" id="os-serie"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label" for="os-voltagem">Voltagem</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-voltagem">Voltagem</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="voltagem" checked> imprimir</label></div>
         <input class="form-input" id="os-voltagem" placeholder="Ex: 127V — nunca arredondar"></div>
-      <div class="form-group"><label class="form-label" for="os-acessorios">Acessórios entregues junto</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-acessorios">Acessórios entregues junto</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="acessorios" checked> imprimir</label></div>
         <input class="form-input" id="os-acessorios" placeholder="Ex: cabo de força, controle remoto"></div>
     </div>
     <div class="form-group">
-      <label class="form-label" for="os-defeito">Defeito declarado pelo cliente</label>
+      <div class="form-label-linha"><label class="form-label" for="os-defeito">Defeito declarado pelo cliente</label>
+        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="defeito_declarado" checked> imprimir</label></div>
       <textarea class="form-input" id="os-defeito" rows="3"></textarea>
     </div>
 
     <div class="form-row" id="os-campos-taxa">
-      <div class="form-group"><label class="form-label" for="os-taxa">Taxa de avaliação (R$)</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-taxa">Taxa de avaliação (R$)</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="taxa" checked> imprimir</label></div>
         <input class="form-input" type="number" step="0.01" min="0" id="os-taxa" value="0"></div>
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="os-solucao">Nossa solução</label>
+      <div class="form-label-linha"><label class="form-label" for="os-solucao">Nossa solução</label>
+        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="solucao" checked> imprimir</label></div>
       <textarea class="form-input" id="os-solucao" rows="3" placeholder="O que foi feito / o que será feito"></textarea>
     </div>
 
@@ -1147,11 +1168,13 @@
          numa linha própria, sem dividir espaço com a forma de pagamento. -->
     <div class="form-row" id="os-linha-vistoria-pagamento" style="display:none;">
       <div class="form-group">
-        <label class="form-label" for="os-taxa-vistoria">Taxa de vistoria (R$)</label>
+        <div class="form-label-linha"><label class="form-label" for="os-taxa-vistoria">Taxa de vistoria (R$)</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="taxa" checked> imprimir</label></div>
         <input class="form-input" type="number" step="0.01" min="0" id="os-taxa-vistoria" value="0">
       </div>
       <div class="form-group">
-        <label class="form-label">Forma de pagamento</label>
+        <div class="form-label-linha"><label class="form-label">Forma de pagamento</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="forma_pagamento" checked> imprimir</label></div>
         <div class="pagamento-quadrados" id="os-pagamento-quadrados">
           <button type="button" class="pagamento-quadrado" data-valor="Pix" onclick="osEscolherPagamento(this)">Pix</button>
           <button type="button" class="pagamento-quadrado" data-valor="Dinheiro" onclick="osEscolherPagamento(this)">Dinheiro</button>
@@ -1160,7 +1183,8 @@
       </div>
     </div>
     <div class="form-group" id="os-campo-tecnico-solo" style="display:none;">
-      <label class="form-label" for="os-chamado-tecnico-solo">Técnico que atendeu</label>
+      <div class="form-label-linha"><label class="form-label" for="os-chamado-tecnico-solo">Técnico que atendeu</label>
+        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="tecnico" checked> imprimir</label></div>
       <select class="form-input" id="os-chamado-tecnico-solo"><option value="">Selecione...</option></select>
     </div>
 
@@ -1168,11 +1192,13 @@
          forma de pagamento (select) na mesma linha. -->
     <div class="form-row" id="os-linha-tecnico-pagamento">
       <div class="form-group">
-        <label class="form-label" for="os-chamado-tecnico">Técnico que atendeu</label>
+        <div class="form-label-linha"><label class="form-label" for="os-chamado-tecnico">Técnico que atendeu</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="tecnico" checked> imprimir</label></div>
         <select class="form-input" id="os-chamado-tecnico"><option value="">Selecione...</option></select>
       </div>
       <div class="form-group">
-        <label class="form-label" for="os-forma-pagamento">Forma de pagamento</label>
+        <div class="form-label-linha"><label class="form-label" for="os-forma-pagamento">Forma de pagamento</label>
+          <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="forma_pagamento" checked> imprimir</label></div>
         <select class="form-input" id="os-forma-pagamento">
           <option value="">Selecione...</option>
           <option value="Pix">Pix</option>
@@ -1182,14 +1208,16 @@
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label" for="os-chamado-foto">Foto do produto</label>
+      <div class="form-label-linha"><label class="form-label" for="os-chamado-foto">Foto do produto</label>
+        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="foto" checked> imprimir</label></div>
       <input class="form-input" type="file" accept="image/*" capture="environment" id="os-chamado-foto"
              onchange="osEscolherFotoChamado(this)">
       <div id="os-chamado-foto-status" style="margin-top:6px;font-size:11.5px;color:var(--text-muted);"></div>
     </div>
 
     <div id="os-campos-orcamento-itens">
-      <p class="form-separador">Itens / Valores</p>
+      <div class="form-label-linha"><p class="form-separador" style="margin:0;">Itens / Valores</p>
+        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="valores" checked> imprimir</label></div>
       <div id="os-orc-itens-lista"></div>
       <div class="form-row">
         <div class="form-group">
@@ -1211,22 +1239,19 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="os-obs">Observação interna (opcional)</label>
+      <div class="form-label-linha"><label class="form-label" for="os-obs">Observação interna (opcional)</label>
+        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="observacao" checked> imprimir</label></div>
       <textarea class="form-input" id="os-obs" rows="2"></textarea>
     </div>
 
-    <!-- Decide o que aparece NO PAPEL sem apagar o dado — desmarcar só tira
-         da impressão, o campo continua salvo e editável. Pedido de
-         2026-08-28: sem isso só dava pra descobrir "não queria isso impresso"
-         depois de já ter impresso. -->
+    <!-- Seções que não vêm de UM campo só (nascem de várias respostas ou
+         nem têm campo — Garantia é preenchida à mão no papel) — ficam num
+         checklist à parte, mas contam pro MESMO coletor (.os-imp-campo). -->
     <div class="form-group">
-      <label class="form-label">O que mostrar na impressão</label>
+      <label class="form-label">Outras seções da impressão</label>
       <div class="imprimir-opcoes">
-        <label class="pecas-toggle"><input type="checkbox" id="os-imp-foto" checked> Foto do produto</label>
-        <label class="pecas-toggle"><input type="checkbox" id="os-imp-observacao" checked> Observações complementares</label>
-        <label class="pecas-toggle" id="os-imp-valores-wrap"><input type="checkbox" id="os-imp-valores" checked> Valor e forma de pagamento</label>
-        <label class="pecas-toggle" id="os-imp-garantia-wrap"><input type="checkbox" id="os-imp-garantia" checked> Garantia</label>
-        <label class="pecas-toggle"><input type="checkbox" id="os-imp-termos" checked> Termos de garantia</label>
+        <label class="imp-check" id="os-imp-garantia-wrap"><input type="checkbox" class="os-imp-campo" data-campo="garantia" checked> Garantia</label>
+        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="termos" checked> Termos de garantia</label>
       </div>
     </div>
 

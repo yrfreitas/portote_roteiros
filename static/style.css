@@ -3731,6 +3731,39 @@ select:focus-visible,
 .df-processando { font-size: 12.5px; color: var(--text-muted); }
 .df-erro { font-size: 12.5px; color: var(--danger-text); line-height: 1.45; }
 
+/* Assinatura do cliente no "Fazer Ordem de Serviço" — mesmo canvas do
+   app do técnico (static/tecnico.css), só que pro painel do escritório. */
+.df-obrigatorio { color: var(--danger-text); }
+.df-assinatura-canvas {
+  width: 100%; height: 150px; border-radius: 11px; touch-action: none;
+  background: #f4f6fa; border: 1px dashed var(--border-bright); display: block;
+}
+.df-limpar-assinatura {
+  margin-top: 7px; padding: 7px 12px; border-radius: 9px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border-bright);
+  color: var(--text-secondary); font-size: 12.5px; font-family: inherit;
+}
+
+/* Banner "mandar pro cliente no WhatsApp" após assinar em campo — mesmas
+   classes de static/tecnico.css (t-envio-cliente*), reaproveitadas aqui
+   porque o efeito visual pretendido é idêntico nas duas telas. */
+.t-envio-cliente {
+  position: fixed; left: 14px; right: 14px; bottom: 14px; z-index: 960;
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-radius: 12px;
+  background: #14251c; border: 1px solid rgba(52,211,153,.4);
+  color: #eaf0fb; font-size: 13.5px;
+}
+.t-envio-cliente-btn {
+  margin-left: auto; padding: 8px 14px; border-radius: 9px;
+  background: #25d366; color: #06210f; font-weight: 700; font-size: 13px;
+  text-decoration: none; white-space: nowrap;
+}
+.t-envio-cliente-fechar {
+  background: transparent; border: 0; color: #8fa3bf; font-size: 14px;
+  cursor: pointer; padding: 2px 4px;
+}
+
 /* ═══ Aba Atendimentos ══════════════════════════════════════════════
    Junta o que o técnico registrou em campo. Os quatro indicadores são
    BOTÕES: clicar filtra a lista, clicar de novo desfaz — o número e o

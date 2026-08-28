@@ -719,11 +719,16 @@ def _num(v, default=0.0):
         return default
 
 
-# Seções opcionais que dá pra esconder NA IMPRESSÃO sem apagar o dado — o
-# checkbox desmarcado só tira do papel, o campo continua salvo e editável.
-# "itens_valores_orcamento" fica de fora de propósito: é o próprio motivo de
-# existir de um Orçamento, esconder ali derrotaria o documento.
-SECOES_IMPRIMIVEIS = {"foto", "observacao", "valores", "garantia", "termos"}
+# Campos/seções que dá pra esconder NA IMPRESSÃO sem apagar o dado — o
+# checkbox desmarcado só tira do papel, o campo continua salvo e editável
+# (pedido de 2026-08-28: "quero essa casinha em tudo", não só num grupinho
+# de 5 no fim do formulário). "valores" do Orçamento fica de fora de
+# propósito — esconder ali derrotaria o próprio documento.
+SECOES_IMPRIMIVEIS = {
+    "tipo_aparelho", "marca", "modelo", "numero_serie", "voltagem", "acessorios",
+    "defeito_declarado", "solucao", "foto", "tecnico", "forma_pagamento", "taxa",
+    "observacao", "valores", "garantia", "termos",
+}
 
 
 def _validar_imprimir_ocultar(valor) -> str:

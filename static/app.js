@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v119';
+const VERSAO_PAINEL = 'v120';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5083,6 +5083,10 @@ const DF_OPCOES = [
   { tipo: 'resolvido',    rotulo: 'Resolvido',       sub: 'consertado na hora' },
   { tipo: 'precisa_peca', rotulo: 'Precisa de peça', sub: 'diagnosticado, falta peça' },
   { tipo: 'cotacao_peca', rotulo: 'Cotação de peça', sub: 'não sei o preço ainda' },
+  // Pedido de 2026-08-28: quem dá baixa por AQUI (painel/roteiro) precisa
+  // da mesma opção que já existe na tela própria do técnico — sem isso só
+  // quem usa o link /t/<token> conseguia fechar OS em campo com assinatura.
+  { tipo: 'fazer_os',     rotulo: 'Fazer Ordem de Serviço', sub: 'dados + assinatura do cliente' },
   { tipo: 'volto_depois', rotulo: 'Volta depois',    sub: 'precisa retornar' },
   { tipo: 'nao_atendido', rotulo: 'Reagendar',       sub: 'não deu para fazer, precisa remarcar' },
 ];
@@ -5140,10 +5144,10 @@ async function reduzirFotoInteira(arquivo, ladoMaximo = 1280, qualidade = 0.72) 
   });
 }
 
-function blocoFotoPainel() {
+function blocoFotoPainel(rotulo = 'Foto da etiqueta', ajuda = 'É dela que sai o modelo e o número de série para pedir a peça.') {
   return `
-    <label class="form-label" style="margin-top:14px;">Foto da etiqueta</label>
-    <p class="df-ajuda">É dela que sai o modelo e o número de série para pedir a peça.</p>
+    <label class="form-label" style="margin-top:14px;">${rotulo}</label>
+    <p class="df-ajuda">${ajuda}</p>
     <label class="df-foto-botao">
       Escolher foto
       <input type="file" accept="image/*" onchange="escolherFotoDesfecho(this)" hidden>
@@ -5174,6 +5178,67 @@ function removerFotoDesfecho() {
   _dfFoto = null;
   const previa = document.getElementById('df-previa');
   if (previa) previa.innerHTML = '';
+  validarConfirmarDesfecho();
+}
+
+// ─── Assinatura do cliente no "Fazer Ordem de Serviço" (painel) ────────
+// Mesmo canvas simples de static/tecnico.js, só que com mouse como
+// caso principal (aqui é o computador do escritório, não o celular em
+// campo) — touch continua funcionando de qualquer forma.
+let _dfAssinaturaCanvas = null, _dfAssinaturaCtx = null;
+let _dfAssinaturaDesenhando = false, _dfAssinaturaTemTraco = false;
+
+function iniciarAssinaturaDesfecho() {
+  const canvas = document.getElementById('df-assinatura-canvas');
+  if (!canvas) return;
+  const escala = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * escala;
+  canvas.height = rect.height * escala;
+  _dfAssinaturaCanvas = canvas;
+  _dfAssinaturaCtx = canvas.getContext('2d');
+  _dfAssinaturaCtx.scale(escala, escala);
+  _dfAssinaturaCtx.strokeStyle = '#111';
+  _dfAssinaturaCtx.lineWidth = 2.2;
+  _dfAssinaturaCtx.lineCap = 'round';
+  _dfAssinaturaTemTraco = false;
+
+  const posicao = (ev) => {
+    const r = canvas.getBoundingClientRect();
+    const t = ev.touches ? ev.touches[0] : ev;
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  };
+  const iniciarTraco = (ev) => {
+    ev.preventDefault();
+    _dfAssinaturaDesenhando = true;
+    const p = posicao(ev);
+    _dfAssinaturaCtx.beginPath();
+    _dfAssinaturaCtx.moveTo(p.x, p.y);
+  };
+  const desenharTraco = (ev) => {
+    if (!_dfAssinaturaDesenhando) return;
+    ev.preventDefault();
+    const p = posicao(ev);
+    _dfAssinaturaCtx.lineTo(p.x, p.y);
+    _dfAssinaturaCtx.stroke();
+    _dfAssinaturaTemTraco = true;
+    validarConfirmarDesfecho();
+  };
+  const pararTraco = () => { _dfAssinaturaDesenhando = false; };
+
+  canvas.onmousedown = iniciarTraco;
+  canvas.onmousemove = desenharTraco;
+  canvas.onmouseup = pararTraco;
+  canvas.onmouseleave = pararTraco;
+  canvas.ontouchstart = iniciarTraco;
+  canvas.ontouchmove = desenharTraco;
+  canvas.ontouchend = pararTraco;
+}
+
+function limparAssinaturaDesfecho() {
+  if (!_dfAssinaturaCtx || !_dfAssinaturaCanvas) return;
+  _dfAssinaturaCtx.clearRect(0, 0, _dfAssinaturaCanvas.width, _dfAssinaturaCanvas.height);
+  _dfAssinaturaTemTraco = false;
   validarConfirmarDesfecho();
 }
 
@@ -5224,6 +5289,40 @@ function escolherDesfecho(tipo) {
       <div class="df-motivos">${DF_MOTIVOS.map(mo =>
         `<button class="df-motivo" data-motivo="${esc(mo)}"
                  onclick="escolherMotivoDesfecho(this)">${esc(mo)}</button>`).join('')}</div>`;
+  } else if (tipo === 'fazer_os') {
+    // Mesma ideia da tela própria do técnico (static/tecnico.js) — dados do
+    // cliente, defeito, solução, forma de pagamento e assinatura, tudo numa
+    // tacada, pra quem dá baixa por AQUI (painel) também conseguir fechar a
+    // OS em campo sem depender do /t/<token>. Pedido de 2026-08-28.
+    const s = servicosAtuais.find(x => x.id === _dfServico) || {};
+    extra.innerHTML = `
+      <label class="form-label" for="df-fos-nome">Nome do cliente</label>
+      <input class="form-input" id="df-fos-nome" value="${esc(s.cliente || '')}" oninput="validarConfirmarDesfecho()">
+      <label class="form-label" style="margin-top:10px;" for="df-fos-telefone">Telefone</label>
+      <input class="form-input" id="df-fos-telefone" value="${esc(s.telefone || '')}">
+      <div class="form-row" style="margin-top:10px;">
+        <div class="form-group"><label class="form-label" for="df-fos-aparelho">Aparelho</label>
+          <input class="form-input" id="df-fos-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
+        <div class="form-group"><label class="form-label" for="df-fos-modelo">Modelo</label>
+          <input class="form-input" id="df-fos-modelo" value="${esc(s.modelo || '')}"></div>
+      </div>
+      <label class="form-label" for="df-fos-defeito">Defeito declarado</label>
+      <textarea class="form-input" id="df-fos-defeito" rows="2">${esc(s.descricao || '')}</textarea>
+      <label class="form-label" style="margin-top:10px;" for="df-fos-solucao">Nossa solução</label>
+      <textarea class="form-input" id="df-fos-solucao" rows="3" placeholder="O que foi feito"></textarea>
+      <label class="form-label" style="margin-top:10px;" for="df-fos-pagamento">Forma de pagamento</label>
+      <select class="form-input" id="df-fos-pagamento">
+        <option value="">Selecione...</option>
+        <option value="Pix">Pix</option>
+        <option value="Dinheiro">Dinheiro</option>
+        <option value="Cartão">Cartão</option>
+      </select>
+      ${blocoFotoPainel('Foto do produto', 'Opcional — registra o estado do aparelho na hora do fechamento.')}
+      <label class="form-label" style="margin-top:14px;">Assinatura do cliente <span class="df-obrigatorio">*</span></label>
+      <p class="df-ajuda">Peça pro cliente assinar aqui com o dedo ou o mouse.</p>
+      <canvas id="df-assinatura-canvas" class="df-assinatura-canvas"></canvas>
+      <button type="button" class="df-limpar-assinatura" onclick="limparAssinaturaDesfecho()">Limpar assinatura</button>`;
+    setTimeout(iniciarAssinaturaDesfecho, 0);
   } else {
     extra.innerHTML = '';
   }
@@ -5247,6 +5346,11 @@ function validarConfirmarDesfecho() {
     const codigo = document.getElementById('df-codigo')?.value.trim();
     const nome = document.getElementById('df-nome-peca')?.value.trim();
     ok = !!(codigo && nome && _dfFoto);
+  } else if (_dfTipo === 'fazer_os') {
+    // Trava por nome do cliente + assinatura de verdade — sem isso não tem
+    // o que documentar (mesma regra da tela do técnico).
+    const nome = document.getElementById('df-fos-nome')?.value.trim();
+    ok = !!(nome && _dfAssinaturaTemTraco);
   }
   btn.disabled = !ok;
 }
@@ -5265,21 +5369,55 @@ async function confirmarDesfecho() {
     desfecho.nome_peca = document.getElementById('df-nome-peca')?.value.trim() || '';
   }
   if (_dfTipo === 'nao_atendido') desfecho.motivo = document.querySelector('.df-motivo.ativa')?.dataset.motivo || '';
+  if (_dfTipo === 'fazer_os') {
+    desfecho.cliente_nome = document.getElementById('df-fos-nome')?.value.trim() || '';
+    desfecho.cliente_telefone = document.getElementById('df-fos-telefone')?.value.trim() || '';
+    desfecho.tipo_aparelho = document.getElementById('df-fos-aparelho')?.value.trim() || '';
+    desfecho.modelo = document.getElementById('df-fos-modelo')?.value.trim() || '';
+    desfecho.defeito_declarado = document.getElementById('df-fos-defeito')?.value.trim() || '';
+    desfecho.solucao_os = document.getElementById('df-fos-solucao')?.value.trim() || '';
+    desfecho.forma_pagamento = document.getElementById('df-fos-pagamento')?.value || '';
+    if (_dfFoto) desfecho.foto_produto = _dfFoto;
+    if (_dfAssinaturaTemTraco && _dfAssinaturaCanvas) desfecho.assinatura = _dfAssinaturaCanvas.toDataURL('image/png');
+  }
   const obs = document.getElementById('df-obs')?.value.trim();
   if (obs) desfecho.observacao = obs;
-  if (_dfFoto) desfecho.foto = _dfFoto;
+  if (_dfFoto && _dfTipo !== 'fazer_os') desfecho.foto = _dfFoto;
   const svc = _dfServico, ficha = _dfFicha;
   fecharDesfecho();
   await alternarStatusServico(svc, 'concluido', ficha, desfecho);
 }
 
+// Banner com link real (<a target="_blank">), não window.open() — abrir aba
+// programaticamente depois de um await pode ser bloqueado por não contar
+// como gesto direto do usuário (mesmo cuidado de static/tecnico.js).
+function mostrarEnvioClienteDesfecho(link, telefoneDigitos) {
+  const numero = telefoneDigitos && telefoneDigitos.length >= 10 ? `55${telefoneDigitos}` : '';
+  const msg = encodeURIComponent(`Olá! Segue o documento da sua Ordem de Serviço da Porto Tec: ${link}`);
+  const urlWhats = numero ? `https://wa.me/${numero}?text=${msg}` : `https://wa.me/?text=${msg}`;
+  const banner = document.createElement('div');
+  banner.className = 't-envio-cliente';
+  banner.innerHTML = `
+    <span>OS assinada ✓</span>
+    <a href="${urlWhats}" target="_blank" rel="noopener" class="t-envio-cliente-btn">Enviar no WhatsApp</a>
+    <button type="button" class="t-envio-cliente-fechar" onclick="this.parentElement.remove()">✕</button>`;
+  document.body.appendChild(banner);
+  setTimeout(() => banner.remove(), 30000);
+}
+
 async function alternarStatusServico(servicoId, novoStatus, fichaId, desfecho) {
   try {
-    await api(`/servicos/${servicoId}/status`, {
+    const resp = await api(`/servicos/${servicoId}/status`, {
       method: 'PUT',
       body: JSON.stringify(desfecho ? { status: novoStatus, desfecho } : { status: novoStatus }),
     });
     toast(novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto', 'success');
+    // Fazer OS gerou um documento com link público — oferece mandar pro
+    // cliente na hora, sem esperar alguém abrir a OS depois (2026-08-28).
+    if (desfecho?.tipo === 'fazer_os' && resp?.desfecho?.token_cliente) {
+      const link = `${location.origin}/os/cliente/${resp.desfecho.token_cliente}`;
+      mostrarEnvioClienteDesfecho(link, (desfecho.cliente_telefone || '').replace(/\D/g, ''));
+    }
     await renderFichaDetalhe(fichaId);
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -5992,8 +6130,7 @@ async function abrirModalNovaOS() {
   document.getElementById('os-taxa-vistoria').value = '0';
   document.querySelectorAll('#os-pagamento-quadrados .pagamento-quadrado').forEach(b => b.classList.remove('ativo'));
   document.getElementById('os-ocultar-fila').checked = false;
-  ['os-imp-foto', 'os-imp-observacao', 'os-imp-valores', 'os-imp-garantia', 'os-imp-termos']
-    .forEach(id => { document.getElementById(id).checked = true; });
+  document.querySelectorAll('#modal-nova-os .os-imp-campo').forEach(chk => { chk.checked = true; });
   document.getElementById('os-cep-status').textContent = '';
   _osCepUltimo = '';
   document.getElementById('os-busca-cliente').value = '';
@@ -6055,12 +6192,11 @@ function osEscolherModelo(modelo) {
   document.getElementById('os-linha-tecnico-pagamento').style.display = ehChamado ? 'none' : '';
   document.getElementById('os-campos-orcamento-itens').style.display = ehChamado ? 'none' : '';
 
-  // "Valor e forma de pagamento" e "Garantia" só existem na impressão do
-  // modelo "Ordens de Serviço" — esconder o checkbox nos outros dois evita
-  // oferecer opção de ocultar algo que nem vai aparecer de qualquer jeito.
-  const ehOs = modelo === 'os';
-  document.getElementById('os-imp-valores-wrap').style.display = ehOs ? '' : 'none';
-  document.getElementById('os-imp-garantia-wrap').style.display = ehOs ? '' : 'none';
+  // "Garantia" só existe na impressão do modelo "Ordens de Serviço" —
+  // esconder o checkbox nos outros dois evita oferecer opção de ocultar
+  // algo que nem vai aparecer de qualquer jeito. "Valor e forma de
+  // pagamento" já segue o próprio #os-campos-orcamento-itens (onde mora).
+  document.getElementById('os-imp-garantia-wrap').style.display = modelo === 'os' ? '' : 'none';
 }
 
 // Único seletor de forma de pagamento entre poucas opções (Pix/Dinheiro/
@@ -6071,37 +6207,25 @@ function osEscolherPagamento(btn) {
     b.classList.toggle('ativo', b === btn));
 }
 
-// Lê os 5 checkboxes de "o que mostrar na impressão" e devolve só as
-// CHAVES desmarcadas (é isso que o backend guarda — lista do que ocultar,
-// não do que mostrar). Um id null significa "esse checkbox nem existe
-// nessa tela" (ex: Valor/Garantia fora do modelo Ordens de Serviço).
-function _osLerImprimirOpcoes(idFoto, idObs, idValores, idGarantia, idTermos) {
-  const pares = [['foto', idFoto], ['observacao', idObs], ['valores', idValores],
-                 ['garantia', idGarantia], ['termos', idTermos]];
-  return pares
-    .filter(([, id]) => id && document.getElementById(id) && !document.getElementById(id).checked)
-    .map(([chave]) => chave);
+// Casinha "imprimir" ao lado de QUALQUER campo do detalhe de uma OS já
+// existente — mesma ideia da Nova OS, só que pré-marcada a partir do que
+// já está salvo em imprimir_ocultar. Devolve só o <label> pra encaixar do
+// lado do rótulo do campo (ver uso em _osDetalheCamposPorModelo).
+function _impCheck(chave, ocultos) {
+  const oculto = (ocultos || []).includes(chave);
+  return `<label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="${chave}"${oculto ? '' : ' checked'}> imprimir</label>`;
 }
 
-// Gera o mesmo grupo de checkboxes pro detalhe de uma OS já existente,
-// pré-marcado a partir do que já está salvo em imprimir_ocultar. Usa ids
-// FIXOS (só um modal de detalhe fica aberto por vez, igual todo resto de
-// os-ed-*).
-function _osImprimirOpcoesHTML(ocultos, incluirValoresGarantia) {
-  ocultos = ocultos || [];
-  const opcao = (chave, id, rotulo) =>
-    `<label class="pecas-toggle"><input type="checkbox" id="${id}"${ocultos.includes(chave) ? '' : ' checked'}> ${rotulo}</label>`;
-  return `
-    <div class="form-group">
-      <label class="form-label">O que mostrar na impressão</label>
-      <div class="imprimir-opcoes">
-        ${opcao('foto', 'os-ed-imp-foto', 'Foto do produto')}
-        ${opcao('observacao', 'os-ed-imp-observacao', 'Observações complementares')}
-        ${incluirValoresGarantia ? opcao('valores', 'os-ed-imp-valores', 'Valor e forma de pagamento') : ''}
-        ${incluirValoresGarantia ? opcao('garantia', 'os-ed-imp-garantia', 'Garantia') : ''}
-        ${opcao('termos', 'os-ed-imp-termos', 'Termos de garantia')}
-      </div>
-    </div>`;
+// Coleta TODAS as .os-imp-campo dentro de um container e devolve só as
+// CHAVES desmarcadas (é isso que o backend guarda — lista do que ocultar,
+// não do que mostrar). offsetParent null = campo escondido pelo modelo
+// atual (ex: taxa de avaliação some no Chamado Técnico) — não conta.
+function _osColetarImprimirOcultar(idContainer) {
+  const raiz = document.getElementById(idContainer);
+  if (!raiz) return [];
+  return Array.from(raiz.querySelectorAll('.os-imp-campo'))
+    .filter(chk => chk.offsetParent !== null && !chk.checked)
+    .map(chk => chk.dataset.campo);
 }
 
 async function osCarregarCatalogoDatalist() {
@@ -6335,10 +6459,7 @@ async function osCriar() {
   }
   if (_novaOSFoto) corpo.foto = _novaOSFoto;
   corpo.oculta_fila = document.getElementById('os-ocultar-fila').checked;
-  corpo.imprimir_ocultar = _osLerImprimirOpcoes('os-imp-foto', 'os-imp-observacao',
-    _novaOSModelo === 'os' ? 'os-imp-valores' : null,
-    _novaOSModelo === 'os' ? 'os-imp-garantia' : null,
-    'os-imp-termos');
+  corpo.imprimir_ocultar = _osColetarImprimirOcultar('modal-nova-os');
 
   if (_novaOSModelo === 'os') {
     const tipoOs = document.getElementById('os-tipo').value;
@@ -6396,24 +6517,31 @@ async function osCriar() {
 // salvo pra mostrar. Devolve o HTML pronto; cada modelo grava com sua
 // própria função (osSalvarEdicao / osSalvarEdicaoChamado / osSalvarEdicaoOrcamento).
 function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
+  const oc = o.imprimir_ocultar;
   const equipamento = `
     <p class="form-separador">Equipamento</p>
     <div class="form-row">
-      <div class="form-group"><label class="form-label" for="os-ed-tipo">Tipo</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-ed-tipo">Tipo</label>${_impCheck('tipo_aparelho', oc)}</div>
         <input class="form-input" id="os-ed-tipo" value="${esc(o.tipo_aparelho)}"></div>
-      <div class="form-group"><label class="form-label" for="os-ed-marca">Marca</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-ed-marca">Marca</label>${_impCheck('marca', oc)}</div>
         <input class="form-input" id="os-ed-marca" value="${esc(o.marca)}"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label" for="os-ed-modelo">Modelo</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-ed-modelo">Modelo</label>${_impCheck('modelo', oc)}</div>
         <input class="form-input" id="os-ed-modelo" value="${esc(o.modelo)}"></div>
-      <div class="form-group"><label class="form-label" for="os-ed-serie">Nº de série</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-ed-serie">Nº de série</label>${_impCheck('numero_serie', oc)}</div>
         <input class="form-input" id="os-ed-serie" value="${esc(o.numero_serie)}"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label" for="os-ed-voltagem">Voltagem</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-ed-voltagem">Voltagem</label>${_impCheck('voltagem', oc)}</div>
         <input class="form-input" id="os-ed-voltagem" value="${esc(o.voltagem)}" placeholder="Ex: 127V — nunca arredondar"></div>
-      <div class="form-group"><label class="form-label" for="os-ed-acessorios">Acessórios</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-ed-acessorios">Acessórios</label>${_impCheck('acessorios', oc)}</div>
         <input class="form-input" id="os-ed-acessorios" value="${esc(o.acessorios)}"></div>
     </div>`;
 
@@ -6422,7 +6550,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
   // usando sempre a mesma OS (${o.id}) como dono dos itens.
   const itensSecao = `
     <div class="os-detalhe-secao">
-      <p class="form-separador">Itens / Valores</p>
+      <div class="form-label-linha"><p class="form-separador" style="margin:0;">Itens / Valores</p>${_impCheck('valores', oc)}</div>
       <div id="os-det-itens-lista">${osRenderItensOrcamento(_osItensAtuais)}</div>
       <div class="form-row">
         <div class="form-group">
@@ -6444,11 +6572,13 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     </div>`;
 
   const defeito = `
-    <div class="form-group"><label class="form-label" for="os-ed-defeito">Defeito declarado</label>
+    <div class="form-group">
+      <div class="form-label-linha"><label class="form-label" for="os-ed-defeito">Defeito declarado</label>${_impCheck('defeito_declarado', oc)}</div>
       <textarea class="form-input" id="os-ed-defeito" rows="2">${esc(o.defeito_declarado)}</textarea></div>`;
 
   const observacao = `
-    <div class="form-group"><label class="form-label" for="os-ed-obs">Observação${o.modelo_os === 'os' ? ' interna' : ''}</label>
+    <div class="form-group">
+      <div class="form-label-linha"><label class="form-label" for="os-ed-obs">Observação${o.modelo_os === 'os' ? ' interna' : ''}</label>${_impCheck('observacao', oc)}</div>
       <textarea class="form-input" id="os-ed-obs" rows="2">${esc(o.observacao)}</textarea></div>`;
 
   // Fora do modelo "Ordens de Serviço" o tipo/termo é OPCIONAL — dá pra
@@ -6461,22 +6591,25 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
   // Solução/técnico/foto/forma de pagamento — comuns aos 3 modelos agora
   // (pedido de 2026-08-27), não é mais exclusivo do Chamado Técnico.
   const camposComuns = `
-    <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
+    <div class="form-group">
+      <div class="form-label-linha"><label class="form-label" for="os-ed-solucao">Nossa solução</label>${_impCheck('solucao', oc)}</div>
       <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label" for="os-ed-tecnico">Técnico que atendeu</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-ed-tecnico">Técnico que atendeu</label>${_impCheck('tecnico', oc)}</div>
         <select class="form-input" id="os-ed-tecnico">
           <option value="">Selecione...</option>
           ${tecnicos.map(t => `<option value="${t.id}"${o.tecnico_atendeu_id === t.id ? ' selected' : ''}>${esc(t.nome)}</option>`).join('')}
         </select></div>
-      <div class="form-group"><label class="form-label" for="os-ed-forma-pagamento">Forma de pagamento</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-ed-forma-pagamento">Forma de pagamento</label>${_impCheck('forma_pagamento', oc)}</div>
         <select class="form-input" id="os-ed-forma-pagamento">
           <option value="">Selecione...</option>
           ${['Pix', 'Dinheiro', 'Cartão'].map(f => `<option value="${f}"${o.forma_pagamento === f ? ' selected' : ''}>${f}</option>`).join('')}
         </select></div>
     </div>
     <div class="form-group">
-      <label class="form-label" for="os-ed-foto">Foto do produto</label>
+      <div class="form-label-linha"><label class="form-label" for="os-ed-foto">Foto do produto</label>${_impCheck('foto', oc)}</div>
       ${o.foto ? `<img src="${o.foto}" alt="Foto do produto" style="max-width:220px;border-radius:8px;display:block;margin-bottom:8px;">` : ''}
       <input class="form-input" type="file" accept="image/*" capture="environment" id="os-ed-foto"
              onchange="osEscolherFotoEdicao(this)">
@@ -6487,27 +6620,42 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
   // taxa fixa de vistoria, não itemiza serviço/peça/mão de obra. Técnico
   // fica em linha própria, sem dividir espaço com a forma de pagamento.
   const camposComunsChamado = `
-    <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
+    <div class="form-group">
+      <div class="form-label-linha"><label class="form-label" for="os-ed-solucao">Nossa solução</label>${_impCheck('solucao', oc)}</div>
       <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label" for="os-ed-taxa-vistoria">Taxa de vistoria (R$)</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label" for="os-ed-taxa-vistoria">Taxa de vistoria (R$)</label>${_impCheck('taxa', oc)}</div>
         <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa-vistoria" value="${o.taxa_vistoria ?? 0}"></div>
-      <div class="form-group"><label class="form-label">Forma de pagamento</label>
+      <div class="form-group">
+        <div class="form-label-linha"><label class="form-label">Forma de pagamento</label>${_impCheck('forma_pagamento', oc)}</div>
         <div class="pagamento-quadrados" id="os-ed-pagamento-quadrados">
           ${['Pix', 'Dinheiro', 'Cartão'].map(f => `<button type="button" class="pagamento-quadrado${o.forma_pagamento === f ? ' ativo' : ''}" data-valor="${f}" onclick="osEscolherPagamento(this)">${f}</button>`).join('')}
         </div>
       </div>
     </div>
-    <div class="form-group"><label class="form-label" for="os-ed-tecnico">Técnico que atendeu</label>
+    <div class="form-group">
+      <div class="form-label-linha"><label class="form-label" for="os-ed-tecnico">Técnico que atendeu</label>${_impCheck('tecnico', oc)}</div>
       <select class="form-input" id="os-ed-tecnico">
         <option value="">Selecione...</option>
         ${tecnicos.map(t => `<option value="${t.id}"${o.tecnico_atendeu_id === t.id ? ' selected' : ''}>${esc(t.nome)}</option>`).join('')}
       </select></div>
     <div class="form-group">
-      <label class="form-label" for="os-ed-foto">Foto do produto</label>
+      <div class="form-label-linha"><label class="form-label" for="os-ed-foto">Foto do produto</label>${_impCheck('foto', oc)}</div>
       ${o.foto ? `<img src="${o.foto}" alt="Foto do produto" style="max-width:220px;border-radius:8px;display:block;margin-bottom:8px;">` : ''}
       <input class="form-input" type="file" accept="image/*" capture="environment" id="os-ed-foto"
              onchange="osEscolherFotoEdicao(this)">
+    </div>`;
+
+  // Seções sem UM campo dono (Garantia é preenchida à mão no papel; Termos
+  // nasce do tipo_os) — checklist à parte, mesmo coletor (.os-imp-campo).
+  const outrasSecoes = (incluirGarantia) => `
+    <div class="form-group">
+      <label class="form-label">Outras seções da impressão</label>
+      <div class="imprimir-opcoes">
+        ${incluirGarantia ? `<label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="garantia"${(oc || []).includes('garantia') ? '' : ' checked'}> Garantia</label>` : ''}
+        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="termos"${(oc || []).includes('termos') ? '' : ' checked'}> Termos de garantia</label>
+      </div>
     </div>`;
 
   if (o.modelo_os === 'chamado_tecnico') {
@@ -6518,7 +6666,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${tipoOsOpcional}
       ${camposComunsChamado}
       ${observacao}
-      ${_osImprimirOpcoesHTML(o.imprimir_ocultar, false)}
+      ${outrasSecoes(false)}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoChamado(${o.id})">Salvar alterações</button>
     </div>`;
   }
@@ -6531,7 +6679,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${tipoOsOpcional}
       ${camposComuns}
       ${observacao}
-      ${_osImprimirOpcoesHTML(o.imprimir_ocultar, false)}
+      ${outrasSecoes(false)}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoOrcamento(${o.id})">Salvar alterações</button>
     </div>
     ${itensSecao}`;
@@ -6547,11 +6695,12 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${defeito}
       ${camposComuns}
       <div class="form-row">
-        <div class="form-group"><label class="form-label" for="os-ed-taxa">Taxa de avaliação (R$)</label>
+        <div class="form-group">
+          <div class="form-label-linha"><label class="form-label" for="os-ed-taxa">Taxa de avaliação (R$)</label>${_impCheck('taxa', oc)}</div>
           <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa" value="${o.taxa_avaliacao ?? 0}"></div>
       </div>
       ${observacao}
-      ${_osImprimirOpcoesHTML(o.imprimir_ocultar, true)}
+      ${outrasSecoes(true)}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicao(${o.id})">Salvar alterações</button>
     </div>
     ${itensSecao}`;
@@ -6630,7 +6779,7 @@ async function osSalvarEdicaoChamado(id) {
     forma_pagamento: document.querySelector('#os-ed-pagamento-quadrados .pagamento-quadrado.ativo')?.dataset.valor || '',
     taxa_vistoria: document.getElementById('os-ed-taxa-vistoria').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
-    imprimir_ocultar: _osLerImprimirOpcoes('os-ed-imp-foto', 'os-ed-imp-observacao', null, null, 'os-ed-imp-termos'),
+    imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
@@ -6658,7 +6807,7 @@ async function osSalvarEdicaoOrcamento(id) {
     tecnico_atendeu_id: document.getElementById('os-ed-tecnico').value || null,
     forma_pagamento: document.getElementById('os-ed-forma-pagamento').value,
     observacao: document.getElementById('os-ed-obs').value.trim(),
-    imprimir_ocultar: _osLerImprimirOpcoes('os-ed-imp-foto', 'os-ed-imp-observacao', null, null, 'os-ed-imp-termos'),
+    imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
@@ -6853,8 +7002,7 @@ async function osSalvarEdicao(id) {
     forma_pagamento: document.getElementById('os-ed-forma-pagamento').value,
     taxa_avaliacao: document.getElementById('os-ed-taxa').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
-    imprimir_ocultar: _osLerImprimirOpcoes('os-ed-imp-foto', 'os-ed-imp-observacao',
-      'os-ed-imp-valores', 'os-ed-imp-garantia', 'os-ed-imp-termos'),
+    imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
