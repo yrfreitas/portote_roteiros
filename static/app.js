@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v122';
+const VERSAO_PAINEL = 'v123';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6290,6 +6290,15 @@ function osRemoverItemOrcamentoNovo(indice) {
   _renderItensOrcamentoNovo();
 }
 
+// "R$ 0,00" numa linha de serviço sem valor lê como "isso é de graça",
+// quando na real é só um campo que ninguém preencheu ainda — mesma regra
+// da impressão (ver _moeda_fmt em app.py), agora também nas telas de
+// Itens/Valores do painel. Pedido de 2026-08-28.
+function _valorFmtOuVazio(valor) {
+  const n = Number(valor) || 0;
+  return n ? `R$ ${n.toFixed(2).replace('.', ',')}` : '';
+}
+
 function _renderItensOrcamentoNovo() {
   const lista = document.getElementById('os-orc-itens-lista');
   const total = document.getElementById('os-orc-total');
@@ -6301,11 +6310,11 @@ function _renderItensOrcamentoNovo() {
   lista.innerHTML = _novosItensOrcamento.map((it, i) => `
     <div class="os-orc-item-linha">
       <span>${esc(it.nome)}</span>
-      <span>R$ ${it.valor.toFixed(2).replace('.', ',')}</span>
+      <span>${_valorFmtOuVazio(it.valor)}</span>
       <button type="button" class="btn-remove" onclick="osRemoverItemOrcamentoNovo(${i})">${icone('x', 'icone-11')}</button>
     </div>`).join('');
   const soma = _novosItensOrcamento.reduce((s, it) => s + it.valor, 0);
-  total.textContent = `Total: R$ ${soma.toFixed(2).replace('.', ',')}`;
+  total.textContent = soma ? `Total: R$ ${soma.toFixed(2).replace('.', ',')}` : 'Total:';
 }
 
 let _osCepUltimo = '';
@@ -6713,12 +6722,12 @@ function osRenderItensOrcamento(itens) {
   const soma = itens.reduce((s, it) => s + Number(it.valor || 0), 0);
   setTimeout(() => {
     const total = document.getElementById('os-det-orc-total');
-    if (total) total.textContent = `Total: R$ ${soma.toFixed(2).replace('.', ',')}`;
+    if (total) total.textContent = soma ? `Total: R$ ${soma.toFixed(2).replace('.', ',')}` : 'Total:';
   }, 0);
   return itens.map(it => `
     <div class="os-orc-item-linha">
       <span>${esc(it.nome)}</span>
-      <span>R$ ${Number(it.valor).toFixed(2).replace('.', ',')}</span>
+      <span>${_valorFmtOuVazio(it.valor)}</span>
       <button type="button" class="btn-remove" onclick="osRemoverItemOrcamento(${it.ordem_servico_id}, ${it.id})">${icone('x', 'icone-11')}</button>
     </div>`).join('');
 }
