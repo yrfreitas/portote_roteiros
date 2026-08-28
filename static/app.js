@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v126';
+const VERSAO_PAINEL = 'v127';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5772,6 +5772,7 @@ const TIPOS_OS_ROTULO = {
   pagamento_faturamento:          'Pagamento / Faturamento',
   higienizacao:                   'Higienização',
   retirado_aprovado:              'Retirado / Aprovado',
+  criterio_orcamento_reparo:      'Critério de orçamento - reparo',
 };
 
 // Espelha MODELOS_OS_ROTULO em routes/ordens_servico.py.
