@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import json
 import logging
 import os
 import secrets
@@ -432,6 +433,11 @@ def _montar_documento_os(os_id):
     itens_com_valor_br = [{"nome": i["nome"], "valor_br": _moeda_br(i["valor"])} for i in itens]
     total_orcamento_br = _moeda_br(sum(float(i["valor"] or 0) for i in itens))
 
+    try:
+        ocultar_impressao = set(json.loads(ordem.get("imprimir_ocultar") or "[]"))
+    except (TypeError, ValueError):
+        ocultar_impressao = set()
+
     return dict(
         ordem=ordem, visita=visita, termos=termos,
         tipo_os_rotulo=tipo_os_rotulo, modelo_os_rotulo=modelo_os_rotulo,
@@ -440,6 +446,7 @@ def _montar_documento_os(os_id):
         data_abertura_br=_data_br(ordem.get("criado_em")),
         taxa_br=_moeda_br(ordem.get("taxa_avaliacao")),
         taxa_vistoria_br=_moeda_br(ordem.get("taxa_vistoria")),
+        ocultar_impressao=ocultar_impressao,
         gerado_em_br=datetime.now().strftime("%d/%m/%Y %H:%M"),
     )
 

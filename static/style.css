@@ -392,6 +392,11 @@ header {
   color: var(--accent-text, #a6c8ff);
 }
 
+/* Checkboxes de "o que mostrar na impressão" — desmarcar tira da folha sem
+   apagar o dado (pedido de 2026-08-28: decidir isso na hora de criar/editar
+   a OS, não descobrir só depois de imprimir). */
+.imprimir-opcoes { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
+
 /* ─── Ações da linha ───────────────────────────────────────────────── */
 .peca-acoes {
   display: flex; flex-direction: column; align-items: flex-end;

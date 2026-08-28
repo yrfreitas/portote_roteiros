@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v118';
+const VERSAO_PAINEL = 'v119';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5992,6 +5992,8 @@ async function abrirModalNovaOS() {
   document.getElementById('os-taxa-vistoria').value = '0';
   document.querySelectorAll('#os-pagamento-quadrados .pagamento-quadrado').forEach(b => b.classList.remove('ativo'));
   document.getElementById('os-ocultar-fila').checked = false;
+  ['os-imp-foto', 'os-imp-observacao', 'os-imp-valores', 'os-imp-garantia', 'os-imp-termos']
+    .forEach(id => { document.getElementById(id).checked = true; });
   document.getElementById('os-cep-status').textContent = '';
   _osCepUltimo = '';
   document.getElementById('os-busca-cliente').value = '';
@@ -6052,6 +6054,13 @@ function osEscolherModelo(modelo) {
   document.getElementById('os-campo-tecnico-solo').style.display = ehChamado ? '' : 'none';
   document.getElementById('os-linha-tecnico-pagamento').style.display = ehChamado ? 'none' : '';
   document.getElementById('os-campos-orcamento-itens').style.display = ehChamado ? 'none' : '';
+
+  // "Valor e forma de pagamento" e "Garantia" só existem na impressão do
+  // modelo "Ordens de Serviço" — esconder o checkbox nos outros dois evita
+  // oferecer opção de ocultar algo que nem vai aparecer de qualquer jeito.
+  const ehOs = modelo === 'os';
+  document.getElementById('os-imp-valores-wrap').style.display = ehOs ? '' : 'none';
+  document.getElementById('os-imp-garantia-wrap').style.display = ehOs ? '' : 'none';
 }
 
 // Único seletor de forma de pagamento entre poucas opções (Pix/Dinheiro/
@@ -6060,6 +6069,39 @@ function osEscolherModelo(modelo) {
 function osEscolherPagamento(btn) {
   btn.parentElement.querySelectorAll('.pagamento-quadrado').forEach(b =>
     b.classList.toggle('ativo', b === btn));
+}
+
+// Lê os 5 checkboxes de "o que mostrar na impressão" e devolve só as
+// CHAVES desmarcadas (é isso que o backend guarda — lista do que ocultar,
+// não do que mostrar). Um id null significa "esse checkbox nem existe
+// nessa tela" (ex: Valor/Garantia fora do modelo Ordens de Serviço).
+function _osLerImprimirOpcoes(idFoto, idObs, idValores, idGarantia, idTermos) {
+  const pares = [['foto', idFoto], ['observacao', idObs], ['valores', idValores],
+                 ['garantia', idGarantia], ['termos', idTermos]];
+  return pares
+    .filter(([, id]) => id && document.getElementById(id) && !document.getElementById(id).checked)
+    .map(([chave]) => chave);
+}
+
+// Gera o mesmo grupo de checkboxes pro detalhe de uma OS já existente,
+// pré-marcado a partir do que já está salvo em imprimir_ocultar. Usa ids
+// FIXOS (só um modal de detalhe fica aberto por vez, igual todo resto de
+// os-ed-*).
+function _osImprimirOpcoesHTML(ocultos, incluirValoresGarantia) {
+  ocultos = ocultos || [];
+  const opcao = (chave, id, rotulo) =>
+    `<label class="pecas-toggle"><input type="checkbox" id="${id}"${ocultos.includes(chave) ? '' : ' checked'}> ${rotulo}</label>`;
+  return `
+    <div class="form-group">
+      <label class="form-label">O que mostrar na impressão</label>
+      <div class="imprimir-opcoes">
+        ${opcao('foto', 'os-ed-imp-foto', 'Foto do produto')}
+        ${opcao('observacao', 'os-ed-imp-observacao', 'Observações complementares')}
+        ${incluirValoresGarantia ? opcao('valores', 'os-ed-imp-valores', 'Valor e forma de pagamento') : ''}
+        ${incluirValoresGarantia ? opcao('garantia', 'os-ed-imp-garantia', 'Garantia') : ''}
+        ${opcao('termos', 'os-ed-imp-termos', 'Termos de garantia')}
+      </div>
+    </div>`;
 }
 
 async function osCarregarCatalogoDatalist() {
@@ -6293,6 +6335,10 @@ async function osCriar() {
   }
   if (_novaOSFoto) corpo.foto = _novaOSFoto;
   corpo.oculta_fila = document.getElementById('os-ocultar-fila').checked;
+  corpo.imprimir_ocultar = _osLerImprimirOpcoes('os-imp-foto', 'os-imp-observacao',
+    _novaOSModelo === 'os' ? 'os-imp-valores' : null,
+    _novaOSModelo === 'os' ? 'os-imp-garantia' : null,
+    'os-imp-termos');
 
   if (_novaOSModelo === 'os') {
     const tipoOs = document.getElementById('os-tipo').value;
@@ -6472,6 +6518,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${tipoOsOpcional}
       ${camposComunsChamado}
       ${observacao}
+      ${_osImprimirOpcoesHTML(o.imprimir_ocultar, false)}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoChamado(${o.id})">Salvar alterações</button>
     </div>`;
   }
@@ -6484,6 +6531,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${tipoOsOpcional}
       ${camposComuns}
       ${observacao}
+      ${_osImprimirOpcoesHTML(o.imprimir_ocultar, false)}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoOrcamento(${o.id})">Salvar alterações</button>
     </div>
     ${itensSecao}`;
@@ -6503,6 +6551,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
           <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa" value="${o.taxa_avaliacao ?? 0}"></div>
       </div>
       ${observacao}
+      ${_osImprimirOpcoesHTML(o.imprimir_ocultar, true)}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicao(${o.id})">Salvar alterações</button>
     </div>
     ${itensSecao}`;
@@ -6581,6 +6630,7 @@ async function osSalvarEdicaoChamado(id) {
     forma_pagamento: document.querySelector('#os-ed-pagamento-quadrados .pagamento-quadrado.ativo')?.dataset.valor || '',
     taxa_vistoria: document.getElementById('os-ed-taxa-vistoria').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
+    imprimir_ocultar: _osLerImprimirOpcoes('os-ed-imp-foto', 'os-ed-imp-observacao', null, null, 'os-ed-imp-termos'),
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
@@ -6608,6 +6658,7 @@ async function osSalvarEdicaoOrcamento(id) {
     tecnico_atendeu_id: document.getElementById('os-ed-tecnico').value || null,
     forma_pagamento: document.getElementById('os-ed-forma-pagamento').value,
     observacao: document.getElementById('os-ed-obs').value.trim(),
+    imprimir_ocultar: _osLerImprimirOpcoes('os-ed-imp-foto', 'os-ed-imp-observacao', null, null, 'os-ed-imp-termos'),
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
@@ -6802,6 +6853,8 @@ async function osSalvarEdicao(id) {
     forma_pagamento: document.getElementById('os-ed-forma-pagamento').value,
     taxa_avaliacao: document.getElementById('os-ed-taxa').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
+    imprimir_ocultar: _osLerImprimirOpcoes('os-ed-imp-foto', 'os-ed-imp-observacao',
+      'os-ed-imp-valores', 'os-ed-imp-garantia', 'os-ed-imp-termos'),
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {

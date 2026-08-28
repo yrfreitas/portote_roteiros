@@ -1215,6 +1215,21 @@
       <textarea class="form-input" id="os-obs" rows="2"></textarea>
     </div>
 
+    <!-- Decide o que aparece NO PAPEL sem apagar o dado — desmarcar só tira
+         da impressão, o campo continua salvo e editável. Pedido de
+         2026-08-28: sem isso só dava pra descobrir "não queria isso impresso"
+         depois de já ter impresso. -->
+    <div class="form-group">
+      <label class="form-label">O que mostrar na impressão</label>
+      <div class="imprimir-opcoes">
+        <label class="pecas-toggle"><input type="checkbox" id="os-imp-foto" checked> Foto do produto</label>
+        <label class="pecas-toggle"><input type="checkbox" id="os-imp-observacao" checked> Observações complementares</label>
+        <label class="pecas-toggle" id="os-imp-valores-wrap"><input type="checkbox" id="os-imp-valores" checked> Valor e forma de pagamento</label>
+        <label class="pecas-toggle" id="os-imp-garantia-wrap"><input type="checkbox" id="os-imp-garantia" checked> Garantia</label>
+        <label class="pecas-toggle"><input type="checkbox" id="os-imp-termos" checked> Termos de garantia</label>
+      </div>
+    </div>
+
     <!-- Evita o passo extra de criar a OS e já ir ocultar ela da fila de
          Agendar Clientes na sequência — pedido de 2026-08-28, decide isso
          na hora de abrir em vez de depois. -->

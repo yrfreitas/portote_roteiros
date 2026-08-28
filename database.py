@@ -894,6 +894,11 @@ _MIGRACOES_PG = [
     # pedido de 2026-08-28, esse modelo não é orçamento, cobra um valor fixo
     # de visita/vistoria em vez de itemizar serviço/peça/mão de obra.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS taxa_vistoria REAL DEFAULT 0",
+    # Lista JSON de seções opcionais escondidas NA IMPRESSÃO desta OS (ex:
+    # '["foto","garantia"]') — pedido de 2026-08-28, decidir o que aparece
+    # no papel sem apagar o dado (foto/observação continuam salvos, só não
+    # saem impressos).
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS imprimir_ocultar TEXT DEFAULT '[]'",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1012,6 +1017,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE ordens_servico ADD COLUMN token_cliente TEXT",
     "ALTER TABLE servico_desfecho ADD COLUMN pedido_foto TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN taxa_vistoria REAL DEFAULT 0",
+    "ALTER TABLE ordens_servico ADD COLUMN imprimir_ocultar TEXT DEFAULT '[]'",
 ]
 
 

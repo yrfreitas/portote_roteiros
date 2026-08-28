@@ -8,6 +8,7 @@ pode ter mais de uma visita ligada a ela com o tempo (voltou pra buscar
 peça), por isso o vínculo mora em servicos.ordem_servico_id.
 """
 import io
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -718,6 +719,19 @@ def _num(v, default=0.0):
         return default
 
 
+# Seções opcionais que dá pra esconder NA IMPRESSÃO sem apagar o dado — o
+# checkbox desmarcado só tira do papel, o campo continua salvo e editável.
+# "itens_valores_orcamento" fica de fora de propósito: é o próprio motivo de
+# existir de um Orçamento, esconder ali derrotaria o documento.
+SECOES_IMPRIMIVEIS = {"foto", "observacao", "valores", "garantia", "termos"}
+
+
+def _validar_imprimir_ocultar(valor) -> str:
+    if not isinstance(valor, list):
+        return "[]"
+    return json.dumps([v for v in valor if v in SECOES_IMPRIMIVEIS])
+
+
 @ordens_servico_bp.route("/ordens-servico/metricas", methods=["GET"])
 def metricas():
     """OS por mês (últimos 6), tempo médio até finalizar, e indicação que
@@ -1109,6 +1123,10 @@ def obter(os_id):
         """, (os_id,))
         if not os_row:
             return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        try:
+            os_row["imprimir_ocultar"] = json.loads(os_row.get("imprimir_ocultar") or "[]")
+        except (TypeError, ValueError):
+            os_row["imprimir_ocultar"] = []
 
         visitas = fetch_all(conn, """
             SELECT s.id, s.status, s.ordem, f.id AS ficha_id, f.dia_semana,
@@ -1180,6 +1198,7 @@ def criar():
     # por Itens/Valores em vez de uma taxa fixa de vistoria.
     taxa_vistoria = _num(d.get("taxa_vistoria"))
     ocultar_fila = bool(d.get("oculta_fila"))
+    imprimir_ocultar = _validar_imprimir_ocultar(d.get("imprimir_ocultar"))
     # Foto/técnico deixaram de ser exclusivos do Chamado Técnico — pedido de
     # 2026-08-27, mesma OS pode precisar registrar isso em qualquer modelo.
     foto = _foto_valida(d.get("foto"))
@@ -1231,14 +1250,14 @@ def criar():
                  numero_serie, voltagem, acessorios, defeito_declarado, taxa_avaliacao,
                  status, observacao, criado_em, criado_por, tipo_os,
                  modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
-                 token_cliente, taxa_vistoria, oculta_fila_em)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
               tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
-              token_cliente, taxa_vistoria, oculta_fila_em))
+              token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar))
 
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
@@ -1281,6 +1300,9 @@ def editar(os_id):
         if "taxa_vistoria" in d:
             campos.append("taxa_vistoria = ?")
             valores.append(_num(d.get("taxa_vistoria")))
+        if "imprimir_ocultar" in d:
+            campos.append("imprimir_ocultar = ?")
+            valores.append(_validar_imprimir_ocultar(d.get("imprimir_ocultar")))
         if "status" in d:
             status = (d.get("status") or "").strip()
             if status not in STATUS_OS:
