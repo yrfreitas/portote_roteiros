@@ -422,6 +422,16 @@ def _montar_documento_os(os_id):
     def _moeda_br(valor) -> str:
         return f"{float(valor or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+    # "R$ 0,00" impresso lê como "não custou nada" pro cliente, quando na
+    # real é só um campo que ninguém preencheu ainda — pedido de 2026-08-28
+    # pra sumir com o "R$ 0,00" e deixar o espaço em branco mesmo.
+    def _moeda_fmt(valor) -> str:
+        try:
+            numero = float(valor or 0)
+        except (TypeError, ValueError):
+            numero = 0
+        return f"R$ {_moeda_br(numero)}" if numero else ""
+
     if visita and visita.get("data_referencia"):
         visita = dict(visita)
         visita["data_referencia_br"] = _data_br(visita["data_referencia"])
@@ -430,8 +440,8 @@ def _montar_documento_os(os_id):
     tipo_os_rotulo = TIPOS_OS_ROTULO.get(ordem.get("tipo_os"), "")
     modelo_os_rotulo = MODELOS_OS_ROTULO.get(ordem.get("modelo_os"), MODELOS_OS_ROTULO["os"])
 
-    itens_com_valor_br = [{"nome": i["nome"], "valor_br": _moeda_br(i["valor"])} for i in itens]
-    total_orcamento_br = _moeda_br(sum(float(i["valor"] or 0) for i in itens))
+    itens_com_valor_fmt = [{"nome": i["nome"], "valor_fmt": _moeda_fmt(i["valor"])} for i in itens]
+    total_orcamento_fmt = _moeda_fmt(sum(float(i["valor"] or 0) for i in itens))
 
     try:
         ocultar_impressao = set(json.loads(ordem.get("imprimir_ocultar") or "[]"))
@@ -441,11 +451,11 @@ def _montar_documento_os(os_id):
     return dict(
         ordem=ordem, visita=visita, termos=termos,
         tipo_os_rotulo=tipo_os_rotulo, modelo_os_rotulo=modelo_os_rotulo,
-        itens=itens_com_valor_br, total_orcamento_br=total_orcamento_br,
+        itens=itens_com_valor_fmt, total_orcamento_fmt=total_orcamento_fmt,
         tecnico_atendeu_nome=tecnico_atendeu_nome,
         data_abertura_br=_data_br(ordem.get("criado_em")),
-        taxa_br=_moeda_br(ordem.get("taxa_avaliacao")),
-        taxa_vistoria_br=_moeda_br(ordem.get("taxa_vistoria")),
+        taxa_fmt=_moeda_fmt(ordem.get("taxa_avaliacao")),
+        taxa_vistoria_fmt=_moeda_fmt(ordem.get("taxa_vistoria")),
         ocultar_impressao=ocultar_impressao,
         gerado_em_br=datetime.now().strftime("%d/%m/%Y %H:%M"),
     )

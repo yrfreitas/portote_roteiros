@@ -114,6 +114,12 @@
   .termos { font-size: 7.8px; color: var(--tinta-3); line-height: 1.45; text-align: justify; white-space: pre-line; }
 
   .foto-produto { max-width: 200px; max-height: 150px; border-radius: 8px; border: 1px solid var(--linha); display: block; margin-top: 3px; }
+  /* Foto ao lado da observação em vez de empilhada — pedido de 2026-08-28
+     ("pega um espaço melhor"): as duas raramente competem por largura, e
+     lado a lado economiza a altura inteira que a foto sozinha ocupava. */
+  .foto-obs-linha { display: flex; gap: 12px; align-items: flex-start; }
+  .foto-obs-linha .foto-produto { flex: 0 0 auto; max-width: 130px; max-height: 100px; margin-top: 0; }
+  .foto-obs-linha .foto-obs-texto { flex: 1; min-width: 0; margin-top: 0; }
 
   .tabela-itens { width: 100%; border-collapse: collapse; margin-top: 3px; }
   .tabela-itens th {
@@ -237,26 +243,26 @@
     <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
     {% endif %}
 
-    {% if ordem.foto and 'foto' not in ocultar_impressao %}
-    <h2><span class="num-bola">5</span>Foto do produto</h2>
-    <img class="foto-produto" src="{{ ordem.foto }}" alt="Foto do produto">
-    {% endif %}
-
-    {% if ordem.observacao and 'observacao' not in ocultar_impressao %}
-    <h2><span class="num-bola">6</span>Observações complementares</h2>
-    <div class="caixa-texto">{{ ordem.observacao }}</div>
+    {% set tem_foto = ordem.foto and 'foto' not in ocultar_impressao %}
+    {% set tem_obs = ordem.observacao and 'observacao' not in ocultar_impressao %}
+    {% if tem_foto or tem_obs %}
+    <h2><span class="num-bola">5</span>{{ 'Foto do produto e observações' if (tem_foto and tem_obs) else ('Foto do produto' if tem_foto else 'Observações complementares') }}</h2>
+    <div class="foto-obs-linha">
+      {% if tem_foto %}<img class="foto-produto" src="{{ ordem.foto }}" alt="Foto do produto">{% endif %}
+      {% if tem_obs %}<div class="caixa-texto foto-obs-texto">{{ ordem.observacao }}</div>{% endif %}
+    </div>
     {% endif %}
 
     <hr class="linha-divisoria">
 
-    <h2><span class="num-bola">7</span>Atendimento</h2>
+    <h2><span class="num-bola">6</span>Atendimento</h2>
     <div class="grade">
       <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
       {% if 'tecnico' not in ocultar_impressao %}<div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>{% endif %}
       {% if 'taxa' not in ocultar_impressao %}
       <div class="campo">
         <div class="rot">Taxa de vistoria</div>
-        <div class="taxa-bloco"><span class="valor">R$ {{ taxa_vistoria_br }}</span></div>
+        <div class="taxa-bloco"><span class="valor">{{ taxa_vistoria_fmt }}</span></div>
       </div>
       {% endif %}
       {% if 'forma_pagamento' not in ocultar_impressao %}
@@ -273,7 +279,7 @@
 
     {% if tipo_os_rotulo and 'termos' not in ocultar_impressao %}
     <hr class="linha-divisoria">
-    <h2><span class="num-bola">8</span>Termos de garantia</h2>
+    <h2><span class="num-bola">7</span>Termos de garantia</h2>
     <div class="termos">{{ termos }}</div>
     {% endif %}
 
@@ -315,12 +321,12 @@
       <thead><tr><th>Descrição</th><th class="col-valor">Valor (R$)</th></tr></thead>
       <tbody>
         {% for item in itens %}
-        <tr><td>{{ item.nome }}</td><td class="col-valor">{{ item.valor_br }}</td></tr>
+        <tr><td>{{ item.nome }}</td><td class="col-valor">{{ item.valor_fmt }}</td></tr>
         {% else %}
         <tr><td colspan="2" style="color:var(--tinta-3);">Nenhum item lançado.</td></tr>
         {% endfor %}
       </tbody>
-      <tfoot><tr><td>Valor total</td><td class="col-valor">R$ {{ total_orcamento_br }}</td></tr></tfoot>
+      <tfoot><tr><td>Valor total</td><td class="col-valor">{{ total_orcamento_fmt }}</td></tr></tfoot>
     </table>
 
     {% if ordem.observacao and 'observacao' not in ocultar_impressao %}
@@ -344,7 +350,7 @@
       {% if 'taxa' not in ocultar_impressao %}
       <div class="campo">
         <div class="rot">Taxa de avaliação</div>
-        <div class="taxa-bloco"><span class="valor">R$ {{ taxa_br }}</span></div>
+        <div class="taxa-bloco"><span class="valor">{{ taxa_fmt }}</span></div>
       </div>
       {% endif %}
       {% if 'forma_pagamento' not in ocultar_impressao %}
@@ -371,24 +377,24 @@
     <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
     {% endif %}
 
-    {% if ordem.foto and 'foto' not in ocultar_impressao %}
-    <h2><span class="num-bola">6</span>Foto do produto</h2>
-    <img class="foto-produto" src="{{ ordem.foto }}" alt="Foto do produto">
-    {% endif %}
-
-    {% if ordem.observacao and 'observacao' not in ocultar_impressao %}
-    <h2><span class="num-bola">7</span>Observações complementares</h2>
-    <div class="caixa-texto">{{ ordem.observacao }}</div>
+    {% set tem_foto = ordem.foto and 'foto' not in ocultar_impressao %}
+    {% set tem_obs = ordem.observacao and 'observacao' not in ocultar_impressao %}
+    {% if tem_foto or tem_obs %}
+    <h2><span class="num-bola">6</span>{{ 'Foto do produto e observações' if (tem_foto and tem_obs) else ('Foto do produto' if tem_foto else 'Observações complementares') }}</h2>
+    <div class="foto-obs-linha">
+      {% if tem_foto %}<img class="foto-produto" src="{{ ordem.foto }}" alt="Foto do produto">{% endif %}
+      {% if tem_obs %}<div class="caixa-texto foto-obs-texto">{{ ordem.observacao }}</div>{% endif %}
+    </div>
     {% endif %}
 
     {% if 'valores' not in ocultar_impressao %}
     <hr class="linha-divisoria">
 
-    <h2><span class="num-bola">8</span>Valor total</h2>
+    <h2><span class="num-bola">7</span>Valor total</h2>
     <table class="tabela-total-pagamento">
       <tr>
         <td class="rot-tabela">Valor total</td>
-        <td>R$ {{ total_orcamento_br }}</td>
+        <td>{{ total_orcamento_fmt }}</td>
       </tr>
     </table>
     {% endif %}
@@ -396,7 +402,7 @@
     {% if 'garantia' not in ocultar_impressao %}
     <hr class="linha-divisoria">
 
-    <h2><span class="num-bola">9</span>Garantia</h2>
+    <h2><span class="num-bola">8</span>Garantia</h2>
     <div class="campo-manual">Data de início: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
     <div class="campo-manual">Data final: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
     <div class="campo-manual">Prazo de garantia: <span class="linha-preenchimento"></span></div>
@@ -405,7 +411,7 @@
     {% if 'termos' not in ocultar_impressao %}
     <hr class="linha-divisoria">
 
-    <h2><span class="num-bola">10</span>Termos de garantia</h2>
+    <h2><span class="num-bola">9</span>Termos de garantia</h2>
     <div class="termos">{{ termos }}</div>
     {% endif %}
 
