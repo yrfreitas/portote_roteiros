@@ -1109,28 +1109,35 @@
         <input class="form-input" type="number" step="0.01" min="0" id="os-taxa" value="0"></div>
     </div>
 
-    <div id="os-campos-solucao" style="display:none;">
-      <div class="form-group">
-        <label class="form-label" for="os-solucao">Nossa solução</label>
-        <textarea class="form-input" id="os-solucao" rows="3" placeholder="O que foi feito / o que será feito"></textarea>
-      </div>
+    <div class="form-group">
+      <label class="form-label" for="os-solucao">Nossa solução</label>
+      <textarea class="form-input" id="os-solucao" rows="3" placeholder="O que foi feito / o que será feito"></textarea>
     </div>
 
-    <div id="os-campos-chamado" style="display:none;">
+    <div class="form-row">
       <div class="form-group">
         <label class="form-label" for="os-chamado-tecnico">Técnico que atendeu</label>
         <select class="form-input" id="os-chamado-tecnico"><option value="">Selecione...</option></select>
       </div>
       <div class="form-group">
-        <label class="form-label" for="os-chamado-foto">Foto do produto</label>
-        <input class="form-input" type="file" accept="image/*" capture="environment" id="os-chamado-foto"
-               onchange="osEscolherFotoChamado(this)">
-        <div id="os-chamado-foto-status" style="margin-top:6px;font-size:11.5px;color:var(--text-muted);"></div>
+        <label class="form-label" for="os-forma-pagamento">Forma de pagamento</label>
+        <select class="form-input" id="os-forma-pagamento">
+          <option value="">Selecione...</option>
+          <option value="Pix">Pix</option>
+          <option value="Dinheiro">Dinheiro</option>
+          <option value="Cartão">Cartão</option>
+        </select>
       </div>
     </div>
+    <div class="form-group">
+      <label class="form-label" for="os-chamado-foto">Foto do produto</label>
+      <input class="form-input" type="file" accept="image/*" capture="environment" id="os-chamado-foto"
+             onchange="osEscolherFotoChamado(this)">
+      <div id="os-chamado-foto-status" style="margin-top:6px;font-size:11.5px;color:var(--text-muted);"></div>
+    </div>
 
-    <div id="os-campos-orcamento-itens" style="display:none;">
-      <p class="form-separador">Itens do orçamento</p>
+    <div id="os-campos-orcamento-itens">
+      <p class="form-separador">Itens / Valores</p>
       <div id="os-orc-itens-lista"></div>
       <div class="form-row">
         <div class="form-group">

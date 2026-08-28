@@ -1174,7 +1174,10 @@ def criar():
             tipo_os = tipo_os_bruto
 
     solucao = (d.get("solucao") or "").strip()
-    foto = _foto_valida(d.get("foto")) if modelo_os == "chamado_tecnico" else None
+    forma_pagamento = (d.get("forma_pagamento") or "").strip()
+    # Foto/técnico deixaram de ser exclusivos do Chamado Técnico — pedido de
+    # 2026-08-27, mesma OS pode precisar registrar isso em qualquer modelo.
+    foto = _foto_valida(d.get("foto"))
     try:
         tecnico_atendeu_id = int(d["tecnico_atendeu_id"]) if d.get("tecnico_atendeu_id") else None
     except (TypeError, ValueError):
@@ -1216,13 +1219,13 @@ def criar():
                 (cliente_id, atendente, tipo_aparelho, marca, modelo,
                  numero_serie, voltagem, acessorios, defeito_declarado, taxa_avaliacao,
                  status, observacao, criado_em, criado_por, tipo_os,
-                 modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
-              tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id))
+              tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento))
 
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
@@ -1254,7 +1257,8 @@ def editar(os_id):
 
         campos, valores = [], []
         for chave in ("tipo_aparelho", "marca", "modelo", "numero_serie", "voltagem",
-                     "acessorios", "defeito_declarado", "observacao", "solucao"):
+                     "acessorios", "defeito_declarado", "observacao", "solucao",
+                     "forma_pagamento"):
             if chave in d:
                 campos.append(f"{chave} = ?")
                 valores.append((d.get(chave) or "").strip())

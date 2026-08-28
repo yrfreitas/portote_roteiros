@@ -875,6 +875,9 @@ _MIGRACOES_PG = [
     # uma responsabilidade de quem digita, não algo que um <select> resolve
     # sozinho.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS voltagem TEXT",
+    # Forma de pagamento — pedido de 2026-08-27, junto com solução/técnico/
+    # foto virando campos comuns aos 3 modelos, não só do Chamado Técnico.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS forma_pagamento TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -988,6 +991,7 @@ _MIGRACOES_SQLITE = [
     )""",
     "ALTER TABLE ordens_servico ADD COLUMN os_pai_id INTEGER",
     "ALTER TABLE ordens_servico ADD COLUMN voltagem TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN forma_pagamento TEXT",
 ]
 
 

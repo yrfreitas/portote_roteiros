@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v112';
+const VERSAO_PAINEL = 'v113';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5843,7 +5843,7 @@ async function abrirModalNovaOS() {
   ['os-nome','os-cpf','os-telefone','os-email','os-cep','os-numero','os-bairro',
    'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
    'os-serie','os-voltagem','os-acessorios','os-defeito','os-obs','os-tipo','os-solucao',
-   'os-chamado-tecnico'].forEach(id => {
+   'os-chamado-tecnico','os-forma-pagamento'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -5892,11 +5892,11 @@ function osEscolherModelo(modelo) {
   // escolher (ver validação em osCriar) muda: "Ordens de Serviço" exige,
   // Chamado Técnico e Orçamento deixam em aberto pra quem quiser um termo
   // jurídico junto mesmo assim (ex: um orçamento amparado por garantia).
+  // Solução/técnico/foto/forma de pagamento/itens viraram campos comuns aos
+  // três modelos (pedido de 2026-08-27) — só a Taxa de avaliação continua
+  // exclusiva do modelo "Ordens de Serviço".
   document.getElementById('os-tipo-obrigatorio').style.display = modelo === 'os' ? '' : 'none';
   document.getElementById('os-campos-taxa').style.display = modelo === 'os' ? '' : 'none';
-  document.getElementById('os-campos-solucao').style.display = modelo === 'os' ? 'none' : '';
-  document.getElementById('os-campos-chamado').style.display = modelo === 'chamado_tecnico' ? '' : 'none';
-  document.getElementById('os-campos-orcamento-itens').style.display = modelo === 'orcamento' ? '' : 'none';
 }
 
 async function osCarregarCatalogoDatalist() {
@@ -6114,6 +6114,15 @@ async function osCriar() {
     observacao: document.getElementById('os-obs').value.trim(),
   };
 
+  // Solução/técnico/foto/forma de pagamento/itens são comuns aos 3 modelos
+  // agora — só tipo_os (obrigatório) e taxa de avaliação ficam exclusivos
+  // do modelo "Ordens de Serviço".
+  corpo.solucao = document.getElementById('os-solucao').value.trim();
+  corpo.tecnico_atendeu_id = document.getElementById('os-chamado-tecnico').value || null;
+  corpo.forma_pagamento = document.getElementById('os-forma-pagamento').value;
+  corpo.itens = _novosItensOrcamento;
+  if (_novaOSFoto) corpo.foto = _novaOSFoto;
+
   if (_novaOSModelo === 'os') {
     const tipoOs = document.getElementById('os-tipo').value;
     if (!tipoOs) {
@@ -6123,13 +6132,6 @@ async function osCriar() {
     }
     corpo.tipo_os = tipoOs;
     corpo.taxa_avaliacao = document.getElementById('os-taxa').value || 0;
-  } else if (_novaOSModelo === 'chamado_tecnico') {
-    corpo.solucao = document.getElementById('os-solucao').value.trim();
-    corpo.tecnico_atendeu_id = document.getElementById('os-chamado-tecnico').value || null;
-    if (_novaOSFoto) corpo.foto = _novaOSFoto;
-  } else if (_novaOSModelo === 'orcamento') {
-    corpo.solucao = document.getElementById('os-solucao').value.trim();
-    corpo.itens = _novosItensOrcamento;
   }
 
   if (modo === 'existente') {
@@ -6239,25 +6241,37 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="form-group"><label class="form-label" for="os-ed-tipo-os-opcional">Tipo de OS / termo (opcional)</label>
       <select class="form-input" id="os-ed-tipo-os-opcional">${opcoesTipoOs}</select></div>`;
 
+  // Solução/técnico/foto/forma de pagamento — comuns aos 3 modelos agora
+  // (pedido de 2026-08-27), não é mais exclusivo do Chamado Técnico.
+  const camposComuns = `
+    <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
+      <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label" for="os-ed-tecnico">Técnico que atendeu</label>
+        <select class="form-input" id="os-ed-tecnico">
+          <option value="">Selecione...</option>
+          ${tecnicos.map(t => `<option value="${t.id}"${o.tecnico_atendeu_id === t.id ? ' selected' : ''}>${esc(t.nome)}</option>`).join('')}
+        </select></div>
+      <div class="form-group"><label class="form-label" for="os-ed-forma-pagamento">Forma de pagamento</label>
+        <select class="form-input" id="os-ed-forma-pagamento">
+          <option value="">Selecione...</option>
+          ${['Pix', 'Dinheiro', 'Cartão'].map(f => `<option value="${f}"${o.forma_pagamento === f ? ' selected' : ''}>${f}</option>`).join('')}
+        </select></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="os-ed-foto">Foto do produto</label>
+      ${o.foto ? `<img src="${o.foto}" alt="Foto do produto" style="max-width:220px;border-radius:8px;display:block;margin-bottom:8px;">` : ''}
+      <input class="form-input" type="file" accept="image/*" capture="environment" id="os-ed-foto"
+             onchange="osEscolherFotoEdicao(this)">
+    </div>`;
+
   if (o.modelo_os === 'chamado_tecnico') {
     return `
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
       ${tipoOsOpcional}
-      <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
-        <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
-      <div class="form-group"><label class="form-label" for="os-ed-tecnico">Técnico que atendeu</label>
-        <select class="form-input" id="os-ed-tecnico">
-          <option value="">Selecione...</option>
-          ${tecnicos.map(t => `<option value="${t.id}"${o.tecnico_atendeu_id === t.id ? ' selected' : ''}>${esc(t.nome)}</option>`).join('')}
-        </select></div>
-      <div class="form-group">
-        <label class="form-label" for="os-ed-foto">Foto do produto</label>
-        ${o.foto ? `<img src="${o.foto}" alt="Foto do produto" style="max-width:220px;border-radius:8px;display:block;margin-bottom:8px;">` : ''}
-        <input class="form-input" type="file" accept="image/*" capture="environment" id="os-ed-foto"
-               onchange="osEscolherFotoEdicao(this)">
-      </div>
+      ${camposComuns}
       ${observacao}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoChamado(${o.id})">Salvar alterações</button>
     </div>
@@ -6270,8 +6284,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${equipamento}
       ${defeito}
       ${tipoOsOpcional}
-      <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
-        <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
+      ${camposComuns}
       ${observacao}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoOrcamento(${o.id})">Salvar alterações</button>
     </div>
@@ -6286,8 +6299,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
-      <div class="form-group"><label class="form-label" for="os-ed-solucao">Solução / diagnóstico</label>
-        <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
+      ${camposComuns}
       <div class="form-row">
         <div class="form-group"><label class="form-label" for="os-ed-taxa">Taxa de avaliação (R$)</label>
           <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa" value="${o.taxa_avaliacao ?? 0}"></div>
@@ -6362,11 +6374,13 @@ async function osSalvarEdicaoChamado(id) {
     marca: document.getElementById('os-ed-marca').value.trim(),
     modelo: document.getElementById('os-ed-modelo').value.trim(),
     numero_serie: document.getElementById('os-ed-serie').value.trim(),
+    voltagem: document.getElementById('os-ed-voltagem').value.trim(),
     acessorios: document.getElementById('os-ed-acessorios').value.trim(),
     defeito_declarado: document.getElementById('os-ed-defeito').value.trim(),
     tipo_os: document.getElementById('os-ed-tipo-os-opcional').value,
     solucao: document.getElementById('os-ed-solucao').value.trim(),
     tecnico_atendeu_id: document.getElementById('os-ed-tecnico').value || null,
+    forma_pagamento: document.getElementById('os-ed-forma-pagamento').value,
     observacao: document.getElementById('os-ed-obs').value.trim(),
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
@@ -6387,15 +6401,20 @@ async function osSalvarEdicaoOrcamento(id) {
     marca: document.getElementById('os-ed-marca').value.trim(),
     modelo: document.getElementById('os-ed-modelo').value.trim(),
     numero_serie: document.getElementById('os-ed-serie').value.trim(),
+    voltagem: document.getElementById('os-ed-voltagem').value.trim(),
     acessorios: document.getElementById('os-ed-acessorios').value.trim(),
     defeito_declarado: document.getElementById('os-ed-defeito').value.trim(),
     tipo_os: document.getElementById('os-ed-tipo-os-opcional').value,
     solucao: document.getElementById('os-ed-solucao').value.trim(),
+    tecnico_atendeu_id: document.getElementById('os-ed-tecnico').value || null,
+    forma_pagamento: document.getElementById('os-ed-forma-pagamento').value,
     observacao: document.getElementById('os-ed-obs').value.trim(),
   };
+  if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
     await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify(corpo) });
     toast('OS atualizada', 'success');
+    _osEdicaoFoto = undefined;
     carregarOS();
   } catch (e) {
     toast(e.message, 'error');
@@ -6578,12 +6597,16 @@ async function osSalvarEdicao(id) {
     acessorios: document.getElementById('os-ed-acessorios').value.trim(),
     defeito_declarado: document.getElementById('os-ed-defeito').value.trim(),
     solucao: document.getElementById('os-ed-solucao').value.trim(),
+    tecnico_atendeu_id: document.getElementById('os-ed-tecnico').value || null,
+    forma_pagamento: document.getElementById('os-ed-forma-pagamento').value,
     taxa_avaliacao: document.getElementById('os-ed-taxa').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
   };
+  if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
     await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify(corpo) });
     toast('OS atualizada', 'success');
+    _osEdicaoFoto = undefined;
     carregarOS();
   } catch (e) {
     toast(e.message, 'error');

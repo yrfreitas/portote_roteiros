@@ -228,6 +228,7 @@
     <div class="grade">
       <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
       <div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>
+      <div class="campo"><div class="rot">Forma de pagamento</div><div class="val">{{ ordem.forma_pagamento or '—' }}</div></div>
     </div>
 
     {% if itens %}
@@ -254,6 +255,16 @@
 
     <h2><span class="num-bola">4</span>Solução / diagnóstico</h2>
     <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
+
+    {% if ordem.foto %}
+    <h2><span class="num-bola">4</span>Foto do produto</h2>
+    <img class="foto-produto" src="{{ ordem.foto }}" alt="Foto do produto">
+    {% endif %}
+
+    <div class="grade" style="margin-top:10px;">
+      <div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>
+      <div class="campo"><div class="rot">Forma de pagamento</div><div class="val">{{ ordem.forma_pagamento or '—' }}</div></div>
+    </div>
 
     <hr class="linha-divisoria">
 
@@ -286,6 +297,11 @@
     <h2><span class="num-bola">4</span>Solução / diagnóstico</h2>
     <div class="caixa-texto">{{ ordem.solucao or '—' }}</div>
 
+    {% if ordem.foto %}
+    <h2><span class="num-bola">4</span>Foto do produto</h2>
+    <img class="foto-produto" src="{{ ordem.foto }}" alt="Foto do produto">
+    {% endif %}
+
     {% if ordem.observacao %}
     <h2><span class="num-bola">5</span>Observações complementares</h2>
     <div class="caixa-texto">{{ ordem.observacao }}</div>
@@ -296,12 +312,13 @@
     <h2><span class="num-bola">6</span>Atendimento</h2>
     <div class="grade">
       <div class="campo"><div class="rot">Atendente</div><div class="val">{{ ordem.atendente or '—' }}</div></div>
-      <div class="campo"><div class="rot">Técnico</div><div class="val">{{ (visita.tecnico_nome if visita else None) or 'a definir' }}</div></div>
+      <div class="campo"><div class="rot">Técnico</div><div class="val">{{ (visita.tecnico_nome if visita else None) or tecnico_atendeu_nome or 'a definir' }}</div></div>
       <div class="campo"><div class="rot">Data agendada</div><div class="val">{{ visita.data_referencia_br if (visita and visita.data_referencia_br) else (visita.dia_semana if visita else 'a definir') }}</div></div>
       <div class="campo">
         <div class="rot">Taxa de avaliação</div>
         <div class="taxa-bloco"><span class="valor">R$ {{ taxa_br }}</span></div>
       </div>
+      <div class="campo"><div class="rot">Forma de pagamento</div><div class="val">{{ ordem.forma_pagamento or '—' }}</div></div>
     </div>
 
     <hr class="linha-divisoria">
