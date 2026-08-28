@@ -14,6 +14,18 @@ relatorios_bp = Blueprint("relatorios", __name__)
 
 log = logging.getLogger("portotec.relatorios")
 
+FOTO_MAXIMA = 900 * 1024
+PREFIXOS_FOTO = ("data:image/jpeg;base64,", "data:image/png;base64,",
+                 "data:image/webp;base64,")
+
+
+def _foto_valida(foto):
+    if not isinstance(foto, str) or not foto.startswith(PREFIXOS_FOTO):
+        return None
+    if len(foto) > FOTO_MAXIMA:
+        return None
+    return foto
+
 
 def _parse_dt(valor):
     if not valor:
@@ -357,6 +369,13 @@ def marcar_peca_pedida(servico_id):
     """
     from flask import session
 
+    data = request.get_json(silent=True) or {}
+    foto = data.get("foto")
+    if foto is not None:
+        foto = _foto_valida(foto)
+        if not foto:
+            return jsonify({"erro": "Foto inválida ou grande demais."}), 400
+
     with db_conn() as conn:
         dado = fetch_one(conn, sql("""
             SELECT d.servico_id, d.desfecho, d.peca, d.observacao, d.pedido_em,
@@ -380,8 +399,8 @@ def marcar_peca_pedida(servico_id):
 
     with db_conn(commit=True) as conn:
         execute(conn, sql("UPDATE servico_desfecho SET pedido_em = ?, "
-                          "pedido_por = ? WHERE servico_id = ?"),
-                (agora, quem, servico_id))
+                          "pedido_por = ?, pedido_foto = ? WHERE servico_id = ?"),
+                (agora, quem, foto, servico_id))
 
     aviso = None
     try:
@@ -403,4 +422,29 @@ def marcar_peca_pedida(servico_id):
         log.exception("Falha ao gravar peça solicitada na planilha")
         aviso = f"Baixa registrada, mas não consegui escrever na planilha: {exc}"
 
-    return jsonify({"pedido_em": agora, "pedido_por": quem, "aviso": aviso})
+    return jsonify({"pedido_em": agora, "pedido_por": quem, "tem_foto": bool(foto), "aviso": aviso})
+
+
+@relatorios_bp.route("/desfechos/pedidos", methods=["GET"])
+def listar_pedidos_de_peca():
+    """Peças já marcadas como "pedidas" — vira a aba própria em Peças.
+
+    Separada do /desfechos porque ali a foto (pedido_foto, até ~900KB em
+    base64) entraria em TODA carga da aba Atendimentos mesmo quando ninguém
+    pediu pra ver — aqui a lista já É a foto, então carregar junto faz
+    sentido.
+    """
+    with db_conn() as conn:
+        linhas = fetch_all(conn, sql("""
+            SELECT d.servico_id, d.peca, d.observacao, d.pedido_em, d.pedido_por,
+                   d.pedido_foto, s.cliente, s.endereco_completo,
+                   s.tipo_aparelho, s.modelo, s.numero_os,
+                   t.nome AS tecnico, t.cor AS tecnico_cor
+              FROM servico_desfecho d
+              JOIN servicos s ON s.id = d.servico_id
+              LEFT JOIN fichas f ON f.id = s.ficha_id
+              LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+             WHERE d.pedido_em IS NOT NULL
+             ORDER BY d.pedido_em DESC
+        """))
+    return jsonify({"pedidos": linhas})

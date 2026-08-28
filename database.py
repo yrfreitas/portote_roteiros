@@ -887,6 +887,9 @@ _MIGRACOES_PG = [
     # tem o link vê aquela OS específica.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS assinatura_cliente TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS token_cliente TEXT",
+    # Comprovante (foto) do pedido da peça, anexado ao clicar "Já pedi" — vira
+    # a prova visual que a nova aba de Peças mostra ao lado do cliente.
+    "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS pedido_foto TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1003,6 +1006,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE ordens_servico ADD COLUMN forma_pagamento TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN assinatura_cliente TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN token_cliente TEXT",
+    "ALTER TABLE servico_desfecho ADD COLUMN pedido_foto TEXT",
 ]
 
 

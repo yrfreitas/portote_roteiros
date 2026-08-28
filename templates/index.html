@@ -316,51 +316,70 @@
 
   <main class="main" id="panel-pecas" style="display:none; grid-row: 2; grid-column: 1 / -1;">
     <div class="historico-wrap">
-      <div class="historico-header">
-        <span class="visao-geral-title">Peças Compradas</span>
-        <label class="pecas-toggle">
-          <input type="checkbox" id="pecas-mostrar-todas" onchange="carregarPecas()">
-          mostrar as que já têm cliente também
-        </label>
+      <div class="vcep-tabs" style="margin-bottom:14px;">
+        <button class="vcep-tab active" id="ptab-compradas" onclick="pecasSwitchTab('compradas')">
+          Peças Compradas
+        </button>
+        <button class="vcep-tab" id="ptab-pedidos" onclick="pecasSwitchTab('pedidos')">
+          Pedidos com comprovante <span class="agendar-tab-count" id="ptab-pedidos-cont"></span>
+        </button>
       </div>
 
-      <!-- Explica o pipeline em vez de um parágrafo corrido: a dúvida não é
-           "o que essa tela faz", é "em que ordem as coisas acontecem" — e um
-           parágrafo não deixa isso escaneável. Fica sempre visível (não em
-           <details>) porque "como funciona" é a pergunta que trouxe a queixa,
-           não algo pra esconder atrás de um clique. -->
-      <ol class="pecas-explicador">
-        <li><b>Toda compra na Panasonic cai aqui sozinha</b> — um robô lê o
-          e-mail de confirmação e grava a linha; ninguém digita nada até
-          aqui.</li>
-        <li><b>Você diz de qual cliente é</b> — escreve nos dois campos
-          (peça + cliente) e sai do campo: grava na planilha na hora, sem
-          precisar clicar em nada.</li>
-        <li><b>Quando a caixa chegar de verdade na oficina</b>, aperte
-          "chegou" — a Panasonic só avisa até "enviado", quem sabe se
-          chegou na mão é você.</li>
-        <li><b>"Registrar no estoque" é opcional</b> — só use se quiser que
-          essa peça conte no saldo da aba <b>Estoque</b> (tela separada,
-          o inventário de verdade). Vincular ao cliente aqui não mexe no
-          estoque sozinho.</li>
-      </ol>
-      <p class="pecas-nota-cotacao">
-        Precisa só saber o preço de uma peça <i>antes</i> de comprar? Isso é
-        a aba <b>Cotação</b>, mais abaixo — lista diferente desta.
-      </p>
+      <div id="pecas-aba-compradas">
+        <div class="historico-header">
+          <span class="visao-geral-title">Peças Compradas</span>
+          <label class="pecas-toggle">
+            <input type="checkbox" id="pecas-mostrar-todas" onchange="carregarPecas()">
+            mostrar as que já têm cliente também
+          </label>
+        </div>
 
-      <div id="pecas-lista"></div>
+        <!-- Explica o pipeline em vez de um parágrafo corrido: a dúvida não é
+             "o que essa tela faz", é "em que ordem as coisas acontecem" — e um
+             parágrafo não deixa isso escaneável. Fica sempre visível (não em
+             <details>) porque "como funciona" é a pergunta que trouxe a queixa,
+             não algo pra esconder atrás de um clique. -->
+        <ol class="pecas-explicador">
+          <li><b>Toda compra na Panasonic cai aqui sozinha</b> — um robô lê o
+            e-mail de confirmação e grava a linha; ninguém digita nada até
+            aqui.</li>
+          <li><b>Você diz de qual cliente é</b> — escreve nos dois campos
+            (peça + cliente) e sai do campo: grava na planilha na hora, sem
+            precisar clicar em nada.</li>
+          <li><b>Quando a caixa chegar de verdade na oficina</b>, aperte
+            "chegou" — a Panasonic só avisa até "enviado", quem sabe se
+            chegou na mão é você.</li>
+          <li><b>"Registrar no estoque" é opcional</b> — só use se quiser que
+            essa peça conte no saldo da aba <b>Estoque</b> (tela separada,
+            o inventário de verdade). Vincular ao cliente aqui não mexe no
+            estoque sozinho.</li>
+        </ol>
+        <p class="pecas-nota-cotacao">
+          Precisa só saber o preço de uma peça <i>antes</i> de comprar? Isso é
+          a aba <b>Cotação</b>, mais abaixo — lista diferente desta.
+        </p>
 
-      <!-- Compacta de propósito: cotação é consulta rápida ("quanto custa
-           essa peça?"), não merece aba própria disputando espaço com a
-           lista de compras, que é o trabalho do dia a dia aqui. -->
-      <details class="cotacao-details" id="cotacao-details" style="display:none" ontoggle="if(this.open) carregarCotacoes()">
-        <summary class="cotacao-summary">
-          <span>Cotação de peças</span>
-          <span class="badge" id="cotacao-selo" hidden></span>
-        </summary>
-        <div id="cotacao-conteudo"></div>
-      </details>
+        <div id="pecas-lista"></div>
+
+        <!-- Compacta de propósito: cotação é consulta rápida ("quanto custa
+             essa peça?"), não merece aba própria disputando espaço com a
+             lista de compras, que é o trabalho do dia a dia aqui. -->
+        <details class="cotacao-details" id="cotacao-details" style="display:none" ontoggle="if(this.open) carregarCotacoes()">
+          <summary class="cotacao-summary">
+            <span>Cotação de peças</span>
+            <span class="badge" id="cotacao-selo" hidden></span>
+          </summary>
+          <div id="cotacao-conteudo"></div>
+        </details>
+      </div>
+
+      <!-- Peças marcadas "já pedi" lá em Atendimentos, com o comprovante
+           anexado — junta cliente+dado+foto num cartão só, pra não precisar
+           voltar pra Atendimentos só pra conferir o que foi comprado pra
+           quem. -->
+      <div id="pecas-aba-pedidos" style="display:none;">
+        <div id="pecas-pedidos-lista"></div>
+      </div>
     </div>
   </main>
 

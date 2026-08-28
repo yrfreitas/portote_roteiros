@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v115';
+const VERSAO_PAINEL = 'v116';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2291,6 +2291,72 @@ async function salvarClienteRapido() {
     btn.disabled = false;
     btn.textContent = 'Cadastrar';
   }
+}
+
+// ─── Aba "Pedidos com comprovante", dentro de Peças ────────────────────
+//
+// Separada de "Peças Compradas": aquela é a compra chegando da Panasonic
+// (o robô lê o e-mail); esta é o pedido que o PRÓPRIO técnico/atendente fez
+// e marcou "já pedi" lá em Atendimentos, com a foto do comprovante anexada.
+// Duas origens diferentes — por isso não entram na mesma lista.
+let _pecasTab = 'compradas';
+
+function pecasSwitchTab(tab) {
+  _pecasTab = tab;
+  document.getElementById('ptab-compradas')?.classList.toggle('active', tab === 'compradas');
+  document.getElementById('ptab-pedidos')?.classList.toggle('active', tab === 'pedidos');
+  document.getElementById('pecas-aba-compradas').style.display = tab === 'compradas' ? 'block' : 'none';
+  document.getElementById('pecas-aba-pedidos').style.display = tab === 'pedidos' ? 'block' : 'none';
+  if (tab === 'pedidos') carregarPedidosComComprovante();
+}
+
+async function carregarPedidosComComprovante() {
+  const alvo = document.getElementById('pecas-pedidos-lista');
+  if (!alvo) return;
+  alvo.innerHTML = `<div class="loading-row" style="justify-content:center;padding:30px;">
+      <div class="spinner"></div> Carregando pedidos...</div>`;
+
+  let r;
+  try {
+    r = await api('/desfechos/pedidos');
+  } catch (e) {
+    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const pedidos = r.pedidos || [];
+  document.getElementById('ptab-pedidos-cont').textContent = pedidos.length || '';
+
+  if (!pedidos.length) {
+    alvo.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
+      <p>Nenhuma peça pedida com comprovante ainda.</p></div>`;
+    return;
+  }
+
+  alvo.innerHTML = pedidos.map(p => {
+    const aparelho = [p.tipo_aparelho, p.modelo].filter(Boolean).join(' · ');
+    const quando = (p.pedido_em || '').slice(0, 10).split('-').reverse().join('/');
+    return `
+      <div class="pp-cartao">
+        <div class="pp-lado-dados">
+          <div class="pp-cliente">${esc(p.cliente) || 'Cliente sem nome'}</div>
+          ${p.endereco_completo ? `<div class="pp-sub">${esc(p.endereco_completo)}</div>` : ''}
+          ${aparelho ? `<div class="pp-sub">${esc(aparelho)}</div>` : ''}
+          ${p.peca ? `<div class="pp-peca">Peça: ${esc(p.peca)}</div>` : ''}
+          ${p.observacao ? `<div class="pp-sub">${esc(p.observacao)}</div>` : ''}
+          <div class="pp-rodape">
+            ${p.tecnico ? `<span class="at-ponto-cor" style="background:${escCor(p.tecnico_cor)}"></span>${esc(p.tecnico)} · ` : ''}
+            pedida ${esc(quando)}${p.pedido_por ? ' por ' + esc(p.pedido_por) : ''}
+            ${p.numero_os ? ` · OS ${esc(p.numero_os)}` : ''}
+          </div>
+        </div>
+        <div class="pp-lado-imagem">
+          ${p.pedido_foto
+            ? `<img class="pp-foto" src="${p.pedido_foto}" alt="Comprovante do pedido" onclick="ampliarFoto(this.src)">`
+            : '<span class="pp-sem-foto">sem comprovante anexado</span>'}
+        </div>
+      </div>`;
+  }).join('');
 }
 
 async function carregarPecas() {
@@ -8157,17 +8223,79 @@ function botaoBaixa(a) {
     return `<span class="at-pedida" title="Pedida em ${esc(a.pedido_em)}${
       a.pedido_por ? ' por ' + esc(a.pedido_por) : ''}">✓ pedida ${esc(quando)}</span>`;
   }
-  return `<button class="at-btn-baixa" onclick="darBaixaPeca(${a.servico_id})">
+  return `<button class="at-btn-baixa" onclick="abrirAnexarPedido(${a.servico_id})">
             Já pedi</button>`;
 }
 
-async function darBaixaPeca(servicoId) {
+// Foto do comprovante do pedido fica num estado à parte (não em _dfFoto,
+// já usado pelo modal de desfecho do painel) porque as duas telas podem
+// ficar abertas em paralelo sem uma pisar na foto da outra.
+let _pedidoServicoAtual = null;
+let _pedidoFotoAtual = null;
+
+// "Já pedi" abre um formulário mini dentro da própria linha, em vez de gravar
+// na hora: dá a chance de anexar o comprovante da compra ANTES de fechar o
+// circuito — depois de gravado não tem como voltar e anexar (409 do backend).
+function abrirAnexarPedido(servicoId) {
+  const slot = document.getElementById(`at-baixa-${servicoId}`);
+  if (!slot) return;
+  _pedidoServicoAtual = servicoId;
+  _pedidoFotoAtual = null;
+  slot.innerHTML = `
+    <div class="at-pedido-form">
+      <label class="df-foto-botao df-foto-botao-mini">
+        Anexar comprovante
+        <input type="file" accept="image/*" onchange="escolherFotoPedido(this)" hidden>
+      </label>
+      <div id="at-pedido-previa-${servicoId}" class="df-previa"></div>
+      <div class="at-pedido-acoes">
+        <button class="at-btn-baixa" onclick="confirmarBaixaPeca(${servicoId})">Confirmar pedido</button>
+        <button class="at-btn-cancelar-mini" onclick="cancelarAnexarPedido(${servicoId})">cancelar</button>
+      </div>
+    </div>`;
+}
+
+function cancelarAnexarPedido(servicoId) {
+  _pedidoServicoAtual = null;
+  _pedidoFotoAtual = null;
+  const slot = document.getElementById(`at-baixa-${servicoId}`);
+  if (slot) slot.innerHTML = botaoBaixa({});
+}
+
+async function escolherFotoPedido(input) {
+  const arquivo = input.files && input.files[0];
+  if (!arquivo) return;
+  const previa = document.getElementById(`at-pedido-previa-${_pedidoServicoAtual}`);
+  if (previa) previa.innerHTML = '<span class="df-processando">preparando a foto...</span>';
+  try {
+    _pedidoFotoAtual = await reduzirFotoInteira(arquivo);
+    if (previa) previa.innerHTML = `
+      <img class="df-thumb" src="${_pedidoFotoAtual}" alt="Comprovante do pedido">
+      <button type="button" class="df-remover-foto" onclick="removerFotoPedido()">remover</button>`;
+  } catch (e) {
+    _pedidoFotoAtual = null;
+    if (previa) previa.innerHTML = `<span class="df-erro">${esc(e.message)}</span>`;
+  } finally {
+    input.value = '';
+  }
+}
+
+function removerFotoPedido() {
+  _pedidoFotoAtual = null;
+  const previa = document.getElementById(`at-pedido-previa-${_pedidoServicoAtual}`);
+  if (previa) previa.innerHTML = '';
+}
+
+async function confirmarBaixaPeca(servicoId) {
   const slot = document.getElementById(`at-baixa-${servicoId}`);
   if (!slot) return;
   const original = slot.innerHTML;
   slot.innerHTML = '<span class="at-sub">gravando...</span>';
   try {
-    const r = await api(`/desfechos/${servicoId}/pedido`, { method: 'POST' });
+    const r = await api(`/desfechos/${servicoId}/pedido`, {
+      method: 'POST',
+      body: JSON.stringify({ foto: _pedidoFotoAtual || null }),
+    });
     document.getElementById(`at-linha-${servicoId}`)?.classList.add('pedida');
     slot.innerHTML = botaoBaixa({ pedido_em: r.pedido_em, pedido_por: r.pedido_por });
     // O aviso aparece quando a baixa foi gravada mas a planilha falhou. É
@@ -8177,6 +8305,9 @@ async function darBaixaPeca(servicoId) {
   } catch (e) {
     slot.innerHTML = original;
     toast(e.message, 'error');
+  } finally {
+    _pedidoServicoAtual = null;
+    _pedidoFotoAtual = null;
   }
 }
 
