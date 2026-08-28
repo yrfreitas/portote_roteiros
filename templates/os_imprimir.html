@@ -10,7 +10,13 @@
      cabeçalho com logo+contato, seções numeradas em círculo, tabela de
      itens e garantia em campo de preenchimento manual. */
   :root {
-    --tinta: #1b1e24; --tinta-2: #6b7280; --tinta-3: #9aa1ac;
+    /* --tinta-3 era #9aa1ac (contraste ~2.8:1 em papel branco) — pedido de
+       2026-08-28: "cor fraca, não dá pra enxergar". Rótulos de campo, os
+       termos de garantia e o cabeçalho da tabela de itens usavam essa cor
+       pra texto de verdade, não só decoração — escurecida pra ~6:1.
+       --tinta-4 guarda o tom claro antigo, mas só pra linha pontilhada de
+       preenchimento manual, que É pra ser discreta. */
+    --tinta: #1b1e24; --tinta-2: #4b5563; --tinta-3: #5b6472; --tinta-4: #9aa1ac;
     --linha: #d8dde5; --azul: #1d5fae; --azul-fundo: #eef4fc;
   }
   /* Cabe numa A4 é requisito, não sugestão — cada regra de espaçamento
@@ -41,7 +47,7 @@
     font-size: 7px; font-weight: 700; letter-spacing: 1.3px; color: var(--tinta-2);
     display: flex; align-items: center; gap: 5px; margin: 1px 0 2px;
   }
-  .marca .tagline::before, .marca .tagline::after { content: ''; height: 1px; width: 12px; background: var(--tinta-3); }
+  .marca .tagline::before, .marca .tagline::after { content: ''; height: 1px; width: 12px; background: var(--tinta-4); }
   .marca .subnome { font-size: 9.5px; color: var(--tinta); font-weight: 600; }
   .marca .doctype { font-size: 9px; color: var(--azul); font-weight: 700; }
 
@@ -53,7 +59,7 @@
   }
   .os-numero .d { font-size: 10px; color: var(--tinta); font-weight: 600; }
   .os-numero .linha-servico {
-    min-width: 110px; border-bottom: 1px dotted var(--tinta-3); height: 12px;
+    min-width: 110px; border-bottom: 1px dotted var(--tinta-4); height: 12px;
   }
 
   .contato-barra {
@@ -100,7 +106,7 @@
   }
 
   .campo-manual { font-size: 9.5px; color: var(--tinta-2); display: flex; align-items: baseline; gap: 6px; margin-bottom: 5px; }
-  .campo-manual .linha-preenchimento { flex: 1; border-bottom: 1px dotted var(--tinta-3); min-width: 40px; height: 11px; }
+  .campo-manual .linha-preenchimento { flex: 1; border-bottom: 1px dotted var(--tinta-4); min-width: 40px; height: 11px; }
 
   .taxa-bloco { display: flex; align-items: baseline; gap: 6px; }
   .taxa-bloco .valor { font-size: 11px; font-weight: 700; letter-spacing: -.1px; }
