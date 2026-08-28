@@ -109,7 +109,7 @@ _CAMINHOS_PUBLICOS = {"/login", "/api/health", "/api/erro-cliente"}
 # não tem conta no sistema. O link de 16 bytes é a credencial — mesmo modelo do
 # link do técnico. Só expõem posição e destino daquele atendimento.
 _PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
-                      "/acompanhar/", "/api/rastreio/", "/api/chat/")
+                      "/acompanhar/", "/api/rastreio/", "/api/chat/", "/os/cliente/")
 
 
 # Controle de acesso por AÇÃO (ver permissoes.py), no lugar do antigo "só
@@ -366,11 +366,11 @@ def acompanhar(token):
     return render_template("acompanhar.html", token=token)
 
 
-@app.route("/os/<int:os_id>/imprimir")
-def imprimir_os(os_id):
-    """Documento da OS pronto pra impressão. Exige login (não está nos
-    caminhos públicos) — é documento interno, diferente do link de
-    acompanhamento do cliente."""
+def _montar_documento_os(os_id):
+    """Monta o contexto de impressão de uma OS — reaproveitado pela rota
+    interna (login) e pela pública por token (ver /os/cliente/<token>),
+    que existe pra o técnico poder mandar o documento pro cliente na hora,
+    do próprio atendimento em campo (pedido de 2026-08-28)."""
     with db_conn() as conn:
         ordem = fetch_one(conn, """
             SELECT os.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone,
@@ -384,7 +384,7 @@ def imprimir_os(os_id):
              WHERE os.id = ?
         """, (os_id,))
         if not ordem:
-            return "<h1>Ordem de serviço não encontrada</h1>", 404
+            return None
 
         visita = fetch_one(conn, """
             SELECT f.dia_semana, f.data_referencia, t.nome AS tecnico_nome
@@ -432,8 +432,8 @@ def imprimir_os(os_id):
     itens_com_valor_br = [{"nome": i["nome"], "valor_br": _moeda_br(i["valor"])} for i in itens]
     total_orcamento_br = _moeda_br(sum(float(i["valor"] or 0) for i in itens))
 
-    return render_template(
-        "os_imprimir.html", ordem=ordem, visita=visita, termos=termos,
+    return dict(
+        ordem=ordem, visita=visita, termos=termos,
         tipo_os_rotulo=tipo_os_rotulo, modelo_os_rotulo=modelo_os_rotulo,
         itens=itens_com_valor_br, total_orcamento_br=total_orcamento_br,
         tecnico_atendeu_nome=tecnico_atendeu_nome,
@@ -441,6 +441,33 @@ def imprimir_os(os_id):
         taxa_br=_moeda_br(ordem.get("taxa_avaliacao")),
         gerado_em_br=datetime.now().strftime("%d/%m/%Y %H:%M"),
     )
+
+
+@app.route("/os/<int:os_id>/imprimir")
+def imprimir_os(os_id):
+    """Documento da OS pronto pra impressão. Exige login (não está nos
+    caminhos públicos) — é documento interno, diferente do link de
+    acompanhamento do cliente."""
+    contexto = _montar_documento_os(os_id)
+    if not contexto:
+        return "<h1>Ordem de serviço não encontrada</h1>", 404
+    return render_template("os_imprimir.html", **contexto)
+
+
+@app.route("/os/cliente/<token>")
+def imprimir_os_cliente(token):
+    """Mesmo documento, sem login — o token de 32 bytes é a credencial
+    (mesmo modelo do link de acompanhamento). Existe pra o técnico poder
+    mandar a OS pro cliente pelo WhatsApp assim que colhe a assinatura em
+    campo, sem precisar que o escritório mande depois."""
+    with db_conn() as conn:
+        os_row = fetch_one(conn, "SELECT id FROM ordens_servico WHERE token_cliente = ?", (token,))
+    if not os_row:
+        return "<h1>Link inválido</h1>", 404
+    contexto = _montar_documento_os(os_row["id"])
+    if not contexto:
+        return "<h1>Ordem de serviço não encontrada</h1>", 404
+    return render_template("os_imprimir.html", **contexto)
 
 
 # ─── Auto-refresh: quem está com a tela aberta vê a mudança sozinho ──────

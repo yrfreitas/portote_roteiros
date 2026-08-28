@@ -1,4 +1,5 @@
 import logging
+import secrets
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
@@ -175,7 +176,8 @@ def status_servico_tecnico(token, servico_id):
         aplicar_status_servico(conn, servico_id, novo_status)
         desfecho_gravado = _gravar_desfecho(conn, servico, novo_status,
                                             data.get("desfecho"),
-                                            tecnico.get("nome") or "")
+                                            tecnico.get("nome") or "",
+                                            tecnico["id"])
 
     return jsonify({"mensagem": f"Serviço marcado como {novo_status}",
                     "status": novo_status, "desfecho": desfecho_gravado})
@@ -184,7 +186,7 @@ def status_servico_tecnico(token, servico_id):
 # Desfechos possíveis de um atendimento. Lista FECHADA de propósito: o valor
 # alimenta contagem e filtro, e texto livre não soma nem filtra.
 DESFECHOS_VALIDOS = {"resolvido", "precisa_peca", "volto_depois", "nao_atendido",
-                     "cotacao_peca"}
+                     "cotacao_peca", "fazer_os"}
 
 # Desfechos que fazem sentido levar pra um dia futuro (o cliente exige nova
 # visita). "resolvido" e "cotacao_peca" terminam o atendimento ali mesmo —
@@ -311,6 +313,120 @@ def _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem):
            (os_id, servico["id"]))
 
 
+def _imagem_valida(imagem):
+    """Mesma validação de _gravar_foto, mas devolvendo o valor em vez de já
+    gravar — reaproveitada pra foto do produto E assinatura do cliente no
+    fluxo de Fazer Ordem de Serviço (ver _criar_os_do_tecnico)."""
+    if not isinstance(imagem, str) or not imagem.startswith(PREFIXOS_FOTO):
+        return None
+    if len(imagem) > FOTO_MAXIMA:
+        return None
+    return imagem
+
+
+def _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
+    """"Fazer Ordem de Serviço" direto no atendimento — pedido de
+    2026-08-28: o site deixou de ser só roteirização, e o técnico pode
+    fechar o caso em campo (defeito, solução, forma de pagamento, foto) e
+    colher a assinatura do cliente na hora, sem depender do escritório
+    abrir a OS depois. Nasce 'finalizada': tem assinatura, o atendimento
+    já aconteceu.
+
+    Mesma conexão/SAVEPOINT do resto de _gravar_desfecho — ver motivo em
+    _criar_os_para_reagendamento (conexão separada trava esperando lock).
+    Devolve o id da OS (ou None se não deu pra identificar o cliente) pra
+    quem chamou poder montar o link de compartilhamento.
+    """
+    cliente_nome = (desfecho.get("cliente_nome") or servico.get("cliente") or "").strip()
+    if not cliente_nome:
+        return None
+
+    from routes.clientes import criar_cliente
+
+    existente = fetch_one(conn, sql(
+        "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
+    if existente:
+        cliente_id = existente["id"]
+    else:
+        try:
+            cliente_id = criar_cliente(conn, {
+                "nome": cliente_nome,
+                "telefone": (desfecho.get("cliente_telefone") or servico.get("telefone") or "").strip(),
+            })
+        except ValueError:
+            return None
+
+    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    tipo_aparelho = (desfecho.get("tipo_aparelho") or servico.get("tipo_aparelho") or "").strip()
+    modelo = (desfecho.get("modelo") or servico.get("modelo") or "").strip()
+    defeito = (desfecho.get("defeito_declarado") or servico.get("descricao") or "").strip()
+    solucao = (desfecho.get("solucao_os") or "").strip()
+    forma_pagamento = (desfecho.get("forma_pagamento") or "").strip()
+    foto = _imagem_valida(desfecho.get("foto_produto"))
+    assinatura = _imagem_valida(desfecho.get("assinatura"))
+    token_cliente = secrets.token_urlsafe(24)
+
+    os_id = insert_returning_id(conn, sql("""
+        INSERT INTO ordens_servico
+            (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
+             solucao, forma_pagamento, foto, assinatura_cliente,
+             tecnico_atendeu_id, taxa_avaliacao, status, modelo_os,
+             criado_em, criado_por, finalizada_em, token_cliente)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """), (cliente_id, quem, tipo_aparelho, modelo, defeito, solucao,
+          forma_pagamento, foto, assinatura, tecnico_id, 0, "finalizada",
+          "chamado_tecnico", agora, quem, agora, token_cliente))
+
+    execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
+           (os_id, servico["id"]))
+
+    return {"os_id": os_id, "token_cliente": token_cliente}
+
+
+def _fechar_os_existente(conn, ordem_servico_id, desfecho, quem):
+    """Quando o atendimento JÁ tem OS (veio de Agendar Clientes/OS aberta
+    antes), "Fazer Ordem de Serviço" fecha ESSA OS em vez de criar outra
+    solta — evita duplicar o caso do cliente."""
+    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    campos, valores = ["status = ?", "finalizada_em = ?", "atualizado_em = ?"], ["finalizada", agora, agora]
+
+    solucao = (desfecho.get("solucao_os") or "").strip()
+    if solucao:
+        campos.append("solucao = ?"); valores.append(solucao)
+    forma_pagamento = (desfecho.get("forma_pagamento") or "").strip()
+    if forma_pagamento:
+        campos.append("forma_pagamento = ?"); valores.append(forma_pagamento)
+    foto = _imagem_valida(desfecho.get("foto_produto"))
+    if foto:
+        campos.append("foto = ?"); valores.append(foto)
+    assinatura = _imagem_valida(desfecho.get("assinatura"))
+    if assinatura:
+        campos.append("assinatura_cliente = ?"); valores.append(assinatura)
+
+    existente = fetch_one(conn, "SELECT token_cliente FROM ordens_servico WHERE id = ?",
+                          (ordem_servico_id,))
+    token_cliente = (existente or {}).get("token_cliente")
+    if not token_cliente:
+        token_cliente = secrets.token_urlsafe(24)
+        campos.append("token_cliente = ?"); valores.append(token_cliente)
+
+    valores.append(ordem_servico_id)
+    execute(conn, f"UPDATE ordens_servico SET {', '.join(campos)} WHERE id = ?", valores)
+
+    return {"os_id": ordem_servico_id, "token_cliente": token_cliente}
+
+
+def _processar_fazer_os(conn, servico, tecnico_id, desfecho, quem):
+    if servico.get("ordem_servico_id"):
+        return _fechar_os_existente(conn, servico["ordem_servico_id"], desfecho, quem)
+    if not tecnico_id:
+        # Rota admin (routes/servicos.py) não tem token de técnico — usa o
+        # técnico dono da ficha deste atendimento como responsável.
+        ficha = fetch_one(conn, "SELECT tecnico_id FROM fichas WHERE id = ?", (servico["ficha_id"],))
+        tecnico_id = (ficha or {}).get("tecnico_id")
+    return _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem)
+
+
 def _atualizar_status_os(conn, ordem_servico_id, tipo):
     if not ordem_servico_id:
         return
@@ -331,7 +447,7 @@ def _atualizar_status_os(conn, ordem_servico_id, tipo):
             (novo, agora, ordem_servico_id))
 
 
-def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
+def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None):
     """Guarda o que aconteceu no atendimento, junto com a conclusão.
 
     Vem na MESMA requisição do status, e não num endpoint próprio, porque o
@@ -400,9 +516,12 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
     # já está gravado nesta transação, e nada daqui pra baixo pode virar
     # "erro interno" nem travar esperando lock. Se a OS não sair ou o status
     # não atualizar, só essa parte volta atrás; o resto do commit segue.
+    os_gerada = None
     execute(conn, "SAVEPOINT sp_os_reagendamento")
     try:
-        if tipo in DESFECHOS_REAGENDAVEIS and not ordem_servico_id:
+        if tipo == "fazer_os":
+            os_gerada = _processar_fazer_os(conn, servico, tecnico_id, desfecho, quem)
+        elif tipo in DESFECHOS_REAGENDAVEIS and not ordem_servico_id:
             _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem)
         else:
             _atualizar_status_os(conn, ordem_servico_id, tipo)
@@ -414,6 +533,9 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem):
         execute(conn, "RELEASE SAVEPOINT sp_os_reagendamento")
 
     resultado = {"tipo": tipo, "motivo": motivo, "peca": peca, "observacao": observacao}
+    if os_gerada:
+        resultado["os_id"] = os_gerada["os_id"]
+        resultado["token_cliente"] = os_gerada["token_cliente"]
     return resultado
 
 

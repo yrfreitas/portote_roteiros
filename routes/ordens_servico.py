@@ -8,6 +8,7 @@ pode ter mais de uma visita ligada a ela com o tempo (voltou pra buscar
 peça), por isso o vínculo mora em servicos.ordem_servico_id.
 """
 import io
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request, send_file, session
@@ -1214,18 +1215,25 @@ def criar():
             os_pai_id = pai["id"]
 
         agora = _agora()
+        # Toda OS ganha um link público próprio (token_cliente) — não é só a
+        # criada pelo técnico em campo que pode ser mandada pro cliente
+        # (ver app.py:/os/cliente/<token>); qualquer uma pode, a qualquer
+        # momento.
+        token_cliente = secrets.token_urlsafe(24)
         os_id = insert_returning_id(conn, """
             INSERT INTO ordens_servico
                 (cliente_id, atendente, tipo_aparelho, marca, modelo,
                  numero_serie, voltagem, acessorios, defeito_declarado, taxa_avaliacao,
                  status, observacao, criado_em, criado_por, tipo_os,
-                 modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
+                 token_cliente)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
-              tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento))
+              tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
+              token_cliente))
 
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
@@ -1333,6 +1341,21 @@ def apagar(os_id):
             return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
         execute(conn, "DELETE FROM ordens_servico WHERE id = ?", (os_id,))
     return jsonify({"mensagem": "Ordem de serviço apagada"})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/link-cliente", methods=["GET"])
+def link_cliente(os_id):
+    """Devolve o token do link público desta OS, gerando um na hora se ela
+    for de antes desse recurso existir (2026-08-28) e ainda não tiver."""
+    with db_conn(commit=True) as conn:
+        os_row = fetch_one(conn, "SELECT id, token_cliente FROM ordens_servico WHERE id = ?", (os_id,))
+        if not os_row:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        token = os_row.get("token_cliente")
+        if not token:
+            token = secrets.token_urlsafe(24)
+            execute(conn, "UPDATE ordens_servico SET token_cliente = ? WHERE id = ?", (token, os_id))
+    return jsonify({"token": token})
 
 
 @ordens_servico_bp.route("/ordens-servico/<int:os_id>/agendar", methods=["POST"])

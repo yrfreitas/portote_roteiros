@@ -878,6 +878,15 @@ _MIGRACOES_PG = [
     # Forma de pagamento — pedido de 2026-08-27, junto com solução/técnico/
     # foto virando campos comuns aos 3 modelos, não só do Chamado Técnico.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS forma_pagamento TEXT",
+    # Assinatura do cliente (base64, capturada num canvas no celular do
+    # técnico) e um token público — pedido de 2026-08-28: o técnico agora
+    # pode "Fazer Ordem de Serviço" direto no atendimento, colher a
+    # assinatura na hora e mandar o documento pro cliente sem passar pelo
+    # escritório. token_cliente é a credencial do link público (mesma
+    # lógica do link de acompanhamento) — sem sessão, sem senha, só quem
+    # tem o link vê aquela OS específica.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS assinatura_cliente TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS token_cliente TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -992,6 +1001,8 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE ordens_servico ADD COLUMN os_pai_id INTEGER",
     "ALTER TABLE ordens_servico ADD COLUMN voltagem TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN forma_pagamento TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN assinatura_cliente TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN token_cliente TEXT",
 ]
 
 

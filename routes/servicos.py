@@ -129,6 +129,17 @@ def adicionar_servico(ficha_id):
     if erro_setor:
         return jsonify({"erro": erro_setor}), 400
 
+    # Liga o atendimento a uma OS já existente — pedido de 2026-08-28, pra
+    # cliente que já tem caso aberto não precisar redigitar tudo de novo
+    # (ver addPuxarDadosDaOS no front). Mesma trava de sempre: valida que
+    # a OS existe antes de gravar a referência.
+    ordem_servico_id = data.get("ordem_servico_id")
+    if ordem_servico_id:
+        with db_conn() as conn:
+            os_existe = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (ordem_servico_id,))
+        if not os_existe:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+
     with db_conn() as conn:
         ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
     if not ficha:
@@ -146,8 +157,8 @@ def adicionar_servico(ficha_id):
             INSERT INTO servicos
                 (ficha_id, cep, endereco_completo, lat, lng,
                  cliente, descricao, numero, tipo_aparelho, modelo, numero_os,
-                 setor_id, telefone)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 setor_id, telefone, ordem_servico_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (ficha_id, cep, geo.endereco, geo.lat, geo.lng,
               (data.get("cliente") or "").strip(),
               (data.get("descricao") or "").strip(),
@@ -155,7 +166,7 @@ def adicionar_servico(ficha_id):
               (data.get("tipo_aparelho") or "").strip(),
               (data.get("modelo") or "").strip(),
               (data.get("numero_os") or "").strip(),
-              setor_id, telefone))
+              setor_id, telefone, ordem_servico_id or None))
 
         ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
         resultado = recalcular_rota(conn, ficha_id, ficha)

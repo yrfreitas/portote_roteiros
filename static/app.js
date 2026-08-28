@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v114';
+const VERSAO_PAINEL = 'v115';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2774,6 +2774,7 @@ const DESFECHO_ROTULO = {
   cotacao_peca: { txt: 'Cotação de peça', classe: 'df-cotacao-peca' },
   volto_depois: { txt: 'Volta depois',    classe: 'df-volto' },
   nao_atendido: { txt: 'Reagendar',        classe: 'df-nao-atendido' },
+  fazer_os:     { txt: 'OS feita em campo', classe: 'df-fazer-os' },
 };
 
 function seloDesfecho(s) {
@@ -4753,6 +4754,7 @@ async function adicionarServico() {
         modelo:        document.getElementById('add-modelo').value,
         numero_os:     document.getElementById('add-numero-os').value,
         setor_id:      setorEscolhido,
+        ordem_servico_id: document.getElementById('add-ordem-servico-id').value || null,
       }),
     });
 
@@ -5234,6 +5236,9 @@ function abrirModalNovaFicha(tecnicoId) {
 
 async function abrirModalAddServico(fichaId) {
   document.getElementById('add-ficha-id').value = fichaId;
+  document.getElementById('add-ordem-servico-id').value = '';
+  document.getElementById('add-busca-os').value = '';
+  document.getElementById('add-busca-os-resultado').innerHTML = '';
   ['add-cep','add-numero','add-cliente','add-telefone','add-descricao','add-tipo-aparelho','add-modelo','add-numero-os']
     .forEach(id => { document.getElementById(id).value = ''; });
   if (!setores.length) {
@@ -5242,6 +5247,64 @@ async function abrirModalAddServico(fichaId) {
   document.getElementById('modal-add-servico').classList.add('open');
   setTimeout(() => document.getElementById('add-cep').focus(), 100);
   await preencherSelectSetorSeguro('add-setor');
+}
+
+let _addBuscaOSTimer = null;
+
+// Puxa dados de uma OS já aberta pro atendimento novo em Roteiros — pedido
+// de 2026-08-28: o site deixou de ser só roteirização, e um cliente que já
+// tem OS não devia precisar redigitar tudo de novo quando o técnico for
+// visitá-lo. Liga o atendimento à OS (ordem_servico_id) pra aparecer no
+// histórico dela também.
+function addBuscarClienteComOS(termo) {
+  clearTimeout(_addBuscaOSTimer);
+  const alvo = document.getElementById('add-busca-os-resultado');
+  if (!termo || termo.trim().length < 2) {
+    alvo.innerHTML = '';
+    return;
+  }
+  _addBuscaOSTimer = setTimeout(async () => {
+    let r;
+    try {
+      r = await api(`/ordens-servico?busca=${encodeURIComponent(termo.trim())}`);
+    } catch (e) {
+      alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+      return;
+    }
+    if (r.ordens.length === 0) {
+      alvo.innerHTML = `<p class="ajuda-texto" style="margin-top:6px;">Nenhuma OS encontrada com esse nome.</p>`;
+      return;
+    }
+    alvo.innerHTML = r.ordens.map(o => `
+      <div class="os-resultado-item" onclick="addPuxarDadosDaOS(${o.id})">
+        <b>${esc(o.cliente_nome)}</b>
+        <span>OS #${String(o.id).padStart(6, '0')} · ${esc([o.tipo_aparelho, o.modelo].filter(Boolean).join(' ')) || 'sem aparelho'} — ${esc(o.defeito_declarado || '')}</span>
+      </div>`).join('');
+  }, 350);
+}
+
+async function addPuxarDadosDaOS(osId) {
+  let r;
+  try {
+    r = await api(`/ordens-servico/${osId}`);
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
+  const o = r.ordem;
+  document.getElementById('add-ordem-servico-id').value = o.id;
+  document.getElementById('add-cliente').value = o.cliente_nome || '';
+  document.getElementById('add-telefone').value = o.cliente_telefone || '';
+  document.getElementById('add-tipo-aparelho').value = o.tipo_aparelho || '';
+  document.getElementById('add-modelo').value = o.modelo || '';
+  document.getElementById('add-descricao').value = o.defeito_declarado || '';
+  if (o.cliente_cep) {
+    document.getElementById('add-cep').value = formatCEP(o.cliente_cep);
+    document.getElementById('add-numero').value = o.cliente_numero || '';
+  }
+  document.getElementById('add-busca-os').value = o.cliente_nome || '';
+  document.getElementById('add-busca-os-resultado').innerHTML =
+    `<p class="ajuda-texto" style="margin-top:6px;">✓ Dados de OS #${String(o.id).padStart(6, '0')} puxados — este atendimento vai ficar ligado a ela.</p>`;
 }
 
 async function abrirModalEditarServico(servicoId) {
@@ -5554,10 +5617,22 @@ async function carregarOS() {
       <div class="rot">${rotulo}</div>
     </button>`).join('');
 
+  // Lista só aparece com um status escolhido (clicou num cartão) ou busca
+  // ativa — pedido de 2026-08-28: com muita OS acumulada, a lista inteira
+  // solta embaixo dos cartões ficava "bagunçada". Sem filtro nenhum, só os
+  // cartões — clicar num deles é que revela as OS daquele status.
+  if (!_osFiltroStatus && !_osBuscaTexto) {
+    mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>
+      <p class="ajuda-texto" style="text-align:center;padding:20px 0;">
+        Clique num status acima pra ver as ordens de serviço dele, ou busque por nome/número.
+      </p>`;
+    return;
+  }
+
   if (r.ordens.length === 0) {
     mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>
       <div class="historico-vazio">${icone('check', 'icone-24')}
-        <p>${_osFiltroStatus ? 'Nenhuma OS nesse status.' : 'Nenhuma ordem de serviço aberta ainda.'}</p></div>`;
+        <p>${_osFiltroStatus ? 'Nenhuma OS nesse status.' : 'Nenhuma OS encontrada pra essa busca.'}</p></div>`;
     return;
   }
 
@@ -7933,6 +8008,8 @@ const AT_TIPOS = [
     classe: 'at-peca',  nota: 'esperando compra' },
   { tipo: 'cotacao_peca', rotulo: 'Cotação de peça',  curto: 'Cotação de peça',
     classe: 'at-cotacao', nota: 'aguardando preço' },
+  { tipo: 'fazer_os',     rotulo: 'OS feita em campo', curto: 'OS em campo',
+    classe: 'at-fazer-os', nota: 'assinada pelo cliente' },
   { tipo: 'resolvido',    rotulo: 'Resolvidos',       curto: 'Resolvido',
     classe: 'at-ok',    nota: 'fechados na hora' },
 ];
@@ -8021,6 +8098,8 @@ async function carregarDesfechos() {
         </div>
         <div class="at-baixa" id="at-baixa-${a.servico_id}">
           ${a.desfecho === 'precisa_peca' ? botaoBaixa(a) : ''}
+          ${a.desfecho === 'fazer_os' && a.ordem_servico_id ? `
+            <button class="btn btn-ghost btn-sm" onclick="abrirOSDetalhe(${a.ordem_servico_id})">Abrir OS</button>` : ''}
         </div>
         ${alertaNoCarro(a)}
       </div>`;

@@ -625,6 +625,14 @@
   <div class="modal">
     <div class="modal-title">Adicionar Atendimento Técnico</div>
     <input type="hidden" id="add-ficha-id">
+    <input type="hidden" id="add-ordem-servico-id">
+
+    <div class="form-group">
+      <label class="form-label" for="add-busca-os">Cliente já tem uma OS? Busque pelo nome pra puxar os dados</label>
+      <input type="text" class="form-input" id="add-busca-os" autocomplete="off"
+             placeholder="Digite o nome do cliente..." oninput="addBuscarClienteComOS(this.value)">
+      <div id="add-busca-os-resultado"></div>
+    </div>
 
     <div class="form-row">
       <div class="form-group">

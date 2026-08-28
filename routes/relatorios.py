@@ -284,7 +284,8 @@ def _marcar_disponivel_no_carro(conn, atendimentos):
             a["no_carro"] = achados
 
 
-DESFECHOS_ORDEM = ["precisa_peca", "cotacao_peca", "volto_depois", "nao_atendido", "resolvido"]
+DESFECHOS_ORDEM = ["precisa_peca", "cotacao_peca", "volto_depois", "nao_atendido",
+                   "fazer_os", "resolvido"]
 
 
 @relatorios_bp.route("/desfechos", methods=["GET"])
@@ -307,7 +308,7 @@ def listar_desfechos():
                    d.pedido_em, d.pedido_por,
                    d.registrado_em, d.registrado_por,
                    s.cliente, s.endereco_completo, s.tipo_aparelho, s.modelo,
-                   s.numero_os, s.ficha_id,
+                   s.numero_os, s.ficha_id, s.ordem_servico_id,
                    f.dia_semana, f.data_referencia,
                    t.nome AS tecnico, t.cor AS tecnico_cor,
                    (SELECT COUNT(*) FROM servico_foto sf

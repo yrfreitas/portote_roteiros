@@ -595,6 +595,7 @@
   // mão segurando o celular e a outra ocupada.
   const DESFECHOS = [
     { tipo: 'resolvido',    rotulo: 'Resolvido',        sub: 'consertado na hora',    icone: '✓' },
+    { tipo: 'fazer_os',     rotulo: 'Fazer Ordem de Serviço', sub: 'dados + assinatura do cliente', icone: '📝' },
     { tipo: 'precisa_peca', rotulo: 'Precisa de peça',  sub: 'diagnosticado, falta peça', icone: '🔧' },
     { tipo: 'cotacao_peca', rotulo: 'Cotação de peça',  sub: 'não sei o preço ainda', icone: '💰' },
     { tipo: 'volto_depois', rotulo: 'Volto depois',     sub: 'preciso retornar',      icone: '↻' },
@@ -771,6 +772,39 @@
         ${blocoFoto(false)}`;
     } else if (tipo === 'volto_depois') {
       extra.innerHTML = blocoFoto(false);
+    } else if (tipo === 'fazer_os') {
+      // Pedido de 2026-08-28: o técnico fecha o caso em campo — dados do
+      // cliente, defeito, solução, forma de pagamento — e colhe a
+      // assinatura na hora, sem depender do escritório abrir a OS depois.
+      const s = (servicosAbertos || []).find(x => x.id === _desfechoServicoId) || {};
+      extra.innerHTML = `
+        <label class="t-df-rotulo" for="t-df-fos-nome">Nome do cliente</label>
+        <input class="t-df-input" id="t-df-fos-nome" value="${esc(s.cliente || '')}">
+        <label class="t-df-rotulo" for="t-df-fos-telefone">Telefone</label>
+        <input class="t-df-input" id="t-df-fos-telefone" value="${esc(s.telefone || '')}">
+        <div class="t-df-linha-dupla">
+          <div><label class="t-df-rotulo" for="t-df-fos-aparelho">Aparelho</label>
+            <input class="t-df-input" id="t-df-fos-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
+          <div><label class="t-df-rotulo" for="t-df-fos-modelo">Modelo</label>
+            <input class="t-df-input" id="t-df-fos-modelo" value="${esc(s.modelo || '')}"></div>
+        </div>
+        <label class="t-df-rotulo" for="t-df-fos-defeito">Defeito declarado</label>
+        <textarea class="t-df-input" id="t-df-fos-defeito" rows="2">${esc(s.descricao || '')}</textarea>
+        <label class="t-df-rotulo" for="t-df-fos-solucao">Nossa solução</label>
+        <textarea class="t-df-input" id="t-df-fos-solucao" rows="3" placeholder="O que foi feito"></textarea>
+        <label class="t-df-rotulo" for="t-df-fos-pagamento">Forma de pagamento</label>
+        <select class="t-df-input" id="t-df-fos-pagamento">
+          <option value="">Selecione...</option>
+          <option value="Pix">Pix</option>
+          <option value="Dinheiro">Dinheiro</option>
+          <option value="Cartão">Cartão</option>
+        </select>
+        ${blocoFoto(false)}
+        <label class="t-df-rotulo">Assinatura do cliente <span class="t-df-obrigatorio">*</span></label>
+        <p class="t-df-ajuda">Passe o celular pro cliente assinar aqui com o dedo.</p>
+        <canvas id="t-assinatura-canvas" class="t-assinatura-canvas"></canvas>
+        <button type="button" class="t-df-limpar-assinatura" onclick="window._tLimparAssinatura()">Limpar assinatura</button>`;
+      setTimeout(_tIniciarAssinatura, 0);
     } else {
       extra.innerHTML = blocoFoto(false);
     }
@@ -781,8 +815,67 @@
     window._tValidarConfirmar();
   };
 
-  // Só a Cotação de peça trava o botão: os outros desfechos continuam
-  // podendo ser confirmados sem preencher nada além da escolha do tipo.
+  // ─── Assinatura do cliente: canvas simples, dedo ou mouse ───────────
+  let _assinaturaCanvas = null, _assinaturaCtx = null, _assinaturaDesenhando = false;
+  let _assinaturaTemTraco = false;
+
+  function _tIniciarAssinatura() {
+    const canvas = document.getElementById('t-assinatura-canvas');
+    if (!canvas) return;
+    const escala = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * escala;
+    canvas.height = rect.height * escala;
+    _assinaturaCanvas = canvas;
+    _assinaturaCtx = canvas.getContext('2d');
+    _assinaturaCtx.scale(escala, escala);
+    _assinaturaCtx.strokeStyle = '#111';
+    _assinaturaCtx.lineWidth = 2.2;
+    _assinaturaCtx.lineCap = 'round';
+    _assinaturaTemTraco = false;
+
+    const posicao = (ev) => {
+      const r = canvas.getBoundingClientRect();
+      const t = ev.touches ? ev.touches[0] : ev;
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    };
+    const iniciarTraco = (ev) => {
+      ev.preventDefault();
+      _assinaturaDesenhando = true;
+      const p = posicao(ev);
+      _assinaturaCtx.beginPath();
+      _assinaturaCtx.moveTo(p.x, p.y);
+    };
+    const desenharTraco = (ev) => {
+      if (!_assinaturaDesenhando) return;
+      ev.preventDefault();
+      const p = posicao(ev);
+      _assinaturaCtx.lineTo(p.x, p.y);
+      _assinaturaCtx.stroke();
+      _assinaturaTemTraco = true;
+      window._tValidarConfirmar();
+    };
+    const pararTraco = () => { _assinaturaDesenhando = false; };
+
+    canvas.onmousedown = iniciarTraco;
+    canvas.onmousemove = desenharTraco;
+    canvas.onmouseup = pararTraco;
+    canvas.onmouseleave = pararTraco;
+    canvas.ontouchstart = iniciarTraco;
+    canvas.ontouchmove = desenharTraco;
+    canvas.ontouchend = pararTraco;
+  }
+
+  window._tLimparAssinatura = function () {
+    if (!_assinaturaCtx || !_assinaturaCanvas) return;
+    _assinaturaCtx.clearRect(0, 0, _assinaturaCanvas.width, _assinaturaCanvas.height);
+    _assinaturaTemTraco = false;
+    window._tValidarConfirmar();
+  };
+
+  // Cotação de peça trava por código+nome+foto; Fazer OS trava por
+  // nome do cliente + assinatura de verdade (sem isso não tem o que
+  // documentar) — os outros desfechos continuam livres.
   window._tValidarConfirmar = function () {
     const btn = document.getElementById('t-df-confirmar');
     if (!btn) return;
@@ -791,6 +884,9 @@
       const codigo = document.getElementById('t-df-codigo')?.value.trim();
       const nome = document.getElementById('t-df-nome-peca')?.value.trim();
       ok = !!(codigo && nome && _desfechoFoto);
+    } else if (_desfechoTipo === 'fazer_os') {
+      const nome = document.getElementById('t-df-fos-nome')?.value.trim();
+      ok = !!(nome && _assinaturaTemTraco);
     }
     btn.disabled = !ok;
   };
@@ -813,13 +909,44 @@
     if (_desfechoTipo === 'nao_atendido') {
       desfecho.motivo = document.querySelector('.t-df-motivo.ativa')?.dataset.motivo || '';
     }
+    if (_desfechoTipo === 'fazer_os') {
+      desfecho.cliente_nome = document.getElementById('t-df-fos-nome')?.value.trim() || '';
+      desfecho.cliente_telefone = document.getElementById('t-df-fos-telefone')?.value.trim() || '';
+      desfecho.tipo_aparelho = document.getElementById('t-df-fos-aparelho')?.value.trim() || '';
+      desfecho.modelo = document.getElementById('t-df-fos-modelo')?.value.trim() || '';
+      desfecho.defeito_declarado = document.getElementById('t-df-fos-defeito')?.value.trim() || '';
+      desfecho.solucao_os = document.getElementById('t-df-fos-solucao')?.value.trim() || '';
+      desfecho.forma_pagamento = document.getElementById('t-df-fos-pagamento')?.value || '';
+      if (_desfechoFoto) desfecho.foto_produto = _desfechoFoto;
+      if (_assinaturaTemTraco && _assinaturaCanvas) {
+        desfecho.assinatura = _assinaturaCanvas.toDataURL('image/png');
+      }
+    }
     const obs = document.getElementById('t-df-obs')?.value.trim();
     if (obs) desfecho.observacao = obs;
-    if (_desfechoFoto) desfecho.foto = _desfechoFoto;
+    if (_desfechoFoto && _desfechoTipo !== 'fazer_os') desfecho.foto = _desfechoFoto;
     const id = _desfechoServicoId;
     window._tFecharDesfecho();
     window._tConcluirPonto(id, 'concluido', desfecho);
   };
+
+  // Banner com link real (<a target="_blank">), não window.open() — abrir
+  // aba programaticamente depois de um await costuma ser bloqueado pelo
+  // navegador por não contar como gesto direto do usuário; um link de
+  // verdade não tem esse problema.
+  function _tMostrarEnvioCliente(link, telefoneDigitos) {
+    const numero = telefoneDigitos && telefoneDigitos.length >= 10 ? `55${telefoneDigitos}` : '';
+    const msg = encodeURIComponent(`Olá! Segue o documento da sua Ordem de Serviço da Porto Tec: ${link}`);
+    const urlWhats = numero ? `https://wa.me/${numero}?text=${msg}` : `https://wa.me/?text=${msg}`;
+    const banner = document.createElement('div');
+    banner.className = 't-envio-cliente';
+    banner.innerHTML = `
+      <span>OS assinada ✓</span>
+      <a href="${urlWhats}" target="_blank" rel="noopener" class="t-envio-cliente-btn">Enviar no WhatsApp</a>
+      <button type="button" class="t-envio-cliente-fechar" onclick="this.parentElement.remove()">✕</button>`;
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 30000);
+  }
 
   window._tConcluirPonto = async function (servicoId, novoStatus, desfecho) {
     // O desfecho vai NA MESMA requisição do status: o app tem fila offline, e
@@ -834,8 +961,14 @@
     if (novoStatus === 'concluido') pararEnvioDePosicao();
 
     try {
-      await api(`/servicos/${servicoId}/status`, opts);
+      const resp = await api(`/servicos/${servicoId}/status`, opts);
       toast(novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto');
+      // Fazer OS gerou um documento com link público — oferece mandar pro
+      // cliente ali mesmo, sem passar pelo escritório (pedido de 2026-08-28).
+      if (desfecho?.tipo === 'fazer_os' && resp?.desfecho?.token_cliente) {
+        const link = `${location.origin}/os/cliente/${resp.desfecho.token_cliente}`;
+        _tMostrarEnvioCliente(link, (desfecho.cliente_telefone || '').replace(/\D/g, ''));
+      }
       if (fichaAbertaId) abrirFicha(fichaAbertaId);
       carregarFichas();
     } catch (e) {
@@ -1073,7 +1206,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v114';
+  const VERSAO_TELA = 'v115';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
