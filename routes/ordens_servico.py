@@ -647,7 +647,7 @@ TERMOS_POR_TIPO = {
 #                       solução, técnico que atendeu.
 #   "orcamento"       — proposta de preço: defeito, solução, lista de itens
 #                       (serviço + valor) em ordem_servico_itens.
-MODELOS_OS = ["os", "chamado_tecnico", "orcamento"]
+MODELOS_OS = ["chamado_tecnico", "os", "orcamento"]
 
 MODELOS_OS_ROTULO = {
     "os": "Ordens de Serviço",

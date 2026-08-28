@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v113';
+const VERSAO_PAINEL = 'v114';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6458,10 +6458,10 @@ async function abrirOSDetalhe(id) {
     <div class="os-detalhe-secao">
       <label class="form-label">O que é este documento?</label>
       <div class="modelo-os-botoes">
-        <button type="button" class="modelo-os-btn${o.modelo_os === 'os' || !o.modelo_os ? ' ativo' : ''}"
-                onclick="osTrocarModelo(${o.id}, 'os')">Ordens de Serviço</button>
         <button type="button" class="modelo-os-btn${o.modelo_os === 'chamado_tecnico' ? ' ativo' : ''}"
                 onclick="osTrocarModelo(${o.id}, 'chamado_tecnico')">Chamado Técnico</button>
+        <button type="button" class="modelo-os-btn${o.modelo_os === 'os' || !o.modelo_os ? ' ativo' : ''}"
+                onclick="osTrocarModelo(${o.id}, 'os')">Ordens de Serviço</button>
         <button type="button" class="modelo-os-btn${o.modelo_os === 'orcamento' ? ' ativo' : ''}"
                 onclick="osTrocarModelo(${o.id}, 'orcamento')">Fazer Orçamento</button>
       </div>

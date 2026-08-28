@@ -236,7 +236,7 @@
 //       validação/compressão já usada no desfecho do técnico em campo; (2)
 //       barra lateral de Roteiros ganha busca por nome de cliente ou CEP,
 //       pra achar em que dia/técnico alguém está sem abrir ficha por ficha.
-const CACHE_VERSAO = 'portotec-roteiros-v113';
+const CACHE_VERSAO = 'portotec-roteiros-v114';
 
 const ARQUIVOS_CASCA = [
   '/',
