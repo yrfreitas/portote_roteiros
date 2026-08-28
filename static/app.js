@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v129';
+const VERSAO_PAINEL = 'v130';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6968,6 +6968,14 @@ async function abrirOSDetalhe(id) {
       </div>
       <button class="btn btn-primary btn-sm" onclick="osAgendar(${o.id})">Agendar</button>
     </div>` : ''}
+    <div class="os-detalhe-secao">
+      <p class="form-separador">Peça</p>
+      <div id="os-pedir-peca-area">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="osAbrirPedirPeca(${o.id})">
+          + Pedir peça
+        </button>
+      </div>
+    </div>
     <div class="os-detalhe-secao" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
       <a class="btn btn-ghost btn-sm" href="/os/${o.id}/imprimir" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Imprimir OS</a>
       <button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger-text);"
@@ -7013,6 +7021,88 @@ async function osAdicionarPeca(id) {
     const r = await api(`/ordens-servico/${id}`);
     document.getElementById('os-pecas-lista').innerHTML = osRenderPecas(r.pecas);
     document.getElementById('os-peca-codigo').focus();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// "Pedir peça" na OS — pedido de 2026-08-28: faz a peça cair direto na aba
+// Atendimentos, em "Precisam de peça", sem depender de o técnico ter passado
+// no cliente (servico_desfecho é preso a uma visita; aqui pode não haver
+// nenhuma ainda). Ver pedido_peca_os em database.py e a rota
+// POST /ordens-servico/<id>/pedir-peca em routes/ordens_servico.py.
+let _osPedirPecaFoto = null;
+
+function osAbrirPedirPeca(id) {
+  _osPedirPecaFoto = null;
+  document.getElementById('os-pedir-peca-area').innerHTML = `
+    <div class="at-pedido-form">
+      <div class="form-group">
+        <label class="form-label" for="os-peca-pedir-nome">Peça</label>
+        <input class="form-input" id="os-peca-pedir-nome" autocomplete="off" placeholder="Ex.: placa eletrônica">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="os-peca-pedir-desc">Descrição</label>
+        <textarea class="form-input" id="os-peca-pedir-desc" rows="2" placeholder="Detalhes do que foi pedido"></textarea>
+      </div>
+      <label class="df-foto-botao df-foto-botao-mini">
+        Anexar foto da peça
+        <input type="file" accept="image/*" onchange="osEscolherFotoPedirPeca(this)" hidden>
+      </label>
+      <div id="os-pedir-peca-previa" class="df-previa"></div>
+      <div class="at-pedido-acoes">
+        <button class="btn btn-primary btn-sm" onclick="osEnviarPedidoPeca(${id})">Confirmar pedido</button>
+        <button class="at-btn-cancelar-mini" onclick="osCancelarPedirPeca(${id})">cancelar</button>
+      </div>
+    </div>`;
+}
+
+function osCancelarPedirPeca(id) {
+  _osPedirPecaFoto = null;
+  document.getElementById('os-pedir-peca-area').innerHTML = `
+    <button type="button" class="btn btn-ghost btn-sm" onclick="osAbrirPedirPeca(${id})">
+      + Pedir peça
+    </button>`;
+}
+
+async function osEscolherFotoPedirPeca(input) {
+  const arquivo = input.files && input.files[0];
+  if (!arquivo) return;
+  const previa = document.getElementById('os-pedir-peca-previa');
+  if (previa) previa.innerHTML = '<span class="df-processando">preparando a foto...</span>';
+  try {
+    _osPedirPecaFoto = await reduzirFotoInteira(arquivo);
+    if (previa) previa.innerHTML = `
+      <img class="df-thumb" src="${_osPedirPecaFoto}" alt="Foto da peça">
+      <button type="button" class="df-remover-foto" onclick="osRemoverFotoPedirPeca()">remover</button>`;
+  } catch (e) {
+    _osPedirPecaFoto = null;
+    if (previa) previa.innerHTML = `<span class="df-erro">${esc(e.message)}</span>`;
+  } finally {
+    input.value = '';
+  }
+}
+
+function osRemoverFotoPedirPeca() {
+  _osPedirPecaFoto = null;
+  const previa = document.getElementById('os-pedir-peca-previa');
+  if (previa) previa.innerHTML = '';
+}
+
+async function osEnviarPedidoPeca(id) {
+  const peca = document.getElementById('os-peca-pedir-nome').value.trim();
+  const descricao = document.getElementById('os-peca-pedir-desc').value.trim();
+  if (!peca && !descricao) {
+    toast('Informe ao menos a peça ou a descrição', 'error');
+    return;
+  }
+  try {
+    await api(`/ordens-servico/${id}/pedir-peca`, {
+      method: 'POST',
+      body: JSON.stringify({ peca, descricao, foto: _osPedirPecaFoto || null }),
+    });
+    toast('Peça pedida — já aparece em Atendimentos', 'success');
+    osCancelarPedirPeca(id);
   } catch (e) {
     toast(e.message, 'error');
   }
@@ -8438,7 +8528,7 @@ async function carregarDesfechos() {
     const detalhe = a.peca || a.motivo || '';
     const aparelho = [a.tipo_aparelho, a.modelo].filter(Boolean).join(' · ');
     return `
-      <div class="at-linha ${t.classe}${a.pedido_em ? ' pedida' : ''}" id="at-linha-${a.servico_id}">
+      <div class="at-linha ${t.classe}${a.pedido_em ? ' pedida' : ''}" id="at-linha-${a.chave}">
         <div class="at-quando">
           <span class="at-data">${esc((a.registrado_em || '').slice(0, 10).split('-').reverse().join('/'))}</span>
           <span class="at-hora">${esc((a.registrado_em || '').slice(11, 16))}</span>
@@ -8454,16 +8544,18 @@ async function carregarDesfechos() {
           ${a.observacao ? `<div class="at-obs">${esc(a.observacao)}</div>` : ''}
         </div>
         <div class="at-tecnico">
-          ${a.tecnico ? `<span class="at-ponto-cor" style="background:${escCor(a.tecnico_cor)}"></span>${esc(a.tecnico)}` : '—'}
+          ${a.origem === 'os' ? '<span class="at-sub">pedido direto na OS</span>'
+            : (a.tecnico ? `<span class="at-ponto-cor" style="background:${escCor(a.tecnico_cor)}"></span>${esc(a.tecnico)}` : '—')}
           ${a.numero_os ? `<div class="at-sub">OS ${esc(a.numero_os)}</div>` : ''}
         </div>
-        <div class="at-foto" id="at-foto-${a.servico_id}">
+        <div class="at-foto" id="at-foto-${a.chave}">
           ${a.fotos ? `<button class="at-ver-foto" onclick="verFotosDoAtendimento(${a.servico_id})">
               ${a.fotos} foto${a.fotos !== 1 ? 's' : ''}</button>` : ''}
+          ${a.peca_foto ? `<img class="at-thumb" src="${a.peca_foto}" alt="Foto da peça" onclick="ampliarFoto(this.src)">` : ''}
         </div>
-        <div class="at-baixa" id="at-baixa-${a.servico_id}">
+        <div class="at-baixa" id="at-baixa-${a.chave}">
           ${a.desfecho === 'precisa_peca' ? botaoBaixa(a) : ''}
-          ${a.desfecho === 'fazer_os' && a.ordem_servico_id ? `
+          ${(a.desfecho === 'fazer_os' || a.origem === 'os') && a.ordem_servico_id ? `
             <button class="btn btn-ghost btn-sm" onclick="abrirOSDetalhe(${a.ordem_servico_id})">Abrir OS</button>` : ''}
         </div>
         ${alertaNoCarro(a)}
@@ -8522,8 +8614,17 @@ function botaoBaixa(a) {
     return `<span class="at-pedida" title="Pedida em ${esc(a.pedido_em)}${
       a.pedido_por ? ' por ' + esc(a.pedido_por) : ''}">✓ pedida ${esc(quando)}</span>`;
   }
-  return `<button class="at-btn-baixa" onclick="abrirAnexarPedido(${a.servico_id})">
+  return `<button class="at-btn-baixa" onclick="abrirAnexarPedido('${a.chave}')">
             Já pedi</button>`;
+}
+
+// "chave" identifica a linha na tela ("t12" = servico_id 12, "o5" =
+// pedido_peca_os id 5) porque são DUAS tabelas de origem (ver listar_desfechos
+// em routes/relatorios.py) e cada uma tem sua própria rota de baixa.
+function _baixaUrl(chave) {
+  return chave[0] === 'o'
+    ? `/pedidos-peca-os/${chave.slice(1)}/pedido`
+    : `/desfechos/${chave.slice(1)}/pedido`;
 }
 
 // Foto do comprovante do pedido fica num estado à parte (não em _dfFoto,
@@ -8535,10 +8636,10 @@ let _pedidoFotoAtual = null;
 // "Já pedi" abre um formulário mini dentro da própria linha, em vez de gravar
 // na hora: dá a chance de anexar o comprovante da compra ANTES de fechar o
 // circuito — depois de gravado não tem como voltar e anexar (409 do backend).
-function abrirAnexarPedido(servicoId) {
-  const slot = document.getElementById(`at-baixa-${servicoId}`);
+function abrirAnexarPedido(chave) {
+  const slot = document.getElementById(`at-baixa-${chave}`);
   if (!slot) return;
-  _pedidoServicoAtual = servicoId;
+  _pedidoServicoAtual = chave;
   _pedidoFotoAtual = null;
   slot.innerHTML = `
     <div class="at-pedido-form">
@@ -8546,19 +8647,19 @@ function abrirAnexarPedido(servicoId) {
         Anexar comprovante
         <input type="file" accept="image/*" onchange="escolherFotoPedido(this)" hidden>
       </label>
-      <div id="at-pedido-previa-${servicoId}" class="df-previa"></div>
+      <div id="at-pedido-previa-${chave}" class="df-previa"></div>
       <div class="at-pedido-acoes">
-        <button class="at-btn-baixa" onclick="confirmarBaixaPeca(${servicoId})">Confirmar pedido</button>
-        <button class="at-btn-cancelar-mini" onclick="cancelarAnexarPedido(${servicoId})">cancelar</button>
+        <button class="at-btn-baixa" onclick="confirmarBaixaPeca('${chave}')">Confirmar pedido</button>
+        <button class="at-btn-cancelar-mini" onclick="cancelarAnexarPedido('${chave}')">cancelar</button>
       </div>
     </div>`;
 }
 
-function cancelarAnexarPedido(servicoId) {
+function cancelarAnexarPedido(chave) {
   _pedidoServicoAtual = null;
   _pedidoFotoAtual = null;
-  const slot = document.getElementById(`at-baixa-${servicoId}`);
-  if (slot) slot.innerHTML = botaoBaixa({});
+  const slot = document.getElementById(`at-baixa-${chave}`);
+  if (slot) slot.innerHTML = botaoBaixa({ chave });
 }
 
 async function escolherFotoPedido(input) {
@@ -8585,17 +8686,17 @@ function removerFotoPedido() {
   if (previa) previa.innerHTML = '';
 }
 
-async function confirmarBaixaPeca(servicoId) {
-  const slot = document.getElementById(`at-baixa-${servicoId}`);
+async function confirmarBaixaPeca(chave) {
+  const slot = document.getElementById(`at-baixa-${chave}`);
   if (!slot) return;
   const original = slot.innerHTML;
   slot.innerHTML = '<span class="at-sub">gravando...</span>';
   try {
-    const r = await api(`/desfechos/${servicoId}/pedido`, {
+    const r = await api(_baixaUrl(chave), {
       method: 'POST',
       body: JSON.stringify({ foto: _pedidoFotoAtual || null }),
     });
-    document.getElementById(`at-linha-${servicoId}`)?.classList.add('pedida');
+    document.getElementById(`at-linha-${chave}`)?.classList.add('pedida');
     slot.innerHTML = botaoBaixa({ pedido_em: r.pedido_em, pedido_por: r.pedido_por });
     // O aviso aparece quando a baixa foi gravada mas a planilha falhou. É
     // importante distinguir: a baixa VALEU, só a linha da planilha não saiu.

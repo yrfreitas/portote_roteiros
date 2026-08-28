@@ -899,6 +899,25 @@ _MIGRACOES_PG = [
     # no papel sem apagar o dado (foto/observação continuam salvos, só não
     # saem impressos).
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS imprimir_ocultar TEXT DEFAULT '[]'",
+    # Pedido de peça direto da OS (botão "Pedir peça" no detalhe) — pedido de
+    # 2026-08-28. Não cabe em servico_desfecho porque lá servico_id É a
+    # chave primária (um desfecho por atendimento de campo); aqui não tem
+    # atendimento nenhum, é o escritório pedindo peça pra uma OS que talvez
+    # nem tenha visita marcada ainda. Cai junto na aba Atendimentos via
+    # UNION (ver routes/relatorios.py:listar_desfechos), como se fosse mais
+    # um desfecho "precisa_peca".
+    """CREATE TABLE IF NOT EXISTS pedido_peca_os (
+        id               SERIAL PRIMARY KEY,
+        ordem_servico_id INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
+        peca             TEXT,
+        descricao        TEXT,
+        foto             TEXT,
+        criado_em        TEXT,
+        criado_por       TEXT,
+        pedido_em        TEXT,
+        pedido_por       TEXT,
+        pedido_foto      TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1018,6 +1037,19 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE servico_desfecho ADD COLUMN pedido_foto TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN taxa_vistoria REAL DEFAULT 0",
     "ALTER TABLE ordens_servico ADD COLUMN imprimir_ocultar TEXT DEFAULT '[]'",
+    """CREATE TABLE IF NOT EXISTS pedido_peca_os (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        ordem_servico_id INTEGER NOT NULL,
+        peca             TEXT,
+        descricao        TEXT,
+        foto             TEXT,
+        criado_em        TEXT,
+        criado_por       TEXT,
+        pedido_em        TEXT,
+        pedido_por       TEXT,
+        pedido_foto      TEXT,
+        FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id) ON DELETE CASCADE
+    )""",
 ]
 
 

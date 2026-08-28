@@ -332,6 +332,44 @@ def listar_desfechos():
              WHERE d.registrado_em >= ?
              ORDER BY d.registrado_em DESC
         """), (limite,))
+        for l in linhas:
+            l["origem"] = "tecnico"
+            l["pedido_os_id"] = None
+            l["chave"] = f"t{l['servico_id']}"
+
+        # "Pedir peça" batido direto na OS (sem visita de técnico envolvida) —
+        # mesma vitrine de Atendimentos, mas sem servico_desfecho por trás (ver
+        # pedido_peca_os em database.py: servico_desfecho.servico_id é PRIMARY
+        # KEY, não dá pra pendurar um pedido de peça sem ficha ali).
+        pecas_os = fetch_all(conn, sql("""
+            SELECT p.id, p.peca, p.descricao, p.foto AS peca_foto,
+                   p.criado_em, p.criado_por,
+                   p.pedido_em, p.pedido_por, p.pedido_foto,
+                   os.id AS ordem_servico_id, os.tipo_aparelho, os.modelo,
+                   c.nome AS cliente
+              FROM pedido_peca_os p
+              JOIN ordens_servico os ON os.id = p.ordem_servico_id
+              JOIN clientes c ON c.id = os.cliente_id
+             WHERE p.criado_em >= ?
+             ORDER BY p.criado_em DESC
+        """), (limite,))
+        for p in pecas_os:
+            linhas.append({
+                "servico_id": None, "desfecho": "precisa_peca", "motivo": None,
+                "peca": p["peca"], "observacao": p["descricao"],
+                "pedido_em": p["pedido_em"], "pedido_por": p["pedido_por"],
+                "pedido_foto": p["pedido_foto"],
+                "registrado_em": p["criado_em"], "registrado_por": p["criado_por"],
+                "cliente": p["cliente"], "endereco_completo": None,
+                "tipo_aparelho": p["tipo_aparelho"], "modelo": p["modelo"],
+                "numero_os": None, "ficha_id": None,
+                "ordem_servico_id": p["ordem_servico_id"],
+                "dia_semana": None, "data_referencia": None,
+                "tecnico": None, "tecnico_cor": None, "fotos": 0,
+                "peca_foto": p["peca_foto"],
+                "origem": "os", "pedido_os_id": p["id"], "chave": f"o{p['id']}",
+            })
+        linhas.sort(key=lambda l: l["registrado_em"] or "", reverse=True)
 
     # Contagem vem do conjunto INTEIRO do período, antes de aplicar o filtro:
     # os números do topo têm de continuar mostrando o total de cada tipo mesmo
@@ -425,6 +463,68 @@ def marcar_peca_pedida(servico_id):
     return jsonify({"pedido_em": agora, "pedido_por": quem, "tem_foto": bool(foto), "aviso": aviso})
 
 
+@relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>/pedido", methods=["POST"])
+def marcar_peca_os_pedida(pedido_id):
+    """Igual a marcar_peca_pedida, mas para peça pedida direto na OS (sem
+    visita de técnico) — tabela pedido_peca_os em vez de servico_desfecho.
+    Duplicado de propósito: juntar os dois num só exigiria um id combinado
+    (tipo "t12"/"o5") em toda rota que hoje espera INTEGER puro."""
+    from flask import session
+
+    data = request.get_json(silent=True) or {}
+    foto = data.get("foto")
+    if foto is not None:
+        foto = _foto_valida(foto)
+        if not foto:
+            return jsonify({"erro": "Foto inválida ou grande demais."}), 400
+
+    with db_conn() as conn:
+        dado = fetch_one(conn, sql("""
+            SELECT p.id, p.peca, p.descricao, p.pedido_em,
+                   c.nome AS cliente, os.tipo_aparelho, os.modelo
+              FROM pedido_peca_os p
+              JOIN ordens_servico os ON os.id = p.ordem_servico_id
+              JOIN clientes c ON c.id = os.cliente_id
+             WHERE p.id = ?
+        """), (pedido_id,))
+
+    if not dado:
+        return jsonify({"erro": "Pedido de peça não encontrado"}), 404
+    if dado["pedido_em"]:
+        return jsonify({"erro": "Esta peça já foi marcada como pedida.",
+                        "pedido_em": dado["pedido_em"]}), 409
+
+    quem = (session.get("usuario_nome") or "").strip()[:80]
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_conn(commit=True) as conn:
+        execute(conn, sql("UPDATE pedido_peca_os SET pedido_em = ?, "
+                          "pedido_por = ?, pedido_foto = ? WHERE id = ?"),
+                (agora, quem, foto, pedido_id))
+
+    aviso = None
+    try:
+        from services.planilha import registrar_peca_solicitada
+        r = registrar_peca_solicitada({
+            "servico_id": None,
+            "cliente": dado.get("cliente"),
+            "peca": dado.get("peca"),
+            "aparelho": " ".join(x for x in [dado.get("tipo_aparelho"),
+                                             dado.get("modelo")] if x),
+            "numero_os": None,
+            "tecnico": None,
+            "observacao": dado.get("descricao"),
+            "pedido_por": quem,
+        })
+        if not r.get("configurada"):
+            aviso = "Baixa registrada, mas a planilha não está configurada."
+    except Exception as exc:
+        log.exception("Falha ao gravar peça solicitada (OS) na planilha")
+        aviso = f"Baixa registrada, mas não consegui escrever na planilha: {exc}"
+
+    return jsonify({"pedido_em": agora, "pedido_por": quem, "tem_foto": bool(foto), "aviso": aviso})
+
+
 @relatorios_bp.route("/desfechos/pedidos", methods=["GET"])
 def listar_pedidos_de_peca():
     """Peças já marcadas como "pedidas" — vira a aba própria em Peças.
@@ -447,4 +547,25 @@ def listar_pedidos_de_peca():
              WHERE d.pedido_em IS NOT NULL
              ORDER BY d.pedido_em DESC
         """))
+        for l in linhas:
+            l["pedido_os_id"] = None
+
+        pecas_os = fetch_all(conn, sql("""
+            SELECT p.id AS pedido_os_id, p.peca, p.descricao AS observacao,
+                   p.pedido_em, p.pedido_por, p.pedido_foto,
+                   c.nome AS cliente, os.tipo_aparelho, os.modelo
+              FROM pedido_peca_os p
+              JOIN ordens_servico os ON os.id = p.ordem_servico_id
+              JOIN clientes c ON c.id = os.cliente_id
+             WHERE p.pedido_em IS NOT NULL
+        """))
+        for p in pecas_os:
+            p["servico_id"] = None
+            p["endereco_completo"] = None
+            p["numero_os"] = None
+            p["tecnico"] = None
+            p["tecnico_cor"] = None
+            linhas.append(p)
+        linhas.sort(key=lambda l: l["pedido_em"] or "", reverse=True)
+
     return jsonify({"pedidos": linhas})

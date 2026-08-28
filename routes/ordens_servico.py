@@ -1494,6 +1494,33 @@ def apagar(os_id):
     return jsonify({"mensagem": "Ordem de serviço apagada"})
 
 
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/pedir-peca", methods=["POST"])
+def pedir_peca(os_id):
+    """Botão "Pedir peça" no detalhe da OS — pedido de 2026-08-28. Diferente
+    do "Precisa de peça" que o técnico marca em campo (servico_desfecho,
+    preso a um atendimento): aqui é o escritório pedindo peça pra uma OS
+    que pode nem ter visita marcada ainda. Cai junto na aba Atendimentos
+    (ver listar_desfechos em routes/relatorios.py, que faz UNION dos dois)."""
+    d = request.get_json(silent=True) or {}
+    peca = (d.get("peca") or "").strip()
+    descricao = (d.get("descricao") or "").strip()
+    if not peca and not descricao:
+        return jsonify({"erro": "Informe ao menos a peça ou a descrição"}), 400
+    foto = _foto_valida(d.get("foto"))
+
+    with db_conn(commit=True) as conn:
+        os_row = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (os_id,))
+        if not os_row:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        pedido_id = insert_returning_id(conn, """
+            INSERT INTO pedido_peca_os
+                (ordem_servico_id, peca, descricao, foto, criado_em, criado_por)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (os_id, peca, descricao, foto, _agora(), _quem()))
+
+    return jsonify({"mensagem": "Peça pedida — já aparece em Atendimentos", "id": pedido_id}), 201
+
+
 @ordens_servico_bp.route("/ordens-servico/<int:os_id>/link-cliente", methods=["GET"])
 def link_cliente(os_id):
     """Devolve o token do link público desta OS, gerando um na hora se ela
