@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v116';
+const VERSAO_PAINEL = 'v117';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5984,11 +5984,14 @@ async function abrirModalNovaOS() {
   ['os-nome','os-cpf','os-telefone','os-email','os-cep','os-numero','os-bairro',
    'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
    'os-serie','os-voltagem','os-acessorios','os-defeito','os-obs','os-tipo','os-solucao',
-   'os-chamado-tecnico','os-forma-pagamento'].forEach(id => {
+   'os-chamado-tecnico','os-forma-pagamento','os-chamado-tecnico-solo'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
   document.getElementById('os-taxa').value = '0';
+  document.getElementById('os-taxa-vistoria').value = '0';
+  document.querySelectorAll('#os-pagamento-quadrados .pagamento-quadrado').forEach(b => b.classList.remove('ativo'));
+  document.getElementById('os-ocultar-fila').checked = false;
   document.getElementById('os-cep-status').textContent = '';
   _osCepUltimo = '';
   document.getElementById('os-busca-cliente').value = '';
@@ -6012,9 +6015,10 @@ async function abrirModalNovaOS() {
     } catch { /* select fica só com "Selecione..." se falhar */ }
   }
 
-  const selTecnico = document.getElementById('os-chamado-tecnico');
-  selTecnico.innerHTML = '<option value="">Selecione...</option>' +
+  const opcoesTecnicoNovo = '<option value="">Selecione...</option>' +
     (tecnicos || []).map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('');
+  document.getElementById('os-chamado-tecnico').innerHTML = opcoesTecnicoNovo;
+  document.getElementById('os-chamado-tecnico-solo').innerHTML = opcoesTecnicoNovo;
 
   osCarregarCatalogoDatalist();
 
@@ -6038,6 +6042,24 @@ function osEscolherModelo(modelo) {
   // exclusiva do modelo "Ordens de Serviço".
   document.getElementById('os-tipo-obrigatorio').style.display = modelo === 'os' ? '' : 'none';
   document.getElementById('os-campos-taxa').style.display = modelo === 'os' ? '' : 'none';
+
+  // Chamado Técnico troca Itens/Valores por Taxa de vistoria, e a forma de
+  // pagamento (quadrados) fica junto dela — não mais com o técnico, que
+  // passa a ter linha própria. Pedido de 2026-08-28: esse modelo cobra uma
+  // taxa fixa de visita, não itemiza serviço/peça/mão de obra.
+  const ehChamado = modelo === 'chamado_tecnico';
+  document.getElementById('os-linha-vistoria-pagamento').style.display = ehChamado ? '' : 'none';
+  document.getElementById('os-campo-tecnico-solo').style.display = ehChamado ? '' : 'none';
+  document.getElementById('os-linha-tecnico-pagamento').style.display = ehChamado ? 'none' : '';
+  document.getElementById('os-campos-orcamento-itens').style.display = ehChamado ? 'none' : '';
+}
+
+// Único seletor de forma de pagamento entre poucas opções (Pix/Dinheiro/
+// Cartão) — mesmo padrão de toggle usado em .pecas-filtro e .modelo-os-btn
+// neste projeto, só trocando de classe.
+function osEscolherPagamento(btn) {
+  btn.parentElement.querySelectorAll('.pagamento-quadrado').forEach(b =>
+    b.classList.toggle('ativo', b === btn));
 }
 
 async function osCarregarCatalogoDatalist() {
@@ -6255,14 +6277,22 @@ async function osCriar() {
     observacao: document.getElementById('os-obs').value.trim(),
   };
 
-  // Solução/técnico/foto/forma de pagamento/itens são comuns aos 3 modelos
-  // agora — só tipo_os (obrigatório) e taxa de avaliação ficam exclusivos
-  // do modelo "Ordens de Serviço".
+  // Solução/técnico/foto são comuns aos 3 modelos. Forma de pagamento e
+  // itens/valores x taxa de vistoria DIVERGEM no Chamado Técnico (pedido de
+  // 2026-08-28) — por isso lêem de widgets diferentes conforme o modelo.
   corpo.solucao = document.getElementById('os-solucao').value.trim();
-  corpo.tecnico_atendeu_id = document.getElementById('os-chamado-tecnico').value || null;
-  corpo.forma_pagamento = document.getElementById('os-forma-pagamento').value;
-  corpo.itens = _novosItensOrcamento;
+  if (_novaOSModelo === 'chamado_tecnico') {
+    corpo.tecnico_atendeu_id = document.getElementById('os-chamado-tecnico-solo').value || null;
+    corpo.forma_pagamento = document.querySelector('#os-pagamento-quadrados .pagamento-quadrado.ativo')?.dataset.valor || '';
+    corpo.taxa_vistoria = document.getElementById('os-taxa-vistoria').value || 0;
+    corpo.itens = [];
+  } else {
+    corpo.tecnico_atendeu_id = document.getElementById('os-chamado-tecnico').value || null;
+    corpo.forma_pagamento = document.getElementById('os-forma-pagamento').value;
+    corpo.itens = _novosItensOrcamento;
+  }
   if (_novaOSFoto) corpo.foto = _novaOSFoto;
+  corpo.oculta_fila = document.getElementById('os-ocultar-fila').checked;
 
   if (_novaOSModelo === 'os') {
     const tipoOs = document.getElementById('os-tipo').value;
@@ -6406,17 +6436,45 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
              onchange="osEscolherFotoEdicao(this)">
     </div>`;
 
+  // Chamado Técnico: taxa de vistoria + forma de pagamento em quadrados
+  // (pedido de 2026-08-28) no lugar de Itens/Valores — esse modelo cobra
+  // taxa fixa de vistoria, não itemiza serviço/peça/mão de obra. Técnico
+  // fica em linha própria, sem dividir espaço com a forma de pagamento.
+  const camposComunsChamado = `
+    <div class="form-group"><label class="form-label" for="os-ed-solucao">Nossa solução</label>
+      <textarea class="form-input" id="os-ed-solucao" rows="3">${esc(o.solucao)}</textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label" for="os-ed-taxa-vistoria">Taxa de vistoria (R$)</label>
+        <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa-vistoria" value="${o.taxa_vistoria ?? 0}"></div>
+      <div class="form-group"><label class="form-label">Forma de pagamento</label>
+        <div class="pagamento-quadrados" id="os-ed-pagamento-quadrados">
+          ${['Pix', 'Dinheiro', 'Cartão'].map(f => `<button type="button" class="pagamento-quadrado${o.forma_pagamento === f ? ' ativo' : ''}" data-valor="${f}" onclick="osEscolherPagamento(this)">${f}</button>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label" for="os-ed-tecnico">Técnico que atendeu</label>
+      <select class="form-input" id="os-ed-tecnico">
+        <option value="">Selecione...</option>
+        ${tecnicos.map(t => `<option value="${t.id}"${o.tecnico_atendeu_id === t.id ? ' selected' : ''}>${esc(t.nome)}</option>`).join('')}
+      </select></div>
+    <div class="form-group">
+      <label class="form-label" for="os-ed-foto">Foto do produto</label>
+      ${o.foto ? `<img src="${o.foto}" alt="Foto do produto" style="max-width:220px;border-radius:8px;display:block;margin-bottom:8px;">` : ''}
+      <input class="form-input" type="file" accept="image/*" capture="environment" id="os-ed-foto"
+             onchange="osEscolherFotoEdicao(this)">
+    </div>`;
+
   if (o.modelo_os === 'chamado_tecnico') {
     return `
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
       ${tipoOsOpcional}
-      ${camposComuns}
+      ${camposComunsChamado}
       ${observacao}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoChamado(${o.id})">Salvar alterações</button>
     </div>
-    ${itensSecao}`;
+    ${_osItensAtuais.length ? itensSecao : ''}`;
   }
 
   if (o.modelo_os === 'orcamento') {
@@ -6521,7 +6579,8 @@ async function osSalvarEdicaoChamado(id) {
     tipo_os: document.getElementById('os-ed-tipo-os-opcional').value,
     solucao: document.getElementById('os-ed-solucao').value.trim(),
     tecnico_atendeu_id: document.getElementById('os-ed-tecnico').value || null,
-    forma_pagamento: document.getElementById('os-ed-forma-pagamento').value,
+    forma_pagamento: document.querySelector('#os-ed-pagamento-quadrados .pagamento-quadrado.ativo')?.dataset.valor || '',
+    taxa_vistoria: document.getElementById('os-ed-taxa-vistoria').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
@@ -6656,6 +6715,7 @@ async function abrirOSDetalhe(id) {
       </div>
       <button class="btn btn-ghost btn-sm" onclick="osAdicionarPeca(${o.id})">+ Adicionar peça</button>
     </div>
+    ${o.modelo_os === 'chamado_tecnico' ? `
     <div class="os-detalhe-secao">
       <p class="form-separador">Agendar nova visita</p>
       <div class="form-row">
@@ -6669,7 +6729,7 @@ async function abrirOSDetalhe(id) {
         </div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="osAgendar(${o.id})">Agendar</button>
-    </div>
+    </div>` : ''}
     <div class="os-detalhe-secao" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
       <a class="btn btn-ghost btn-sm" href="/os/${o.id}/imprimir" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Imprimir OS</a>
       <button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger-text);"

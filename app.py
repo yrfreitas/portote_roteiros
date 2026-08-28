@@ -439,6 +439,7 @@ def _montar_documento_os(os_id):
         tecnico_atendeu_nome=tecnico_atendeu_nome,
         data_abertura_br=_data_br(ordem.get("criado_em")),
         taxa_br=_moeda_br(ordem.get("taxa_avaliacao")),
+        taxa_vistoria_br=_moeda_br(ordem.get("taxa_vistoria")),
         gerado_em_br=datetime.now().strftime("%d/%m/%Y %H:%M"),
     )
 

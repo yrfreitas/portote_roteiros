@@ -890,6 +890,10 @@ _MIGRACOES_PG = [
     # Comprovante (foto) do pedido da peça, anexado ao clicar "Já pedi" — vira
     # a prova visual que a nova aba de Peças mostra ao lado do cliente.
     "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS pedido_foto TEXT",
+    # Taxa de vistoria substitui Itens/Valores no modelo Chamado Técnico —
+    # pedido de 2026-08-28, esse modelo não é orçamento, cobra um valor fixo
+    # de visita/vistoria em vez de itemizar serviço/peça/mão de obra.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS taxa_vistoria REAL DEFAULT 0",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1007,6 +1011,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE ordens_servico ADD COLUMN assinatura_cliente TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN token_cliente TEXT",
     "ALTER TABLE servico_desfecho ADD COLUMN pedido_foto TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN taxa_vistoria REAL DEFAULT 0",
 ]
 
 

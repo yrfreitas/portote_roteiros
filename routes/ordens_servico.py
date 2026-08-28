@@ -1176,6 +1176,10 @@ def criar():
 
     solucao = (d.get("solucao") or "").strip()
     forma_pagamento = (d.get("forma_pagamento") or "").strip()
+    # Só o modelo Chamado Técnico usa — vale 0 pros outros dois, que cobram
+    # por Itens/Valores em vez de uma taxa fixa de vistoria.
+    taxa_vistoria = _num(d.get("taxa_vistoria"))
+    ocultar_fila = bool(d.get("oculta_fila"))
     # Foto/técnico deixaram de ser exclusivos do Chamado Técnico — pedido de
     # 2026-08-27, mesma OS pode precisar registrar isso em qualquer modelo.
     foto = _foto_valida(d.get("foto"))
@@ -1215,6 +1219,7 @@ def criar():
             os_pai_id = pai["id"]
 
         agora = _agora()
+        oculta_fila_em = agora if ocultar_fila else None
         # Toda OS ganha um link público próprio (token_cliente) — não é só a
         # criada pelo técnico em campo que pode ser mandada pro cliente
         # (ver app.py:/os/cliente/<token>); qualquer uma pode, a qualquer
@@ -1226,14 +1231,14 @@ def criar():
                  numero_serie, voltagem, acessorios, defeito_declarado, taxa_avaliacao,
                  status, observacao, criado_em, criado_por, tipo_os,
                  modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
-                 token_cliente)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 token_cliente, taxa_vistoria, oculta_fila_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
               tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
-              token_cliente))
+              token_cliente, taxa_vistoria, oculta_fila_em))
 
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
@@ -1273,6 +1278,9 @@ def editar(os_id):
         if "taxa_avaliacao" in d:
             campos.append("taxa_avaliacao = ?")
             valores.append(_num(d.get("taxa_avaliacao")))
+        if "taxa_vistoria" in d:
+            campos.append("taxa_vistoria = ?")
+            valores.append(_num(d.get("taxa_vistoria")))
         if "status" in d:
             status = (d.get("status") or "").strip()
             if status not in STATUS_OS:

@@ -1141,7 +1141,32 @@
       <textarea class="form-input" id="os-solucao" rows="3" placeholder="O que foi feito / o que será feito"></textarea>
     </div>
 
-    <div class="form-row">
+    <!-- Chamado Técnico: taxa de vistoria emparelhada com forma de pagamento
+         (quadrados pra assinalar) — pedido de 2026-08-28, esse modelo não
+         orça por item, cobra uma taxa fixa de vistoria. Técnico fica sozinho
+         numa linha própria, sem dividir espaço com a forma de pagamento. -->
+    <div class="form-row" id="os-linha-vistoria-pagamento" style="display:none;">
+      <div class="form-group">
+        <label class="form-label" for="os-taxa-vistoria">Taxa de vistoria (R$)</label>
+        <input class="form-input" type="number" step="0.01" min="0" id="os-taxa-vistoria" value="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Forma de pagamento</label>
+        <div class="pagamento-quadrados" id="os-pagamento-quadrados">
+          <button type="button" class="pagamento-quadrado" data-valor="Pix" onclick="osEscolherPagamento(this)">Pix</button>
+          <button type="button" class="pagamento-quadrado" data-valor="Dinheiro" onclick="osEscolherPagamento(this)">Dinheiro</button>
+          <button type="button" class="pagamento-quadrado" data-valor="Cartão" onclick="osEscolherPagamento(this)">Cartão</button>
+        </div>
+      </div>
+    </div>
+    <div class="form-group" id="os-campo-tecnico-solo" style="display:none;">
+      <label class="form-label" for="os-chamado-tecnico-solo">Técnico que atendeu</label>
+      <select class="form-input" id="os-chamado-tecnico-solo"><option value="">Selecione...</option></select>
+    </div>
+
+    <!-- Ordens de Serviço / Fazer Orçamento: layout original, técnico e
+         forma de pagamento (select) na mesma linha. -->
+    <div class="form-row" id="os-linha-tecnico-pagamento">
       <div class="form-group">
         <label class="form-label" for="os-chamado-tecnico">Técnico que atendeu</label>
         <select class="form-input" id="os-chamado-tecnico"><option value="">Selecione...</option></select>
@@ -1189,6 +1214,14 @@
       <label class="form-label" for="os-obs">Observação interna (opcional)</label>
       <textarea class="form-input" id="os-obs" rows="2"></textarea>
     </div>
+
+    <!-- Evita o passo extra de criar a OS e já ir ocultar ela da fila de
+         Agendar Clientes na sequência — pedido de 2026-08-28, decide isso
+         na hora de abrir em vez de depois. -->
+    <label class="pecas-toggle" style="margin-bottom:14px;">
+      <input type="checkbox" id="os-ocultar-fila">
+      Ocultar esta OS da fila de Agendar Clientes
+    </label>
 
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
