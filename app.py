@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import calendar
 import json
 import logging
 import os
@@ -436,6 +437,27 @@ def _montar_documento_os(os_id):
         visita = dict(visita)
         visita["data_referencia_br"] = _data_br(visita["data_referencia"])
 
+    # Garantia calculada, não preenchida à mão — pedido de 2026-08-28 pra
+    # não admitir erro de conta: começa NO DIA EM QUE A FOLHA É IMPRESSA
+    # (não na data de abertura da OS, que pode ser bem anterior a quando o
+    # documento realmente sai impresso pro cliente assinar).
+    _GARANTIA_MESES = {"garantia_3_meses": 3, "garantia_6_meses": 6, "garantia_1_ano": 12}
+
+    def _somar_meses(data, meses):
+        mes_total = data.month - 1 + meses
+        ano = data.year + mes_total // 12
+        mes = mes_total % 12 + 1
+        ultimo_dia = calendar.monthrange(ano, mes)[1]
+        return data.replace(year=ano, month=mes, day=min(data.day, ultimo_dia))
+
+    garantia_meses = _GARANTIA_MESES.get(ordem.get("tipo_os"))
+    garantia_inicio_br = garantia_fim_br = garantia_prazo_rotulo = None
+    if garantia_meses:
+        hoje = datetime.now()
+        garantia_inicio_br = hoje.strftime("%d/%m/%Y")
+        garantia_fim_br = _somar_meses(hoje, garantia_meses).strftime("%d/%m/%Y")
+        garantia_prazo_rotulo = "1 ano" if garantia_meses == 12 else f"{garantia_meses} meses"
+
     termos = TERMOS_POR_TIPO.get(ordem.get("tipo_os"), TERMOS_PADRAO)
     tipo_os_rotulo = TIPOS_OS_ROTULO.get(ordem.get("tipo_os"), "")
     modelo_os_rotulo = MODELOS_OS_ROTULO.get(ordem.get("modelo_os"), MODELOS_OS_ROTULO["os"])
@@ -457,6 +479,9 @@ def _montar_documento_os(os_id):
         taxa_fmt=_moeda_fmt(ordem.get("taxa_avaliacao")),
         taxa_vistoria_fmt=_moeda_fmt(ordem.get("taxa_vistoria")),
         ocultar_impressao=ocultar_impressao,
+        garantia_inicio_br=garantia_inicio_br,
+        garantia_fim_br=garantia_fim_br,
+        garantia_prazo_rotulo=garantia_prazo_rotulo,
         gerado_em_br=datetime.now().strftime("%d/%m/%Y %H:%M"),
     )
 

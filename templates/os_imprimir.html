@@ -405,9 +405,17 @@
     <hr class="linha-divisoria">
 
     <h2><span class="num-bola">8</span>Garantia</h2>
+    {% if garantia_inicio_br %}
+    <div class="grade">
+      <div class="campo"><div class="rot">Data de início</div><div class="val">{{ garantia_inicio_br }}</div></div>
+      <div class="campo"><div class="rot">Data final</div><div class="val">{{ garantia_fim_br }}</div></div>
+      <div class="campo"><div class="rot">Prazo de garantia</div><div class="val">{{ garantia_prazo_rotulo }}</div></div>
+    </div>
+    {% else %}
     <div class="campo-manual">Data de início: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
     <div class="campo-manual">Data final: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
     <div class="campo-manual">Prazo de garantia: <span class="linha-preenchimento"></span></div>
+    {% endif %}
     {% endif %}
 
     {% if 'termos' not in ocultar_impressao %}
