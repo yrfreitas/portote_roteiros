@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v117';
+const VERSAO_PAINEL = 'v118';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6473,8 +6473,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${camposComunsChamado}
       ${observacao}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoChamado(${o.id})">Salvar alterações</button>
-    </div>
-    ${_osItensAtuais.length ? itensSecao : ''}`;
+    </div>`;
   }
 
   if (o.modelo_os === 'orcamento') {
@@ -6699,6 +6698,7 @@ async function abrirOSDetalhe(id) {
       <p class="form-separador">Visitas agendadas</p>
       ${visitas}
     </div>
+    ${o.modelo_os !== 'chamado_tecnico' ? `
     <div class="os-detalhe-secao">
       <p class="form-separador">Peças usadas</p>
       <div id="os-pecas-lista">${osRenderPecas(r.pecas)}</div>
@@ -6714,7 +6714,7 @@ async function abrirOSDetalhe(id) {
         </div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="osAdicionarPeca(${o.id})">+ Adicionar peça</button>
-    </div>
+    </div>` : ''}
     ${o.modelo_os === 'chamado_tecnico' ? `
     <div class="os-detalhe-secao">
       <p class="form-separador">Agendar nova visita</p>
