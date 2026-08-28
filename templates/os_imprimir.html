@@ -102,12 +102,9 @@
   .taxa-bloco { display: flex; align-items: baseline; gap: 6px; }
   .taxa-bloco .valor { font-size: 11px; font-weight: 700; letter-spacing: -.1px; }
 
-  /* Caixa preta tipo tabela pro valor total + forma de pagamento — os
-     quadrados (.marcador) ficam SEMPRE em branco, de propósito: quem marca
-     é a caneta na hora do pagamento, não o que já está digitado no sistema. */
-  .tabela-total-pagamento { width: 100%; border-collapse: collapse; margin-top: 3px; border: 1.2px solid #000; }
-  .tabela-total-pagamento td { border: 1px solid #000; padding: 6px 10px; font-size: 10px; vertical-align: middle; }
-  .tabela-total-pagamento .rot-tabela { font-weight: 700; width: 34%; }
+  /* Quadrados da forma de pagamento ficam SEMPRE em branco, de propósito:
+     quem marca é a caneta na hora do pagamento, não o que já está
+     digitado no sistema. */
   .opcao-pagamento { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; font-size: 9.5px; }
   .marcador { display: inline-block; width: 9px; height: 9px; border: 1.2px solid #000; flex-shrink: 0; }
 
@@ -390,12 +387,17 @@
     {% if 'valores' not in ocultar_impressao %}
     <hr class="linha-divisoria">
 
-    <h2><span class="num-bola">7</span>Valor total</h2>
-    <table class="tabela-total-pagamento">
-      <tr>
-        <td class="rot-tabela">Valor total</td>
-        <td>{{ total_orcamento_fmt }}</td>
-      </tr>
+    <h2><span class="num-bola">7</span>Itens / valores</h2>
+    <table class="tabela-itens">
+      <thead><tr><th>Descrição</th><th class="col-valor">Valor (R$)</th></tr></thead>
+      <tbody>
+        {% for item in itens %}
+        <tr><td>{{ item.nome }}</td><td class="col-valor">{{ item.valor_fmt }}</td></tr>
+        {% else %}
+        <tr><td colspan="2" style="color:var(--tinta-3);">Nenhum item lançado.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Valor total</td><td class="col-valor">{{ total_orcamento_fmt }}</td></tr></tfoot>
     </table>
     {% endif %}
 
