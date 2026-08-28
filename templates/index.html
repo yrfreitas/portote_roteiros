@@ -273,6 +273,16 @@
         <button class="btn btn-ghost btn-sm" onclick="osExportar()">Exportar</button>
         <button class="btn btn-primary btn-sm" onclick="abrirModalNovaOS()">+ Nova OS</button>
       </div>
+
+      <!-- Separa OS que nasceu de peça chegando da Panasonic (aba Peças) das
+           que a gente mesmo abriu (cliente cadastrado na mão, chamado do
+           técnico em campo) — pedido de 2026-08-28, mesma ideia de abas já
+           usada em Agendar Clientes/Verificador de CEP. -->
+      <div class="vcep-tabs" style="margin-bottom:12px;">
+        <button class="vcep-tab active" id="ostab-nossa" onclick="osSwitchOrigemTab('nossa')">Nossas OS</button>
+        <button class="vcep-tab" id="ostab-panasonic" onclick="osSwitchOrigemTab('panasonic')">OS Panasonic</button>
+      </div>
+
       <input class="pecas-busca" id="os-busca" type="search" autocomplete="off"
              placeholder="Buscar por número da OS ou nome do cliente..."
              style="margin-bottom:14px;max-width:380px;" oninput="osBuscar(this.value)">

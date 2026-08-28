@@ -912,12 +912,22 @@ def listar():
     os_pai_id) NÃO aparecem aqui por padrão, pra lista principal não
     empilhar um monte de linha do mesmo caso — só aparecem com
     ?pai_id=<id>, que devolve exatamente as filhas daquele pai.
+
+    ?origem=panasonic|nossa separa a aba OS em dois lados — pedido de
+    2026-08-28: "OS Panasonic" é toda OS que nasceu de uma peça chegando
+    (aba Peças, alimentada pelo robô do porto_tec_panasonic — ver
+    routes/pedidos.py:agendar_cliente()), "nossa" é o resto (cliente
+    cadastrado na mão, chamado técnico do campo, reagendamento). Mesma
+    marca de sempre — EXISTS em pecas_chegada — só que aqui vale pra
+    QUALQUER status, não só aguardando_agendamento (ver ?fonte= acima,
+    que é a versão específica da fila de Agendar Clientes).
     """
     status = (request.args.get("status") or "").strip()
     cliente_id = request.args.get("cliente_id")
     busca = (request.args.get("busca") or "").strip().lower()
     dias = request.args.get("dias")
     fonte = (request.args.get("fonte") or "").strip().lower()
+    origem = (request.args.get("origem") or "").strip().lower()
     pai_id = request.args.get("pai_id")
 
     condicoes, params = [], []
@@ -942,6 +952,10 @@ def listar():
     elif fonte == "reagendamento":
         condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
         condicoes.append("os.oculta_fila_em IS NULL")
+    if origem == "panasonic":
+        condicoes.append("EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+    elif origem == "nossa":
+        condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
     where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
 
     with db_conn() as conn:
@@ -953,8 +967,16 @@ def listar():
              ORDER BY os.id DESC
         """, tuple(params))
 
+        # Contagem por status respeita a origem escolhida (senão os números
+        # dos cartões não bateriam com a lista de baixo), mas não os outros
+        # filtros (status/dias/busca) — mesmo comportamento de sempre.
+        origem_sql = ""
+        if origem == "panasonic":
+            origem_sql = "WHERE EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)"
+        elif origem == "nossa":
+            origem_sql = "WHERE NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)"
         contagem = {s: 0 for s in STATUS_OS}
-        todas_status = fetch_all(conn, "SELECT status FROM ordens_servico")
+        todas_status = fetch_all(conn, f"SELECT status FROM ordens_servico {origem_sql}")
         for l in todas_status:
             if l["status"] in contagem:
                 contagem[l["status"]] += 1

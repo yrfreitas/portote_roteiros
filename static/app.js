@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v127';
+const VERSAO_PAINEL = 'v128';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5789,6 +5789,20 @@ let _osBuscaTimer = null;
 let _osClienteSelecionado = null;   // {id, nome} — null enquanto não escolhido
 let _osBuscaClienteTimer = null;
 let _osIndicacoesCarregadas = false;
+// "Nossa" x "Panasonic" (peça chegou pela aba Peças) — pedido de 2026-08-28.
+let _osOrigemTab = 'nossa';
+
+function osSwitchOrigemTab(tab) {
+  _osOrigemTab = tab;
+  document.getElementById('ostab-nossa')?.classList.toggle('active', tab === 'nossa');
+  document.getElementById('ostab-panasonic')?.classList.toggle('active', tab === 'panasonic');
+  // Troca de aba é troca de conjunto de OS — filtro de status/busca da aba
+  // anterior não faz sentido continuar aplicado na outra.
+  _osFiltroStatus = '';
+  _osBuscaTexto = '';
+  document.getElementById('os-busca').value = '';
+  carregarOS();
+}
 
 function osBuscar(valor) {
   clearTimeout(_osBuscaTimer);
@@ -5807,6 +5821,7 @@ async function carregarOS() {
   if (_osFiltroStatus) params.set('status', _osFiltroStatus);
   if (_osBuscaTexto) params.set('busca', _osBuscaTexto);
   if (_osFiltroDias) params.set('dias', _osFiltroDias);
+  if (_osOrigemTab) params.set('origem', _osOrigemTab);
 
   let r;
   try {
