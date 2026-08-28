@@ -10,6 +10,7 @@ from database import (db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id, ler_revisao, sql)
 from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
                            recalcular_distancia_ordem_fixa)
+from routes.ordens_servico import TIPOS_OS
 from routes.servicos import STATUS_SERVICO_VALIDOS, aplicar_status_servico
 
 tecnico_api_bp = Blueprint("tecnico_api", __name__)
@@ -364,18 +365,23 @@ def _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     forma_pagamento = (desfecho.get("forma_pagamento") or "").strip()
     foto = _imagem_valida(desfecho.get("foto_produto"))
     assinatura = _imagem_valida(desfecho.get("assinatura"))
+    # Opcional — pedido de 2026-08-28: o técnico escolhe qual termo jurídico
+    # vai impresso na OS que ele mesmo está fechando em campo, do jeito que
+    # já dá pra fazer no painel (ver TIPOS_OS em routes/ordens_servico.py).
+    tipo_os_bruto = (desfecho.get("tipo_os") or "").strip()
+    tipo_os = tipo_os_bruto if tipo_os_bruto in TIPOS_OS else None
     token_cliente = secrets.token_urlsafe(24)
 
     os_id = insert_returning_id(conn, sql("""
         INSERT INTO ordens_servico
             (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
              solucao, forma_pagamento, foto, assinatura_cliente,
-             tecnico_atendeu_id, taxa_avaliacao, status, modelo_os,
+             tecnico_atendeu_id, taxa_avaliacao, status, modelo_os, tipo_os,
              criado_em, criado_por, finalizada_em, token_cliente)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """), (cliente_id, quem, tipo_aparelho, modelo, defeito, solucao,
           forma_pagamento, foto, assinatura, tecnico_id, 0, "finalizada",
-          "chamado_tecnico", agora, quem, agora, token_cliente))
+          "chamado_tecnico", tipo_os, agora, quem, agora, token_cliente))
 
     execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
            (os_id, servico["id"]))
@@ -402,6 +408,9 @@ def _fechar_os_existente(conn, ordem_servico_id, desfecho, quem):
     assinatura = _imagem_valida(desfecho.get("assinatura"))
     if assinatura:
         campos.append("assinatura_cliente = ?"); valores.append(assinatura)
+    tipo_os_bruto = (desfecho.get("tipo_os") or "").strip()
+    if tipo_os_bruto in TIPOS_OS:
+        campos.append("tipo_os = ?"); valores.append(tipo_os_bruto)
 
     existente = fetch_one(conn, "SELECT token_cliente FROM ordens_servico WHERE id = ?",
                           (ordem_servico_id,))

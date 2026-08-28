@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v128';
+const VERSAO_PAINEL = 'v129';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5317,12 +5317,23 @@ function escolherDesfecho(tipo) {
         <option value="Dinheiro">Dinheiro</option>
         <option value="Cartão">Cartão</option>
       </select>
+      <label class="form-label" style="margin-top:10px;" for="df-fos-tipo-os">Tipo de OS / Termo (opcional)</label>
+      <select class="form-input" id="df-fos-tipo-os">
+        <option value="">Selecione...</option>
+        ${Object.entries(TIPOS_OS_ROTULO).map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}
+      </select>
       ${blocoFotoPainel('Foto do produto', 'Opcional — registra o estado do aparelho na hora do fechamento.')}
       <label class="form-label" style="margin-top:14px;">Assinatura do cliente <span class="df-obrigatorio">*</span></label>
       <p class="df-ajuda">Peça pro cliente assinar aqui com o dedo ou o mouse.</p>
       <canvas id="df-assinatura-canvas" class="df-assinatura-canvas"></canvas>
       <button type="button" class="df-limpar-assinatura" onclick="limparAssinaturaDesfecho()">Limpar assinatura</button>`;
-    setTimeout(iniciarAssinaturaDesfecho, 0);
+    // Chamada SÍNCRONA, não setTimeout(fn, 0) — pedido de 2026-08-28, achado
+    // testando: setTimeout corre risco real de o usuário já ter começado a
+    // assinar (dedo/mouse) antes do handler existir no canvas, capturando só
+    // o fim do traço (assinatura "minúscula"/cortada). getBoundingClientRect()
+    // força o reflow pendente do innerHTML na hora, então não precisa esperar
+    // nada — o canvas já está com o tamanho certo neste mesmo tick.
+    iniciarAssinaturaDesfecho();
   } else {
     extra.innerHTML = '';
   }
@@ -5377,6 +5388,7 @@ async function confirmarDesfecho() {
     desfecho.defeito_declarado = document.getElementById('df-fos-defeito')?.value.trim() || '';
     desfecho.solucao_os = document.getElementById('df-fos-solucao')?.value.trim() || '';
     desfecho.forma_pagamento = document.getElementById('df-fos-pagamento')?.value || '';
+    desfecho.tipo_os = document.getElementById('df-fos-tipo-os')?.value || '';
     if (_dfFoto) desfecho.foto_produto = _dfFoto;
     if (_dfAssinaturaTemTraco && _dfAssinaturaCanvas) desfecho.assinatura = _dfAssinaturaCanvas.toDataURL('image/png');
   }
@@ -5773,6 +5785,7 @@ const TIPOS_OS_ROTULO = {
   higienizacao:                   'Higienização',
   retirado_aprovado:              'Retirado / Aprovado',
   criterio_orcamento_reparo:      'Critério de orçamento - reparo',
+  criterios_condicoes_orcamento:  'Critérios e condições do orçamento',
 };
 
 // Espelha MODELOS_OS_ROTULO em routes/ordens_servico.py.

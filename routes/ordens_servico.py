@@ -62,6 +62,7 @@ TIPOS_OS = [
     "higienizacao",
     "retirado_aprovado",
     "criterio_orcamento_reparo",
+    "criterios_condicoes_orcamento",
 ]
 
 TIPOS_OS_ROTULO = {
@@ -82,6 +83,7 @@ TIPOS_OS_ROTULO = {
     "higienizacao": "Higienização",
     "retirado_aprovado": "Retirado / Aprovado",
     "criterio_orcamento_reparo": "Critério de orçamento - reparo",
+    "criterios_condicoes_orcamento": "Critérios e condições do orçamento",
 }
 
 # Termo específico de cada tipo — texto definitivo, entregue pelo Kalebe em
@@ -640,6 +642,53 @@ TERMOS_POR_TIPO = {
         "da não realização do reparo."
     ),
     "criterio_orcamento_reparo": (
+        "CRITÉRIOS E CONDIÇÕES DO ORÇAMENTO\n\n"
+        "1. Validade do orçamento\n"
+        "Este orçamento é válido por até 15 (quinze) dias, contados a partir da "
+        "data de sua emissão, desde que não ocorram alterações de valores, "
+        "disponibilidade de peças ou condições comerciais por parte dos "
+        "fabricantes e fornecedores.\n\n"
+        "2. Forma de pagamento\n"
+        "Aceitamos pagamentos via PIX, dinheiro, cartão de débito ou crédito. "
+        "Para parcelamentos, consulte nossa equipe para verificar as melhores "
+        "condições disponíveis.\n\n"
+        "3. Valor da vistoria técnica\n"
+        "Caso tenha sido realizado pagamento referente à vistoria ou avaliação "
+        "técnica, informamos que esse valor já estará integralmente descontado "
+        "do valor total do reparo apresentado neste orçamento, não havendo "
+        "cobrança em duplicidade.\n\n"
+        "4. Encomenda de peças\n"
+        "Quando houver necessidade de encomenda de alguma peça que não esteja "
+        "disponível em nosso estoque próprio, será solicitado um sinal de "
+        "R$ 50,00 para confirmação e andamento do pedido.\n\n"
+        "O valor pago como sinal será integralmente descontado do valor total "
+        "do reparo, no momento da finalização do serviço.\n\n"
+        "5. Aprovação do orçamento\n"
+        "A execução do serviço e/ou solicitação de peças será realizada após a "
+        "aprovação do orçamento pelo cliente.\n\n"
+        "6. Disponibilidade de peças\n"
+        "Os prazos para fornecimento de peças poderão variar de acordo com a "
+        "disponibilidade do fabricante, distribuidor ou fornecedor responsável.\n\n"
+        "7. Alterações no orçamento\n"
+        "Caso sejam identificados defeitos adicionais, peças ou serviços não "
+        "previstos inicialmente, o cliente será previamente comunicado. Nenhum "
+        "valor adicional será executado sem nova autorização.\n\n"
+        "8. Prazo de execução\n"
+        "Os prazos informados são estimados e podem sofrer alterações em razão "
+        "da disponibilidade de peças, necessidade de testes, complexidade do "
+        "equipamento ou fatores externos.\n\n"
+        "9. Garantia\n"
+        "A garantia refere-se exclusivamente às peças substituídas e aos "
+        "serviços efetivamente executados, conforme condições e prazo "
+        "informados na Ordem de Serviço.\n\n"
+        "Ao aprovar este orçamento, o cliente declara estar ciente e de acordo "
+        "com os valores, serviços e condições acima descritos."
+    ),
+    # Texto idêntico ao "criterio_orcamento_reparo" (17) — o Kalebe entregou
+    # os dois separados em 2026-08-28, título diferente ("Critérios e
+    # condições do orçamento"), mesmo conteúdo. Mantido como opção própria
+    # de propósito, não uma duplicata pra remover.
+    "criterios_condicoes_orcamento": (
         "CRITÉRIOS E CONDIÇÕES DO ORÇAMENTO\n\n"
         "1. Validade do orçamento\n"
         "Este orçamento é válido por até 15 (quinze) dias, contados a partir da "

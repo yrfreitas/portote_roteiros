@@ -604,6 +604,30 @@
   const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                    'Aparelho sem defeito', 'Sem acesso ao local'];
 
+  // Mesma lista de static/app.js e routes/ordens_servico.py:TIPOS_OS_ROTULO —
+  // pedido de 2026-08-28: o técnico escolhe o termo jurídico da OS que ele
+  // mesmo fecha em campo (ver "Fazer Ordem de Serviço" logo abaixo).
+  const TIPOS_OS_ROTULO = {
+    garantia_3_meses:              'Garantia 3 meses',
+    entrada_oficina:                'OS de entrada na oficina',
+    saida_oficina:                  'OS de saída da oficina',
+    garantia_6_meses:               'OS garantia 6 meses',
+    garantia_1_ano:                 'OS garantia 1 ano',
+    retirada_pre_aprovada:          'OS de retirada pré-aprovada',
+    vendas:                         'OS de vendas',
+    retirada_aprovada:              'OS retirada aprovada',
+    retirada_orcamento:             'OS de retirada para orçamento',
+    acionamento_garantia_interno:   'Acionamento de garantia interno',
+    acionamento_garantia_externo:   'Acionamento de garantia externo',
+    avaliacao_tecnica:              'Avaliação técnica',
+    cancelamento:                   'Cancelamento',
+    pagamento_faturamento:          'Pagamento / Faturamento',
+    higienizacao:                   'Higienização',
+    retirado_aprovado:              'Retirado / Aprovado',
+    criterio_orcamento_reparo:      'Critério de orçamento - reparo',
+    criterios_condicoes_orcamento:  'Critérios e condições do orçamento',
+  };
+
   function selo_desfecho(s) {
     const d = DESFECHOS.find(x => x.tipo === s.desfecho);
     if (!d) return '';
@@ -799,12 +823,23 @@
           <option value="Dinheiro">Dinheiro</option>
           <option value="Cartão">Cartão</option>
         </select>
+        <label class="t-df-rotulo" for="t-df-fos-tipo-os">Tipo de OS / Termo (opcional)</label>
+        <select class="t-df-input" id="t-df-fos-tipo-os">
+          <option value="">Selecione...</option>
+          ${Object.entries(TIPOS_OS_ROTULO).map(([v, r]) => `<option value="${v}">${esc(r)}</option>`).join('')}
+        </select>
         ${blocoFoto(false)}
         <label class="t-df-rotulo">Assinatura do cliente <span class="t-df-obrigatorio">*</span></label>
         <p class="t-df-ajuda">Passe o celular pro cliente assinar aqui com o dedo.</p>
         <canvas id="t-assinatura-canvas" class="t-assinatura-canvas"></canvas>
         <button type="button" class="t-df-limpar-assinatura" onclick="window._tLimparAssinatura()">Limpar assinatura</button>`;
-      setTimeout(_tIniciarAssinatura, 0);
+      // Chamada SÍNCRONA, não setTimeout(fn, 0) — pedido de 2026-08-28, achado
+      // testando: setTimeout corre risco real de o cliente já ter começado a
+      // assinar com o dedo antes do handler existir no canvas, capturando só
+      // o fim do traço (assinatura "minúscula"/cortada, pior ainda em campo
+      // com celular mais lento). getBoundingClientRect() força o reflow
+      // pendente do innerHTML na hora — o canvas já sai com o tamanho certo.
+      _tIniciarAssinatura();
     } else {
       extra.innerHTML = blocoFoto(false);
     }
@@ -917,6 +952,7 @@
       desfecho.defeito_declarado = document.getElementById('t-df-fos-defeito')?.value.trim() || '';
       desfecho.solucao_os = document.getElementById('t-df-fos-solucao')?.value.trim() || '';
       desfecho.forma_pagamento = document.getElementById('t-df-fos-pagamento')?.value || '';
+      desfecho.tipo_os = document.getElementById('t-df-fos-tipo-os')?.value || '';
       if (_desfechoFoto) desfecho.foto_produto = _desfechoFoto;
       if (_assinaturaTemTraco && _assinaturaCanvas) {
         desfecho.assinatura = _assinaturaCanvas.toDataURL('image/png');
@@ -1206,7 +1242,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v128';
+  const VERSAO_TELA = 'v129';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

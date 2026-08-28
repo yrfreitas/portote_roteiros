@@ -131,10 +131,16 @@
   .tabela-itens tfoot td { border-bottom: 0; padding-top: 7px; font-weight: 700; font-size: 11px; }
 
   .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 22px; }
+  /* A imagem da assinatura é position:absolute (fica ACIMA da linha, não
+     empurra nada) — sem essa margem extra ela sobrepõe o que vier antes
+     (forma de pagamento, garantia...), o que lia como "bugada"/cortada.
+     Só entra quando tem assinatura de verdade — sem ela o espaço extra
+     seria em branco à toa. */
+  .assinaturas.com-assinatura { margin-top: 62px; }
   .linha-assinatura { border-top: 1px solid var(--tinta); padding-top: 5px; position: relative; }
   .linha-assinatura .nome { font-size: 9.5px; font-weight: 600; }
   .linha-assinatura .cargo { font-size: 8px; color: var(--tinta-3); margin-top: 1px; }
-  .assinatura-imagem { max-height: 36px; max-width: 100%; display: block; position: absolute; bottom: 100%; left: 0; }
+  .assinatura-imagem { max-height: 54px; max-width: 100%; display: block; position: absolute; bottom: 100%; left: 0; }
 
   .rodape {
     margin-top: 14px; text-align: center; font-size: 8.5px; color: var(--tinta);
@@ -430,7 +436,7 @@
 
   {% endif %}
 
-  <div class="assinaturas">
+  <div class="assinaturas{{ ' com-assinatura' if ordem.assinatura_cliente else '' }}">
     <div class="linha-assinatura">
       {% if ordem.assinatura_cliente %}
       <img src="{{ ordem.assinatura_cliente }}" alt="Assinatura do cliente" class="assinatura-imagem">
