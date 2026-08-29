@@ -31,6 +31,18 @@ log = logging.getLogger("portotec.estoque")
 
 estoque_bp = Blueprint("estoque", __name__)
 
+FOTO_MAXIMA = 900 * 1024
+PREFIXOS_FOTO = ("data:image/jpeg;base64,", "data:image/png;base64,",
+                 "data:image/webp;base64,")
+
+
+def _foto_valida(foto):
+    if not isinstance(foto, str) or not foto.startswith(PREFIXOS_FOTO):
+        return None
+    if len(foto) > FOTO_MAXIMA:
+        return None
+    return foto
+
 
 def _agora():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -624,6 +636,17 @@ def editar_item(item_id):
             campos.append("grupo_id = ?"); valores.append(int(d["grupo_id"]) if d["grupo_id"] else None)
         if "setor_id" in d:
             campos.append("setor_id = ?"); valores.append(d["setor_id"] or None)
+        if "foto" in d:
+            # None explícito = remover a foto (botão "remover" no painel);
+            # string = trocar, mas só se passar na validação — nunca grava
+            # lixo maior que o limite ou fora do formato esperado.
+            if d["foto"] is None:
+                campos.append("foto = ?"); valores.append(None)
+            else:
+                foto_valida = _foto_valida(d["foto"])
+                if not foto_valida:
+                    return jsonify({"erro": "Foto inválida ou grande demais."}), 400
+                campos.append("foto = ?"); valores.append(foto_valida)
 
         if campos:
             valores.append(item_id)

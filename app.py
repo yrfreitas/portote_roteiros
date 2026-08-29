@@ -33,6 +33,7 @@ from routes.setores import setores_bp
 from routes.tecnico_api import tecnico_api_bp
 from routes.tecnico_view import tecnico_view_bp
 from routes.tecnicos import tecnicos_bp
+from routes.vendas import vendas_bp
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -100,6 +101,7 @@ app.register_blueprint(estoque_bp, url_prefix="/api")
 app.register_blueprint(cotacoes_bp, url_prefix="/api")
 app.register_blueprint(clientes_bp, url_prefix="/api")
 app.register_blueprint(ordens_servico_bp, url_prefix="/api")
+app.register_blueprint(vendas_bp, url_prefix="/api")
 
 
 def _e_api() -> bool:
@@ -511,6 +513,51 @@ def imprimir_os_cliente(token):
     if not contexto:
         return "<h1>Ordem de serviço não encontrada</h1>", 404
     return render_template("os_imprimir.html", **contexto)
+
+
+def _montar_documento_venda(venda_id):
+    """Contexto pra nota de venda — bem mais simples que _montar_documento_os
+    porque uma venda de balcão não tem endereço de visita, garantia calculada
+    por data nem termo jurídico: é nome, produto, valor e a garantia que foi
+    combinada na hora (texto livre, não uma cláusula inteira)."""
+    with db_conn() as conn:
+        venda = fetch_one(conn, "SELECT * FROM vendas WHERE id = ?", (venda_id,))
+        if not venda:
+            return None
+        itens = fetch_all(conn, "SELECT * FROM venda_itens WHERE venda_id = ? ORDER BY id", (venda_id,))
+
+    def _moeda_br(valor) -> str:
+        return f"{float(valor or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    for item in itens:
+        item["quantidade_fmt"] = f"{float(item['quantidade'] or 0):g}"
+        item["valor_unit_fmt"] = _moeda_br(item["valor_unit"])
+        item["valor_total_fmt"] = _moeda_br(item["valor_total"])
+
+    criado_em = (venda.get("criado_em") or "")[:16].replace("T", " ")
+    if criado_em and len(criado_em) >= 10:
+        criado_em_br = criado_em[8:10] + "/" + criado_em[5:7] + "/" + criado_em[0:4] + criado_em[10:]
+    else:
+        criado_em_br = criado_em
+
+    return dict(
+        venda=venda,
+        itens=itens,
+        valor_total_fmt=_moeda_br(venda.get("valor_total")),
+        criado_em_br=criado_em_br,
+        gerado_em_br=datetime.now().strftime("%d/%m/%Y %H:%M"),
+    )
+
+
+@app.route("/vendas/<int:venda_id>/imprimir")
+def imprimir_venda(venda_id):
+    """Nota de venda pronta pra impressão — pequena de propósito, não é o
+    modelo de OS (pedido explícito de 2026-08-29: "não precisa ser igual
+    quando imprimimos a os, fica muito grande, tem que ser pequeno")."""
+    contexto = _montar_documento_venda(venda_id)
+    if not contexto:
+        return "<h1>Venda não encontrada</h1>", 404
+    return render_template("venda_imprimir.html", **contexto)
 
 
 # ─── Auto-refresh: quem está com a tela aberta vê a mudança sozinho ──────

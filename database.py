@@ -918,6 +918,43 @@ _MIGRACOES_PG = [
         pedido_por       TEXT,
         pedido_foto      TEXT
     )""",
+    # Foto do produto no estoque — pedido de 2026-08-29 ("estoque com foto...
+    # pra ficar mais bonito, aparecer a foto na hora de vender"). Mesma regra
+    # das outras fotos do sistema: base64 direto na coluna, sem storage
+    # externo, porque o volume (uma foto por peça, não por evento) é pequeno
+    # pertinho do que já se faz em ordens_servico.foto.
+    "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS foto TEXT",
+    # VENDA DE BALCÃO — pedido de 2026-08-29: bipar/pesquisar peça do estoque,
+    # montar carrinho, fechar com os dados do cliente e imprimir uma nota
+    # pequena (não o modelo grande da OS). cliente_* fica direto na venda, e
+    # não como FK pra clientes: é venda de balcão, muita gente não tem
+    # cadastro nenhum no sistema e forçar um criaria clientes "fantasma" só
+    # pra guardar um nome digitado uma vez.
+    """CREATE TABLE IF NOT EXISTS vendas (
+        id                SERIAL PRIMARY KEY,
+        cliente_nome      TEXT NOT NULL,
+        cliente_telefone  TEXT,
+        cliente_cpf_cnpj  TEXT,
+        forma_pagamento   TEXT,
+        garantia_texto    TEXT,
+        valor_total       DOUBLE PRECISION DEFAULT 0,
+        criado_em         TEXT,
+        criado_por        TEXT
+    )""",
+    # item_id em ON DELETE SET NULL, e codigo/descricao/valor_unit COPIADOS
+    # pra cá (não só referenciados) — apagar ou editar a peça no estoque
+    # depois não pode mudar o que a nota de uma venda antiga já dizia ter
+    # sido vendido.
+    """CREATE TABLE IF NOT EXISTS venda_itens (
+        id          SERIAL PRIMARY KEY,
+        venda_id    INTEGER NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
+        item_id     INTEGER REFERENCES estoque_itens(id) ON DELETE SET NULL,
+        codigo      TEXT,
+        descricao   TEXT,
+        quantidade  DOUBLE PRECISION NOT NULL,
+        valor_unit  DOUBLE PRECISION NOT NULL,
+        valor_total DOUBLE PRECISION NOT NULL
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1049,6 +1086,30 @@ _MIGRACOES_SQLITE = [
         pedido_por       TEXT,
         pedido_foto      TEXT,
         FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id) ON DELETE CASCADE
+    )""",
+    "ALTER TABLE estoque_itens ADD COLUMN foto TEXT",
+    """CREATE TABLE IF NOT EXISTS vendas (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente_nome      TEXT NOT NULL,
+        cliente_telefone  TEXT,
+        cliente_cpf_cnpj  TEXT,
+        forma_pagamento   TEXT,
+        garantia_texto    TEXT,
+        valor_total       REAL DEFAULT 0,
+        criado_em         TEXT,
+        criado_por        TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS venda_itens (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        venda_id    INTEGER NOT NULL,
+        item_id     INTEGER,
+        codigo      TEXT,
+        descricao   TEXT,
+        quantidade  REAL NOT NULL,
+        valor_unit  REAL NOT NULL,
+        valor_total REAL NOT NULL,
+        FOREIGN KEY (venda_id) REFERENCES vendas(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_id) REFERENCES estoque_itens(id) ON DELETE SET NULL
     )""",
 ]
 

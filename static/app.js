@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v131';
+const VERSAO_PAINEL = 'v132';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -488,6 +488,7 @@ function switchMainTab(tab) {
   const isEstoque   = tab === 'estoque';
   const isOS        = tab === 'os';
   const isAgendar   = tab === 'agendar';
+  const isVendas    = tab === 'vendas';
 
   document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
   document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
@@ -499,6 +500,8 @@ function switchMainTab(tab) {
   document.getElementById('panel-estoque').style.display = isEstoque ? 'block' : 'none';
   document.getElementById('panel-os').style.display = isOS ? 'block' : 'none';
   document.getElementById('panel-agendar').style.display = isAgendar ? 'block' : 'none';
+  document.getElementById('panel-vendas').style.display = isVendas ? 'block' : 'none';
+  if (isVendas) carregarVendas();
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
   document.getElementById('mtab-cep').classList.toggle('active', isCep);
@@ -509,10 +512,14 @@ function switchMainTab(tab) {
   document.getElementById('mtab-estoque').classList.toggle('active', isEstoque);
   document.getElementById('mtab-os').classList.toggle('active', isOS);
   document.getElementById('mtab-agendar').classList.toggle('active', isAgendar);
+  document.getElementById('mtab-vendas').classList.toggle('active', isVendas);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
     setTimeout(() => document.getElementById('verificar-cep-input')?.focus(), 80);
+  }
+  if (isVendas) {
+    setTimeout(() => document.getElementById('venda-busca-input')?.focus(), 80);
   }
   if (isHistorico) {
     carregarHistorico();
@@ -1103,6 +1110,7 @@ async function carregarUsuarioLogado() {
   mostra('mtab-pecas', podeUsuario('pecas'));
   mostra('mtab-os', podeUsuario('ordens_servico'));
   mostra('mtab-agendar', podeUsuario('ordens_servico'));
+  mostra('mtab-vendas', podeUsuario('vendas'));
   mostra('cotacao-details', podeUsuario('cotacao'));
 
   const marca = document.getElementById('usuario-logado');
@@ -7732,6 +7740,7 @@ function _cardEstoque(i) {
   const venda = Number(i.preco_venda) > 0 ? ` · venda ${brl(i.preco_venda)}` : '';
   return `
     <div class="estoque-item ${alerta ? 'estoque-item--alerta' : ''}">
+      ${i.foto ? `<img class="estoque-item-foto" src="${i.foto}" alt="Foto do produto" onclick="ampliarFoto(this.src)">` : ''}
       <div class="estoque-item-info">
         <div class="estoque-item-cod">${esc(i.codigo)}${ident ? `<span class="estoque-item-ident">${esc(ident)}</span>` : ''}${alerta ? '<span class="estoque-tag-alerta">abaixo do mínimo</span>' : ''}</div>
         <div class="estoque-item-desc">${esc(i.descricao || 'Sem descrição')}</div>
@@ -7803,6 +7812,7 @@ function _visibilidadeModalEstoque(cfg) {
     modelo:    'estoque-mov-grupo-modelo',
     qtdcusto:  'estoque-mov-grupo-qtd-custo',
     custo:     'estoque-mov-grupo-custo',
+    foto:      'estoque-mov-grupo-foto',
     obs:       'estoque-mov-grupo-obs',
   };
   for (const [chave, id] of Object.entries(grupos)) {
@@ -7839,6 +7849,44 @@ function _limparCamposEstoque() {
     .forEach(c => { const el = document.getElementById('estoque-mov-' + c); if (el) el.value = ''; });
   const sel = document.getElementById('estoque-mov-estoque');
   if (sel) sel.value = '';
+  estoqueMovFotoAtual = undefined;
+  const previa = document.getElementById('estoque-mov-foto-previa');
+  if (previa) previa.innerHTML = '';
+}
+
+// undefined = não mexeu na foto (não manda o campo); null = removeu de
+// propósito; string = foto nova escolhida. Três estados porque "não mexeu"
+// e "removeu" precisam de comportamentos diferentes no PUT (ver editar_item).
+let estoqueMovFotoAtual = undefined;
+
+function _estoqueRenderFotoPrevia(src) {
+  const previa = document.getElementById('estoque-mov-foto-previa');
+  if (!previa) return;
+  previa.innerHTML = src
+    ? `<img class="df-thumb" src="${src}" alt="Foto do produto">
+       <button type="button" class="df-remover-foto" onclick="estoqueRemoverFoto()">remover</button>`
+    : '';
+}
+
+async function estoqueEscolherFoto(input) {
+  const arquivo = input.files && input.files[0];
+  if (!arquivo) return;
+  const previa = document.getElementById('estoque-mov-foto-previa');
+  if (previa) previa.innerHTML = '<span class="df-processando">preparando a foto...</span>';
+  try {
+    estoqueMovFotoAtual = await reduzirFotoInteira(arquivo);
+    _estoqueRenderFotoPrevia(estoqueMovFotoAtual);
+  } catch (e) {
+    estoqueMovFotoAtual = undefined;
+    if (previa) previa.innerHTML = `<span class="df-erro">${esc(e.message)}</span>`;
+  } finally {
+    input.value = '';
+  }
+}
+
+function estoqueRemoverFoto() {
+  estoqueMovFotoAtual = null;
+  _estoqueRenderFotoPrevia(null);
 }
 
 // Clientes dos atendimentos para o autocomplete do "saiu para quem".
@@ -7922,7 +7970,8 @@ function abrirEditarEstoque(item) {
   document.getElementById('estoque-mov-modelo').value = item.modelo || '';
   document.getElementById('estoque-mov-preco').value = Number(item.preco_venda) > 0 ? item.preco_venda : '';
   _popularSelectEstoque(item.grupo_id || '');
-  _visibilidadeModalEstoque({ desc: true, estoque: true, categoria: true, modelo: true, obs: false });
+  _visibilidadeModalEstoque({ desc: true, estoque: true, categoria: true, modelo: true, foto: true, obs: false });
+  _estoqueRenderFotoPrevia(item.foto || null);
   document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById('estoque-mov-aparelho').focus(), 80);
 }
@@ -7983,8 +8032,9 @@ async function salvarMovEstoque() {
         saldo_contado: qtd, obs }) });
       toast('Saldo ajustado.', 'success');
     } else { // editar — só a ficha, sem saldo
-      await api(`/estoque/${fixo}`, { method: 'PUT', body: JSON.stringify({
-        descricao: val('estoque-mov-desc').trim(), ...cat() }) });
+      const corpo = { descricao: val('estoque-mov-desc').trim(), ...cat() };
+      if (estoqueMovFotoAtual !== undefined) corpo.foto = estoqueMovFotoAtual;
+      await api(`/estoque/${fixo}`, { method: 'PUT', body: JSON.stringify(corpo) });
       toast('Peça atualizada.', 'success');
     }
     fecharModais();
@@ -8886,4 +8936,265 @@ function avisarPecasNoCarro(atendimentos) {
     <button class="aviso-carro-fechar" onclick="this.parentElement.remove()"
             aria-label="Fechar">&times;</button>`;
   alvo.prepend(aviso);
+}
+
+// ─── Vendas de balcão ───────────────────────────────────────────────────
+//
+// Pedido de 2026-08-29: bipar código de barras ou pesquisar o produto (com
+// foto, "pra ficar mais bonito"), montar carrinho e fechar com os dados do
+// cliente, saindo uma nota de venda pequena pra imprimir. Reaproveita
+// estoque_itens (agora com foto) e a saída de estoque já existente — uma
+// venda É uma saída, só que com nota em cima (ver routes/vendas.py).
+let vendaProdutosCache = [];
+let vendaCarrinho = [];
+
+function _brlVenda(n) {
+  return (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+async function carregarVendas() {
+  try {
+    const r = await api('/vendas/produtos');
+    vendaProdutosCache = r.itens || [];
+  } catch (e) {
+    toast(e.message, 'error');
+    vendaProdutosCache = [];
+  }
+  filtrarProdutosVenda();
+  carregarVendasRecentes();
+}
+
+async function carregarVendasRecentes() {
+  const alvo = document.getElementById('venda-recentes-lista');
+  if (!alvo) return;
+  try {
+    const r = await api('/vendas?dias=30');
+    const vendas = r.vendas || [];
+    if (!vendas.length) {
+      alvo.innerHTML = '<div class="vazio-box">Nenhuma venda registrada ainda.</div>';
+      return;
+    }
+    alvo.innerHTML = vendas.map(v => `
+      <div class="venda-recente-linha">
+        <span class="venda-recente-num">#${String(v.id).padStart(6, '0')}</span>
+        <span class="venda-recente-cliente">${esc(v.cliente_nome)}</span>
+        <span class="venda-recente-itens">${v.total_itens} ${v.total_itens === 1 ? 'item' : 'itens'}</span>
+        <span class="venda-recente-valor">${_brlVenda(v.valor_total)}</span>
+        <span class="venda-recente-quando">${esc((v.criado_em || '').slice(0, 16).replace('T', ' '))}</span>
+        <a class="btn btn-ghost btn-xs" href="/vendas/${v.id}/imprimir" target="_blank" rel="noopener">Imprimir</a>
+      </div>`).join('');
+  } catch (e) {
+    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+  }
+}
+
+function filtrarProdutosVenda() {
+  const termo = (document.getElementById('venda-busca-input')?.value || '').trim().toLowerCase();
+  let itens = vendaProdutosCache;
+  if (termo) {
+    itens = itens.filter(i =>
+      (i.codigo || '').toLowerCase().includes(termo) ||
+      (i.descricao || '').toLowerCase().includes(termo) ||
+      (i.marca || '').toLowerCase().includes(termo) ||
+      (i.modelo || '').toLowerCase().includes(termo));
+  }
+  renderProdutosVenda(itens);
+}
+
+function renderProdutosVenda(itens) {
+  const grid = document.getElementById('venda-grid');
+  if (!grid) return;
+  if (!itens.length) {
+    grid.innerHTML = '<div class="vazio-box">Nenhum produto encontrado.</div>';
+    return;
+  }
+  grid.innerHTML = itens.map(i => {
+    const semSaldo = Number(i.saldo) <= 0;
+    const saldoTxt = Number(i.saldo).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+    return `
+    <button type="button" class="venda-produto-card${semSaldo ? ' sem-saldo' : ''}"
+            onclick="vendaAdicionarAoCarrinho(${i.id})" ${semSaldo ? 'disabled' : ''}>
+      ${i.foto
+        ? `<img class="venda-produto-foto" src="${i.foto}" alt="${esc(i.descricao || i.codigo)}">`
+        : `<div class="venda-produto-sem-foto">sem foto</div>`}
+      <div class="venda-produto-nome">${esc(i.descricao || i.codigo)}</div>
+      <div class="venda-produto-cod">${esc(i.codigo)}</div>
+      <div class="venda-produto-preco">${_brlVenda(i.preco_venda)}</div>
+      <div class="venda-produto-saldo">${semSaldo ? 'sem estoque' : saldoTxt + ' em estoque'}</div>
+    </button>`;
+  }).join('');
+}
+
+// Enter no campo de busca é o gesto de "bipar": um leitor USB digita o
+// código e manda Enter sozinho. Código exato bate direto; sem bater, se
+// sobrar só UM produto visível no filtro, assume que é ele (buscar e
+// apertar Enter com um resultado só é o mesmo gesto de intenção).
+function vendaBuscaKeydown(event) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  const input = event.target;
+  const termo = input.value.trim();
+  if (!termo) return;
+  const termoLower = termo.toLowerCase();
+  let alvo = vendaProdutosCache.find(i => (i.codigo || '').toLowerCase() === termoLower);
+  if (!alvo) {
+    const visiveis = vendaProdutosCache.filter(i =>
+      (i.codigo || '').toLowerCase().includes(termoLower) ||
+      (i.descricao || '').toLowerCase().includes(termoLower) ||
+      (i.marca || '').toLowerCase().includes(termoLower) ||
+      (i.modelo || '').toLowerCase().includes(termoLower));
+    if (visiveis.length === 1) alvo = visiveis[0];
+  }
+  if (!alvo) {
+    toast(`Produto não encontrado para "${termo}".`, 'error');
+    return;
+  }
+  vendaAdicionarAoCarrinho(alvo.id);
+  input.value = '';
+  filtrarProdutosVenda();
+}
+
+function vendaAdicionarAoCarrinho(id) {
+  const produto = vendaProdutosCache.find(i => i.id === id);
+  if (!produto) return;
+  const saldo = Number(produto.saldo) || 0;
+  if (saldo <= 0) {
+    toast('Sem saldo em estoque pra esse produto.', 'error');
+    return;
+  }
+  const existente = vendaCarrinho.find(l => l.item_id === id);
+  if (existente) {
+    if (existente.quantidade + 1 > saldo) {
+      toast(`Só há ${saldo} em estoque.`, 'error');
+      return;
+    }
+    existente.quantidade += 1;
+  } else {
+    vendaCarrinho.push({
+      item_id: id, codigo: produto.codigo, descricao: produto.descricao || produto.codigo,
+      foto: produto.foto, saldo, valor_unit: Number(produto.preco_venda) || 0, quantidade: 1,
+    });
+  }
+  renderCarrinhoVenda();
+}
+
+function vendaAlterarQtd(id, delta) {
+  const linha = vendaCarrinho.find(l => l.item_id === id);
+  if (!linha) return;
+  const nova = linha.quantidade + delta;
+  if (nova <= 0) {
+    vendaCarrinho = vendaCarrinho.filter(l => l.item_id !== id);
+  } else if (nova > Number(linha.saldo)) {
+    toast(`Só há ${linha.saldo} em estoque.`, 'error');
+    return;
+  } else {
+    linha.quantidade = nova;
+  }
+  renderCarrinhoVenda();
+}
+
+function vendaRemoverDoCarrinho(id) {
+  vendaCarrinho = vendaCarrinho.filter(l => l.item_id !== id);
+  renderCarrinhoVenda();
+}
+
+function vendaAlterarValorUnit(id, valor) {
+  const linha = vendaCarrinho.find(l => l.item_id === id);
+  if (!linha) return;
+  linha.valor_unit = Math.max(0, parseFloat(valor) || 0);
+  renderCarrinhoVenda();
+}
+
+function renderCarrinhoVenda() {
+  const lista = document.getElementById('venda-carrinho-lista');
+  const totalEl = document.getElementById('venda-carrinho-total-valor');
+  const btn = document.getElementById('venda-finalizar-btn');
+  if (!lista) return;
+  if (!vendaCarrinho.length) {
+    lista.innerHTML = '<div class="venda-carrinho-vazio">Bipe ou clique num produto pra adicionar.</div>';
+    if (totalEl) totalEl.textContent = _brlVenda(0);
+    if (btn) btn.disabled = true;
+    return;
+  }
+  let total = 0;
+  lista.innerHTML = vendaCarrinho.map(l => {
+    const subtotal = l.quantidade * l.valor_unit;
+    total += subtotal;
+    return `
+    <div class="venda-carrinho-item">
+      ${l.foto ? `<img class="venda-carrinho-foto" src="${l.foto}" alt="">` : '<div class="venda-carrinho-sem-foto"></div>'}
+      <div class="venda-carrinho-info">
+        <div class="venda-carrinho-nome">${esc(l.descricao)}</div>
+        <div class="venda-carrinho-qtd">
+          <button type="button" class="venda-qtd-btn" onclick="vendaAlterarQtd(${l.item_id}, -1)">−</button>
+          <span>${l.quantidade}</span>
+          <button type="button" class="venda-qtd-btn" onclick="vendaAlterarQtd(${l.item_id}, 1)">+</button>
+        </div>
+      </div>
+      <input type="number" class="form-input venda-carrinho-valor" min="0" step="any"
+             value="${l.valor_unit}" onchange="vendaAlterarValorUnit(${l.item_id}, this.value)">
+      <div class="venda-carrinho-subtotal">${_brlVenda(subtotal)}</div>
+      <button type="button" class="venda-carrinho-remover" title="Remover"
+              onclick="vendaRemoverDoCarrinho(${l.item_id})">${icone('x', 'icone-11')}</button>
+    </div>`;
+  }).join('');
+  if (totalEl) totalEl.textContent = _brlVenda(total);
+  if (btn) btn.disabled = false;
+}
+
+function abrirFinalizarVenda() {
+  if (!vendaCarrinho.length) return;
+  document.getElementById('venda-cliente-nome').value = '';
+  document.getElementById('venda-cliente-telefone').value = '';
+  document.getElementById('venda-cliente-cpf').value = '';
+  document.getElementById('venda-forma-pagamento').value = '';
+  document.getElementById('venda-garantia').value = '90 dias';
+  document.getElementById('venda-garantia-outro-grupo').style.display = 'none';
+  document.getElementById('venda-garantia-outro').value = '';
+  const total = vendaCarrinho.reduce((s, l) => s + l.quantidade * l.valor_unit, 0);
+  document.getElementById('venda-modal-total').textContent = _brlVenda(total);
+  document.getElementById('modal-finalizar-venda').classList.add('open');
+  setTimeout(() => document.getElementById('venda-cliente-nome').focus(), 80);
+}
+
+function vendaGarantiaMudou() {
+  const sel = document.getElementById('venda-garantia');
+  document.getElementById('venda-garantia-outro-grupo').style.display =
+    sel.value === '__outro__' ? '' : 'none';
+}
+
+async function confirmarVenda() {
+  const nome = document.getElementById('venda-cliente-nome').value.trim();
+  if (!nome) {
+    toast('Informe o nome do cliente.', 'error');
+    document.getElementById('venda-cliente-nome').focus();
+    return;
+  }
+  const garantiaSel = document.getElementById('venda-garantia').value;
+  const garantia_texto = garantiaSel === '__outro__'
+    ? document.getElementById('venda-garantia-outro').value.trim()
+    : garantiaSel;
+
+  const btn = document.getElementById('venda-confirmar-btn');
+  btn.disabled = true;
+  try {
+    const r = await api('/vendas', { method: 'POST', body: JSON.stringify({
+      cliente_nome: nome,
+      cliente_telefone: document.getElementById('venda-cliente-telefone').value.trim(),
+      cliente_cpf_cnpj: document.getElementById('venda-cliente-cpf').value.trim(),
+      forma_pagamento: document.getElementById('venda-forma-pagamento').value,
+      garantia_texto,
+      itens: vendaCarrinho.map(l => ({ item_id: l.item_id, quantidade: l.quantidade, valor_unit: l.valor_unit })),
+    }) });
+    toast('Venda registrada.', 'success');
+    fecharModais();
+    vendaCarrinho = [];
+    renderCarrinhoVenda();
+    window.open(`/vendas/${r.id}/imprimir`, '_blank');
+    carregarVendas(); // atualiza saldo (já baixado) e a lista de vendas recentes
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }

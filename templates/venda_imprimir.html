@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Venda #{{ '%06d' % venda.id }} · Porto Tec</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
+<style>
+  /* Nota de venda — pedido de 2026-08-29: "não precisa ser igual quando
+     imprimimos a os, pq ai fica muito grande, tem que ser pequeno, nota de
+     compra msm". Página continua A4 (impressora térmica de cupom não é
+     garantida em toda loja), mas o conteúdo fica num bloco estreito de
+     ~320px — o resto da folha sobra em branco, fácil de cortar/guardar
+     pequeno, sem arriscar layout quebrado numa impressora que não aceite
+     tamanho de página customizado. */
+  :root {
+    --tinta: #1b1e24; --tinta-2: #4b5563; --tinta-3: #5b6472;
+    --linha: #d8dde5; --azul: #1d5fae; --azul-fundo: #eef4fc;
+  }
+  @page { size: A4; margin: 12mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f4f5f7; color: var(--tinta);
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif;
+    font-size: 11px; line-height: 1.4; -webkit-font-smoothing: antialiased;
+  }
+  .nota { max-width: 320px; margin: 16px auto 24px; padding: 14px 16px; }
+
+  .cabecalho { display: flex; align-items: center; gap: 8px; }
+  .cabecalho img { width: 30px; height: 30px; border-radius: 6px; object-fit: contain; }
+  .cabecalho .nome { font-size: 13px; font-weight: 800; letter-spacing: -.2px; }
+  .cabecalho .sub { font-size: 8px; color: var(--tinta-2); }
+
+  .titulo-nota {
+    text-align: center; margin: 10px 0 2px; font-size: 12px; font-weight: 800;
+    color: var(--azul); letter-spacing: .3px;
+  }
+  .numero-nota { text-align: center; font-size: 9.5px; color: var(--tinta-2); margin-bottom: 8px; }
+
+  .linha-divisoria { border: 0; border-top: 1px dashed var(--linha); margin: 8px 0; }
+
+  .campo-linha { display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; margin-bottom: 3px; }
+  .campo-linha .rot { color: var(--tinta-3); }
+  .campo-linha .val { font-weight: 600; text-align: right; }
+
+  .tabela-itens { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10px; }
+  .tabela-itens th {
+    text-align: left; font-size: 8px; text-transform: uppercase; letter-spacing: .4px;
+    color: var(--tinta-3); font-weight: 700; padding: 0 0 4px; border-bottom: 1px solid var(--linha);
+  }
+  .tabela-itens th.num, .tabela-itens td.num { text-align: right; }
+  .tabela-itens td { padding: 4px 0; border-bottom: 1px solid var(--linha); vertical-align: top; }
+  .tabela-itens tfoot td { border-bottom: 0; padding-top: 7px; font-weight: 800; font-size: 12px; }
+
+  .garantia-box {
+    margin-top: 8px; padding: 7px 9px; border-radius: 6px;
+    background: var(--azul-fundo); color: var(--azul); font-size: 10px; font-weight: 600;
+  }
+
+  .rodape { margin-top: 14px; text-align: center; font-size: 9px; color: var(--tinta-3); }
+  .rodape .agradecimento { font-weight: 700; color: var(--azul); font-size: 10px; margin-bottom: 2px; }
+
+  .botao-imprimir {
+    position: fixed; top: 22px; right: 22px; padding: 10px 18px;
+    background: var(--tinta); color: #fff; border: 0; border-radius: 8px;
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  }
+  @media print {
+    .botao-imprimir { display: none; }
+    body { background: #fff; }
+    .nota { margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<button class="botao-imprimir" onclick="window.print()">Imprimir</button>
+
+<div class="nota">
+  <div class="cabecalho">
+    <img src="/static/logo-impressao.png" alt="Porto Tec">
+    <div>
+      <div class="nome">PORTOTEC</div>
+      <div class="sub">Assistência Técnica · (11) 95379-6425</div>
+    </div>
+  </div>
+
+  <div class="titulo-nota">NOTA DE VENDA</div>
+  <div class="numero-nota">Nº {{ '%06d' % venda.id }} · {{ criado_em_br }}</div>
+
+  <hr class="linha-divisoria">
+
+  <div class="campo-linha"><span class="rot">Cliente</span><span class="val">{{ venda.cliente_nome }}</span></div>
+  {% if venda.cliente_telefone %}<div class="campo-linha"><span class="rot">Telefone</span><span class="val">{{ venda.cliente_telefone }}</span></div>{% endif %}
+  {% if venda.cliente_cpf_cnpj %}<div class="campo-linha"><span class="rot">CPF/CNPJ</span><span class="val">{{ venda.cliente_cpf_cnpj }}</span></div>{% endif %}
+  {% if venda.forma_pagamento %}<div class="campo-linha"><span class="rot">Pagamento</span><span class="val">{{ venda.forma_pagamento }}</span></div>{% endif %}
+
+  <table class="tabela-itens">
+    <thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Unit.</th><th class="num">Subtotal</th></tr></thead>
+    <tbody>
+      {% for item in itens %}
+      <tr>
+        <td>{{ item.descricao or item.codigo }}</td>
+        <td class="num">{{ item.quantidade_fmt }}</td>
+        <td class="num">{{ item.valor_unit_fmt }}</td>
+        <td class="num">{{ item.valor_total_fmt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td colspan="3">Total</td><td class="num">R$ {{ valor_total_fmt }}</td></tr></tfoot>
+  </table>
+
+  {% if venda.garantia_texto %}
+  <div class="garantia-box">Garantia: {{ venda.garantia_texto }}</div>
+  {% endif %}
+
+  <div class="rodape">
+    <div class="agradecimento">Obrigado pela preferência!</div>
+    Porto Tec Assistência Técnica · nota gerada em {{ gerado_em_br }}
+  </div>
+</div>
+
+</body>
+</html>

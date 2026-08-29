@@ -39,6 +39,7 @@ CATALOGO = [
     {"chave": "estoque_ver",        "area": "Estoque",     "rotulo": "Ver o Estoque"},
     {"chave": "estoque_editar",     "area": "Estoque",     "rotulo": "Mexer no Estoque (entrada, saída, ajuste, criar)"},
     {"chave": "estoque_excluir",    "area": "Estoque",     "rotulo": "Excluir peças e estoques"},
+    {"chave": "vendas",             "area": "Vendas",      "rotulo": "Vender peças no balcão e imprimir a nota"},
     # Comunicação e relatórios
     {"chave": "chat_equipe",        "area": "Comunicação", "rotulo": "Usar o chat da equipe"},
     {"chave": "relatorios",         "area": "Relatórios",  "rotulo": "Ver relatórios e exportações"},
@@ -94,6 +95,7 @@ REGRAS = [
     ("/api/estoque",               ("GET",),                 "estoque_ver"),
     ("/api/estoque",               ("POST", "PUT", "PATCH"), "estoque_editar"),
     ("/api/estoque",               ("DELETE",),              "estoque_excluir"),
+    ("/api/vendas",                None,                     "vendas"),
 ]
 
 

@@ -75,6 +75,10 @@
         <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
         Estoque
       </button>
+      <button class="main-tab" id="mtab-vendas" style="display:none" onclick="switchMainTab('vendas')">
+        <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        Vendas
+      </button>
     </nav>
 
     <div class="header-meta">
@@ -426,6 +430,48 @@
       <div id="estoque-lista"></div>
     </div>
   </main>
+
+  <main class="main" id="panel-vendas" style="display:none; grid-row: 2; grid-column: 1 / -1;">
+    <div class="historico-wrap">
+      <div class="estoque-topo">
+        <div>
+          <span class="visao-geral-title">Vendas</span>
+          <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">
+            Bipe o código de barras ou pesquise o produto, monte o carrinho e
+            feche com os dados do cliente — sai uma nota de venda pra imprimir.
+          </p>
+        </div>
+      </div>
+
+      <div class="venda-layout">
+        <div class="venda-produtos">
+          <input type="text" id="venda-busca-input" class="form-input venda-busca-input"
+                 placeholder="Bipar código de barras ou pesquisar produto..."
+                 autocomplete="off" autofocus
+                 onkeydown="vendaBuscaKeydown(event)" oninput="filtrarProdutosVenda()">
+          <div class="venda-grid" id="venda-grid"></div>
+        </div>
+
+        <div class="venda-carrinho">
+          <div class="venda-carrinho-titulo">Carrinho</div>
+          <div id="venda-carrinho-lista" class="venda-carrinho-lista">
+            <div class="venda-carrinho-vazio">Bipe ou clique num produto pra adicionar.</div>
+          </div>
+          <div class="venda-carrinho-total">
+            <span>Total</span>
+            <span id="venda-carrinho-total-valor">R$ 0,00</span>
+          </div>
+          <button type="button" class="btn btn-primary" style="width:100%;margin-top:10px;"
+                  id="venda-finalizar-btn" onclick="abrirFinalizarVenda()" disabled>
+            Finalizar venda
+          </button>
+        </div>
+      </div>
+
+      <p class="form-separador" style="margin-top:22px;">Vendas recentes</p>
+      <div id="venda-recentes-lista"></div>
+    </div>
+  </main>
 </div>
 
 <div class="modal-overlay" id="modal-estoque-grupo" role="dialog" aria-modal="true">
@@ -450,6 +496,59 @@
 <datalist id="estoque-datalist-aparelho"></datalist>
 <datalist id="estoque-datalist-marca"></datalist>
 <datalist id="estoque-datalist-cliente"></datalist>
+
+<div class="modal-overlay" id="modal-finalizar-venda" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-title">Finalizar venda</div>
+    <div class="form-group">
+      <label class="form-label" for="venda-cliente-nome">Nome do cliente</label>
+      <input type="text" class="form-input" id="venda-cliente-nome" maxlength="120"
+             placeholder="Nome de quem está comprando">
+    </div>
+    <div class="estoque-mov-linha">
+      <div class="form-group">
+        <label class="form-label" for="venda-cliente-telefone">Telefone (opcional)</label>
+        <input type="text" class="form-input" id="venda-cliente-telefone" maxlength="20">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="venda-cliente-cpf">CPF/CNPJ (opcional)</label>
+        <input type="text" class="form-input" id="venda-cliente-cpf" maxlength="20">
+      </div>
+    </div>
+    <div class="estoque-mov-linha">
+      <div class="form-group">
+        <label class="form-label" for="venda-forma-pagamento">Forma de pagamento</label>
+        <select class="form-input" id="venda-forma-pagamento">
+          <option value="">Selecione...</option>
+          <option value="Pix">Pix</option>
+          <option value="Dinheiro">Dinheiro</option>
+          <option value="Cartão de débito">Cartão de débito</option>
+          <option value="Cartão de crédito">Cartão de crédito</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="venda-garantia">Garantia</label>
+        <select class="form-input" id="venda-garantia" onchange="vendaGarantiaMudou()">
+          <option value="Sem garantia">Sem garantia</option>
+          <option value="30 dias">30 dias</option>
+          <option value="90 dias" selected>90 dias</option>
+          <option value="1 ano">1 ano</option>
+          <option value="__outro__">Outro...</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" id="venda-garantia-outro-grupo" style="display:none;">
+      <label class="form-label" for="venda-garantia-outro">Descreva a garantia</label>
+      <input type="text" class="form-input" id="venda-garantia-outro" maxlength="80">
+    </div>
+    <div class="venda-resumo-total">Total da venda: <b id="venda-modal-total">R$ 0,00</b></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="venda-confirmar-btn"
+              onclick="confirmarVenda()">Confirmar e imprimir</button>
+    </div>
+  </div>
+</div>
 
 <div class="drawer-overlay" id="drawer-permissoes" onclick="if(event.target===this)fecharEditorPermissoes()">
   <aside class="drawer" role="dialog" aria-modal="true">
@@ -576,6 +675,14 @@
         <input type="number" class="form-input" id="estoque-mov-custo"
                min="0" step="any" placeholder="0,00">
       </div>
+    </div>
+    <div class="form-group" id="estoque-mov-grupo-foto" style="display:none;">
+      <label class="form-label">Foto do produto (opcional)</label>
+      <label class="df-foto-botao df-foto-botao-mini">
+        Escolher foto
+        <input type="file" accept="image/*" onchange="estoqueEscolherFoto(this)" hidden>
+      </label>
+      <div id="estoque-mov-foto-previa" class="df-previa"></div>
     </div>
     <div class="form-group" id="estoque-mov-grupo-obs">
       <label class="form-label" for="estoque-mov-obs">Observação (opcional)</label>
