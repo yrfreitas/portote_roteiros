@@ -139,31 +139,53 @@ def importar():
     if not linhas:
         return jsonify({"erro": "Nenhuma linha reconhecida nesse arquivo — confira se é a planilha certa"}), 400
 
-    with db_conn(commit=True) as conn:
-        execute(conn, "DELETE FROM pecas_substituicao")
-        cur = conn.cursor()
-        try:
-            if IS_PG:
-                # executemany do psycopg2 manda uma INSERT por linha — 18 mil
-                # viagens de ida e volta ao Postgres do Railway estouram fácil
-                # o --timeout 60 do gunicorn (Procfile) e o import morre no
-                # meio, sem avisar direito: a busca depois só dizia "não
-                # achou nada". execute_values manda tudo numa única instrução.
-                from psycopg2.extras import execute_values
-                execute_values(cur, """
-                    INSERT INTO pecas_substituicao
-                        (codigo, substituto_1, substituto_2, substituto_3, substituto_4,
-                         substituto_5, inicio_validade, fim_validade)
-                    VALUES %s
-                """, linhas, page_size=2000)
-            else:
-                cur.executemany(sql("""
-                    INSERT INTO pecas_substituicao
-                        (codigo, substituto_1, substituto_2, substituto_3, substituto_4,
-                         substituto_5, inicio_validade, fim_validade)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """), linhas)
-        finally:
-            cur.close()
+    try:
+        with db_conn(commit=True) as conn:
+            execute(conn, "DELETE FROM pecas_substituicao")
+            cur = conn.cursor()
+            try:
+                if IS_PG:
+                    # executemany do psycopg2 manda uma INSERT por linha — 18 mil
+                    # viagens de ida e volta ao Postgres do Railway estouram fácil
+                    # o --timeout 60 do gunicorn (Procfile) e o import morre no
+                    # meio, sem avisar direito: a busca depois só dizia "não
+                    # achou nada". execute_values manda tudo numa única instrução.
+                    from psycopg2.extras import execute_values
+                    execute_values(cur, """
+                        INSERT INTO pecas_substituicao
+                            (codigo, substituto_1, substituto_2, substituto_3, substituto_4,
+                             substituto_5, inicio_validade, fim_validade)
+                        VALUES %s
+                    """, linhas, page_size=2000)
+                else:
+                    cur.executemany(sql("""
+                        INSERT INTO pecas_substituicao
+                            (codigo, substituto_1, substituto_2, substituto_3, substituto_4,
+                             substituto_5, inicio_validade, fim_validade)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """), linhas)
+            finally:
+                cur.close()
+    except Exception as exc:
+        # Antes disso, uma falha aqui virava 500 genérico do Flask — sem
+        # mensagem nenhuma pra quem subiu o arquivo, só "não achou nada" na
+        # busca depois, sem ligar os dois fatos. Log pra investigar server-side
+        # (não expõe a mensagem crua pra evitar vazar detalhe de conexão do
+        # banco, mas confirma que FALHOU, que é o que faltava ficar claro).
+        log.exception("Falha ao gravar a planilha de substituição no banco")
+        return jsonify({"erro": f"Consegui ler o arquivo ({len(linhas)} linhas), "
+                                f"mas falhou ao gravar no banco: {type(exc).__name__}. "
+                                f"Tenta de novo — se continuar, me avisa."}), 502
+
+    # Confere que gravou de verdade — depois do bug do executemany travando
+    # sem avisar, "a chamada não deu erro" deixou de ser garantia suficiente
+    # de que os dados chegaram no banco.
+    with db_conn() as conn:
+        total_no_banco = fetch_one(conn, "SELECT COUNT(*) AS n FROM pecas_substituicao")["n"]
+    if total_no_banco != len(linhas):
+        log.error("Import de substituição: esperava %d linhas, banco ficou com %d",
+                  len(linhas), total_no_banco)
+        return jsonify({"erro": f"Gravação incompleta: esperava {len(linhas)} linhas, "
+                                f"o banco ficou com {total_no_banco}. Tenta importar de novo."}), 502
 
     return jsonify({"mensagem": "Planilha importada", "total": len(linhas)}), 201
