@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v140';
+const VERSAO_PAINEL = 'v141';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7380,24 +7380,37 @@ async function buscarSubstituicao() {
   }
 }
 
-async function importarSubstituicao() {
+async function importarSubstituicao(botao) {
   const input = document.getElementById('substituicao-arquivo');
   const arquivo = input.files && input.files[0];
   if (!arquivo) {
     toast('Escolha o arquivo .xlsx primeiro', 'error');
     return;
   }
+  // Feedback IMEDIATO no botão, antes até do fetch — sem isso, um clique
+  // que demora (arquivo de 1MB+ subindo) parecia "não aconteceu nada" até
+  // a resposta voltar, e quem clicou não sabia se tinha funcionado.
+  const textoOriginal = botao ? botao.textContent : null;
+  if (botao) { botao.disabled = true; botao.textContent = 'Importando...'; }
+  const status = document.getElementById('substituicao-status');
+  if (status) status.textContent = 'Importando — pode levar alguns segundos...';
+
   const form = new FormData();
   form.append('arquivo', arquivo);
   try {
     const resp = await fetch('/api/pecas-substituicao/importar', { method: 'POST', body: form });
-    const dados = await resp.json();
-    if (!resp.ok) throw new Error(dados.erro || 'Falha ao importar');
+    const texto = await resp.text();
+    let dados = {};
+    try { dados = texto ? JSON.parse(texto) : {}; }
+    catch { throw new Error(`Resposta inesperada do servidor (HTTP ${resp.status}).`); }
+    if (!resp.ok) throw new Error(dados.erro || `Falha ao importar (HTTP ${resp.status})`);
     toast(`Planilha importada — ${dados.total.toLocaleString('pt-BR')} códigos.`, 'success');
     input.value = '';
-    carregarStatusSubstituicao();
   } catch (e) {
     toast(e.message, 'error');
+  } finally {
+    if (botao) { botao.disabled = false; botao.textContent = textoOriginal; }
+    carregarStatusSubstituicao();
   }
 }
 
