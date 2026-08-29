@@ -222,13 +222,25 @@ def listar():
         # e abrir uma segunda OS pra mesma peça.
         p["agendamento_os_id"] = (registro or {}).get("ordem_servico_id")
 
-    # Já foi mandado pra fila de Agendar Clientes? some da lista padrão desta
-    # aba. O trabalho daqui (vincular a peça a um cliente) está feito, e o que
-    # falta (marcar visita) já mora na outra tela — a mesma peça aparecendo
-    # nas duas ao mesmo tempo é exatamente a duplicação que confunde quem
-    # olha as duas abas. "mostrar todas" continua trazendo de volta, pra
-    # quem quer conferir o histórico do que já foi enviado.
     if not todos:
+        # Pedido de 2026-08-29: só entra na lista padrão quem está A CAMINHO
+        # (status_compra ENVIADO) OU já foi marcado "chegou" no site — nessa
+        # ordem, DEPOIS da chegada estar juntada acima. CRIADO/APROVADO/
+        # FATURADO (comprado mas ainda sem despacho) ficavam misturados com o
+        # que já saiu de fato, confundindo quem vincula cliente. A condição
+        # do chegou_em é o que a primeira tentativa (filtrar isso dentro de
+        # listar_pedidos, sem saber de chegada) esqueceu: o status da
+        # planilha pode avançar por conta própria além de ENVIADO sem
+        # relação nenhuma com o site já ter recebido a peça — sem essa
+        # condição, peça já em mãos sumia da tela.
+        pedidos = [p for p in pedidos
+                  if p["chegou_em"] or p["status_compra"].strip().upper() == "ENVIADO"]
+        # Já foi mandado pra fila de Agendar Clientes? some da lista padrão
+        # desta aba. O trabalho daqui (vincular a peça a um cliente) está
+        # feito, e o que falta (marcar visita) já mora na outra tela — a
+        # mesma peça aparecendo nas duas ao mesmo tempo é exatamente a
+        # duplicação que confunde quem olha as duas abas. "mostrar todas"
+        # continua trazendo de volta, pra quem quer conferir o histórico.
         pedidos = [p for p in pedidos if not p["agendamento_os_id"]]
 
     # Liga cada compra a quem pediu aquela peça em campo.
