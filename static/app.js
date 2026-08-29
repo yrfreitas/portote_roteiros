@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v135';
+const VERSAO_PAINEL = 'v136';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5912,7 +5912,13 @@ async function carregarOS() {
         <div class="aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || '—'}</div>
       </div>
       <div class="defeito">${esc(o.defeito_declarado || '—')}</div>
-      <span class="conc-tag ${statusClasse}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
+      <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+        <span class="conc-tag ${statusClasse}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
+        ${o.visita_data
+          ? `<span class="conc-tag ok" title="${o.visita_tecnico ? 'Técnico: ' + esc(o.visita_tecnico) : ''}">
+               📅 ${esc(o.visita_data.split('-').reverse().join('/'))}</span>`
+          : ''}
+      </div>
     </div>`;
   }).join('');
 
@@ -6186,6 +6192,7 @@ async function abrirModalNovaOS() {
     if (el) el.value = '';
   });
   document.getElementById('os-garantia-inicio-grupo').style.display = 'none';
+  document.getElementById('os-garantia-meses').value = '3';
   document.getElementById('os-taxa').value = '0';
   document.getElementById('os-taxa-vistoria').value = '0';
   document.querySelectorAll('#os-pagamento-quadrados .pagamento-quadrado').forEach(b => b.classList.remove('ativo'));
@@ -6551,6 +6558,7 @@ async function osCriar() {
     corpo.taxa_avaliacao = document.getElementById('os-taxa').value || 0;
     if (tipoOs === 'saida_oficina') {
       corpo.garantia_inicio = document.getElementById('os-garantia-inicio').value || null;
+      corpo.garantia_meses = Number(document.getElementById('os-garantia-meses').value) || 3;
     }
   }
 
@@ -6771,10 +6779,20 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="os-detalhe-secao">
       <label class="form-label" for="os-ed-tipo-os">Tipo de OS</label>
       <select class="form-input" id="os-ed-tipo-os" onchange="osEdTipoMudou()">${opcoesTipoOs}</select>
-      <div class="form-group" id="os-ed-garantia-inicio-grupo"
+      <div class="form-row" id="os-ed-garantia-inicio-grupo"
            style="margin-top:8px;display:${o.tipo_os === 'saida_oficina' ? '' : 'none'};">
-        <label class="form-label" for="os-ed-garantia-inicio">Dia da garantia (conclusão do reparo)</label>
-        <input type="date" class="form-input" id="os-ed-garantia-inicio" value="${esc(o.garantia_inicio || '')}">
+        <div class="form-group">
+          <label class="form-label" for="os-ed-garantia-inicio">Dia da garantia (conclusão do reparo)</label>
+          <input type="date" class="form-input" id="os-ed-garantia-inicio" value="${esc(o.garantia_inicio || '')}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="os-ed-garantia-meses">Prazo de garantia</label>
+          <select class="form-input" id="os-ed-garantia-meses">
+            <option value="3"${(o.garantia_meses || 3) === 3 ? ' selected' : ''}>3 meses</option>
+            <option value="6"${o.garantia_meses === 6 ? ' selected' : ''}>6 meses</option>
+            <option value="12"${o.garantia_meses === 12 ? ' selected' : ''}>1 ano</option>
+          </select>
+        </div>
       </div>
     </div>
     <div class="os-detalhe-secao">
@@ -7203,6 +7221,8 @@ async function osSalvarEdicao(id) {
     imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
     garantia_inicio: tipoOsEditado === 'saida_oficina'
       ? (document.getElementById('os-ed-garantia-inicio')?.value || null) : null,
+    garantia_meses: tipoOsEditado === 'saida_oficina'
+      ? (Number(document.getElementById('os-ed-garantia-meses')?.value) || 3) : null,
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {

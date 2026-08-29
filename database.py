@@ -962,6 +962,11 @@ _MIGRACOES_PG = [
     # tipo usa; os demais (garantia_3_meses etc.) continuam calculando a
     # partir de hoje na hora de imprimir, como já faziam.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS garantia_inicio TEXT",
+    # Prazo escolhido (3/6/12 meses) pra "saida_oficina" — pedido de
+    # 2026-08-29: o termo padrão promete 3 meses fixos, mas a loja às vezes
+    # dá 6 ou 12. NULL = usa o padrão de 3 (compatível com OS já abertas
+    # antes deste campo existir).
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS garantia_meses INTEGER",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1119,6 +1124,7 @@ _MIGRACOES_SQLITE = [
         FOREIGN KEY (item_id) REFERENCES estoque_itens(id) ON DELETE SET NULL
     )""",
     "ALTER TABLE ordens_servico ADD COLUMN garantia_inicio TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN garantia_meses INTEGER",
 ]
 
 

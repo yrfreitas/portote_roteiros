@@ -831,6 +831,14 @@ def _validar_imprimir_ocultar(valor) -> str:
     return json.dumps([v for v in valor if v in SECOES_IMPRIMIVEIS])
 
 
+def _validar_garantia_meses(valor):
+    try:
+        n = int(valor)
+    except (TypeError, ValueError):
+        return None
+    return n if n in (3, 6, 12) else None
+
+
 def _validar_data_iso(valor):
     """'2026-08-29' -> mesma string; qualquer outra coisa (vazio, formato
     errado, injeção de texto livre) vira None — melhor sem data do que uma
@@ -1022,8 +1030,25 @@ def listar():
     where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
 
     with db_conn() as conn:
+        # visita_tecnico/visita_data: pedido de 2026-08-29 ("agendar dia pra
+        # atendimento ou aparecer se já tiver") — antes só dava pra ver isso
+        # abrindo o detalhe de cada OS uma por uma; agora a própria lista já
+        # mostra. Subquery correlacionada (não JOIN) de propósito: uma OS pode
+        # ter mais de uma visita ao longo do tempo, e um JOIN duplicaria a
+        # linha da OS na lista se houvesse mais de uma pendente.
         ordens = fetch_all(conn, f"""
-            SELECT os.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone
+            SELECT os.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone,
+                   (SELECT t.nome
+                      FROM servicos s
+                      JOIN fichas f ON f.id = s.ficha_id
+                      JOIN tecnicos t ON t.id = f.tecnico_id
+                     WHERE s.ordem_servico_id = os.id AND s.status = 'pendente'
+                     ORDER BY f.data_referencia LIMIT 1) AS visita_tecnico,
+                   (SELECT f.data_referencia
+                      FROM servicos s
+                      JOIN fichas f ON f.id = s.ficha_id
+                     WHERE s.ordem_servico_id = os.id AND s.status = 'pendente'
+                     ORDER BY f.data_referencia LIMIT 1) AS visita_data
               FROM ordens_servico os
               JOIN clientes c ON c.id = os.cliente_id
               {where}
@@ -1335,6 +1360,7 @@ def criar():
     ocultar_fila = bool(d.get("oculta_fila"))
     imprimir_ocultar = _validar_imprimir_ocultar(d.get("imprimir_ocultar"))
     garantia_inicio = _validar_data_iso(d.get("garantia_inicio")) if tipo_os == "saida_oficina" else None
+    garantia_meses = _validar_garantia_meses(d.get("garantia_meses")) if tipo_os == "saida_oficina" else None
     # Foto/técnico deixaram de ser exclusivos do Chamado Técnico — pedido de
     # 2026-08-27, mesma OS pode precisar registrar isso em qualquer modelo.
     foto = _foto_valida(d.get("foto"))
@@ -1386,14 +1412,16 @@ def criar():
                  numero_serie, voltagem, acessorios, defeito_declarado, taxa_avaliacao,
                  status, observacao, criado_em, criado_por, tipo_os,
                  modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
-                 token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio,
+                 garantia_meses)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
               tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
-              token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio))
+              token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio,
+              garantia_meses))
 
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
@@ -1492,6 +1520,10 @@ def editar(os_id):
             # banco e reaparecia se o tipo voltasse a ser saida_oficina.
             campos.append("garantia_inicio = ?")
             valores.append(_validar_data_iso(d.get("garantia_inicio"))
+                           if tipo_os_efetivo == "saida_oficina" else None)
+        if "garantia_meses" in d or ("tipo_os" in d and tipo_os_efetivo != "saida_oficina"):
+            campos.append("garantia_meses = ?")
+            valores.append(_validar_garantia_meses(d.get("garantia_meses"))
                            if tipo_os_efetivo == "saida_oficina" else None)
 
         if not campos:

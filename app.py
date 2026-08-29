@@ -459,7 +459,15 @@ def _montar_documento_os(os_id):
         ultimo_dia = calendar.monthrange(ano, mes)[1]
         return data.replace(year=ano, month=mes, day=min(data.day, ultimo_dia))
 
-    garantia_meses = _GARANTIA_MESES.get(ordem.get("tipo_os"))
+    # "saida_oficina" pode escolher 3/6/12 meses (pedido de 2026-08-29) em vez
+    # do padrão fixo — os outros três tipos já SÃO um prazo fixo cada um (é a
+    # própria escolha do tipo que decide), então ordem.garantia_meses não se
+    # aplica a eles.
+    garantia_meses = (
+        ordem.get("garantia_meses")
+        if ordem.get("tipo_os") == "saida_oficina" and ordem.get("garantia_meses")
+        else _GARANTIA_MESES.get(ordem.get("tipo_os"))
+    )
     garantia_inicio_br = garantia_fim_br = garantia_prazo_rotulo = None
     if garantia_meses:
         try:
@@ -472,6 +480,15 @@ def _montar_documento_os(os_id):
         garantia_prazo_rotulo = "1 ano" if garantia_meses == 12 else f"{garantia_meses} meses"
 
     termos = TERMOS_POR_TIPO.get(ordem.get("tipo_os"), TERMOS_PADRAO)
+    # O termo padrão de "saida_oficina" tem "03 (três) meses" escrito por
+    # extenso no texto jurídico — pedido de 2026-08-29 pra poder escolher
+    # 6 ou 12 meses deixaria a cláusula MENTINDO se só a data fosse trocada
+    # sem tocar no texto. Troca só essa frase, no documento, sem mexer no
+    # termo-fonte (TERMOS_POR_TIPO segue sendo o padrão de 3 meses).
+    if ordem.get("tipo_os") == "saida_oficina" and garantia_meses and garantia_meses != 3:
+        _REDACAO_MESES = {6: "06 (seis)", 12: "12 (doze)"}
+        termos = termos.replace("garantia de 03 (três) meses",
+                                f"garantia de {_REDACAO_MESES[garantia_meses]} meses")
     tipo_os_rotulo = TIPOS_OS_ROTULO.get(ordem.get("tipo_os"), "")
     modelo_os_rotulo = MODELOS_OS_ROTULO.get(ordem.get("modelo_os"), MODELOS_OS_ROTULO["os"])
 
