@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v133';
+const VERSAO_PAINEL = 'v134';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6180,10 +6180,12 @@ async function abrirModalNovaOS() {
   ['os-nome','os-cpf','os-telefone','os-email','os-cep','os-numero','os-bairro',
    'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
    'os-serie','os-voltagem','os-acessorios','os-defeito','os-obs','os-tipo','os-solucao',
-   'os-chamado-tecnico','os-forma-pagamento','os-chamado-tecnico-solo'].forEach(id => {
+   'os-chamado-tecnico','os-forma-pagamento','os-chamado-tecnico-solo',
+   'os-garantia-inicio'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  document.getElementById('os-garantia-inicio-grupo').style.display = 'none';
   document.getElementById('os-taxa').value = '0';
   document.getElementById('os-taxa-vistoria').value = '0';
   document.querySelectorAll('#os-pagamento-quadrados .pagamento-quadrado').forEach(b => b.classList.remove('ativo'));
@@ -6239,6 +6241,7 @@ function osEscolherModelo(modelo) {
   // exclusiva do modelo "Ordens de Serviço".
   document.getElementById('os-tipo-obrigatorio').style.display = modelo === 'os' ? '' : 'none';
   document.getElementById('os-campos-taxa').style.display = modelo === 'os' ? '' : 'none';
+  osTipoMudou();
 
   // Chamado Técnico troca Itens/Valores por Taxa de vistoria, e a forma de
   // pagamento (quadrados) fica junto dela — não mais com o técnico, que
@@ -6496,6 +6499,15 @@ async function osAbrirNovoFilho(paiId, clienteId, clienteNome) {
   toast('Escolha Chamado Técnico ou Orçamento — o cliente e a OS já estão marcados', 'info');
 }
 
+// Mesma razão do osEdTipoMudou (edição): só "OS de saída da oficina" tem uma
+// data de garantia pra escolher — o termo impresso conta os 3 meses "a
+// partir da data da conclusão do reparo", não do dia em que a OS foi aberta.
+function osTipoMudou() {
+  const tipo = document.getElementById('os-tipo')?.value;
+  const grupo = document.getElementById('os-garantia-inicio-grupo');
+  if (grupo) grupo.style.display = tipo === 'saida_oficina' ? '' : 'none';
+}
+
 async function osCriar() {
   const modo = document.querySelector('#os-cliente-modo .pecas-filtro.ativo')?.dataset.modo;
   const corpo = {
@@ -6537,6 +6549,9 @@ async function osCriar() {
     }
     corpo.tipo_os = tipoOs;
     corpo.taxa_avaliacao = document.getElementById('os-taxa').value || 0;
+    if (tipoOs === 'saida_oficina') {
+      corpo.garantia_inicio = document.getElementById('os-garantia-inicio').value || null;
+    }
   }
 
   if (modo === 'existente') {
@@ -6755,7 +6770,12 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
   return `
     <div class="os-detalhe-secao">
       <label class="form-label" for="os-ed-tipo-os">Tipo de OS</label>
-      <select class="form-input" id="os-ed-tipo-os">${opcoesTipoOs}</select>
+      <select class="form-input" id="os-ed-tipo-os" onchange="osEdTipoMudou()">${opcoesTipoOs}</select>
+      <div class="form-group" id="os-ed-garantia-inicio-grupo"
+           style="margin-top:8px;display:${o.tipo_os === 'saida_oficina' ? '' : 'none'};">
+        <label class="form-label" for="os-ed-garantia-inicio">Dia da garantia (conclusão do reparo)</label>
+        <input type="date" class="form-input" id="os-ed-garantia-inicio" value="${esc(o.garantia_inicio || '')}">
+      </div>
     </div>
     <div class="os-detalhe-secao">
       ${equipamento}
@@ -6901,6 +6921,12 @@ async function abrirOSDetalhe(id) {
   document.getElementById('os-detalhe-titulo').textContent =
     `OS #${String(o.id).padStart(6, '0')} · ${o.cliente_nome}`;
 
+  // Pendente = já tem dia marcado e ninguém foi ainda. Decide se a OS comum
+  // ("Ordens de Serviço") mostra o formulário de agendar ou só PUXA o que já
+  // está marcado (pedido de 2026-08-29) — Chamado Técnico sempre mostra o
+  // formulário, de propósito, porque ali é comum reagendar mesmo já tendo ido.
+  const temVisitaPendente = r.visitas.some(v => v.status === 'pendente');
+
   const visitas = r.visitas.length === 0
     ? `<p class="ajuda-texto">Nenhuma visita agendada ainda.</p>`
     : r.visitas.map(v => `
@@ -6982,7 +7008,7 @@ async function abrirOSDetalhe(id) {
       </div>
       <button class="btn btn-ghost btn-sm" onclick="osAdicionarPeca(${o.id})">+ Adicionar peça</button>
     </div>` : ''}
-    ${o.modelo_os === 'chamado_tecnico' ? `
+    ${o.modelo_os === 'chamado_tecnico' || (o.modelo_os !== 'orcamento' && !temVisitaPendente) ? `
     <div class="os-detalhe-secao">
       <p class="form-separador">Agendar nova visita</p>
       <div class="form-row">
@@ -6996,7 +7022,11 @@ async function abrirOSDetalhe(id) {
         </div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="osAgendar(${o.id})">Agendar</button>
-    </div>` : ''}
+    </div>` : (o.modelo_os !== 'orcamento' ? `
+    <div class="os-detalhe-secao">
+      <p class="ajuda-texto" style="margin:0;">Já tem visita marcada — veja o dia em "Visitas agendadas" acima.
+        Pra trocar, desagende a visita pendente antes.</p>
+    </div>` : '')}
     <div class="os-detalhe-secao">
       <p class="form-separador">Peça</p>
       <div id="os-pedir-peca-area">
@@ -7137,6 +7167,17 @@ async function osEnviarPedidoPeca(id) {
   }
 }
 
+// A data de garantia só existe pro tipo "OS de saída da oficina" — o termo
+// impresso promete "3 meses contados a partir da data da conclusão do
+// reparo" (ver TERMOS_POR_TIPO['saida_oficina']), e essa data é o dia em que
+// o aparelho saiu, não necessariamente o dia em que alguém está editando ou
+// reimprimindo a OS depois.
+function osEdTipoMudou() {
+  const tipo = document.getElementById('os-ed-tipo-os')?.value;
+  const grupo = document.getElementById('os-ed-garantia-inicio-grupo');
+  if (grupo) grupo.style.display = tipo === 'saida_oficina' ? '' : 'none';
+}
+
 async function osSalvarEdicao(id) {
   const tipoOsEditado = document.getElementById('os-ed-tipo-os').value;
   if (!tipoOsEditado) {
@@ -7160,6 +7201,8 @@ async function osSalvarEdicao(id) {
     taxa_avaliacao: document.getElementById('os-ed-taxa').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
     imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
+    garantia_inicio: tipoOsEditado === 'saida_oficina'
+      ? (document.getElementById('os-ed-garantia-inicio')?.value || null) : null,
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {

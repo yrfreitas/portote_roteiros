@@ -443,7 +443,14 @@ def _montar_documento_os(os_id):
     # não admitir erro de conta: começa NO DIA EM QUE A FOLHA É IMPRESSA
     # (não na data de abertura da OS, que pode ser bem anterior a quando o
     # documento realmente sai impresso pro cliente assinar).
-    _GARANTIA_MESES = {"garantia_3_meses": 3, "garantia_6_meses": 6, "garantia_1_ano": 12}
+    # "saida_oficina" soma aos outros três em 2026-08-29: o termo dela promete
+    # 3 meses "a partir da data da conclusão do reparo" (ver TERMOS_POR_TIPO),
+    # só que essa data é escolhida à mão no painel (ordem.garantia_inicio) —
+    # o dia em que o aparelho de fato saiu, não necessariamente hoje. Os
+    # outros três tipos não têm esse campo preenchido, então continuam
+    # caindo no "hoje" de sempre.
+    _GARANTIA_MESES = {"garantia_3_meses": 3, "garantia_6_meses": 6, "garantia_1_ano": 12,
+                       "saida_oficina": 3}
 
     def _somar_meses(data, meses):
         mes_total = data.month - 1 + meses
@@ -455,9 +462,13 @@ def _montar_documento_os(os_id):
     garantia_meses = _GARANTIA_MESES.get(ordem.get("tipo_os"))
     garantia_inicio_br = garantia_fim_br = garantia_prazo_rotulo = None
     if garantia_meses:
-        hoje = datetime.now()
-        garantia_inicio_br = hoje.strftime("%d/%m/%Y")
-        garantia_fim_br = _somar_meses(hoje, garantia_meses).strftime("%d/%m/%Y")
+        try:
+            base = (datetime.strptime(ordem["garantia_inicio"], "%Y-%m-%d")
+                   if ordem.get("garantia_inicio") else datetime.now())
+        except ValueError:
+            base = datetime.now()
+        garantia_inicio_br = base.strftime("%d/%m/%Y")
+        garantia_fim_br = _somar_meses(base, garantia_meses).strftime("%d/%m/%Y")
         garantia_prazo_rotulo = "1 ano" if garantia_meses == 12 else f"{garantia_meses} meses"
 
     termos = TERMOS_POR_TIPO.get(ordem.get("tipo_os"), TERMOS_PADRAO)

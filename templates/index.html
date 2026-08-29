@@ -1143,7 +1143,7 @@
 
     <div class="form-group" id="os-campos-tipo-padrao">
       <label class="form-label" for="os-tipo">Tipo de OS <span class="form-obrigatorio" id="os-tipo-obrigatorio">*</span></label>
-      <select class="form-input" id="os-tipo">
+      <select class="form-input" id="os-tipo" onchange="osTipoMudou()">
         <option value="">Selecione...</option>
         <option value="garantia_3_meses">Garantia 3 meses</option>
         <option value="entrada_oficina">OS de entrada na oficina</option>
@@ -1164,6 +1164,11 @@
         <option value="criterio_orcamento_reparo">Critério de orçamento - reparo</option>
         <option value="criterios_condicoes_orcamento">Critérios e condições do orçamento</option>
       </select>
+    </div>
+
+    <div class="form-group" id="os-garantia-inicio-grupo" style="display:none;">
+      <label class="form-label" for="os-garantia-inicio">Dia da garantia (conclusão do reparo)</label>
+      <input type="date" class="form-input" id="os-garantia-inicio">
     </div>
 
     <div class="pecas-filtros" id="os-cliente-modo">

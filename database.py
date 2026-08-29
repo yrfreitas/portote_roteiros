@@ -955,6 +955,13 @@ _MIGRACOES_PG = [
         valor_unit  DOUBLE PRECISION NOT NULL,
         valor_total DOUBLE PRECISION NOT NULL
     )""",
+    # Dia da garantia pro tipo "saida_oficina" — pedido de 2026-08-29. O termo
+    # impresso promete garantia contada "a partir da data da conclusão do
+    # reparo", que é o dia em que o aparelho saiu da oficina, não
+    # necessariamente o dia em que alguém abre/reimprime a OS depois. Só esse
+    # tipo usa; os demais (garantia_3_meses etc.) continuam calculando a
+    # partir de hoje na hora de imprimir, como já faziam.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS garantia_inicio TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1111,6 +1118,7 @@ _MIGRACOES_SQLITE = [
         FOREIGN KEY (venda_id) REFERENCES vendas(id) ON DELETE CASCADE,
         FOREIGN KEY (item_id) REFERENCES estoque_itens(id) ON DELETE SET NULL
     )""",
+    "ALTER TABLE ordens_servico ADD COLUMN garantia_inicio TEXT",
 ]
 
 

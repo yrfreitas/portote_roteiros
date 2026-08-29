@@ -831,6 +831,20 @@ def _validar_imprimir_ocultar(valor) -> str:
     return json.dumps([v for v in valor if v in SECOES_IMPRIMIVEIS])
 
 
+def _validar_data_iso(valor):
+    """'2026-08-29' -> mesma string; qualquer outra coisa (vazio, formato
+    errado, injeção de texto livre) vira None — melhor sem data do que uma
+    data que quebra o cálculo de garantia na impressão."""
+    texto = (valor or "").strip()
+    if not texto:
+        return None
+    try:
+        datetime.strptime(texto, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return texto
+
+
 @ordens_servico_bp.route("/ordens-servico/metricas", methods=["GET"])
 def metricas():
     """OS por mês (últimos 6), tempo médio até finalizar, e indicação que
@@ -1320,6 +1334,7 @@ def criar():
     taxa_vistoria = _num(d.get("taxa_vistoria"))
     ocultar_fila = bool(d.get("oculta_fila"))
     imprimir_ocultar = _validar_imprimir_ocultar(d.get("imprimir_ocultar"))
+    garantia_inicio = _validar_data_iso(d.get("garantia_inicio")) if tipo_os == "saida_oficina" else None
     # Foto/técnico deixaram de ser exclusivos do Chamado Técnico — pedido de
     # 2026-08-27, mesma OS pode precisar registrar isso em qualquer modelo.
     foto = _foto_valida(d.get("foto"))
@@ -1371,14 +1386,14 @@ def criar():
                  numero_serie, voltagem, acessorios, defeito_declarado, taxa_avaliacao,
                  status, observacao, criado_em, criado_por, tipo_os,
                  modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
-                 token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
               tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
-              token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar))
+              token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio))
 
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
@@ -1401,12 +1416,14 @@ def editar(os_id):
     d = request.get_json(silent=True) or {}
 
     with db_conn(commit=True) as conn:
-        existe = fetch_one(conn, "SELECT id, modelo_os FROM ordens_servico WHERE id = ?", (os_id,))
+        existe = fetch_one(conn, "SELECT id, modelo_os, tipo_os FROM ordens_servico WHERE id = ?", (os_id,))
         if not existe:
             return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
-        # Efetivo = o modelo que a OS vai TER depois deste PUT (se modelo_os
-        # também estiver no corpo) — decide se tipo_os é obrigatório ou não.
+        # Efetivo = o modelo/tipo que a OS vai TER depois deste PUT (se vier
+        # no corpo) — decide se tipo_os é obrigatório e se garantia_inicio
+        # ainda faz sentido guardar.
         modelo_efetivo = (d.get("modelo_os") or existe.get("modelo_os") or "os").strip()
+        tipo_os_efetivo = (d.get("tipo_os") if "tipo_os" in d else existe.get("tipo_os")) or ""
 
         campos, valores = [], []
         for chave in ("tipo_aparelho", "marca", "modelo", "numero_serie", "voltagem",
@@ -1467,6 +1484,15 @@ def editar(os_id):
                 tecnico_atendeu_id = None
             campos.append("tecnico_atendeu_id = ?")
             valores.append(tecnico_atendeu_id)
+        if "garantia_inicio" in d or ("tipo_os" in d and tipo_os_efetivo != "saida_oficina"):
+            # Só "saida_oficina" usa — noutro tipo, guardar essa data não tem
+            # pra que servir na impressão (ver _GARANTIA_MESES em app.py). O
+            # segundo caso (trocou de tipo_os sem mandar garantia_inicio
+            # junto) limpa sozinho — senão a data velha ficava enterrada no
+            # banco e reaparecia se o tipo voltasse a ser saida_oficina.
+            campos.append("garantia_inicio = ?")
+            valores.append(_validar_data_iso(d.get("garantia_inicio"))
+                           if tipo_os_efetivo == "saida_oficina" else None)
 
         if not campos:
             return jsonify({"mensagem": "Nada para mudar"})
