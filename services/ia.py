@@ -80,3 +80,63 @@ def analisar_erro(erro: dict) -> dict:
     except Exception as exc:
         log.exception("Falha ao analisar erro com IA")
         return {"ativo": False, "motivo": f"Falha ao chamar a IA: {str(exc)[:200]}"}
+
+
+# Prompt do CHAT (diferente do de análise de erro acima) — pedido de
+# 2026-08-29: uma conversa de verdade no Diagnóstico, não só um botão de
+# analisar erro. A ressalva do 3º parágrafo é deliberada e repetida de
+# propósito: sem ela, é fácil o Kalebe achar que digitar aqui muda o
+# sistema — e essa IA não tem acesso nenhum pra editar arquivo, rodar
+# teste ou dar deploy, só o histórico da conversa que ela mesma lê.
+_SISTEMA_CHAT = (
+    "Você é a Bia, engenheira de software da Porto Tec, conversando com o "
+    "Kalebe (dev júnior) dentro do painel de Diagnóstico do próprio site "
+    "(Flask + JS puro, Postgres em produção/SQLite local, hospedado no "
+    "Railway). Ajude a entender erros, decisões técnicas e como as coisas "
+    "funcionam, em português, direto ao ponto, sem floreio.\n\n"
+    "IMPORTANTE: você NÃO tem acesso ao código-fonte, ao banco de dados "
+    "nem a nada além desta conversa — não pode editar arquivo, rodar "
+    "teste, fazer commit ou deploy. Se o Kalebe pedir uma mudança no "
+    "sistema, diga claramente que ele precisa pedir isso na conversa com "
+    "o Claude Code (a sessão que programa de verdade), não aqui."
+)
+
+
+def conversar(historico: list) -> dict:
+    """Um turno do chat de diagnóstico. `historico` é uma lista de
+    {"autor": "kalebe"|"ia", "texto": str}, mais antigo primeiro, já
+    incluindo a mensagem nova do Kalebe por último.
+
+    Retorno: {"ativo": bool, "resposta": str} ou {"ativo": False, "motivo": str}.
+    """
+    if not configurado():
+        return {"ativo": False,
+                "motivo": "ANTHROPIC_API_KEY não configurada no servidor."}
+    try:
+        import anthropic
+    except ImportError:
+        return {"ativo": False,
+                "motivo": "Pacote 'anthropic' não instalado no servidor."}
+
+    mensagens = [
+        {"role": "user" if h["autor"] == "kalebe" else "assistant", "content": h["texto"]}
+        for h in historico
+    ]
+    if not mensagens or mensagens[-1]["role"] != "user":
+        return {"ativo": False, "motivo": "Sem mensagem nova pra responder."}
+
+    try:
+        client = anthropic.Anthropic()
+        resposta = client.messages.create(
+            model=MODELO,
+            max_tokens=3000,
+            system=_SISTEMA_CHAT,
+            messages=mensagens,
+        )
+        if getattr(resposta, "stop_reason", None) == "refusal":
+            return {"ativo": True, "resposta": "A IA recusou responder isso."}
+        texto = "".join(b.text for b in resposta.content if getattr(b, "type", None) == "text")
+        return {"ativo": True, "resposta": texto.strip() or "A IA não retornou texto."}
+    except Exception as exc:
+        log.exception("Falha ao conversar com a IA no diagnóstico")
+        return {"ativo": False, "motivo": f"Falha ao chamar a IA: {str(exc)[:200]}"}

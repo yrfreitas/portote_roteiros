@@ -73,6 +73,12 @@ REGRAS = [
     # seria exigido. PUT/DELETE nos erros = editar; o resto (GET) = ver.
     ("/api/erros-cliente",         ("PUT", "DELETE"),        "diagnostico_editar"),
     ("/api/erros-cliente",         None,                     "diagnostico"),
+    # Chat/changelog do Diagnóstico: mais específico que a regra genérica
+    # de /api/diagnostico logo abaixo, por isso vem antes.
+    ("/api/diagnostico/chat",      ("DELETE",),              "diagnostico_editar"),
+    ("/api/diagnostico/chat",      None,                     "diagnostico"),
+    ("/api/changelog",             ("POST",),                "diagnostico_editar"),
+    ("/api/changelog",             None,                     "diagnostico"),
     ("/api/diagnostico",           None,                     "diagnostico"),
     ("/api/rastreios/diagnostico", None,                     "diagnostico"),
     ("/api/pedidos/diagnostico",   None,                     "diagnostico"),

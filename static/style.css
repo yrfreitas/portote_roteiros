@@ -3567,6 +3567,44 @@ select:focus-visible,
 /* Cor da borda pelo status do erro (o log de diagnóstico virou editável) */
 .diag-erro--resolvido { background: var(--success-dim); border-left-color: var(--success); opacity: .7; }
 .diag-erro--ignorado  { background: rgba(90,109,138,.10); border-left-color: var(--text-muted); opacity: .6; }
+
+/* Visão geral agora — números reais do dia a dia (2026-08-29) */
+.diag-cards-op { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.diag-card-op {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.diag-card-op.aviso { border-color: var(--accent); background: var(--accent-dim); }
+.diag-card-op .n { font-size: 22px; font-weight: 800; color: var(--text-primary); line-height: 1.1; }
+.diag-card-op .lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.diag-card-op .sub { font-size: 10px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
+
+/* Changelog */
+.changelog-linha {
+  display: flex; gap: 10px; align-items: baseline; padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,.04); font-size: 12px;
+}
+.changelog-versao {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  color: var(--accent-text); background: var(--accent-dim);
+  border-radius: 6px; padding: 1px 7px; flex-shrink: 0;
+}
+.changelog-resumo { flex: 1; color: var(--text-secondary); }
+.changelog-data { font-size: 10px; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
+
+/* Chat de diagnóstico com IA */
+.diag-chat-lista {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 340px; overflow-y: auto; margin-bottom: 10px;
+  padding: 10px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.diag-chat-msg { max-width: 80%; padding: 8px 11px; border-radius: 10px; font-size: 12.5px; line-height: 1.5; }
+.diag-chat-msg .quem { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; opacity: .7; margin-bottom: 2px; }
+.diag-chat-msg.kalebe { align-self: flex-end; background: var(--accent-dim); color: var(--text-primary); }
+.diag-chat-msg.ia { align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); }
+.diag-chat-msg.pensando { opacity: .6; font-style: italic; }
+.diag-chat-caixa { display: flex; gap: 8px; align-items: flex-end; }
+.diag-chat-caixa textarea { flex: 1; resize: vertical; min-height: 40px; }
 .diag-erro--investigando { background: var(--accent-dim); border-left-color: var(--accent); }
 .diag-erro-acoes { display: flex; gap: 6px; align-items: center; margin-top: 7px; flex-wrap: wrap; }
 .diag-erro-status {

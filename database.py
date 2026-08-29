@@ -980,6 +980,26 @@ _MIGRACOES_PG = [
         quando       TEXT NOT NULL,
         duracao_min  INTEGER
     )""",
+    # Registro do que foi pedido/entregue a cada versão — pedido de
+    # 2026-08-29, pra não depender de rolar a conversa com a IA pra lembrar
+    # o que já mudou. Alimentado a cada deploy (ver rotina de versionamento).
+    """CREATE TABLE IF NOT EXISTS changelog_entradas (
+        id        SERIAL PRIMARY KEY,
+        versao    TEXT,
+        resumo    TEXT NOT NULL,
+        criado_em TEXT
+    )""",
+    # Chat de diagnóstico com IA — pedido de 2026-08-29: em vez de um botão
+    # que analisa UM erro isolado, uma conversa de verdade (várias
+    # mensagens, indo e voltando) sobre qualquer coisa do sistema. Ela só
+    # ANALISA e SUGERE (ver services/ia.py) — não edita código nem faz
+    # deploy; quem faz isso continua sendo a sessão do Claude Code.
+    """CREATE TABLE IF NOT EXISTS diagnostico_chat (
+        id        SERIAL PRIMARY KEY,
+        autor     TEXT NOT NULL,
+        texto     TEXT NOT NULL,
+        criado_em TEXT
+    )""",
     # Tabela de substituição de peças da Panasonic — pedido de 2026-08-29:
     # buscar um código e ver por quais ele foi substituído. Planilha própria
     # da Panasonic (não é a de Pedidos, que é sobre compra), atualizada de
@@ -1164,6 +1184,18 @@ _MIGRACOES_SQLITE = [
         duracao_min  INTEGER,
         FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
     )""",
+    """CREATE TABLE IF NOT EXISTS changelog_entradas (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        versao    TEXT,
+        resumo    TEXT NOT NULL,
+        criado_em TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS diagnostico_chat (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        autor     TEXT NOT NULL,
+        texto     TEXT NOT NULL,
+        criado_em TEXT
+    )""",
     """CREATE TABLE IF NOT EXISTS pecas_substituicao (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         codigo          TEXT NOT NULL,
@@ -1278,6 +1310,7 @@ def init_db():
         sincronizar_sequences(conn)
         _gerar_tokens_faltantes(conn)
         _criar_setores_iniciais(conn)
+        _semear_changelog_inicial(conn)
         _semear_revisao(conn)
 
 
@@ -1301,6 +1334,36 @@ def _criar_setores_iniciais(conn):
 
     for nome, cor in SETORES_INICIAIS:
         execute(conn, "INSERT INTO setores (nome, cor) VALUES (?, ?)", (nome, cor))
+    conn.commit()
+
+
+# Só a primeira leva, pra tabela não nascer vazia no primeiro deploy desta
+# feature (2026-08-29) — dali em diante quem alimenta é a própria sessão do
+# Claude Code, um INSERT em /api/changelog a cada entrega.
+CHANGELOG_INICIAL = [
+    ("v130", "Botão \"Pedir peça\" na OS, sem precisar de visita de técnico"),
+    ("v133", "Peças: só traz \"a caminho\" da planilha; some da lista ao mandar pra Agendar Clientes"),
+    ("v136", "Prazo de garantia selecionável (3/6/12 meses) e visita agendada visível na lista de OS"),
+    ("v137", "Aba própria de Cotação de peças, com busca de substituição de código Panasonic"),
+    ("v138", "Estoque junta peça por substituição de código; histórico mostra cliente/OS de cada saída"),
+    ("v142", "Botão de almoço do técnico (1h), visível só pro admin"),
+    ("v143", "Login de recepcionista e catálogo completo de permissões"),
+    ("v144", "Diagnóstico ganhou números reais do dia, changelog e chat com IA"),
+]
+
+
+def _semear_changelog_inicial(conn):
+    try:
+        total = fetch_one(conn, "SELECT COUNT(*) AS total FROM changelog_entradas")["total"]
+    except Exception:
+        return
+    if total:
+        return
+
+    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    for versao, resumo in CHANGELOG_INICIAL:
+        execute(conn, "INSERT INTO changelog_entradas (versao, resumo, criado_em) VALUES (?, ?, ?)",
+               (versao, resumo, agora))
     conn.commit()
 
 

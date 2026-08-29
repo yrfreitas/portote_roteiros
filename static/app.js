@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v143';
+const VERSAO_PAINEL = 'v144';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1438,6 +1438,23 @@ async function carregarDiagnostico() {
 
   const partes = [];
 
+  // ── Visão geral agora — números reais, não só saúde de integração
+  // (pedido de 2026-08-29: "mais atualizado com coisas reais").
+  const op = d.operacional || {};
+  const porStatus = op.os_por_status || {};
+  const totalOS = Object.values(porStatus).reduce((a, b) => a + b, 0);
+  const brlDiag = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  partes.push(`
+    <div class="diag-secao">Visão geral agora</div>
+    <div class="diag-cards-op">
+      <div class="diag-card-op"><div class="n">${totalOS}</div><div class="lbl">OS no total</div>
+        <div class="sub">${Object.entries(porStatus).map(([s, n]) => `${esc(OS_STATUS_ROTULO[s] || s)}: ${n}`).join(' · ') || 'nenhuma ainda'}</div></div>
+      <div class="diag-card-op ${op.precisa_peca ? 'aviso' : ''}"><div class="n">${op.precisa_peca ?? 0}</div><div class="lbl">peças esperando pedido</div></div>
+      <div class="diag-card-op ${op.tecnicos_em_almoco ? 'aviso' : ''}"><div class="n">${op.tecnicos_em_almoco ?? 0}</div><div class="lbl">técnico(s) em almoço agora</div></div>
+      <div class="diag-card-op"><div class="n">${(op.vendas_hoje || {}).quantidade ?? 0}</div><div class="lbl">vendas hoje</div>
+        <div class="sub">${brlDiag((op.vendas_hoje || {}).total)}</div></div>
+    </div>`);
+
   // ── Aparelhos dos técnicos (é o que mais deu trabalho até hoje)
   const ap = (d.rastreio && d.rastreio.aparelhos) || [];
   partes.push(`<div class="diag-secao">Celular dos técnicos</div>`);
@@ -1512,6 +1529,25 @@ async function carregarDiagnostico() {
     partes.push((er.ultimos || []).map(e => _renderErroDiag(e)).join(''));
   }
 
+  // ── O que já mudou (changelog) e conversa com a IA — pedido de 2026-08-29.
+  partes.push(`
+    <div class="diag-secao">O que já mudou</div>
+    <div id="changelog-corpo"><div class="ajuda-texto">Carregando...</div></div>`);
+
+  partes.push(`
+    <div class="diag-secao">Converse com a IA sobre o sistema</div>
+    <p class="ajuda-texto" style="margin:0 0 8px;">
+      Ela analisa e sugere — não edita código nem faz deploy. Pra mudar algo
+      de verdade, peça na conversa com o Claude Code.
+    </p>
+    <div id="diag-chat-lista" class="diag-chat-lista"></div>
+    <div class="diag-chat-caixa">
+      <textarea id="diag-chat-input" class="form-input" rows="2"
+                placeholder="Descreva o que quer entender ou o problema que viu..."
+                onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();enviarChatDiagnostico();}"></textarea>
+      <button class="btn btn-primary btn-sm" id="diag-chat-enviar" onclick="enviarChatDiagnostico()">Enviar</button>
+    </div>`);
+
   alvo.innerHTML = `<div class="diag-versao">Sistema na versão ${esc(d.app || '—')}</div>`
     + partes.join('')
     // Acessos só para quem pode gerenciar usuários.
@@ -1519,6 +1555,78 @@ async function carregarDiagnostico() {
         ? `<div class="diag-secao">Acessos ao sistema</div><div id="acessos-corpo"></div>`
         : '');
   if (podeUsuario('gerenciar_usuarios')) carregarAcessos();
+  carregarChangelog();
+  carregarChatDiagnostico();
+}
+
+async function carregarChangelog() {
+  const alvo = document.getElementById('changelog-corpo');
+  if (!alvo) return;
+  try {
+    const r = await api('/changelog');
+    const entradas = r.entradas || [];
+    alvo.innerHTML = !entradas.length
+      ? '<div class="ajuda-texto">Nada registrado ainda.</div>'
+      : entradas.map(e => `
+        <div class="changelog-linha">
+          ${e.versao ? `<span class="changelog-versao">${esc(e.versao)}</span>` : ''}
+          <span class="changelog-resumo">${esc(e.resumo)}</span>
+          <span class="changelog-data">${esc((e.criado_em || '').slice(0, 16).replace('T', ' '))}</span>
+        </div>`).join('');
+  } catch (e) {
+    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+  }
+}
+
+function _renderMensagemChatDiag(m) {
+  const ehIa = m.autor === 'ia';
+  return `<div class="diag-chat-msg ${ehIa ? 'ia' : 'kalebe'}">
+    <div class="quem">${ehIa ? 'IA' : 'Você'}</div>
+    <div class="texto">${esc(m.texto).replace(/\n/g, '<br>')}</div>
+  </div>`;
+}
+
+async function carregarChatDiagnostico() {
+  const alvo = document.getElementById('diag-chat-lista');
+  if (!alvo) return;
+  try {
+    const r = await api('/diagnostico/chat');
+    const msgs = r.mensagens || [];
+    alvo.innerHTML = msgs.length
+      ? msgs.map(_renderMensagemChatDiag).join('')
+      : '<div class="ajuda-texto">Nenhuma conversa ainda — pergunte alguma coisa abaixo.</div>';
+    alvo.scrollTop = alvo.scrollHeight;
+  } catch (e) {
+    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+  }
+}
+
+async function enviarChatDiagnostico() {
+  const input = document.getElementById('diag-chat-input');
+  const btn = document.getElementById('diag-chat-enviar');
+  const texto = input.value.trim();
+  if (!texto) return;
+
+  const alvo = document.getElementById('diag-chat-lista');
+  if (!alvo.querySelector('.diag-chat-msg')) alvo.innerHTML = ''; // tira o "nenhuma conversa ainda"
+  alvo.innerHTML += _renderMensagemChatDiag({ autor: 'kalebe', texto });
+  alvo.innerHTML += `<div class="diag-chat-msg ia pensando" id="diag-chat-pensando">
+    <div class="quem">IA</div><div class="texto">pensando...</div></div>`;
+  alvo.scrollTop = alvo.scrollHeight;
+  input.value = '';
+  btn.disabled = true;
+
+  try {
+    const r = await api('/diagnostico/chat', { method: 'POST', body: JSON.stringify({ texto }) }, 90000);
+    document.getElementById('diag-chat-pensando')?.remove();
+    alvo.innerHTML += _renderMensagemChatDiag({ autor: 'ia', texto: r.resposta });
+    alvo.scrollTop = alvo.scrollHeight;
+  } catch (e) {
+    document.getElementById('diag-chat-pensando')?.remove();
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // Cada erro do log com status editável, observação e excluir. `data-id` liga

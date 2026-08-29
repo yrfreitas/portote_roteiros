@@ -265,12 +265,44 @@ def diagnostico_geral():
         from services.ia import MODELO, configurado
         return {"configurado": configurado(), "modelo": MODELO}
 
+    def _operacional():
+        # Pedido de 2026-08-29: "coisas reais" no Diagnóstico — números do
+        # dia a dia, não só saúde de integração. LIKE em vez de função de
+        # data porque criado_em é texto 'AAAA-MM-DD HH:MM:SS' nos dois
+        # bancos (SQLite/Postgres); comparar por prefixo funciona igual nos
+        # dois sem precisar de SQL específico de cada um.
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        with db_conn() as conn:
+            os_status = fetch_all(conn, "SELECT status, COUNT(*) AS n FROM ordens_servico GROUP BY status")
+            precisa_peca = fetch_one(conn, """
+                SELECT COUNT(*) AS n FROM servico_desfecho
+                 WHERE desfecho = 'precisa_peca' AND pedido_em IS NULL
+            """)["n"]
+            eventos_almoco = fetch_all(conn, "SELECT tecnico_id, tipo FROM almoco_eventos ORDER BY tecnico_id, id")
+            vendas_hoje = fetch_one(conn, """
+                SELECT COUNT(*) AS n, COALESCE(SUM(valor_total), 0) AS total
+                  FROM vendas WHERE criado_em LIKE ?
+            """, (hoje + '%',))
+
+        ultimo_por_tecnico = {}
+        for l in eventos_almoco:
+            ultimo_por_tecnico[l["tecnico_id"]] = l["tipo"]
+        tecnicos_em_almoco = sum(1 for t in ultimo_por_tecnico.values() if t == "inicio")
+
+        return {
+            "os_por_status": {l["status"]: l["n"] for l in os_status},
+            "precisa_peca": precisa_peca,
+            "tecnicos_em_almoco": tecnicos_em_almoco,
+            "vendas_hoje": {"quantidade": vendas_hoje["n"], "total": float(vendas_hoje["total"] or 0)},
+        }
+
     bloco("rastreio", _rastreio)
     bloco("agoraos", _agoraos)
     bloco("planilha", _planilha)
     bloco("setores", _setores)
     bloco("ia", _ia)
     bloco("erros", _erros)
+    bloco("operacional", _operacional)
 
     return jsonify(saida)
 
@@ -359,6 +391,102 @@ def limpar_erros_resolvidos():
     with db_conn(commit=True) as conn:
         n = execute(conn, "DELETE FROM erros_cliente WHERE status IN ('resolvido', 'ignorado')")
     return jsonify({"mensagem": f"{n} registro(s) limpos", "removidos": n})
+
+
+# ─── Changelog — "o que já foi pedido e entregue" (2026-08-29) ───────────
+#
+# Alimentado a cada deploy (junto com o versionamento) pra não depender de
+# rolar a conversa com a IA pra lembrar o que já mudou. Kalebe também pode
+# escrever uma linha aqui na mão, se quiser anotar algo.
+@app.route("/api/changelog", methods=["GET"])
+def listar_changelog():
+    from database import fetch_all
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT id, versao, resumo, criado_em FROM changelog_entradas
+             ORDER BY id DESC LIMIT 60
+        """)
+    return jsonify({"entradas": linhas})
+
+
+@app.route("/api/changelog", methods=["POST"])
+def criar_changelog():
+    from database import execute
+
+    d = request.get_json(silent=True) or {}
+    resumo = (d.get("resumo") or "").strip()
+    if not resumo:
+        return jsonify({"erro": "Escreva o que mudou"}), 400
+    versao = (d.get("versao") or "").strip()[:20] or None
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_conn(commit=True) as conn:
+        execute(conn, """
+            INSERT INTO changelog_entradas (versao, resumo, criado_em) VALUES (?, ?, ?)
+        """, (versao, resumo[:2000], agora))
+    return jsonify({"mensagem": "Registrado"}), 201
+
+
+# ─── Chat de diagnóstico com IA (2026-08-29) ─────────────────────────────
+#
+# Diferente do "Analisar com IA" acima (um erro, uma resposta): aqui é
+# conversa mesmo, com histórico. Ver o aviso embutido no próprio prompt em
+# services/ia.py — essa IA só analisa/sugere, não edita nada do sistema.
+@app.route("/api/diagnostico/chat", methods=["GET"])
+def listar_chat_diagnostico():
+    from database import fetch_all
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT id, autor, texto, criado_em FROM diagnostico_chat
+             ORDER BY id ASC LIMIT 200
+        """)
+    return jsonify({"mensagens": linhas})
+
+
+@app.route("/api/diagnostico/chat", methods=["POST"])
+def enviar_chat_diagnostico():
+    from database import execute, fetch_all, insert_returning_id
+
+    from services.ia import conversar
+
+    d = request.get_json(silent=True) or {}
+    texto = (d.get("texto") or "").strip()
+    if not texto:
+        return jsonify({"erro": "Escreva uma mensagem"}), 400
+
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_conn(commit=True) as conn:
+        insert_returning_id(conn, """
+            INSERT INTO diagnostico_chat (autor, texto, criado_em) VALUES ('kalebe', ?, ?)
+        """, (texto[:4000], agora))
+        # Só as últimas 20 pra não estourar contexto/custo — uma conversa de
+        # diagnóstico não precisa lembrar de meses atrás pra continuar coerente.
+        recentes = fetch_all(conn, """
+            SELECT autor, texto FROM diagnostico_chat ORDER BY id DESC LIMIT 20
+        """)
+        historico = [{"autor": r["autor"], "texto": r["texto"]} for r in reversed(recentes)]
+
+    r = conversar(historico)
+    if not r.get("ativo"):
+        return jsonify({"erro": r.get("motivo") or "IA indisponível"}), 503
+
+    agora2 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_conn(commit=True) as conn:
+        execute(conn, """
+            INSERT INTO diagnostico_chat (autor, texto, criado_em) VALUES ('ia', ?, ?)
+        """, (r["resposta"][:8000], agora2))
+
+    return jsonify({"resposta": r["resposta"]}), 201
+
+
+@app.route("/api/diagnostico/chat", methods=["DELETE"])
+def limpar_chat_diagnostico():
+    from database import execute
+
+    with db_conn(commit=True) as conn:
+        execute(conn, "DELETE FROM diagnostico_chat")
+    return jsonify({"mensagem": "Conversa limpa"})
 
 
 @app.route("/acompanhar/<token>")
