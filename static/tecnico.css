@@ -62,6 +62,24 @@ body {
 }
 .t-btn-sino.ativo { color: var(--success-text); border-color: rgba(52,211,153,0.35); background: var(--success-dim); }
 
+.t-btn-almoco {
+  margin-left: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 0 14px; height: 38px;
+  font-family: inherit; font-size: 12.5px; font-weight: 650;
+  display: flex; align-items: center; gap: 6px;
+  cursor: pointer; white-space: nowrap;
+}
+.t-btn-almoco.em-almoco {
+  color: var(--accent-text); border-color: var(--accent); background: var(--accent-dim);
+}
+.t-btn-almoco.atrasado {
+  color: var(--danger-text); border-color: var(--danger); background: var(--danger-dim);
+}
+
 .t-main { padding: 14px 14px 60px; max-width: 560px; margin: 0 auto; }
 
 .t-fichas { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }

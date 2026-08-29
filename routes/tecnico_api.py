@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 
 log = logging.getLogger("portotec.tecnico_api")
 
-from database import (db_conn, execute, fetch_all, fetch_one,
+from database import (bump_revisao, db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id, ler_revisao, sql)
 from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
                            recalcular_distancia_ordem_fixa)
@@ -67,6 +67,67 @@ def versao_tecnico(token):
         # São perguntas diferentes e o app reage a cada uma de um jeito:
         # recarregar a rota na primeira, recarregar a página na segunda.
         return jsonify({**ler_revisao(conn), "app": VERSAO_APP})
+
+
+def _ultimo_evento_almoco(conn, tecnico_id):
+    return fetch_one(conn, """
+        SELECT id, tipo, quando FROM almoco_eventos
+         WHERE tecnico_id = ? ORDER BY id DESC LIMIT 1
+    """, (tecnico_id,))
+
+
+@tecnico_api_bp.route("/<token>/almoco", methods=["GET"])
+def almoco_status(token):
+    """Estado atual pro botão renderizar certo ao abrir a tela — se o
+    técnico fechar o navegador em almoço e voltar depois, o botão continua
+    mostrando 'voltar do almoço', não reseta pra 'ir almoçar'."""
+    with db_conn() as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+        ultimo = _ultimo_evento_almoco(conn, tecnico["id"])
+    em_almoco = bool(ultimo and ultimo["tipo"] == "inicio")
+    return jsonify({"em_almoco": em_almoco, "desde": ultimo["quando"] if em_almoco else None})
+
+
+@tecnico_api_bp.route("/<token>/almoco/iniciar", methods=["POST"])
+def almoco_iniciar(token):
+    with db_conn(commit=True) as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+        ultimo = _ultimo_evento_almoco(conn, tecnico["id"])
+        if ultimo and ultimo["tipo"] == "inicio":
+            return jsonify({"erro": "Você já está em horário de almoço",
+                            "desde": ultimo["quando"]}), 409
+        agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        insert_returning_id(conn, """
+            INSERT INTO almoco_eventos (tecnico_id, tipo, quando) VALUES (?, 'inicio', ?)
+        """, (tecnico["id"], agora))
+        bump_revisao(conn)
+    return jsonify({"mensagem": "Almoço iniciado", "desde": agora}), 201
+
+
+@tecnico_api_bp.route("/<token>/almoco/voltar", methods=["POST"])
+def almoco_voltar(token):
+    with db_conn(commit=True) as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+        ultimo = _ultimo_evento_almoco(conn, tecnico["id"])
+        if not ultimo or ultimo["tipo"] != "inicio":
+            return jsonify({"erro": "Você não está em horário de almoço"}), 409
+
+        agora_dt = datetime.now(timezone.utc)
+        inicio_dt = datetime.strptime(ultimo["quando"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        duracao_min = max(0, round((agora_dt - inicio_dt).total_seconds() / 60))
+        agora = agora_dt.strftime("%Y-%m-%d %H:%M:%S")
+        insert_returning_id(conn, """
+            INSERT INTO almoco_eventos (tecnico_id, tipo, quando, duracao_min)
+            VALUES (?, 'fim', ?, ?)
+        """, (tecnico["id"], agora, duracao_min))
+        bump_revisao(conn)
+    return jsonify({"mensagem": "Volta do almoço registrada", "duracao_min": duracao_min}), 201
 
 
 @tecnico_api_bp.route("/<token>/fichas", methods=["GET"])

@@ -968,6 +968,18 @@ _MIGRACOES_PG = [
     # dá 6 ou 12. NULL = usa o padrão de 3 (compatível com OS já abertas
     # antes deste campo existir).
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS garantia_meses INTEGER",
+    # Ponto de almoço do técnico — pedido de 2026-08-29. Log de eventos (não
+    # uma linha "estado atual" por técnico) de propósito: dá histórico de
+    # quando cada almoço aconteceu de graça, e "está em almoço agora" é só
+    # perguntar qual foi o ÚLTIMO evento daquele técnico (inicio sem fim
+    # depois = ainda está). duracao_min só vem preenchida no evento 'fim'.
+    """CREATE TABLE IF NOT EXISTS almoco_eventos (
+        id           SERIAL PRIMARY KEY,
+        tecnico_id   INTEGER NOT NULL REFERENCES tecnicos(id) ON DELETE CASCADE,
+        tipo         TEXT NOT NULL,
+        quando       TEXT NOT NULL,
+        duracao_min  INTEGER
+    )""",
     # Tabela de substituição de peças da Panasonic — pedido de 2026-08-29:
     # buscar um código e ver por quais ele foi substituído. Planilha própria
     # da Panasonic (não é a de Pedidos, que é sobre compra), atualizada de
@@ -1144,6 +1156,14 @@ _MIGRACOES_SQLITE = [
     )""",
     "ALTER TABLE ordens_servico ADD COLUMN garantia_inicio TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN garantia_meses INTEGER",
+    """CREATE TABLE IF NOT EXISTS almoco_eventos (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        tecnico_id   INTEGER NOT NULL,
+        tipo         TEXT NOT NULL,
+        quando       TEXT NOT NULL,
+        duracao_min  INTEGER,
+        FOREIGN KEY (tecnico_id) REFERENCES tecnicos(id) ON DELETE CASCADE
+    )""",
     """CREATE TABLE IF NOT EXISTS pecas_substituicao (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         codigo          TEXT NOT NULL,

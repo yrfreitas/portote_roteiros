@@ -1242,7 +1242,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v141';
+  const VERSAO_TELA = 'v142';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
@@ -1341,6 +1341,63 @@
   equipeMontar();
   equipeBuscar();
   setInterval(equipeBuscar, 15000);   // 15s: rede movel, mais espacado que o painel
+
+  // ─── Ponto de almoço ────────────────────────────────────────────────
+  //
+  // Pedido de 2026-08-29: 1h contada a partir do "ir almoçar". O botão
+  // reflete o estado de verdade (não um cronômetro local que reseta ao
+  // fechar a aba) — por isso relê o servidor ao abrir a tela, e não confia
+  // só em memória. Ficar vermelho depois de 60min é só visual pro próprio
+  // técnico; quem controla o tempo de verdade é o painel do admin, que vê
+  // desde quando cada um saiu.
+  let almocoDesde = null;
+  let almocoIntervalo = null;
+
+  function _renderBotaoAlmoco() {
+    const btn = document.getElementById('btn-almoco');
+    if (!btn) return;
+    if (!almocoDesde) {
+      btn.textContent = '🍽 Ir almoçar';
+      btn.className = 't-btn-almoco';
+      return;
+    }
+    const minutos = Math.max(0, Math.round((Date.now() - new Date(almocoDesde).getTime()) / 60000));
+    const restante = 60 - minutos;
+    const rotulo = restante >= 0 ? `faltam ${restante}min` : `${Math.abs(restante)}min atrasado`;
+    btn.textContent = `⏱ Voltar do almoço (${rotulo})`;
+    btn.className = 't-btn-almoco em-almoco' + (restante < 0 ? ' atrasado' : '');
+  }
+
+  async function carregarStatusAlmoco() {
+    try {
+      const r = await api('/almoco');
+      almocoDesde = r.em_almoco ? r.desde : null;
+    } catch { /* offline: mantém o que já tinha na tela */ }
+    _renderBotaoAlmoco();
+    clearInterval(almocoIntervalo);
+    if (almocoDesde) almocoIntervalo = setInterval(_renderBotaoAlmoco, 30000);
+  }
+
+  window._tAlternarAlmoco = async function () {
+    const btn = document.getElementById('btn-almoco');
+    if (btn) btn.disabled = true;
+    try {
+      if (almocoDesde) {
+        const r = await api('/almoco/voltar', { method: 'POST' });
+        toast(`Volta do almoço registrada — ${r.duracao_min}min de almoço`);
+      } else {
+        await api('/almoco/iniciar', { method: 'POST' });
+        toast('Almoço iniciado — bom apetite!');
+      }
+    } catch (e) {
+      toast(e.message || 'Não consegui registrar. Tenta de novo.');
+    } finally {
+      if (btn) btn.disabled = false;
+      carregarStatusAlmoco();
+    }
+  };
+
+  carregarStatusAlmoco();
 
   carregarFichas().then(atualizarAvisoTopo);
 

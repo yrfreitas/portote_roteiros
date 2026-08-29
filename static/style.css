@@ -675,6 +675,7 @@ header::after {
   backdrop-filter: blur(8px);
   margin-left: 8px;
   min-width: 0;
+  position: relative;
   /* Antes só o breakpoint de celular tinha rolagem — no desktop, sem
      overflow nenhum, as abas simplesmente vazavam por cima da data/status
      à direita (.header-meta) quando o número de abas cresceu (entrada da
@@ -682,8 +683,27 @@ header::after {
      é a rolagem da barra, não cada letra do texto espremendo. */
   overflow-x: auto; -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  cursor: grab;
 }
 .main-tabs::-webkit-scrollbar { display: none; }
+.main-tabs.arrastando { cursor: grabbing; user-select: none; }
+/* Sinaliza que dá pra arrastar pros lados — sem scrollbar visível (tirada
+   de propósito, ver acima), quem só usa mouse não tinha como adivinhar que
+   tinha mais aba escondida. Some sozinho quando chega na ponta. */
+.main-tabs::before, .main-tabs::after {
+  content: ''; position: absolute; top: 3px; bottom: 3px; width: 20px;
+  pointer-events: none; opacity: 0; transition: opacity .15s ease; z-index: 2;
+}
+.main-tabs::before {
+  left: 0; border-radius: 10px 0 0 10px;
+  background: linear-gradient(90deg, var(--glass-fill-2), transparent);
+}
+.main-tabs::after {
+  right: 0; border-radius: 0 10px 10px 0;
+  background: linear-gradient(270deg, var(--glass-fill-2), transparent);
+}
+.main-tabs.rolagem-inicio::before { opacity: 1; }
+.main-tabs.rolagem-fim::after { opacity: 1; }
 .main-tab {
   height: 36px;
   padding: 0 18px;
@@ -3476,6 +3496,15 @@ select:focus-visible,
   border-radius: 99px; padding: 1px 7px;
 }
 .tecnico-section.recolhido .tec-contagem:not(:empty) { display: inline-flex; }
+
+/* Selo de almoço — só aparece quando o técnico está de almoço agora
+   (ver carregarStatusAlmocoTecnicos em app.js). Cor de aviso, não de
+   erro: é informação, não problema. */
+.tec-almoco-selo {
+  flex: none; font-size: 10px; font-weight: 650;
+  color: var(--accent-text); background: var(--accent-dim);
+  border: 1px solid var(--accent); border-radius: 99px; padding: 1px 8px;
+}
 
 /* max-height em vez de display:none para a transição existir. 1400px é teto
    folgado: nenhum técnico tem tanta ficha aberta, e altura fixa é o preço de

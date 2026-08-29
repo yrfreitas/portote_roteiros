@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v141';
+const VERSAO_PAINEL = 'v142';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -444,6 +444,96 @@ function iniciarAutoRefresh() {
   window.addEventListener('online', verificarRevisao);
 }
 
+// Arrastar a barra de abas com o mouse — pedido de 2026-08-29: sem
+// scrollbar visível (tirada de propósito, ver CSS) e sem roda horizontal,
+// quem só tem mouse (não notebook/trackpad) não tinha NENHUM jeito de ver
+// as abas escondidas depois que a barra ficou cheia demais pra caber.
+// ─── Ponto de almoço — aviso ao admin (pedido de 2026-08-29) ────────────
+//
+// Só aparece aqui, no painel — o técnico só vê o próprio botão, nunca o
+// status dos outros nem é avisado quando alguém sai/volta. O selo ao lado
+// do nome mostra quem tá em almoço agora; o poll de eventos é o que avisa
+// "na hora" (toast), no mesmo espírito do polling de revisão — a PRIMEIRA
+// leitura só estabelece a referência (desde_id absurdo garante 0 eventos
+// nessa chamada, só usa o ultimo_id da resposta), pra abrir o painel não
+// dar um toast retroativo de todo almoço que já rolou antes de hoje.
+let _almocoUltimoEventoId = null;
+
+async function carregarStatusAlmocoTecnicos() {
+  try {
+    const r = await api('/tecnicos/almoco/status');
+    document.querySelectorAll('.tec-almoco-selo').forEach(el => { el.hidden = true; });
+    Object.entries(r.status || {}).forEach(([tecnicoId, info]) => {
+      const el = document.getElementById(`tec-almoco-${tecnicoId}`);
+      if (!el) return;
+      const desde = parseDataBanco(info.desde);
+      const minutos = desde ? Math.max(0, Math.round((Date.now() - desde.getTime()) / 60000)) : 0;
+      el.hidden = false;
+      el.textContent = `🍽 há ${minutos}min`;
+      el.title = `Em almoço desde ${formatarDataHora(info.desde)}`;
+    });
+  } catch { /* selo de almoço não é crítico — próximo ciclo tenta de novo */ }
+}
+
+async function verificarAlmocoEventosNovos() {
+  try {
+    if (_almocoUltimoEventoId === null) {
+      const base = await api('/tecnicos/almoco/eventos?desde_id=999999999999');
+      _almocoUltimoEventoId = base.ultimo_id || 0;
+      return;
+    }
+    const r = await api(`/tecnicos/almoco/eventos?desde_id=${_almocoUltimoEventoId}`);
+    const eventos = r.eventos || [];
+    if (eventos.length) {
+      eventos.forEach(ev => {
+        if (ev.tipo === 'inicio') {
+          toast(`🍽 ${ev.tecnico_nome} foi almoçar agora`, 'info');
+        } else {
+          toast(`✅ ${ev.tecnico_nome} voltou do almoço — ${ev.duracao_min}min`, 'success');
+        }
+      });
+      carregarStatusAlmocoTecnicos();
+    }
+    _almocoUltimoEventoId = r.ultimo_id ?? _almocoUltimoEventoId;
+  } catch { /* próximo ciclo tenta de novo */ }
+}
+
+function iniciarArrastarAbas() {
+  const el = document.getElementById('main-tabs');
+  if (!el) return;
+
+  let arrastando = false, moveu = false, inicioX = 0, inicioScroll = 0;
+
+  el.addEventListener('mousedown', (e) => {
+    arrastando = true; moveu = false;
+    inicioX = e.pageX;
+    inicioScroll = el.scrollLeft;
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!arrastando) return;
+    const delta = e.pageX - inicioX;
+    if (Math.abs(delta) > 4) { moveu = true; el.classList.add('arrastando'); }
+    el.scrollLeft = inicioScroll - delta;
+  });
+  window.addEventListener('mouseup', () => {
+    arrastando = false;
+    el.classList.remove('arrastando');
+  });
+  // Fase de captura, antes do onclick do botão: um arraste de verdade não
+  // pode TAMBÉM trocar de aba no soltar o mouse em cima de um botão.
+  el.addEventListener('click', (e) => {
+    if (moveu) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+
+  const atualizarSombras = () => {
+    el.classList.toggle('rolagem-inicio', el.scrollLeft > 4);
+    el.classList.toggle('rolagem-fim', el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+  };
+  el.addEventListener('scroll', atualizarSombras);
+  window.addEventListener('resize', atualizarSombras);
+  atualizarSombras();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   iniciarRelogio();
   iniciarMonitorSaude();
@@ -456,6 +546,9 @@ document.addEventListener('DOMContentLoaded', () => {
   carregarSeloPecas();
   carregarSeloAgendar();
   carregarSetores();
+  iniciarArrastarAbas();
+  verificarAlmocoEventosNovos();
+  setInterval(verificarAlmocoEventosNovos, 20000);
 });
 
 // Registro do PWA — silencioso, não bloqueia nada se falhar (ex: em http
@@ -1928,6 +2021,7 @@ async function carregarTecnicos() {
           <div class="tecnico-nome" style="color:${escCor(t.cor)}">${esc(t.nome)}${
             (t.ativo === false || t.ativo === 0) ? ' <span class="badge" title="Removido, mas mantido pelo histórico de fichas">inativo</span>' : ''}</div>
           <span class="tec-contagem" id="tec-contagem-${t.id}"></span>
+          <span class="tec-almoco-selo" id="tec-almoco-${t.id}" hidden></span>
           <div class="tecnico-actions" onclick="event.stopPropagation()">
             <!-- Só o "+", não "+ Ficha": o texto consumia ~45px e empurrava o
                  nome do técnico para as reticências ("JOAO PAUL…"). Nome de
@@ -1952,6 +2046,7 @@ async function carregarTecnicos() {
 
     await Promise.all(tecnicos.map(t => carregarFichasTecnico(t.id)));
     verificarPontosSemSetor(); // sem await: aviso não pode atrasar a sidebar
+    carregarStatusAlmocoTecnicos(); // idem — selo de almoço não trava a sidebar
 
   } catch (e) {
     if (list) {

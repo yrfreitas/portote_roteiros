@@ -576,3 +576,51 @@ def atualizar_peca_carro(peca_id):
         bump_revisao(conn)
 
     return jsonify({"quantidade": max(0, quantidade)})
+
+
+# ─── Ponto de almoço — visível só no painel (pedido de 2026-08-29) ───────
+#
+# Botão mora na tela do técnico (static/tecnico.js), mas o STATUS ("quem tá
+# almoçando agora", "quanto tempo já foi") e o AVISO em tempo real são só
+# daqui, do painel do admin — nunca aparece pra outro técnico. Por isso as
+# rotas de gravar ficam em tecnico_api.py (autenticadas pelo token de quem
+# aperta o botão) e as de LER ficam aqui, atrás da sessão de admin de sempre.
+
+@tecnicos_bp.route("/tecnicos/almoco/status", methods=["GET"])
+def almoco_status_geral():
+    """Quem está em almoço agora, e desde quando — pro selo ao lado do nome
+    na sidebar de Roteiros."""
+    with db_conn() as conn:
+        tecnicos_ativos = fetch_all(conn, "SELECT id FROM tecnicos")
+        status = {}
+        for t in tecnicos_ativos:
+            ultimo = fetch_one(conn, """
+                SELECT tipo, quando FROM almoco_eventos
+                 WHERE tecnico_id = ? ORDER BY id DESC LIMIT 1
+            """, (t["id"],))
+            if ultimo and ultimo["tipo"] == "inicio":
+                status[str(t["id"])] = {"em_almoco": True, "desde": ultimo["quando"]}
+    return jsonify({"status": status})
+
+
+@tecnicos_bp.route("/tecnicos/almoco/eventos", methods=["GET"])
+def almoco_eventos_novos():
+    """Eventos (início/volta) mais recentes que `desde_id`, pro painel dar o
+    aviso na hora — poll leve, mesmo espírito do /api/revisao."""
+    try:
+        desde_id = int(request.args.get("desde_id", 0))
+    except (TypeError, ValueError):
+        desde_id = 0
+
+    with db_conn() as conn:
+        eventos = fetch_all(conn, sql("""
+            SELECT e.id, e.tipo, e.quando, e.duracao_min, t.nome AS tecnico_nome, t.cor AS tecnico_cor
+              FROM almoco_eventos e
+              JOIN tecnicos t ON t.id = e.tecnico_id
+             WHERE e.id > ?
+             ORDER BY e.id ASC
+             LIMIT 50
+        """), (desde_id,))
+        ultimo_id = fetch_one(conn, "SELECT MAX(id) AS m FROM almoco_eventos")["m"] or 0
+
+    return jsonify({"eventos": eventos, "ultimo_id": ultimo_id})
