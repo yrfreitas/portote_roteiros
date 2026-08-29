@@ -19,7 +19,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 from openpyxl import load_workbook
 
-from database import db_conn, execute, fetch_all, fetch_one, sql
+from database import IS_PG, db_conn, execute, fetch_all, fetch_one, sql
 
 log = logging.getLogger("portotec.substituicoes")
 
@@ -72,13 +72,17 @@ def buscar():
                AND (fim_validade IS NULL OR fim_validade >= ?)
         """), (codigo, hoje))
         casamento = "exato"
+        # Sem filtro de validade: um formato de data que a planilha trouxe
+        # diferente do esperado não pode fazer um código que EXISTE parecer
+        # "não encontrado" — melhor mostrar vencido do que esconder de vez.
+        if not linhas:
+            linhas = fetch_all(conn, "SELECT * FROM pecas_substituicao WHERE codigo = ?", (codigo,))
         if not linhas:
             linhas = fetch_all(conn, sql("""
                 SELECT * FROM pecas_substituicao
                  WHERE codigo LIKE ?
-                   AND (fim_validade IS NULL OR fim_validade >= ?)
                  LIMIT 20
-            """), (f"%{codigo}%", hoje))
+            """), (f"%{codigo}%",))
             casamento = "parcial"
 
     resultados = []
@@ -139,12 +143,26 @@ def importar():
         execute(conn, "DELETE FROM pecas_substituicao")
         cur = conn.cursor()
         try:
-            cur.executemany(sql("""
-                INSERT INTO pecas_substituicao
-                    (codigo, substituto_1, substituto_2, substituto_3, substituto_4,
-                     substituto_5, inicio_validade, fim_validade)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """), linhas)
+            if IS_PG:
+                # executemany do psycopg2 manda uma INSERT por linha — 18 mil
+                # viagens de ida e volta ao Postgres do Railway estouram fácil
+                # o --timeout 60 do gunicorn (Procfile) e o import morre no
+                # meio, sem avisar direito: a busca depois só dizia "não
+                # achou nada". execute_values manda tudo numa única instrução.
+                from psycopg2.extras import execute_values
+                execute_values(cur, """
+                    INSERT INTO pecas_substituicao
+                        (codigo, substituto_1, substituto_2, substituto_3, substituto_4,
+                         substituto_5, inicio_validade, fim_validade)
+                    VALUES %s
+                """, linhas, page_size=2000)
+            else:
+                cur.executemany(sql("""
+                    INSERT INTO pecas_substituicao
+                        (codigo, substituto_1, substituto_2, substituto_3, substituto_4,
+                         substituto_5, inicio_validade, fim_validade)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """), linhas)
         finally:
             cur.close()
 
