@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v132';
+const VERSAO_PAINEL = 'v133';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2622,11 +2622,30 @@ async function enviarParaAgendar(linha) {
       body: JSON.stringify({ chave: linhaEl?.dataset.chave, cliente, peca }),
     });
     toast(r.mensagem, 'success');
-    if (btn) {
-      btn.outerHTML = `
-        <button class="peca-agendar enviado" onclick="abrirOSDetalhe(${r.id})">
-          ✓ enviado p/ agendar
-        </button>`;
+    // Uma vez enviada, a compra sai da lista padrão (ver listar_pedidos em
+    // routes/pedidos.py) — pedido de 2026-08-29: "quando eu agendar ela,
+    // quero que ela suma da aba de peças". Some AGORA, sem esperar o próximo
+    // carregarPecas(), senão a linha "enviada" continuava sentada na tela
+    // até alguém trocar de aba e voltar. Só fica visível de propósito
+    // (botão vira "✓ enviado") quando "Mostrar todas" está marcado — é
+    // exatamente o caso em que a tela deve continuar mostrando o que já foi
+    // enviado, pra servir de histórico.
+    const mostrandoTodas = document.getElementById('pecas-mostrar-todas')?.checked;
+    if (mostrandoTodas) {
+      if (btn) {
+        btn.outerHTML = `
+          <button class="peca-agendar enviado" onclick="abrirOSDetalhe(${r.id})">
+            ✓ enviado p/ agendar
+          </button>`;
+      }
+    } else if (linhaEl) {
+      linhaEl.remove();
+      const contagem = document.getElementById('pecas-contagem');
+      if (contagem) {
+        const restantes = document.querySelectorAll('.peca-linha').length;
+        contagem.textContent = `${restantes} compra${restantes !== 1 ? 's' : ''}`;
+      }
+      if (!document.querySelector('.peca-linha')) carregarPecas();
     }
     carregarSeloAgendar();
   } catch (e) {
@@ -2901,6 +2920,8 @@ async function alternarChegada(linha) {
     });
     btn.classList.toggle('marcado', marcando);
     btn.textContent = marcando ? '📦 chegou' : 'marcar chegada';
+    btn.title = marcando ? `Chegou em ${new Date().toISOString().slice(0, 16).replace('T', ' ')} — clique para desfazer`
+                          : 'Marcar que a peça chegou na oficina';
     el.classList.toggle('chegou', marcando);
     el.dataset.estagio = marcando ? 'chegou' : 'ENVIADO';
     // Atualiza a etiqueta de estágio sem redesenhar a lista inteira.

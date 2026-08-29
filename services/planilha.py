@@ -445,12 +445,15 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
         del por_nota[chave_perdedora]
         por_pedido[num] = chave_vencedora
 
-    # CRIADO é o pedido no carrinho, antes do pagamento ser aprovado — pode
-    # nunca virar compra de verdade (cliente desiste, cartão recusa). Peça
-    # que ninguém pagou ainda não deveria aparecer pra vincular cliente de
-    # qualquer jeito: mostrar antes de pagar é oferecer algo que pode nunca
-    # chegar.
-    pedidos = [p for p in por_nota.values() if p["status_compra"].strip().upper() != "CRIADO"]
+    # Pedido de 2026-08-29: só ENVIADO ("a caminho", no rótulo que a própria
+    # tela já usa no filtro de estágio) entra na aba Peças. CRIADO (carrinho,
+    # nem pago) e APROVADO/FATURADO (pago/faturado mas ainda não despachado)
+    # ficavam misturados com o que já estava de fato a caminho, e vincular
+    # cliente numa compra que pode nem ser despachada ainda é o que confundia
+    # quem olhava a lista. "todos=true" da tela (auditoria/histórico) ainda
+    # passa por aqui — o filtro por estágio é sobre o que faz sentido AGIR,
+    # não sobre o que existe.
+    pedidos = [p for p in por_nota.values() if p["status_compra"].strip().upper() == "ENVIADO"]
     if apenas_pendentes:
         pedidos = [p for p in pedidos if not p["cliente_final"]]
 
