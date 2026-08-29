@@ -592,10 +592,12 @@ def _montar_documento_os(os_id):
     # "saida_oficina" pode escolher 3/6/12 meses (pedido de 2026-08-29) em vez
     # do padrão fixo — os outros três tipos já SÃO um prazo fixo cada um (é a
     # própria escolha do tipo que decide), então ordem.garantia_meses não se
-    # aplica a eles.
+    # aplica a eles. O modelo Orçamento entra na mesma regra (2026-08-29):
+    # não tem tipo_os fixo, mas aceita o mesmo campo de prazo escolhido à mão.
     garantia_meses = (
         ordem.get("garantia_meses")
-        if ordem.get("tipo_os") == "saida_oficina" and ordem.get("garantia_meses")
+        if (ordem.get("tipo_os") == "saida_oficina" or ordem.get("modelo_os") == "orcamento")
+           and ordem.get("garantia_meses")
         else _GARANTIA_MESES.get(ordem.get("tipo_os"))
     )
     garantia_inicio_br = garantia_fim_br = garantia_prazo_rotulo = None

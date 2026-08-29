@@ -350,42 +350,6 @@ button.t-ponto-link-waze {
 .t-gps-selo.enviando::before { animation: t-gps-pulso 2s ease-in-out infinite; }
 @keyframes t-gps-pulso { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
-/* Chat da equipe no app do técnico. Fica acima do selo do GPS para não
-   cobrir o aviso que diz se o cliente está vendo a posição. */
-.t-chat-bolha {
-  position: fixed; right: 14px; bottom: 74px; z-index: 70;
-  width: 50px; height: 50px; border-radius: 50%;
-  background: #1a6fd4; color: #fff; border: none;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 5px 18px rgba(0,0,0,.45);
-}
-.t-chat-badge {
-  position: absolute; top: -2px; right: -2px; min-width: 19px; height: 19px;
-  border-radius: 99px; background: #e04c4c; color: #fff; font-size: 11px;
-  font-weight: 700; display: none; align-items: center; justify-content: center; padding: 0 5px;
-}
-.t-chat-badge.tem { display: flex; }
-.t-chat-janela {
-  position: fixed; left: 12px; right: 12px; bottom: 132px; z-index: 70;
-  max-height: 58vh; display: none; flex-direction: column;
-  background: #10161c; border: 1px solid #1e252d; border-radius: 14px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.55); overflow: hidden;
-}
-.t-chat-janela.aberto { display: flex; }
-.t-chat-topo { padding: 11px 13px; border-bottom: 1px solid #1e252d; font-weight: 700; font-size: 13px; }
-.t-chat-topo small { display: block; font-weight: 400; font-size: 11px; color: #7f8d9b; margin-top: 2px; }
-.t-chat-corpo { flex: 1; overflow-y: auto; padding: 11px; display: flex; flex-direction: column; gap: 7px; }
-.t-msg { max-width: 84%; padding: 8px 11px; border-radius: 12px; font-size: 13.5px; line-height: 1.45; }
-.t-msg.deles { align-self: flex-start; background: #1b2530; }
-.t-msg.minha { align-self: flex-end; background: #1a6fd4; }
-.t-msg.sistema { align-self: center; background: rgba(42,160,92,.14); color: #9fe3ba; font-size: 12px; }
-.t-chat-envio { display: flex; gap: 6px; padding: 9px; border-top: 1px solid #1e252d; }
-.t-chat-envio input {
-  flex: 1; background: #0c1116; border: 1px solid #1e252d; border-radius: 9px;
-  color: #e8edf3; padding: 10px 12px; font-size: 15px; font-family: inherit;
-}
-.t-chat-envio button { background: #1a6fd4; color: #fff; border: none; border-radius: 9px; padding: 0 15px; font-weight: 600; }
-
 /* ═══ Folha de desfecho do atendimento ═══════════════════════════════
    Sobe de baixo, com botões grandes: o técnico usa de pé, na calçada,
    com uma mão só. Toda a interação é toque — nada de digitar, exceto o

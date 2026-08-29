@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v144';
+const VERSAO_PAINEL = 'v145';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6053,7 +6053,7 @@ const TIPOS_OS_ROTULO = {
 const MODELOS_OS_ROTULO = {
   os:               'Ordens de Serviço',
   chamado_tecnico:  'Chamado Técnico',
-  orcamento:        'Fazer Orçamento',
+  orcamento:        'Orçamento',
 };
 
 let _osFiltroStatus = '';
@@ -6492,11 +6492,12 @@ function osEscolherModelo(modelo) {
   document.getElementById('os-linha-tecnico-pagamento').style.display = ehChamado ? 'none' : '';
   document.getElementById('os-campos-orcamento-itens').style.display = ehChamado ? 'none' : '';
 
-  // "Garantia" só existe na impressão do modelo "Ordens de Serviço" —
-  // esconder o checkbox nos outros dois evita oferecer opção de ocultar
-  // algo que nem vai aparecer de qualquer jeito. "Valor e forma de
-  // pagamento" já segue o próprio #os-campos-orcamento-itens (onde mora).
-  document.getElementById('os-imp-garantia-wrap').style.display = modelo === 'os' ? '' : 'none';
+  // "Garantia" existe na impressão dos modelos "Ordens de Serviço" e
+  // "Orçamento" (pedido de 2026-08-29) — esconder o checkbox no Chamado
+  // Técnico evita oferecer opção de ocultar algo que nem vai aparecer.
+  // "Valor e forma de pagamento" já segue o próprio #os-campos-orcamento-itens
+  // (onde mora).
+  document.getElementById('os-imp-garantia-wrap').style.display = modelo !== 'chamado_tecnico' ? '' : 'none';
 }
 
 // Único seletor de forma de pagamento entre poucas opções (Pix/Dinheiro/
@@ -6738,13 +6739,15 @@ async function osAbrirNovoFilho(paiId, clienteId, clienteNome) {
   toast('Escolha Chamado Técnico ou Orçamento — o cliente e a OS já estão marcados', 'info');
 }
 
-// Mesma razão do osEdTipoMudou (edição): só "OS de saída da oficina" tem uma
+// Mesma razão do osEdTipoMudou (edição): "OS de saída da oficina" tem uma
 // data de garantia pra escolher — o termo impresso conta os 3 meses "a
 // partir da data da conclusão do reparo", não do dia em que a OS foi aberta.
+// O modelo Orçamento também ganha o campo (pedido de 2026-08-29), mesmo sem
+// tipo_os escolhido — dá pra já deixar combinado um prazo no orçamento.
 function osTipoMudou() {
   const tipo = document.getElementById('os-tipo')?.value;
   const grupo = document.getElementById('os-garantia-inicio-grupo');
-  if (grupo) grupo.style.display = tipo === 'saida_oficina' ? '' : 'none';
+  if (grupo) grupo.style.display = (tipo === 'saida_oficina' || _novaOSModelo === 'orcamento') ? '' : 'none';
 }
 
 async function osCriar() {
@@ -6792,6 +6795,12 @@ async function osCriar() {
       corpo.garantia_inicio = document.getElementById('os-garantia-inicio').value || null;
       corpo.garantia_meses = Number(document.getElementById('os-garantia-meses').value) || 3;
     }
+  } else if (_novaOSModelo === 'orcamento') {
+    // Orçamento não exige tipo_os, mas aceita garantia (pedido de 2026-08-29).
+    const tipoOs = document.getElementById('os-tipo').value;
+    if (tipoOs) corpo.tipo_os = tipoOs;
+    corpo.garantia_inicio = document.getElementById('os-garantia-inicio').value || null;
+    corpo.garantia_meses = Number(document.getElementById('os-garantia-meses').value) || 3;
   }
 
   if (modo === 'existente') {
@@ -6994,14 +7003,32 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
   }
 
   if (o.modelo_os === 'orcamento') {
+    // Garantia no Orçamento (pedido de 2026-08-29): não depende de tipo_os
+    // ser "saida_oficina" — o orçamento pode já vir com um prazo combinado.
+    const garantiaOrcamento = `
+      <div class="form-row" style="margin-top:8px;">
+        <div class="form-group">
+          <label class="form-label" for="os-ed-garantia-inicio">Dia da garantia</label>
+          <input type="date" class="form-input" id="os-ed-garantia-inicio" value="${esc(o.garantia_inicio || '')}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="os-ed-garantia-meses">Prazo de garantia</label>
+          <select class="form-input" id="os-ed-garantia-meses">
+            <option value="3"${(o.garantia_meses || 3) === 3 ? ' selected' : ''}>3 meses</option>
+            <option value="6"${o.garantia_meses === 6 ? ' selected' : ''}>6 meses</option>
+            <option value="12"${o.garantia_meses === 12 ? ' selected' : ''}>1 ano</option>
+          </select>
+        </div>
+      </div>`;
     return `
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
       ${tipoOsOpcional}
+      ${garantiaOrcamento}
       ${camposComuns}
       ${observacao}
-      ${outrasSecoes(false)}
+      ${outrasSecoes(true)}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoOrcamento(${o.id})">Salvar alterações</button>
     </div>
     ${itensSecao}`;
@@ -7145,6 +7172,8 @@ async function osSalvarEdicaoOrcamento(id) {
     forma_pagamento: document.getElementById('os-ed-forma-pagamento').value,
     observacao: document.getElementById('os-ed-obs').value.trim(),
     imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
+    garantia_inicio: document.getElementById('os-ed-garantia-inicio')?.value || null,
+    garantia_meses: Number(document.getElementById('os-ed-garantia-meses')?.value) || 3,
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
@@ -7205,7 +7234,7 @@ async function abrirOSDetalhe(id) {
         <button type="button" class="modelo-os-btn${o.modelo_os === 'os' || !o.modelo_os ? ' ativo' : ''}"
                 onclick="osTrocarModelo(${o.id}, 'os')">Ordens de Serviço</button>
         <button type="button" class="modelo-os-btn${o.modelo_os === 'orcamento' ? ' ativo' : ''}"
-                onclick="osTrocarModelo(${o.id}, 'orcamento')">Fazer Orçamento</button>
+                onclick="osTrocarModelo(${o.id}, 'orcamento')">Orçamento</button>
       </div>
     </div>
     <div class="os-detalhe-secao">

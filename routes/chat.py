@@ -203,14 +203,15 @@ def apagar_conversa(sala):
 
 # ─── Chat da EQUIPE ─────────────────────────────────────────────────────
 #
-# Sala fixa 'equipe'. Fica em rotas PRÓPRIAS, e não em /chat/<sala>, por um
-# motivo de segurança: o caminho /api/chat/ é público (o link do cliente é a
-# credencial dele). Se a conversa interna morasse lá, qualquer pessoa de fora
-# leria o que a equipe combina só digitando o endereço.
+# Sala fixa 'equipe', só para o PAINEL (sessão de admin/recepcionista). Fica
+# em rotas PRÓPRIAS, e não em /chat/<sala>, por segurança: o caminho
+# /api/chat/ é público (o link do cliente é a credencial dele). Se a conversa
+# interna morasse lá, qualquer pessoa de fora leria o que a equipe combina só
+# digitando o endereço.
 #
-# Aqui há duas portas para a MESMA sala, porque as duas pontas se identificam
-# de jeitos diferentes: o painel pela sessão, o técnico em campo pelo token do
-# link dele — ele não tem conta.
+# O técnico em campo NÃO tem porta pra essa sala (removido em 2026-08-29):
+# ele via nome e mensagem de OUTROS técnicos ali, o que a Porto Tec não quer
+# — cada um deve ver só a própria rota no celular.
 SALA_EQUIPE = "equipe"
 
 
@@ -252,33 +253,4 @@ def equipe_escrever():
         publicar(conn, SALA_EQUIPE, texto,
                  autor_tipo=session.get("papel") or "admin",
                  autor_nome=session.get("usuario_nome") or "Administrador")
-    return jsonify({"ok": True}), 201
-
-
-@chat_bp.route("/t/<token>/equipe", methods=["GET"])
-def equipe_ler_tecnico(token):
-    """Mesma conversa, pela porta do técnico em campo (identificado pelo token)."""
-    with db_conn() as conn:
-        tecnico = fetch_one(conn, "SELECT nome FROM tecnicos WHERE token = ?", (token,))
-    if not tecnico:
-        return jsonify({"erro": "Link inválido"}), 404
-
-    linhas = _mensagens_equipe(_desde())
-    return jsonify({"mensagens": linhas, "eu": tecnico["nome"],
-                    "ultimo_id": linhas[-1]["id"] if linhas else _desde()})
-
-
-@chat_bp.route("/t/<token>/equipe", methods=["POST"])
-def equipe_escrever_tecnico(token):
-    texto = ((request.get_json(silent=True) or {}).get("texto") or "").strip()
-    if not texto:
-        return jsonify({"erro": "Escreva alguma coisa"}), 400
-
-    with db_conn(commit=True) as conn:
-        tecnico = fetch_one(conn, "SELECT nome FROM tecnicos WHERE token = ?", (token,))
-        if not tecnico:
-            return jsonify({"erro": "Link inválido"}), 404
-        publicar(conn, SALA_EQUIPE, texto,
-                 autor_tipo="tecnico", autor_nome=tecnico["nome"])
-
     return jsonify({"ok": True}), 201

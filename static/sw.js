@@ -236,7 +236,14 @@
 //       validação/compressão já usada no desfecho do técnico em campo; (2)
 //       barra lateral de Roteiros ganha busca por nome de cliente ou CEP,
 //       pra achar em que dia/técnico alguém está sem abrir ficha por ficha.
-const CACHE_VERSAO = 'portotec-roteiros-v144';
+// v145 = três coisas: (1) "Fazer Orçamento" vira só "Orçamento" (nome do
+//        modelo); (2) garantia (data + prazo 3/6/12 meses) passa a valer
+//        também no modelo Orçamento, não só em "saída da oficina"; (3)
+//        removido o Chat da Equipe do celular do técnico — ele mostrava
+//        nome e mensagem de OUTROS técnicos, e a Porto Tec quer que cada
+//        um veja só a própria rota. O chat da equipe continua existindo no
+//        painel (admin/recepcionista).
+const CACHE_VERSAO = 'portotec-roteiros-v145';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -748,7 +748,7 @@ MODELOS_OS = ["chamado_tecnico", "os", "orcamento"]
 MODELOS_OS_ROTULO = {
     "os": "Ordens de Serviço",
     "chamado_tecnico": "Chamado Técnico",
-    "orcamento": "Fazer Orçamento",
+    "orcamento": "Orçamento",
 }
 
 FOTO_MAXIMA = 900 * 1024
@@ -1359,8 +1359,12 @@ def criar():
     taxa_vistoria = _num(d.get("taxa_vistoria"))
     ocultar_fila = bool(d.get("oculta_fila"))
     imprimir_ocultar = _validar_imprimir_ocultar(d.get("imprimir_ocultar"))
-    garantia_inicio = _validar_data_iso(d.get("garantia_inicio")) if tipo_os == "saida_oficina" else None
-    garantia_meses = _validar_garantia_meses(d.get("garantia_meses")) if tipo_os == "saida_oficina" else None
+    # Garantia vale pra "saída da oficina" (data calculada pelo tipo) e pro
+    # modelo Orçamento (o cliente pode querer já deixar combinado um prazo,
+    # mesmo sem ainda ter um tipo_os fechado) — pedido de 2026-08-29.
+    _usa_garantia = tipo_os == "saida_oficina" or modelo_os == "orcamento"
+    garantia_inicio = _validar_data_iso(d.get("garantia_inicio")) if _usa_garantia else None
+    garantia_meses = _validar_garantia_meses(d.get("garantia_meses")) if _usa_garantia else None
     # Foto/técnico deixaram de ser exclusivos do Chamado Técnico — pedido de
     # 2026-08-27, mesma OS pode precisar registrar isso em qualquer modelo.
     foto = _foto_valida(d.get("foto"))
@@ -1512,19 +1516,22 @@ def editar(os_id):
                 tecnico_atendeu_id = None
             campos.append("tecnico_atendeu_id = ?")
             valores.append(tecnico_atendeu_id)
-        if "garantia_inicio" in d or ("tipo_os" in d and tipo_os_efetivo != "saida_oficina"):
-            # Só "saida_oficina" usa — noutro tipo, guardar essa data não tem
-            # pra que servir na impressão (ver _GARANTIA_MESES em app.py). O
-            # segundo caso (trocou de tipo_os sem mandar garantia_inicio
-            # junto) limpa sozinho — senão a data velha ficava enterrada no
-            # banco e reaparecia se o tipo voltasse a ser saida_oficina.
+        # "saida_oficina" e o modelo Orçamento usam garantia — pedido de
+        # 2026-08-29 pra poder já deixar combinado um prazo no orçamento.
+        _usa_garantia_efetivo = tipo_os_efetivo == "saida_oficina" or modelo_efetivo == "orcamento"
+        if "garantia_inicio" in d or (("tipo_os" in d or "modelo_os" in d) and not _usa_garantia_efetivo):
+            # Fora desses dois casos, guardar essa data não tem pra que servir
+            # na impressão (ver _GARANTIA_MESES em app.py). O segundo caso
+            # (trocou de tipo_os/modelo_os sem mandar garantia_inicio junto)
+            # limpa sozinho — senão a data velha ficava enterrada no banco e
+            # reaparecia se o tipo/modelo voltasse a valer garantia.
             campos.append("garantia_inicio = ?")
             valores.append(_validar_data_iso(d.get("garantia_inicio"))
-                           if tipo_os_efetivo == "saida_oficina" else None)
-        if "garantia_meses" in d or ("tipo_os" in d and tipo_os_efetivo != "saida_oficina"):
+                           if _usa_garantia_efetivo else None)
+        if "garantia_meses" in d or (("tipo_os" in d or "modelo_os" in d) and not _usa_garantia_efetivo):
             campos.append("garantia_meses = ?")
             valores.append(_validar_garantia_meses(d.get("garantia_meses"))
-                           if tipo_os_efetivo == "saida_oficina" else None)
+                           if _usa_garantia_efetivo else None)
 
         if not campos:
             return jsonify({"mensagem": "Nada para mudar"})
