@@ -695,6 +695,7 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_estoque_mov_item   ON estoque_movimentos(item_id, id)",
     "CREATE INDEX IF NOT EXISTS idx_os_cliente          ON ordens_servico(cliente_id)",
     "CREATE INDEX IF NOT EXISTS idx_servicos_os         ON servicos(ordem_servico_id)",
+    "CREATE INDEX IF NOT EXISTS idx_pecas_sub_codigo    ON pecas_substituicao(codigo)",
 ]
 
 _MIGRACOES_PG = [
@@ -967,6 +968,24 @@ _MIGRACOES_PG = [
     # dá 6 ou 12. NULL = usa o padrão de 3 (compatível com OS já abertas
     # antes deste campo existir).
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS garantia_meses INTEGER",
+    # Tabela de substituição de peças da Panasonic — pedido de 2026-08-29:
+    # buscar um código e ver por quais ele foi substituído. Planilha própria
+    # da Panasonic (não é a de Pedidos, que é sobre compra), atualizada de
+    # vez em quando por upload manual — por isso um import SUBSTITUI tudo
+    # (ver routes/substituicoes.py), não faz merge linha a linha: é mais
+    # simples e mais seguro que tentar casar qual linha "é a mesma" entre
+    # duas planilhas que a Panasonic manda em momentos diferentes.
+    """CREATE TABLE IF NOT EXISTS pecas_substituicao (
+        id              SERIAL PRIMARY KEY,
+        codigo          TEXT NOT NULL,
+        substituto_1    TEXT,
+        substituto_2    TEXT,
+        substituto_3    TEXT,
+        substituto_4    TEXT,
+        substituto_5    TEXT,
+        inicio_validade TEXT,
+        fim_validade    TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1125,6 +1144,17 @@ _MIGRACOES_SQLITE = [
     )""",
     "ALTER TABLE ordens_servico ADD COLUMN garantia_inicio TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN garantia_meses INTEGER",
+    """CREATE TABLE IF NOT EXISTS pecas_substituicao (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo          TEXT NOT NULL,
+        substituto_1    TEXT,
+        substituto_2    TEXT,
+        substituto_3    TEXT,
+        substituto_4    TEXT,
+        substituto_5    TEXT,
+        inicio_validade TEXT,
+        fim_validade    TEXT
+    )""",
 ]
 
 

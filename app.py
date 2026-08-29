@@ -32,6 +32,7 @@ from routes.servicos import servicos_bp
 from routes.setores import setores_bp
 from routes.tecnico_api import tecnico_api_bp
 from routes.tecnico_view import tecnico_view_bp
+from routes.substituicoes import substituicoes_bp
 from routes.tecnicos import tecnicos_bp
 from routes.vendas import vendas_bp
 
@@ -102,6 +103,7 @@ app.register_blueprint(cotacoes_bp, url_prefix="/api")
 app.register_blueprint(clientes_bp, url_prefix="/api")
 app.register_blueprint(ordens_servico_bp, url_prefix="/api")
 app.register_blueprint(vendas_bp, url_prefix="/api")
+app.register_blueprint(substituicoes_bp, url_prefix="/api")
 
 
 def _e_api() -> bool:

@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v136';
+const VERSAO_PAINEL = 'v137';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1111,7 +1111,7 @@ async function carregarUsuarioLogado() {
   mostra('mtab-os', podeUsuario('ordens_servico'));
   mostra('mtab-agendar', podeUsuario('ordens_servico'));
   mostra('mtab-vendas', podeUsuario('vendas'));
-  mostra('cotacao-details', podeUsuario('cotacao'));
+  mostra('ptab-cotacao', podeUsuario('cotacao'));
 
   const marca = document.getElementById('usuario-logado');
   if (marca) {
@@ -2313,9 +2313,12 @@ function pecasSwitchTab(tab) {
   _pecasTab = tab;
   document.getElementById('ptab-compradas')?.classList.toggle('active', tab === 'compradas');
   document.getElementById('ptab-pedidos')?.classList.toggle('active', tab === 'pedidos');
+  document.getElementById('ptab-cotacao')?.classList.toggle('active', tab === 'cotacao');
   document.getElementById('pecas-aba-compradas').style.display = tab === 'compradas' ? 'block' : 'none';
   document.getElementById('pecas-aba-pedidos').style.display = tab === 'pedidos' ? 'block' : 'none';
+  document.getElementById('pecas-aba-cotacao').style.display = tab === 'cotacao' ? 'block' : 'none';
   if (tab === 'pedidos') carregarPedidosComComprovante();
+  if (tab === 'cotacao') { carregarCotacoes(); carregarStatusSubstituicao(); }
 }
 
 async function carregarPedidosComComprovante() {
@@ -7329,6 +7332,74 @@ async function osAgendar(id) {
 // outra etapa (planilha / aba Peças), esta lista não lança pedido nenhum.
 let _cotacoesAtuais = [];
 const _brlCotacao = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// ─── Substituição de código (planilha Panasonic) ────────────────────────
+//
+// Pedido de 2026-08-29: a Panasonic manda de vez em quando uma planilha
+// dizendo que o código X virou Y (peça descontinuada, número reciclado
+// etc.). Upload SUBSTITUI a base inteira (ver routes/substituicoes.py) —
+// não dá pra confiar em "atualizar linha por linha" entre duas edições
+// sem uma chave garantida igual nas duas.
+async function carregarStatusSubstituicao() {
+  const alvo = document.getElementById('substituicao-status');
+  if (!alvo) return;
+  try {
+    const r = await api('/pecas-substituicao/status');
+    alvo.textContent = r.total
+      ? `${r.total.toLocaleString('pt-BR')} códigos carregados.`
+      : 'Nenhuma planilha carregada ainda — importe uma abaixo.';
+  } catch (e) {
+    alvo.textContent = '';
+  }
+}
+
+async function buscarSubstituicao() {
+  const input = document.getElementById('substituicao-busca');
+  const codigo = input.value.trim();
+  const alvo = document.getElementById('substituicao-resultado');
+  if (!codigo) { alvo.innerHTML = ''; return; }
+  alvo.innerHTML = '<p class="ajuda-texto">Buscando...</p>';
+  try {
+    const r = await api(`/pecas-substituicao?codigo=${encodeURIComponent(codigo)}`);
+    if (!r.resultados.length) {
+      alvo.innerHTML = `<p class="ajuda-texto">Nenhuma substituição encontrada pra "${esc(codigo)}".</p>`;
+      return;
+    }
+    alvo.innerHTML = (r.casamento === 'parcial'
+      ? `<p class="ajuda-texto">Não achei exato — mostrando parecidos:</p>` : '') +
+      r.resultados.map(res => `
+        <div class="substituicao-cartao">
+          <div class="cod-original">Código <b>${esc(res.codigo)}</b> foi substituído por:</div>
+          <div class="substituicao-lista">
+            ${res.substitutos.map((s, i) => `${i > 0 ? '<span class="substituicao-seta">→</span>' : ''}
+              <span class="substituicao-chip">${esc(s)}</span>`).join('')}
+          </div>
+        </div>`).join('');
+  } catch (e) {
+    alvo.innerHTML = `<p class="vcep-erro" style="margin:0;">${esc(e.message)}</p>`;
+  }
+}
+
+async function importarSubstituicao() {
+  const input = document.getElementById('substituicao-arquivo');
+  const arquivo = input.files && input.files[0];
+  if (!arquivo) {
+    toast('Escolha o arquivo .xlsx primeiro', 'error');
+    return;
+  }
+  const form = new FormData();
+  form.append('arquivo', arquivo);
+  try {
+    const resp = await fetch('/api/pecas-substituicao/importar', { method: 'POST', body: form });
+    const dados = await resp.json();
+    if (!resp.ok) throw new Error(dados.erro || 'Falha ao importar');
+    toast(`Planilha importada — ${dados.total.toLocaleString('pt-BR')} códigos.`, 'success');
+    input.value = '';
+    carregarStatusSubstituicao();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
 
 async function carregarCotacoes() {
   const mount = document.getElementById('cotacao-conteudo');

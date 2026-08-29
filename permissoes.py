@@ -82,6 +82,7 @@ REGRAS = [
     # Peças, usuários, relatórios, chat da equipe.
     ("/api/pedidos",               None,                     "pecas"),
     ("/api/cotacoes",              None,                     "cotacao"),
+    ("/api/pecas-substituicao",    None,                     "cotacao"),
     ("/api/clientes",              None,                     "ordens_servico"),
     ("/api/ordens-servico",        None,                     "ordens_servico"),
     ("/api/usuarios",              None,                     "gerenciar_usuarios"),

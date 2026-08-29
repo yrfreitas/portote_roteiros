@@ -337,6 +337,9 @@
         <button class="vcep-tab" id="ptab-pedidos" onclick="pecasSwitchTab('pedidos')">
           Pedidos com comprovante <span class="agendar-tab-count" id="ptab-pedidos-cont"></span>
         </button>
+        <button class="vcep-tab" id="ptab-cotacao" style="display:none" onclick="pecasSwitchTab('cotacao')">
+          Cotação de peças
+        </button>
       </div>
 
       <div id="pecas-aba-compradas">
@@ -369,22 +372,12 @@
             estoque sozinho.</li>
         </ol>
         <p class="pecas-nota-cotacao">
-          Precisa só saber o preço de uma peça <i>antes</i> de comprar? Isso é
-          a aba <b>Cotação</b>, mais abaixo — lista diferente desta.
+          Precisa só saber o preço de uma peça <i>antes</i> de comprar, ou ver
+          por qual código ela foi substituída? Isso é a aba <b>Cotação de
+          peças</b>, ali em cima.
         </p>
 
         <div id="pecas-lista"></div>
-
-        <!-- Compacta de propósito: cotação é consulta rápida ("quanto custa
-             essa peça?"), não merece aba própria disputando espaço com a
-             lista de compras, que é o trabalho do dia a dia aqui. -->
-        <details class="cotacao-details" id="cotacao-details" style="display:none" ontoggle="if(this.open) carregarCotacoes()">
-          <summary class="cotacao-summary">
-            <span>Cotação de peças</span>
-            <span class="badge" id="cotacao-selo" hidden></span>
-          </summary>
-          <div id="cotacao-conteudo"></div>
-        </details>
       </div>
 
       <!-- Peças marcadas "já pedi" lá em Atendimentos, com o comprovante
@@ -393,6 +386,47 @@
            quem. -->
       <div id="pecas-aba-pedidos" style="display:none;">
         <div id="pecas-pedidos-lista"></div>
+      </div>
+
+      <!-- Cotação (preço antes de comprar) virou aba própria em 2026-08-29 —
+           era um <details> recolhido no fim de "Peças Compradas" e passava
+           batido. Ganhou junto a consulta de substituição de código: são as
+           duas perguntas de "antes de comprar" ("quanto custa" / "esse
+           código ainda existe ou virou outro"), fazia sentido morarem juntas. -->
+      <div id="pecas-aba-cotacao" style="display:none;">
+        <div class="historico-header">
+          <span class="visao-geral-title">Cotação de peças</span>
+          <span class="badge" id="cotacao-selo" hidden></span>
+        </div>
+
+        <div class="pecas-sub-secao">
+          <p class="form-separador">Substituição de código (planilha Panasonic)</p>
+          <p class="ajuda-texto" id="substituicao-status">Carregando...</p>
+          <div class="form-row" style="align-items:flex-end;">
+            <div class="form-group">
+              <label class="form-label" for="substituicao-busca">Código da peça</label>
+              <input class="form-input" id="substituicao-busca" autocomplete="off"
+                     placeholder="Ex: 12270000B69406"
+                     onkeydown="if(event.key==='Enter') buscarSubstituicao()">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="buscarSubstituicao()">Buscar</button>
+          </div>
+          <div id="substituicao-resultado"></div>
+
+          <details style="margin-top:12px;">
+            <summary class="ajuda-texto" style="cursor:pointer;">Atualizar a planilha de substituição</summary>
+            <p class="ajuda-texto" style="margin:8px 0;">
+              Sobe o .xlsx que a Panasonic manda — substitui a lista inteira pela nova.
+            </p>
+            <input type="file" id="substituicao-arquivo" accept=".xlsx">
+            <button class="btn btn-ghost btn-sm" onclick="importarSubstituicao()">Importar</button>
+          </details>
+        </div>
+
+        <div class="pecas-sub-secao" style="margin-top:20px;">
+          <p class="form-separador">Preço antes de comprar</p>
+          <div id="cotacao-conteudo"></div>
+        </div>
       </div>
     </div>
   </main>
