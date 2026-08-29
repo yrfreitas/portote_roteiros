@@ -109,6 +109,27 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
 
     item = fetch_one(conn, "SELECT * FROM estoque_itens WHERE codigo = ?", (codigo,))
 
+    # Pedido de 2026-08-29: a Panasonic às vezes reemite a MESMA peça com um
+    # código novo (planilha de substituição, carregada na aba Cotação de
+    # peças). Sem checar isso, bipar uma nota com o código novo abria um
+    # item de estoque SEPARADO do antigo, e o saldo de uma peça só ficava
+    # dividido em dois — junta no item que já existe em vez de duplicar.
+    if item is None:
+        substituicao = fetch_one(conn, """
+            SELECT codigo FROM pecas_substituicao
+             WHERE substituto_1 = ? OR substituto_2 = ? OR substituto_3 = ?
+                OR substituto_4 = ? OR substituto_5 = ?
+             LIMIT 1
+        """, (codigo, codigo, codigo, codigo, codigo))
+        if substituicao:
+            item_original = fetch_one(conn, "SELECT * FROM estoque_itens WHERE codigo = ?",
+                                      (substituicao["codigo"],))
+            if item_original:
+                item = item_original
+                nota_substituicao = (f"entrou como {codigo} — substituição do código "
+                                     f"{item_original['codigo']} (planilha Panasonic)")
+                obs = f"{obs}; {nota_substituicao}" if obs else nota_substituicao
+
     if item is None:
         novo_id = insert_returning_id(conn, """
             INSERT INTO estoque_itens
@@ -681,7 +702,13 @@ def remover_item(item_id):
 
 @estoque_bp.route("/estoque/<int:item_id>/historico", methods=["GET"])
 def historico(item_id):
-    """Todo movimento do item, mais recente primeiro. É a auditoria do saldo."""
+    """Todo movimento do item, mais recente primeiro. É a auditoria do saldo.
+
+    'ordem_servico' e 'venda' guardam só um id em referencia (o suficiente
+    pra função que deu a saída, mas ilegível pra quem lê depois) — aqui
+    resolve pra cliente/OS de verdade, pra "saiu 1" virar "saiu 1 — Fulano,
+    OS #000042" (pedido de 2026-08-29). 'nota' e 'atendimento' já são
+    legíveis por si (nº da nota, nome do cliente) — não precisam de busca."""
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
     with db_conn() as conn:
@@ -694,4 +721,27 @@ def historico(item_id):
               FROM estoque_movimentos WHERE item_id = ?
              ORDER BY id DESC
         """, (item_id,))
+
+        for m in movs:
+            m["contexto"] = None
+            ref = (m.get("referencia") or "").strip()
+            if not ref:
+                continue
+            if m["origem"] == "ordem_servico" and ref.isdigit():
+                os_row = fetch_one(conn, """
+                    SELECT os.id, c.nome AS cliente_nome
+                      FROM ordens_servico os JOIN clientes c ON c.id = os.cliente_id
+                     WHERE os.id = ?
+                """, (int(ref),))
+                if os_row:
+                    m["contexto"] = {"tipo": "os", "os_id": os_row["id"], "cliente": os_row["cliente_nome"]}
+            elif m["origem"] == "venda" and ref.startswith("venda:"):
+                venda_id = ref.split(":", 1)[1]
+                if venda_id.isdigit():
+                    venda_row = fetch_one(conn, "SELECT id, cliente_nome FROM vendas WHERE id = ?",
+                                          (int(venda_id),))
+                    if venda_row:
+                        m["contexto"] = {"tipo": "venda", "venda_id": venda_row["id"],
+                                         "cliente": venda_row["cliente_nome"]}
+
     return jsonify({"item": item, "movimentos": movs})

@@ -4408,6 +4408,8 @@ select:focus-visible,
   border-bottom: 1px solid var(--border); background: var(--bg-panel);
 }
 .estoque-hist-tabela td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.estoque-hist-link { color: var(--accent-text); cursor: pointer; text-decoration: none; }
+.estoque-hist-link:hover { text-decoration: underline; }
 .estoque-hist-tabela tr:last-child td { border-bottom: none; }
 .estoque-hist-entrada td:first-child { color: var(--success-text); font-weight: 600; }
 .estoque-hist-saida td:first-child { color: var(--danger-text); font-weight: 600; }

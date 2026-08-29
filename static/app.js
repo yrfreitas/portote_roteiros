@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v137';
+const VERSAO_PAINEL = 'v138';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8536,6 +8536,15 @@ async function verHistoricoEstoque(id, codigo) {
       const ref = (m.referencia || '').trim();
       if (m.origem === 'atendimento') return ref ? `→ ${esc(ref)}` : 'atendimento';
       if (m.origem === 'nota') return ref ? `nota ${esc(ref)}` : 'nota fiscal';
+      if (m.origem === 'ordem_servico') {
+        if (m.contexto) return `<a class="estoque-hist-link" onclick="abrirOSDetalhe(${m.contexto.os_id})">
+          → ${esc(m.contexto.cliente)}, OS #${String(m.contexto.os_id).padStart(6, '0')}</a>`;
+        return ref ? `OS #${esc(ref)} (apagada)` : 'ordem de serviço';
+      }
+      if (m.origem === 'venda') {
+        if (m.contexto) return `→ ${esc(m.contexto.cliente)}, venda #${String(m.contexto.venda_id).padStart(6, '0')}`;
+        return 'venda de balcão';
+      }
       return esc(m.origem || '—');
     };
     const linhas = (d.movimentos || []).map(m => `
