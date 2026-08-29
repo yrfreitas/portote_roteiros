@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v142';
+const VERSAO_PAINEL = 'v143';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -539,7 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
   iniciarMonitorSaude();
   iniciarAutoRefresh();
   iniciarFiltroHistorico();
-  carregarUsuarioLogado();
+  carregarUsuarioLogadoPromise = carregarUsuarioLogado();
   iniciarChatPainel();
   carregarTecnicos();
   _vcepRenderHistorico();
@@ -547,8 +547,14 @@ document.addEventListener('DOMContentLoaded', () => {
   carregarSeloAgendar();
   carregarSetores();
   iniciarArrastarAbas();
-  verificarAlmocoEventosNovos();
-  setInterval(verificarAlmocoEventosNovos, 20000);
+  // Espera o /api/eu resolver antes de decidir se poll — carregarTecnicos
+  // já roda em paralelo e checa a permissão na hora certa (ver acima); aqui
+  // só precisa não começar o poll pra quem definitivamente não pode ver.
+  carregarUsuarioLogadoPromise.then(() => {
+    if (!podeUsuario('almoco_ver')) return;
+    verificarAlmocoEventosNovos();
+    setInterval(verificarAlmocoEventosNovos, 20000);
+  });
 });
 
 // Registro do PWA — silencioso, não bloqueia nada se falhar (ex: em http
@@ -1181,6 +1187,7 @@ function iniciarChatPainel() {
 // e mostra() REVELAR em vez de esconder tira o pisca e ainda é mais seguro:
 // falha ao carregar permissão deixa oculto, não visível.
 let usuarioLogado = { papel: 'admin', nome: '', permissoes: {} };
+let carregarUsuarioLogadoPromise = null;
 
 // Atalho: a pessoa PODE fazer a ação? Admin cai em tudo true pelo servidor,
 // então aqui é só ler o mapa que veio do /api/eu.
@@ -1205,6 +1212,10 @@ async function carregarUsuarioLogado() {
   mostra('mtab-agendar', podeUsuario('ordens_servico'));
   mostra('mtab-vendas', podeUsuario('vendas'));
   mostra('ptab-cotacao', podeUsuario('cotacao'));
+  mostra('mtab-roteiros', podeUsuario('roteiros_ver'));
+  mostra('mtab-cep', podeUsuario('cep_ver'));
+  mostra('mtab-historico', podeUsuario('relatorios'));
+  mostra('mtab-atendimentos', podeUsuario('desfechos_ver'));
 
   const marca = document.getElementById('usuario-logado');
   if (marca) {
@@ -1224,6 +1235,8 @@ async function carregarAcessos() {
   try { d = await api('/usuarios'); }
   catch (e) { alvo.innerHTML = `<div class="diag-detalhe">${esc(e.message)}</div>`; return; }
 
+  const ROTULO_PAPEL = { admin: 'administrador', tecnico: 'técnico', recepcionista: 'recepcionista' };
+
   _acessosCache = d.usuarios || [];
   alvo.innerHTML = `
     ${_acessosCache.map(u => {
@@ -1236,7 +1249,7 @@ async function carregarAcessos() {
           <span class="diag-detalhe" style="grid-column:auto;">${esc(u.login)}</span>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          ${_selo(admin ? 'ok' : 'aviso', admin ? 'administrador' : 'técnico')}
+          ${_selo(admin ? 'ok' : 'aviso', ROTULO_PAPEL[u.papel] || u.papel)}
           ${admin ? '' : `<span class="diag-detalhe" style="grid-column:auto;">${liberadas} permiss${liberadas === 1 ? 'ão' : 'ões'}</span>`}
           ${admin ? '' : `<button class="btn btn-primary btn-sm" onclick="abrirEditorPermissoes(${u.id})">Permissões</button>`}
           ${admin ? '' : `<button class="btn btn-ghost btn-sm" onclick="liberarTudo(${u.id}, '${esc(u.nome)}')" title="Marca todas as permissões do catálogo pra essa pessoa, sem abrir o editor">Liberar tudo</button>`}
@@ -1250,7 +1263,7 @@ async function carregarAcessos() {
       </div>`;
     }).join('')}
     <button class="btn btn-primary btn-sm" style="margin-top:10px;"
-            onclick="criarUsuario()">+ Novo acesso</button>`;
+            onclick="abrirModalNovoUsuario()">+ Novo acesso</button>`;
 }
 
 // Atalho pra "essa pessoa está travada em tudo, só me deixa ela ver o site
@@ -1338,27 +1351,37 @@ async function salvarPermissoes() {
   }
 }
 
-async function criarUsuario() {
-  const nome = prompt('Nome da pessoa:');
-  if (!nome) return;
-  const login = prompt('Usuário para entrar (sem espaço):');
-  if (!login) return;
-  const senha = prompt('Senha (mínimo 6 caracteres):');
-  if (!senha) return;
-  const ehAdmin = confirm('Este acesso é de ADMINISTRADOR?\n\nOK = administrador (vê tudo)\nCancelar = técnico (não vê diagnóstico)');
+function abrirModalNovoUsuario() {
+  document.getElementById('novo-usuario-nome').value = '';
+  document.getElementById('novo-usuario-login').value = '';
+  document.getElementById('novo-usuario-senha').value = '';
+  document.getElementById('novo-usuario-papel').value = 'tecnico';
+  const sel = document.getElementById('novo-usuario-tecnico');
+  sel.innerHTML = '<option value="">Nenhum</option>' +
+    (tecnicos || []).map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('');
+  novoUsuarioPapelMudou();
+  document.getElementById('modal-novo-usuario').classList.add('open');
+  setTimeout(() => document.getElementById('novo-usuario-nome').focus(), 80);
+}
 
-  let tecnico_id = null;
-  if (!ehAdmin && (tecnicos || []).length) {
-    const lista = tecnicos.map((t, i) => `${i + 1}) ${t.nome}`).join('\n');
-    const r = prompt(`Ligar a qual técnico das rotas? (deixe vazio para nenhum)\n\n${lista}`);
-    const idx = parseInt(r, 10) - 1;
-    if (idx >= 0 && idx < tecnicos.length) tecnico_id = tecnicos[idx].id;
-  }
+function novoUsuarioPapelMudou() {
+  const papel = document.getElementById('novo-usuario-papel').value;
+  document.getElementById('novo-usuario-tecnico-grupo').style.display = papel === 'tecnico' ? '' : 'none';
+}
+
+async function salvarNovoUsuario() {
+  const nome = document.getElementById('novo-usuario-nome').value.trim();
+  const login = document.getElementById('novo-usuario-login').value.trim();
+  const senha = document.getElementById('novo-usuario-senha').value;
+  const papel = document.getElementById('novo-usuario-papel').value;
+  if (!nome || !login) { toast('Preencha nome e usuário.', 'error'); return; }
+  if (!senha || senha.length < 6) { toast('Senha precisa ter pelo menos 6 caracteres.', 'error'); return; }
+  const tecnico_id = papel === 'tecnico' ? (document.getElementById('novo-usuario-tecnico').value || null) : null;
 
   try {
-    await api('/usuarios', { method: 'POST', body: JSON.stringify({
-      nome, login, senha, papel: ehAdmin ? 'admin' : 'tecnico', tecnico_id }) });
+    await api('/usuarios', { method: 'POST', body: JSON.stringify({ nome, login, senha, papel, tecnico_id }) });
     toast('Acesso criado', 'success');
+    fecharModais();
     carregarAcessos();
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -2046,7 +2069,10 @@ async function carregarTecnicos() {
 
     await Promise.all(tecnicos.map(t => carregarFichasTecnico(t.id)));
     verificarPontosSemSetor(); // sem await: aviso não pode atrasar a sidebar
-    carregarStatusAlmocoTecnicos(); // idem — selo de almoço não trava a sidebar
+    // Selo de almoço é só pra quem tem a permissão — recepcionista sem
+    // 'almoco_ver', por exemplo, nem faz a chamada (o servidor barraria de
+    // qualquer jeito, isso só evita a requisição fadada a 403 à toa).
+    if (podeUsuario('almoco_ver')) carregarStatusAlmocoTecnicos();
 
   } catch (e) {
     if (list) {

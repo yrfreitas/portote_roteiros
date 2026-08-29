@@ -30,19 +30,23 @@ CATALOGO = [
     {"chave": "gerenciar_tecnicos", "area": "Sistema",     "rotulo": "Criar / editar / remover técnicos"},
     {"chave": "gerenciar_setores",  "area": "Sistema",     "rotulo": "Criar / editar / remover setores"},
     # Roteiros e atendimentos
+    {"chave": "roteiros_ver",       "area": "Roteiros",    "rotulo": "Ver a aba Roteiros"},
     {"chave": "roteiros",           "area": "Roteiros",    "rotulo": "Mexer nos roteiros (criar dia, otimizar, adicionar atendimento)"},
     {"chave": "atendimentos",       "area": "Roteiros",    "rotulo": "Editar / mover / excluir atendimentos"},
+    {"chave": "cep_ver",            "area": "Roteiros",    "rotulo": "Ver e usar o Verificador de CEP"},
+    {"chave": "desfechos_ver",      "area": "Roteiros",    "rotulo": "Ver a aba Atendimentos (o que o técnico registrou em campo)"},
+    {"chave": "almoco_ver",         "area": "Roteiros",    "rotulo": "Ver o horário de almoço dos técnicos (aviso e selo no painel)"},
     # Peças e estoque
     {"chave": "pecas",              "area": "Peças",       "rotulo": "Ver a aba Peças (compras / nota fiscal)"},
-    {"chave": "cotacao",            "area": "Peças",       "rotulo": "Ver e usar a aba Cotação (peças aguardando preço)"},
-    {"chave": "ordens_servico",     "area": "OS",          "rotulo": "Ver e abrir Ordens de Serviço"},
+    {"chave": "cotacao",            "area": "Peças",       "rotulo": "Ver e usar a aba Cotação (peças aguardando preço / substituição)"},
+    {"chave": "ordens_servico",     "area": "OS",          "rotulo": "Ver e abrir Ordens de Serviço (inclui Agendar Clientes)"},
     {"chave": "estoque_ver",        "area": "Estoque",     "rotulo": "Ver o Estoque"},
     {"chave": "estoque_editar",     "area": "Estoque",     "rotulo": "Mexer no Estoque (entrada, saída, ajuste, criar)"},
     {"chave": "estoque_excluir",    "area": "Estoque",     "rotulo": "Excluir peças e estoques"},
     {"chave": "vendas",             "area": "Vendas",      "rotulo": "Vender peças no balcão e imprimir a nota"},
     # Comunicação e relatórios
     {"chave": "chat_equipe",        "area": "Comunicação", "rotulo": "Usar o chat da equipe"},
-    {"chave": "relatorios",         "area": "Relatórios",  "rotulo": "Ver relatórios e exportações"},
+    {"chave": "relatorios",         "area": "Relatórios",  "rotulo": "Ver a aba Histórico, relatórios e exportações"},
 ]
 
 TODAS = [c["chave"] for c in CATALOGO]
@@ -72,6 +76,9 @@ REGRAS = [
     ("/api/diagnostico",           None,                     "diagnostico"),
     ("/api/rastreios/diagnostico", None,                     "diagnostico"),
     ("/api/pedidos/diagnostico",   None,                     "diagnostico"),
+    # Ponto de almoço: mais específico que a regra genérica de /api/tecnicos
+    # logo abaixo, por isso vem antes — senão nunca seria alcançada.
+    ("/api/tecnicos/almoco",       None,                     "almoco_ver"),
     # Cadastros de sistema (GET fica livre — os selects do painel precisam dele).
     ("/api/tecnicos",              ("POST", "PUT", "DELETE"), "gerenciar_tecnicos"),
     ("/api/setores",               ("POST", "PUT", "DELETE"), "gerenciar_setores"),
@@ -80,6 +87,11 @@ REGRAS = [
     # Atendimentos existentes: editar, mover, transferir, excluir.
     ("/api/servicos",              ("POST", "PUT", "DELETE"), "atendimentos"),
     # Peças, usuários, relatórios, chat da equipe.
+    # "/api/pedidos-peca-os" tem que vir ANTES de "/api/pedidos" — senão o
+    # startswith mais curto casaria primeiro (o hífen não conta como
+    # fronteira) e "já pedi" de peça pedida na OS nunca exigiria
+    # desfechos_ver, só pecas.
+    ("/api/pedidos-peca-os",       None,                     "desfechos_ver"),
     ("/api/pedidos",               None,                     "pecas"),
     ("/api/cotacoes",              None,                     "cotacao"),
     ("/api/pecas-substituicao",    None,                     "cotacao"),
@@ -91,7 +103,12 @@ REGRAS = [
     ("/api/relatorios",            None,                     "relatorios"),
     ("/api/historico",             None,                     "relatorios"),
     ("/api/metricas",              None,                     "relatorios"),
-    ("/api/desfechos",             None,                     "relatorios"),
+    # "Pedidos com comprovante" é conteúdo da aba Peças, mesmo vivendo sob
+    # /api/desfechos/... por causa de como foi implementado — por isso essa
+    # regra, mais específica, vem ANTES da genérica de /api/desfechos (que é
+    # a aba Atendimentos de verdade).
+    ("/api/desfechos/pedidos",     None,                     "pecas"),
+    ("/api/desfechos",             None,                     "desfechos_ver"),
     # Estoque: ver / editar / excluir.
     ("/api/estoque",               ("GET",),                 "estoque_ver"),
     ("/api/estoque",               ("POST", "PUT", "PATCH"), "estoque_editar"),

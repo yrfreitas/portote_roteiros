@@ -584,6 +584,49 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-novo-usuario" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-title">Novo acesso</div>
+    <div class="form-group">
+      <label class="form-label" for="novo-usuario-nome">Nome da pessoa</label>
+      <input class="form-input" id="novo-usuario-nome" maxlength="80" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label" for="novo-usuario-login">Usuário (sem espaço)</label>
+        <input class="form-input" id="novo-usuario-login" maxlength="40" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="novo-usuario-senha">Senha</label>
+        <input class="form-input" type="password" id="novo-usuario-senha"
+               maxlength="80" placeholder="mínimo 6 caracteres" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="novo-usuario-papel">Tipo de acesso</label>
+      <select class="form-input" id="novo-usuario-papel" onchange="novoUsuarioPapelMudou()">
+        <option value="tecnico">Técnico</option>
+        <option value="recepcionista">Recepcionista</option>
+        <option value="admin">Administrador (vê tudo, sem restrição)</option>
+      </select>
+    </div>
+    <div class="form-group" id="novo-usuario-tecnico-grupo">
+      <label class="form-label" for="novo-usuario-tecnico">Ligar a qual técnico das rotas? (opcional)</label>
+      <select class="form-input" id="novo-usuario-tecnico">
+        <option value="">Nenhum</option>
+      </select>
+    </div>
+    <p class="ajuda-texto" style="margin:4px 0 0;">
+      Nasce com o mesmo acesso de um técnico (tudo liberado) — restrinja depois
+      pelo botão "Permissões" na lista de acessos.
+    </p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="salvarNovoUsuario()">Criar acesso</button>
+    </div>
+  </div>
+</div>
+
 <div class="drawer-overlay" id="drawer-permissoes" onclick="if(event.target===this)fecharEditorPermissoes()">
   <aside class="drawer" role="dialog" aria-modal="true">
     <div class="drawer-cabecalho">

@@ -26,7 +26,7 @@ from extensions import limiter
 
 auth_bp = Blueprint("auth", __name__)
 
-PAPEIS = ("admin", "tecnico")
+PAPEIS = ("admin", "tecnico", "recepcionista")
 
 
 def _hash_admin() -> str:
