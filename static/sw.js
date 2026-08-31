@@ -283,7 +283,14 @@
 //        imagem" era isso: a foto salvava, só que preta por dentro. Fotos
 //        tiradas com câmera (sem transparência) nunca pegavam esse bug,
 //        só print de tela — por isso funcionava pra uns e não pra outros.
-const CACHE_VERSAO = 'portotec-roteiros-v150';
+// v151 = mais duas das ideias pedidas em 2026-08-31: (1) reserva de peça ao
+//        aprovar orçamento — tranca a peça pra aquela OS sem tirar do saldo
+//        geral, libera sozinha quando a peça é de fato baixada em "Peças
+//        usadas"; (2) "Repor peça" no Estoque, cruzando saldo com o
+//        consumo real dos últimos 90 dias pra saber quem vai faltar
+//        primeiro. Também: card do Estoque com o NOME da peça em destaque
+//        e o código como linha secundária (era o contrário).
+const CACHE_VERSAO = 'portotec-roteiros-v151';
 
 const ARQUIVOS_CASCA = [
   '/',

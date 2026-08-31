@@ -697,6 +697,8 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_servicos_os         ON servicos(ordem_servico_id)",
     "CREATE INDEX IF NOT EXISTS idx_pecas_sub_codigo    ON pecas_substituicao(codigo)",
     "CREATE INDEX IF NOT EXISTS idx_fotos_extra_dono    ON fotos_extra(dono_tipo, dono_id)",
+    "CREATE INDEX IF NOT EXISTS idx_reservas_item        ON estoque_reservas(item_id, liberado_em)",
+    "CREATE INDEX IF NOT EXISTS idx_reservas_os          ON estoque_reservas(ordem_servico_id)",
 ]
 
 _MIGRACOES_PG = [
@@ -1039,6 +1041,21 @@ _MIGRACOES_PG = [
         foto       TEXT NOT NULL,
         criado_em  TEXT
     )""",
+    # Reserva de peça ao aprovar orçamento — pedido de 2026-08-31. Reserva é
+    # DIFERENTE de "peça usada" (que já existe e já dá baixa de verdade):
+    # reservar tranca a peça pra ESTA OS sem tirá-la do saldo contábil, pra
+    # ninguém vender/usar em outro atendimento enquanto o cliente ainda não
+    # foi visitado. liberado_em NULL = ainda reservada; preenchida = já foi
+    # liberada (peça de fato usada, ou cancelamento manual).
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS orcamento_aprovado_em TEXT",
+    """CREATE TABLE IF NOT EXISTS estoque_reservas (
+        id                SERIAL PRIMARY KEY,
+        item_id           INTEGER NOT NULL REFERENCES estoque_itens(id) ON DELETE CASCADE,
+        ordem_servico_id  INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
+        quantidade        DOUBLE PRECISION NOT NULL,
+        criado_em         TEXT,
+        liberado_em       TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1240,6 +1257,15 @@ _MIGRACOES_SQLITE = [
         dono_id    INTEGER NOT NULL,
         foto       TEXT NOT NULL,
         criado_em  TEXT
+    )""",
+    "ALTER TABLE ordens_servico ADD COLUMN orcamento_aprovado_em TEXT",
+    """CREATE TABLE IF NOT EXISTS estoque_reservas (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id           INTEGER NOT NULL,
+        ordem_servico_id  INTEGER NOT NULL,
+        quantidade        REAL NOT NULL,
+        criado_em         TEXT,
+        liberado_em       TEXT
     )""",
 ]
 

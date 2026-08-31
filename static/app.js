@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v150';
+const VERSAO_PAINEL = 'v151';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7140,6 +7140,33 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
           </select>
         </div>
       </div>`;
+    // Reserva de peça — pedido de 2026-08-31. Só existe DEPOIS de aprovar:
+    // reservar antes do cliente decidir não faz sentido (ver aprovar_orcamento
+    // em routes/ordens_servico.py). Reserva ≠ Peças usadas (que dá baixa de
+    // verdade) — trava a peça pra ESTA OS sem tirar do saldo geral.
+    const aprovacaoOrcamento = o.orcamento_aprovado_em ? `
+    <div class="os-detalhe-secao">
+      <p class="form-separador">Peças reservadas</p>
+      <p class="ajuda-texto" style="margin:0 0 8px;">Orçamento aprovado em ${esc((o.orcamento_aprovado_em || '').slice(0, 10).split('-').reverse().join('/'))}. Reservar tranca a peça pra esta OS sem tirar do saldo geral — vira baixa de verdade sozinha quando registrada em "Peças usadas".</p>
+      <div id="os-reservas-lista-${o.id}"><span class="ajuda-texto">carregando...</span></div>
+      <div class="form-row" style="margin-top:8px;">
+        <div class="form-group">
+          <label class="form-label" for="os-reserva-codigo-${o.id}">Código (do estoque)</label>
+          <input class="form-input" id="os-reserva-codigo-${o.id}" autocomplete="off"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault(); osReservarPeca(${o.id});}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="os-reserva-qtd-${o.id}">Qtd</label>
+          <input class="form-input" type="number" min="1" step="1" value="1" id="os-reserva-qtd-${o.id}">
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="osReservarPeca(${o.id})">+ Reservar peça</button>
+    </div>` : `
+    <div class="os-detalhe-secao">
+      <button class="btn btn-primary btn-sm" onclick="osAprovarOrcamento(${o.id})">Marcar orçamento como aprovado</button>
+      <p class="ajuda-texto" style="margin:6px 0 0;">Depois de aprovado, dá pra reservar a peça que vai ser usada sem tirá-la do saldo geral.</p>
+    </div>`;
+
     return `
     <div class="os-detalhe-secao">
       ${equipamento}
@@ -7151,7 +7178,8 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${outrasSecoes(true)}
       <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoOrcamento(${o.id})">Salvar alterações</button>
     </div>
-    ${itensSecao}`;
+    ${itensSecao}
+    ${aprovacaoOrcamento}`;
   }
 
   return `
@@ -7542,6 +7570,10 @@ async function abrirOSDetalhe(id) {
   fotosExtraRegistrar(fotosExtraId, `/ordens-servico/${o.id}/fotos`, '/ordens-servico/fotos');
   fotosExtraCarregarContainer(fotosExtraId);
 
+  if (o.modelo_os === 'orcamento' && o.orcamento_aprovado_em) {
+    osCarregarReservas(o.id);
+  }
+
   document.getElementById('modal-os-detalhe').classList.add('open');
 }
 
@@ -7573,6 +7605,72 @@ async function osAdicionarPeca(id) {
     const r = await api(`/ordens-servico/${id}`);
     document.getElementById('os-pecas-lista').innerHTML = osRenderPecas(r.pecas);
     document.getElementById('os-peca-codigo').focus();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ─── Aprovação de orçamento e reserva de peça ────────────────────────────
+// Pedido de 2026-08-31.
+async function osAprovarOrcamento(id) {
+  try {
+    await api(`/ordens-servico/${id}/aprovar-orcamento`, { method: 'PUT' });
+    toast('Orçamento marcado como aprovado', 'success');
+    carregarOS();
+    abrirOSDetalhe(id);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function _osRenderReservas(reservas) {
+  const ativas = reservas.filter(r => !r.liberado_em);
+  if (!ativas.length) {
+    return `<p class="ajuda-texto" style="margin:0 0 8px;">Nenhuma peça reservada ainda.</p>`;
+  }
+  return ativas.map(r => `
+    <div class="os-visita-linha">
+      <span><b>${esc(r.codigo)}</b>${r.descricao ? ' — ' + esc(r.descricao) : ''} · ${Number(r.quantidade)}x</span>
+      <button type="button" class="btn-remove" title="Liberar reserva" onclick="osLiberarReserva(${r.id})">${icone('x', 'icone-11')}</button>
+    </div>`).join('');
+}
+
+async function osCarregarReservas(osId) {
+  const alvo = document.getElementById(`os-reservas-lista-${osId}`);
+  if (!alvo) return;
+  try {
+    const r = await api(`/ordens-servico/${osId}/reservas`);
+    alvo.innerHTML = _osRenderReservas(r.reservas || []);
+  } catch (e) {
+    alvo.innerHTML = `<span class="ajuda-texto">${esc(e.message)}</span>`;
+  }
+}
+
+async function osReservarPeca(osId) {
+  const codigoEl = document.getElementById(`os-reserva-codigo-${osId}`);
+  const qtdEl = document.getElementById(`os-reserva-qtd-${osId}`);
+  const codigo = codigoEl.value.trim();
+  if (!codigo) { toast('Informe o código da peça', 'error'); codigoEl.focus(); return; }
+  try {
+    await api(`/ordens-servico/${osId}/reservas`, {
+      method: 'POST', body: JSON.stringify({ codigo, quantidade: qtdEl.value || 1 }),
+    });
+    toast('Peça reservada', 'success');
+    codigoEl.value = ''; qtdEl.value = '1'; codigoEl.focus();
+    osCarregarReservas(osId);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// Recebe o osId embutido no id do container pra recarregar só aquela lista,
+// sem redesenhar a OS inteira (mesmo padrão de osRemoverItemOrcamento).
+async function osLiberarReserva(reservaId) {
+  const containers = document.querySelectorAll('[id^="os-reservas-lista-"]');
+  try {
+    await api(`/ordens-servico/reservas/${reservaId}`, { method: 'DELETE' });
+    toast('Reserva liberada', 'success');
+    containers.forEach(c => osCarregarReservas(c.id.replace('os-reservas-lista-', '')));
   } catch (e) {
     toast(e.message, 'error');
   }
@@ -8173,7 +8271,8 @@ async function abrirEstoqueRaiz() {
     'para ver e adicionar as peças dele. Isso é o saldo de verdade — ' +
     'diferente da aba "Peças", que só concilia compra com cliente.';
   document.getElementById('estoque-topo-acoes').innerHTML = podeUsuario('estoque_editar')
-    ? '<button class="btn btn-ghost btn-sm" onclick="abrirBiparNota()">📷 Bipar nota fiscal</button>'
+    ? '<button class="btn btn-ghost btn-sm" onclick="abrirReposicaoEstoque()">📉 Repor peça</button>'
+      + '<button class="btn btn-ghost btn-sm" onclick="abrirBiparNota()">📷 Bipar nota fiscal</button>'
       + '<button class="btn btn-primary btn-sm" onclick="abrirCriarGrupo()">+ Criar estoque</button>'
     : '';
   document.getElementById('estoque-filtros').style.display = 'none';
@@ -8384,8 +8483,8 @@ function _cardEstoque(i) {
     <div class="estoque-item ${alerta ? 'estoque-item--alerta' : ''}">
       ${i.foto ? `<img class="estoque-item-foto" src="${i.foto}" alt="Foto do produto" onclick="ampliarFoto(this.src)">` : ''}
       <div class="estoque-item-info">
-        <div class="estoque-item-cod">${esc(i.codigo)}${ident ? `<span class="estoque-item-ident">${esc(ident)}</span>` : ''}${alerta ? '<span class="estoque-tag-alerta">abaixo do mínimo</span>' : ''}</div>
-        <div class="estoque-item-desc">${esc(i.descricao || 'Sem descrição')}</div>
+        <div class="estoque-item-cod">${esc(i.descricao || 'Sem descrição')}${ident ? `<span class="estoque-item-ident">${esc(ident)}</span>` : ''}${alerta ? '<span class="estoque-tag-alerta">abaixo do mínimo</span>' : ''}</div>
+        <div class="estoque-item-desc">${esc(i.codigo)}</div>
         <div class="estoque-item-meta">
           custo médio ${brl(i.custo_medio)} · vale ${brl(i.valor_total)}${venda}${Number(i.minimo) > 0 ? ` · mínimo ${g(i.minimo)}` : ''}
         </div>
@@ -8808,6 +8907,44 @@ let biparItens = [];   // itens resolvidos da nota, aguardando confirmação
 let biparChave = '';   // chave da nota (vira a referência idempotente)
 let biparNavId = null; // pasta atual no navegador de destino (null = raiz)
 let _biparCamera = null; // stream da câmera, para poder desligar
+
+// ─── Repor peça: saldo vs consumo real dos últimos 90 dias ──────────────
+// Pedido de 2026-08-31. Não é preço de fornecedor (o site não tem essa
+// informação hoje) — é "no ritmo de agora, em quanto tempo isso acaba".
+async function abrirReposicaoEstoque() {
+  const corpo = document.getElementById('reposicao-corpo');
+  corpo.innerHTML = '<div class="loading-row" style="justify-content:center;padding:20px;"><div class="spinner"></div> Calculando...</div>';
+  document.getElementById('modal-reposicao').classList.add('open');
+  try {
+    const r = await api('/estoque/reposicao');
+    const itens = r.itens || [];
+    if (!itens.length) {
+      corpo.innerHTML = '<p class="ajuda-texto">Nenhuma peça com saída registrada nos últimos 90 dias — sem consumo pra comparar com o saldo.</p>';
+      return;
+    }
+    corpo.innerHTML = itens.map(i => {
+      const critico = i.dias_restantes !== null && i.dias_restantes <= 15;
+      const atencao = i.dias_restantes !== null && i.dias_restantes > 15 && i.dias_restantes <= 30;
+      const cor = critico ? 'var(--danger-text)' : (atencao ? 'var(--gold-text)' : 'var(--text-secondary)');
+      const rotulo = i.dias_restantes === null ? 'sem estimativa'
+        : i.dias_restantes <= 0 ? 'já deveria ter acabado'
+        : `acaba em ~${i.dias_restantes}d`;
+      return `
+        <div class="os-visita-linha">
+          <span><b>${esc(i.codigo)}</b>${i.descricao ? ' — ' + esc(i.descricao) : ''}
+            <span class="ajuda-texto" style="display:block;">${g2(i.saldo)} em estoque · saiu ${g2(i.consumo_periodo)} nos últimos ${r.dias_periodo} dias</span>
+          </span>
+          <span style="color:${cor};font-weight:700;white-space:nowrap;">${rotulo}</span>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    corpo.innerHTML = `<div class="vcep-erro">${esc(e.message)}</div>`;
+  }
+}
+
+function g2(n) {
+  return (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+}
 
 async function abrirBiparNota() {
   biparItens = []; biparChave = '';

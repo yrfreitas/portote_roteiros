@@ -18,7 +18,7 @@ from openpyxl.styles import Font, PatternFill
 
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
 from routes.clientes import criar_cliente
-from routes.estoque import dar_saida
+from routes.estoque import _norm_codigo, dar_saida
 from routes.fichas import obter_ou_criar_ficha, recalcular_rota
 from routes.servicos import _validar_setor
 from services.fotos_extra import (adicionar_foto_extra, listar_fotos_extra,
@@ -1267,6 +1267,11 @@ def adicionar_peca(os_id):
         except (ValueError, TypeError) as exc:
             return jsonify({"erro": str(exc)}), 400
 
+        # Peça reservada (ver aprovar_orcamento/criar_reserva_os) que agora
+        # foi de fato usada — libera a reserva sozinha, sem exigir que
+        # alguém lembre de ir lá cancelar manualmente.
+        _liberar_reservas_ate(conn, resultado["item_id"], os_id, float(d.get("quantidade") or 1))
+
     return jsonify({"mensagem": "Peça baixada do estoque e vinculada à OS", **resultado}), 201
 
 
@@ -1298,6 +1303,122 @@ def apagar_foto_os(foto_id):
         if not remover_foto_extra(conn, "os", foto_id):
             return jsonify({"erro": "Foto não encontrada"}), 404
     return jsonify({"mensagem": "Foto removida"})
+
+
+# ─── Reserva de peça ao aprovar orçamento ─────────────────────────────────
+# Pedido de 2026-08-31. Reserva ≠ "Peças usadas" (que já dá baixa de
+# verdade): reservar tranca a peça pra ESTA OS sem tirá-la do saldo
+# contábil — ninguém vende/usa em outro atendimento enquanto o cliente
+# ainda não foi visitado. Vira baixa de verdade (e a reserva se libera
+# sozinha) quando a peça é de fato registrada em "Peças usadas" — ver
+# adicionar_peca() logo abaixo, que já existia antes desta feature.
+def _reservado_do_item(conn, item_id) -> float:
+    linha = fetch_one(conn, """
+        SELECT COALESCE(SUM(quantidade), 0) AS total FROM estoque_reservas
+         WHERE item_id = ? AND liberado_em IS NULL
+    """, (item_id,))
+    return float(linha["total"] or 0)
+
+
+def _liberar_reservas_ate(conn, item_id, os_id, quantidade_usada):
+    """Libera reservas (mais antiga primeiro) até cobrir o que acabou de ser
+    baixado de verdade — libera por INTEIRO, não fraciona reserva."""
+    reservas = fetch_all(conn, """
+        SELECT id, quantidade FROM estoque_reservas
+         WHERE item_id = ? AND ordem_servico_id = ? AND liberado_em IS NULL
+         ORDER BY id
+    """, (item_id, os_id))
+    restante = quantidade_usada
+    agora = _agora()
+    for r in reservas:
+        if restante <= 0:
+            break
+        execute(conn, "UPDATE estoque_reservas SET liberado_em = ? WHERE id = ?", (agora, r["id"]))
+        restante -= float(r["quantidade"])
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/aprovar-orcamento", methods=["PUT"])
+def aprovar_orcamento(os_id):
+    with db_conn(commit=True) as conn:
+        ordem = fetch_one(conn, "SELECT id, modelo_os, orcamento_aprovado_em FROM ordens_servico WHERE id = ?",
+                          (os_id,))
+        if not ordem:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        if ordem.get("modelo_os") != "orcamento":
+            return jsonify({"erro": "Só orçamento pode ser aprovado."}), 400
+        if ordem.get("orcamento_aprovado_em"):
+            return jsonify({"erro": "Este orçamento já está aprovado."}), 400
+        agora = _agora()
+        execute(conn, "UPDATE ordens_servico SET orcamento_aprovado_em = ? WHERE id = ?", (agora, os_id))
+    return jsonify({"mensagem": "Orçamento aprovado", "orcamento_aprovado_em": agora})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/reservas", methods=["GET"])
+def listar_reservas_os(os_id):
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT r.id, r.quantidade, r.criado_em, r.liberado_em,
+                   e.id AS item_id, e.codigo, e.descricao, e.saldo
+              FROM estoque_reservas r JOIN estoque_itens e ON e.id = r.item_id
+             WHERE r.ordem_servico_id = ?
+             ORDER BY r.liberado_em IS NOT NULL, r.id DESC
+        """, (os_id,))
+    return jsonify({"reservas": linhas})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/reservas", methods=["POST"])
+def criar_reserva_os(os_id):
+    """Reserva uma peça do estoque pra esta OS — só depois do orçamento
+    aprovado (ver aprovar_orcamento acima). Não mexe no saldo contábil, só
+    no que está "livre pra prometer" a outro atendimento (ver GET /estoque)."""
+    d = request.get_json(silent=True) or {}
+    codigo = _norm_codigo(d.get("codigo") or "")
+    if not codigo:
+        return jsonify({"erro": "Informe o código da peça"}), 400
+    try:
+        quantidade = float(d.get("quantidade") or 1)
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Quantidade inválida"}), 400
+    if quantidade <= 0:
+        return jsonify({"erro": "Quantidade tem que ser maior que zero"}), 400
+
+    with db_conn(commit=True) as conn:
+        ordem = fetch_one(conn, "SELECT id, orcamento_aprovado_em FROM ordens_servico WHERE id = ?", (os_id,))
+        if not ordem:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        if not ordem.get("orcamento_aprovado_em"):
+            return jsonify({"erro": "Aprove o orçamento antes de reservar peça."}), 400
+
+        item = fetch_one(conn, "SELECT * FROM estoque_itens WHERE codigo = ?", (codigo,))
+        if not item:
+            return jsonify({"erro": f"Peça {codigo} não existe no estoque"}), 404
+
+        disponivel = float(item["saldo"] or 0) - _reservado_do_item(conn, item["id"])
+        if quantidade > disponivel:
+            return jsonify({
+                "erro": f"Só há {disponivel:g} disponível dessa peça (o resto já está "
+                        f"reservado por outra OS ou é o próprio saldo)."
+            }), 400
+
+        agora = _agora()
+        nova_id = insert_returning_id(conn, """
+            INSERT INTO estoque_reservas (item_id, ordem_servico_id, quantidade, criado_em)
+            VALUES (?, ?, ?, ?)
+        """, (item["id"], os_id, quantidade, agora))
+
+    return jsonify({"mensagem": f"{quantidade:g}x {codigo} reservado pra esta OS", "id": nova_id}), 201
+
+
+@ordens_servico_bp.route("/ordens-servico/reservas/<int:reserva_id>", methods=["DELETE"])
+def liberar_reserva_os(reserva_id):
+    with db_conn(commit=True) as conn:
+        afetadas = execute(conn, """
+            UPDATE estoque_reservas SET liberado_em = ?
+             WHERE id = ? AND liberado_em IS NULL
+        """, (_agora(), reserva_id))
+    if not afetadas:
+        return jsonify({"erro": "Reserva não encontrada (ou já liberada)"}), 404
+    return jsonify({"mensagem": "Reserva liberada"})
 
 
 @ordens_servico_bp.route("/ordens-servico/<int:os_id>", methods=["GET"])

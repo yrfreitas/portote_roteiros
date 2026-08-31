@@ -1080,6 +1080,21 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-reposicao" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title">Repor peça</div>
+    <p style="font-size:12px;color:var(--text-muted);margin:-6px 0 14px;">
+      Saldo atual comparado com o que saiu do estoque nos últimos 90 dias — quem vai
+      faltar primeiro no ritmo de agora aparece no topo. Peça sem saída no período
+      fica de fora: sem consumo não dá pra estimar nada.
+    </p>
+    <div id="reposicao-corpo" style="max-height:56vh;overflow-y:auto;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-conciliacao" role="dialog" aria-modal="true">
   <div class="modal" style="max-width:560px;">
     <div class="modal-title">Dar baixa na planilha de pedidos</div>

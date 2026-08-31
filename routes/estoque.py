@@ -21,7 +21,7 @@ DUAS REGRAS QUE DEFINEM TUDO:
 """
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request, session
 
@@ -263,10 +263,24 @@ def listar():
     elif f_grupo:
         itens = [i for i in itens if str(i.get("grupo_id") or "") == f_grupo]
 
+    # Reservado (peça travada pra alguma OS de orçamento aprovado, ainda não
+    # baixada — ver routes/ordens_servico.py:criar_reserva_os) num SELECT só
+    # pra não virar um N+1 quando o estoque cresce. "Disponível" é o que
+    # sobra pra prometer a um atendimento novo.
+    with db_conn() as conn:
+        reservados = fetch_all(conn, """
+            SELECT item_id, COALESCE(SUM(quantidade), 0) AS total
+              FROM estoque_reservas WHERE liberado_em IS NULL
+             GROUP BY item_id
+        """)
+    reservado_por_item = {r["item_id"]: float(r["total"] or 0) for r in reservados}
+
     for i in itens:
         i["abaixo_minimo"] = (float(i.get("minimo") or 0) > 0
                               and float(i.get("saldo") or 0) <= float(i["minimo"]))
         i["valor_total"] = round(float(i.get("saldo") or 0) * float(i.get("custo_medio") or 0), 2)
+        i["reservado"] = reservado_por_item.get(i["id"], 0.0)
+        i["disponivel"] = float(i.get("saldo") or 0) - i["reservado"]
 
     return jsonify({
         "itens": itens,
@@ -498,6 +512,54 @@ def saldos_por_codigo():
                             "descricao": i["descricao"], "custo_medio": float(i["custo_medio"] or 0)}
               for i in itens if i["codigo"] in codigos}
     return jsonify({"saldos": saldos})
+
+
+DIAS_CONSUMO_REPOSICAO = 90
+
+
+@estoque_bp.route("/estoque/reposicao", methods=["GET"])
+def reposicao():
+    """Quando cada peça vai faltar, no ritmo real de consumo — pedido de
+    2026-08-31. Cruza saldo atual com a saída dos últimos 90 dias (não é
+    preço de fornecedor, que o site não tem hoje — é "vai faltar em quanto
+    tempo no ritmo de agora", pra decidir comprar antes de faltar).
+
+    Peça sem NENHUMA saída no período fica de fora: sem consumo não dá pra
+    estimar nada, e entraria como "nunca vai faltar" (falso positivo pior
+    que não aparecer)."""
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+
+    corte = (datetime.now(timezone.utc) - timedelta(days=DIAS_CONSUMO_REPOSICAO)).strftime("%Y-%m-%d %H:%M:%S")
+    with db_conn() as conn:
+        consumo = fetch_all(conn, """
+            SELECT item_id, SUM(quantidade) AS total
+              FROM estoque_movimentos
+             WHERE tipo = 'saida' AND criado_em >= ?
+             GROUP BY item_id
+        """, (corte,))
+        itens = fetch_all(conn, "SELECT id, codigo, descricao, aparelho, marca, saldo FROM estoque_itens")
+
+    consumo_por_item = {c["item_id"]: float(c["total"] or 0) for c in consumo}
+
+    resultado = []
+    for i in itens:
+        total_periodo = consumo_por_item.get(i["id"], 0.0)
+        if total_periodo <= 0:
+            continue
+        consumo_diario = total_periodo / DIAS_CONSUMO_REPOSICAO
+        dias_restantes = (float(i["saldo"] or 0) / consumo_diario) if consumo_diario > 0 else None
+        resultado.append({
+            "id": i["id"], "codigo": i["codigo"], "descricao": i["descricao"],
+            "aparelho": i["aparelho"], "marca": i["marca"], "saldo": float(i["saldo"] or 0),
+            "consumo_periodo": total_periodo,
+            "dias_restantes": round(dias_restantes, 1) if dias_restantes is not None else None,
+        })
+
+    # Quem vai faltar primeiro no topo — é o que precisa de decisão AGORA.
+    resultado.sort(key=lambda x: x["dias_restantes"] if x["dias_restantes"] is not None else 9e9)
+
+    return jsonify({"itens": resultado, "dias_periodo": DIAS_CONSUMO_REPOSICAO})
 
 
 def _extrair_chave(texto):
