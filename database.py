@@ -696,6 +696,7 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_os_cliente          ON ordens_servico(cliente_id)",
     "CREATE INDEX IF NOT EXISTS idx_servicos_os         ON servicos(ordem_servico_id)",
     "CREATE INDEX IF NOT EXISTS idx_pecas_sub_codigo    ON pecas_substituicao(codigo)",
+    "CREATE INDEX IF NOT EXISTS idx_fotos_extra_dono    ON fotos_extra(dono_tipo, dono_id)",
 ]
 
 _MIGRACOES_PG = [
@@ -1018,6 +1019,26 @@ _MIGRACOES_PG = [
         inicio_validade TEXT,
         fim_validade    TEXT
     )""",
+    # Setor na OS ("Ordens de Serviço" e "Chamado Técnico") — pedido de
+    # 2026-08-31. Mesmo motivo que já tornou setor obrigatório no atendimento
+    # de Roteiros (routes/servicos.py): sem classificar por fabricante
+    # (Panasonic, Philco...) o relatório por setor fica incompleto pra quem
+    # veio pela OS em vez de uma rota. NULL = OS aberta antes deste campo.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS setor_id INTEGER REFERENCES setores(id)",
+    # Fotos extras (mais de uma) — pedido de 2026-08-31: OS, item de estoque e
+    # cotação de peça só aceitavam UMA foto (`foto`, mantida como a
+    # "principal"/capa). Tabela genérica em vez de uma por dono: são o mesmo
+    # formato (dono_tipo + dono_id + a imagem em base64) e criar 3-4 tabelas
+    # quase idênticas só pra trocar o nome não ajudaria em nada. dono_tipo é
+    # texto ('os', 'estoque', 'cotacao') em vez de FK porque cada dono mora
+    # numa tabela diferente — não dá pra ter uma FK só que aponte pras três.
+    """CREATE TABLE IF NOT EXISTS fotos_extra (
+        id         SERIAL PRIMARY KEY,
+        dono_tipo  TEXT NOT NULL,
+        dono_id    INTEGER NOT NULL,
+        foto       TEXT NOT NULL,
+        criado_em  TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1206,6 +1227,19 @@ _MIGRACOES_SQLITE = [
         substituto_5    TEXT,
         inicio_validade TEXT,
         fim_validade    TEXT
+    )""",
+    # Setor na OS ("Ordens de Serviço" e "Chamado Técnico") — pedido de
+    # 2026-08-31. Mesmo motivo que já tornou setor obrigatório no atendimento
+    # de Roteiros (routes/servicos.py): sem classificar por fabricante
+    # (Panasonic, Philco...) o relatório por setor fica incompleto pra quem
+    # veio pela OS em vez de uma rota. NULL = OS aberta antes deste campo.
+    "ALTER TABLE ordens_servico ADD COLUMN setor_id INTEGER REFERENCES setores(id)",
+    """CREATE TABLE IF NOT EXISTS fotos_extra (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        dono_tipo  TEXT NOT NULL,
+        dono_id    INTEGER NOT NULL,
+        foto       TEXT NOT NULL,
+        criado_em  TEXT
     )""",
 ]
 

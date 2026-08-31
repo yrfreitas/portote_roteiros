@@ -88,6 +88,9 @@
         <span id="status-texto">conectando</span>
         <span id="status-latencia" class="status-latencia"></span>
       </div>
+      <button class="btn-almoco-painel" id="btn-almoco-painel" style="display:none" onclick="alternarAlmocoPainel()">
+        🍽 Ir almoçar
+      </button>
       <form method="POST" action="/logout">
         <button type="submit" class="btn-sair" title="Sair">
           <svg class="icone-svg icone-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -761,6 +764,12 @@
       </label>
       <div id="estoque-mov-foto-previa" class="df-previa"></div>
     </div>
+    <div class="form-group foto-extra-secao" id="estoque-mov-grupo-fotos-extra" style="display:none;">
+      <label class="form-label">Mais fotos</label>
+      <div class="foto-extra-lista" id="estoque-mov-fotos-extra"></div>
+      <input class="form-input" type="file" accept="image/*" capture="environment"
+             onchange="fotosExtraAdicionar(this, 'estoque-mov-fotos-extra')">
+    </div>
     <div class="form-group" id="estoque-mov-grupo-obs">
       <label class="form-label" for="estoque-mov-obs">Observação (opcional)</label>
       <input type="text" class="form-input" id="estoque-mov-obs"
@@ -1218,6 +1227,11 @@
       </div>
     </div>
 
+    <div class="form-group" id="os-setor-grupo">
+      <label class="form-label" for="os-setor">Setor <span class="form-obrigatorio">*</span></label>
+      <select class="form-input" id="os-setor"></select>
+    </div>
+
     <div class="form-group" id="os-campos-tipo-padrao">
       <label class="form-label" for="os-tipo">Tipo de OS <span class="form-obrigatorio" id="os-tipo-obrigatorio">*</span></label>
       <select class="form-input" id="os-tipo" onchange="osTipoMudou()">
@@ -1484,6 +1498,7 @@
 <div class="modal-overlay" id="modal-os-detalhe" role="dialog" aria-modal="true" aria-label="Ordem de Serviço">
   <div class="modal modal-lg">
     <div class="modal-title" id="os-detalhe-titulo">OS</div>
+    <p class="ajuda-texto" id="os-detalhe-historico-cliente" style="margin:-8px 0 12px;"></p>
     <div id="os-detalhe-corpo"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" onclick="fecharModais()">Fechar</button>

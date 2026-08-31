@@ -26,6 +26,8 @@ from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, session
 
 from database import IS_PG, db_conn, execute, fetch_all, fetch_one, insert_returning_id
+from services.fotos_extra import (adicionar_foto_extra, listar_fotos_extra,
+                                  remover_foto_extra)
 
 log = logging.getLogger("portotec.estoque")
 
@@ -698,6 +700,35 @@ def remover_item(item_id):
     if not apagados:
         return jsonify({"erro": "Item não encontrado"}), 404
     return jsonify({"mensagem": "Item removido"})
+
+
+# ─── Fotos extras (mais de uma, além da `foto` principal) ────────────────
+# Pedido de 2026-08-31. Mesmo padrão da OS — ver services/fotos_extra.py.
+@estoque_bp.route("/estoque/<int:item_id>/fotos", methods=["GET"])
+def listar_fotos_item(item_id):
+    with db_conn() as conn:
+        return jsonify({"fotos": listar_fotos_extra(conn, "estoque", item_id)})
+
+
+@estoque_bp.route("/estoque/<int:item_id>/fotos", methods=["POST"])
+def adicionar_foto_item(item_id):
+    d = request.get_json(silent=True) or {}
+    with db_conn(commit=True) as conn:
+        existe = fetch_one(conn, "SELECT id FROM estoque_itens WHERE id = ?", (item_id,))
+        if not existe:
+            return jsonify({"erro": "Item não encontrado"}), 404
+        erro, linha = adicionar_foto_extra(conn, "estoque", item_id, d.get("foto"))
+        if erro:
+            return jsonify({"erro": erro}), 400
+    return jsonify({"foto": linha}), 201
+
+
+@estoque_bp.route("/estoque/fotos/<int:foto_id>", methods=["DELETE"])
+def apagar_foto_item(foto_id):
+    with db_conn(commit=True) as conn:
+        if not remover_foto_extra(conn, "estoque", foto_id):
+            return jsonify({"erro": "Foto não encontrada"}), 404
+    return jsonify({"mensagem": "Foto removida"})
 
 
 @estoque_bp.route("/estoque/<int:item_id>/historico", methods=["GET"])

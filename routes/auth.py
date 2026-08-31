@@ -127,6 +127,18 @@ def eu():
     from permissoes import _caps_do_request
     dados = usuario_atual()
     dados["permissoes"] = _caps_do_request()
+
+    # Token do próprio técnico, só pra quem é técnico — o painel usa pra
+    # chamar as MESMAS rotas de almoço do celular de campo (/api/t/<token>/
+    # almoco...) sem precisar duplicar endpoint nenhum. Pedido de 2026-08-31:
+    # login de técnico cai no painel (não no link pessoal), e o botão de
+    # almoço só existia lá.
+    if dados.get("papel") == "tecnico" and dados.get("tecnico_id"):
+        with db_conn() as conn:
+            tecnico = fetch_one(conn, "SELECT token FROM tecnicos WHERE id = ?",
+                                (dados["tecnico_id"],))
+        dados["tecnico_token"] = tecnico["token"] if tecnico else None
+
     return jsonify(dados)
 
 

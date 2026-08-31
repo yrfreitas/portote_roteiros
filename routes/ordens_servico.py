@@ -20,6 +20,9 @@ from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
 from routes.clientes import criar_cliente
 from routes.estoque import dar_saida
 from routes.fichas import obter_ou_criar_ficha, recalcular_rota
+from routes.servicos import _validar_setor
+from services.fotos_extra import (adicionar_foto_extra, listar_fotos_extra,
+                                  remover_foto_extra)
 from services.geo import geocode_cep
 
 ordens_servico_bp = Blueprint("ordens_servico", __name__)
@@ -1267,6 +1270,36 @@ def adicionar_peca(os_id):
     return jsonify({"mensagem": "Peça baixada do estoque e vinculada à OS", **resultado}), 201
 
 
+# ─── Fotos extras (mais de uma, além da `foto` principal) ────────────────
+# Pedido de 2026-08-31. Mesmo padrão já usado pra foto do atendimento em
+# campo (servico_foto) — ver services/fotos_extra.py.
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/fotos", methods=["GET"])
+def listar_fotos_os(os_id):
+    with db_conn() as conn:
+        return jsonify({"fotos": listar_fotos_extra(conn, "os", os_id)})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/fotos", methods=["POST"])
+def adicionar_foto_os(os_id):
+    d = request.get_json(silent=True) or {}
+    with db_conn(commit=True) as conn:
+        existe = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (os_id,))
+        if not existe:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        erro, linha = adicionar_foto_extra(conn, "os", os_id, d.get("foto"))
+        if erro:
+            return jsonify({"erro": erro}), 400
+    return jsonify({"foto": linha}), 201
+
+
+@ordens_servico_bp.route("/ordens-servico/fotos/<int:foto_id>", methods=["DELETE"])
+def apagar_foto_os(foto_id):
+    with db_conn(commit=True) as conn:
+        if not remover_foto_extra(conn, "os", foto_id):
+            return jsonify({"erro": "Foto não encontrada"}), 404
+    return jsonify({"mensagem": "Foto removida"})
+
+
 @ordens_servico_bp.route("/ordens-servico/<int:os_id>", methods=["GET"])
 def obter(os_id):
     with db_conn() as conn:
@@ -1339,6 +1372,17 @@ def criar():
     erro_modelo, modelo_os = _validar_modelo_os(d.get("modelo_os"))
     if erro_modelo:
         return jsonify({"erro": erro_modelo}), 400
+
+    # Setor obrigatório em "Ordens de Serviço" e "Chamado Técnico" — pedido de
+    # 2026-08-31, mesma régua que já existe no atendimento de Roteiros
+    # (routes/servicos.py): sem classificar por fabricante o relatório por
+    # setor fica capenga pra quem entra pela OS. Orçamento fica de fora — não
+    # foi pedido, e nem sempre tem um fabricante definido ainda.
+    setor_id = None
+    if modelo_os in ("os", "chamado_tecnico"):
+        erro_setor, setor_id = _validar_setor(d.get("setor_id"))
+        if erro_setor:
+            return jsonify({"erro": erro_setor}), 400
 
     tipo_os = None
     if modelo_os == "os":
@@ -1417,15 +1461,15 @@ def criar():
                  status, observacao, criado_em, criado_por, tipo_os,
                  modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
                  token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio,
-                 garantia_meses)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 garantia_meses, setor_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
               tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
               token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio,
-              garantia_meses))
+              garantia_meses, setor_id))
 
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
@@ -1516,6 +1560,16 @@ def editar(os_id):
                 tecnico_atendeu_id = None
             campos.append("tecnico_atendeu_id = ?")
             valores.append(tecnico_atendeu_id)
+        if "setor_id" in d:
+            # Classificação por fabricante — pedido de 2026-08-31, mesma
+            # régua de servicos.py. Só entra quando mandado explicitamente:
+            # diferente da garantia, setor não é amarrado a modelo/tipo, então
+            # trocar de modelo não apaga o que já foi classificado.
+            erro_setor, setor_id = _validar_setor(d.get("setor_id"))
+            if erro_setor:
+                return jsonify({"erro": erro_setor}), 400
+            campos.append("setor_id = ?")
+            valores.append(setor_id)
         # "saida_oficina" e o modelo Orçamento usam garantia — pedido de
         # 2026-08-29 pra poder já deixar combinado um prazo no orçamento.
         _usa_garantia_efetivo = tipo_os_efetivo == "saida_oficina" or modelo_efetivo == "orcamento"

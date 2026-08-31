@@ -125,6 +125,15 @@ _PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
 def _exigir_permissao():
     if not request.path.startswith("/api"):
         return
+    # /api/t/<token>/... é a API do técnico em campo: a autorização ali é o
+    # TOKEN em si (quem tem o link é aquele técnico), não papel/permissões de
+    # sessão — existe até pra quem não está logado em lugar nenhum. Achado em
+    # 2026-08-31 ao reaproveitar essas rotas no botão de almoço do PAINEL: com
+    # uma sessão de papel "tecnico" ativa (session["admin"]=True vale pra
+    # qualquer login), este gate barrava a chamada com "sem_regra_definida"
+    # porque /api/t nunca teve (nem precisa ter) regra em permissoes.py.
+    if request.path.startswith("/api/t/"):
+        return
     if not session.get("admin"):
         return  # o _exigir_autenticacao abaixo trata quem nem logado está
     from permissoes import checar_acesso

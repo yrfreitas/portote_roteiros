@@ -261,7 +261,14 @@
 //        explica o botão de almoço "sumido": ele só existe em /tecnico/
 //        <token>, não nesse painel — não tem correção de código pra isso,
 //        é o link certo que precisa ser usado no dia a dia.
-const CACHE_VERSAO = 'portotec-roteiros-v147';
+// v148 = lote de pedidos de 2026-08-31: (1) botão de almoço também no
+//        painel (login de técnico cai lá, não só em /tecnico/<token>);
+//        (2) Setor vira campo obrigatório ao abrir "Ordens de Serviço" e
+//        "Chamado Técnico" (mesma régua do atendimento de Roteiros); (3)
+//        mais de uma foto em OS e item de estoque, além da foto principal;
+//        (4) detalhe da OS mostra quantas vezes já atendemos aquele
+//        cliente; (5) busca por nome do cliente na aba Atendimentos.
+const CACHE_VERSAO = 'portotec-roteiros-v148';
 
 const ARQUIVOS_CASCA = [
   '/',

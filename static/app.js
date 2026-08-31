@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v147';
+const VERSAO_PAINEL = 'v148';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1221,6 +1221,72 @@ async function carregarUsuarioLogado() {
   if (marca) {
     marca.textContent = usuarioLogado.nome || '';
     marca.title = admin ? 'Administrador' : 'Técnico';
+  }
+
+  // Botão de almoço no painel: só existe pra login de papel "tecnico", e só
+  // funciona se o /api/eu trouxe o token dele (ver rota /api/eu em auth.py).
+  const btnAlmocoPainel = document.getElementById('btn-almoco-painel');
+  if (btnAlmocoPainel) {
+    if (usuarioLogado.papel === 'tecnico' && usuarioLogado.tecnico_token) {
+      _almocoPainelToken = usuarioLogado.tecnico_token;
+      btnAlmocoPainel.style.display = '';
+      carregarStatusAlmocoPainel();
+    } else {
+      btnAlmocoPainel.style.display = 'none';
+    }
+  }
+}
+
+// ─── Botão de almoço no painel (login de técnico via usuário/senha) ─────
+// Reaproveita as MESMAS rotas do celular de campo (/api/t/<token>/almoco...)
+// em vez de duplicar endpoint — o token vem de /api/eu (ver auth.py).
+let _almocoPainelToken = null;
+let _almocoPainelDesde = null;
+let _almocoPainelIntervalo = null;
+
+function _renderBotaoAlmocoPainel() {
+  const btn = document.getElementById('btn-almoco-painel');
+  if (!btn) return;
+  if (!_almocoPainelDesde) {
+    btn.textContent = '🍽 Ir almoçar';
+    btn.className = 'btn-almoco-painel';
+    return;
+  }
+  const minutos = Math.max(0, Math.round((Date.now() - new Date(_almocoPainelDesde).getTime()) / 60000));
+  const restante = 60 - minutos;
+  const rotulo = restante >= 0 ? `faltam ${restante}min` : `${Math.abs(restante)}min atrasado`;
+  btn.textContent = `⏱ Voltar do almoço (${rotulo})`;
+  btn.className = 'btn-almoco-painel em-almoco' + (restante < 0 ? ' atrasado' : '');
+}
+
+async function carregarStatusAlmocoPainel() {
+  if (!_almocoPainelToken) return;
+  try {
+    const r = await api(`/t/${_almocoPainelToken}/almoco`);
+    _almocoPainelDesde = r.em_almoco ? r.desde : null;
+  } catch { /* offline: mantém o que já tinha na tela */ }
+  _renderBotaoAlmocoPainel();
+  clearInterval(_almocoPainelIntervalo);
+  if (_almocoPainelDesde) _almocoPainelIntervalo = setInterval(_renderBotaoAlmocoPainel, 30000);
+}
+
+async function alternarAlmocoPainel() {
+  if (!_almocoPainelToken) return;
+  const btn = document.getElementById('btn-almoco-painel');
+  if (btn) btn.disabled = true;
+  try {
+    if (_almocoPainelDesde) {
+      const r = await api(`/t/${_almocoPainelToken}/almoco/voltar`, { method: 'POST' });
+      toast(`Volta do almoço registrada — ${r.duracao_min}min de almoço`, 'success');
+    } else {
+      await api(`/t/${_almocoPainelToken}/almoco/iniciar`, { method: 'POST' });
+      toast('Almoço iniciado — bom apetite!', 'success');
+    }
+  } catch (e) {
+    toast(e.message || 'Não consegui registrar. Tenta de novo.', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+    carregarStatusAlmocoPainel();
   }
 }
 
@@ -6442,6 +6508,7 @@ async function abrirModalNovaOS() {
   _novosItensOrcamento = [];
   osEscolherModoCliente('existente');
   osEscolherModelo('os');
+  await preencherSelectSetorSeguro('os-setor');
 
   if (!_osIndicacoesCarregadas) {
     try {
@@ -6481,6 +6548,11 @@ function osEscolherModelo(modelo) {
   document.getElementById('os-tipo-obrigatorio').style.display = modelo === 'os' ? '' : 'none';
   document.getElementById('os-campos-taxa').style.display = modelo === 'os' ? '' : 'none';
   osTipoMudou();
+
+  // Setor é obrigatório em "Ordens de Serviço" e "Chamado Técnico" — pedido
+  // de 2026-08-31, mesma régua do atendimento de Roteiros. Orçamento fica de
+  // fora (ver validação em routes/ordens_servico.py:criar).
+  document.getElementById('os-setor-grupo').style.display = modelo === 'orcamento' ? 'none' : '';
 
   // Chamado Técnico troca Itens/Valores por Taxa de vistoria, e a forma de
   // pagamento (quadrados) fica junto dela — não mais com o técnico, que
@@ -6782,6 +6854,18 @@ async function osCriar() {
   corpo.oculta_fila = document.getElementById('os-ocultar-fila').checked;
   corpo.imprimir_ocultar = _osColetarImprimirOcultar('modal-nova-os');
 
+  // Setor obrigatório em "Ordens de Serviço" e "Chamado Técnico" (pedido de
+  // 2026-08-31) — Orçamento fica de fora, ver osEscolherModelo.
+  if (_novaOSModelo !== 'orcamento') {
+    const setorId = document.getElementById('os-setor').value;
+    if (!setorId) {
+      toast('Escolha o setor.', 'error');
+      document.getElementById('os-setor').focus();
+      return;
+    }
+    corpo.setor_id = setorId;
+  }
+
   if (_novaOSModelo === 'os') {
     const tipoOs = document.getElementById('os-tipo').value;
     if (!tipoOs) {
@@ -6833,6 +6917,7 @@ async function osCriar() {
 
   try {
     const resp = await api('/ordens-servico', { method: 'POST', body: JSON.stringify(corpo) });
+    if (corpo.setor_id) lembrarSetor(corpo.setor_id);
     toast('OS aberta com sucesso', 'success');
     fecharModais();
     carregarOS();
@@ -6944,7 +7029,8 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${o.foto ? `<img src="${o.foto}" alt="Foto do produto" style="max-width:220px;border-radius:8px;display:block;margin-bottom:8px;">` : ''}
       <input class="form-input" type="file" accept="image/*" capture="environment" id="os-ed-foto"
              onchange="osEscolherFotoEdicao(this)">
-    </div>`;
+    </div>
+    ${fotosExtraSecaoHtml(`os-fotos-extra-${o.id}`, 'Mais fotos')}`;
 
   // Chamado Técnico: taxa de vistoria + forma de pagamento em quadrados
   // (pedido de 2026-08-28) no lugar de Itens/Valores — esse modelo cobra
@@ -6976,6 +7062,17 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${o.foto ? `<img src="${o.foto}" alt="Foto do produto" style="max-width:220px;border-radius:8px;display:block;margin-bottom:8px;">` : ''}
       <input class="form-input" type="file" accept="image/*" capture="environment" id="os-ed-foto"
              onchange="osEscolherFotoEdicao(this)">
+    </div>
+    ${fotosExtraSecaoHtml(`os-fotos-extra-${o.id}`, 'Mais fotos')}`;
+
+  // Setor obrigatório em "Ordens de Serviço" e "Chamado Técnico" — pedido de
+  // 2026-08-31. Select vazio aqui de propósito: population é assíncrona (ver
+  // preencherSelectSetorSeguro logo depois do innerHTML, em abrirOSDetalhe),
+  // mesmo motivo do datalist de itens do Orçamento.
+  const campoSetor = `
+    <div class="form-group">
+      <label class="form-label" for="os-ed-setor">Setor</label>
+      <select class="form-input" id="os-ed-setor"></select>
     </div>`;
 
   // Seções sem UM campo dono (Garantia é preenchida à mão no papel; Termos
@@ -6994,6 +7091,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
+      ${campoSetor}
       ${tipoOsOpcional}
       ${camposComunsChamado}
       ${observacao}
@@ -7036,6 +7134,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
 
   return `
     <div class="os-detalhe-secao">
+      ${campoSetor}
       <label class="form-label" for="os-ed-tipo-os">Tipo de OS</label>
       <select class="form-input" id="os-ed-tipo-os" onchange="osEdTipoMudou()">${opcoesTipoOs}</select>
       <div class="form-row" id="os-ed-garantia-inicio-grupo"
@@ -7100,6 +7199,73 @@ function osEscolherFotoEdicao(input) {
     .finally(() => { input.value = ''; });
 }
 
+// ─── Fotos extras (mais de uma, além da `foto` principal) ────────────────
+// Pedido de 2026-08-31. Widget genérico: funciona pra qualquer dono (OS,
+// item de estoque...) só trocando o prefixo da API. Cada thumbnail some da
+// tela assim que apagada — não precisa recarregar a lista inteira do
+// servidor pra isso.
+function fotosExtraSecaoHtml(containerId, rotulo) {
+  return `
+    <div class="form-group foto-extra-secao">
+      <label class="form-label">${esc(rotulo)}</label>
+      <div class="foto-extra-lista" id="${containerId}"></div>
+      <input class="form-input" type="file" accept="image/*" capture="environment"
+             onchange="fotosExtraAdicionar(this, '${containerId}')">
+    </div>`;
+}
+
+// listarUrl: caminho relativo à API que devolve/aceita fotos (ex:
+// '/ordens-servico/42/fotos'). apagarBase: prefixo pra apagar UMA foto pelo
+// id dela (ex: '/ordens-servico/fotos') — rota separada porque apagar não
+// precisa saber o dono, só o id da foto (ver services/fotos_extra.py).
+const _fotosExtraConfig = {};
+
+function fotosExtraRegistrar(containerId, listarUrl, apagarBase) {
+  _fotosExtraConfig[containerId] = { listarUrl, apagarBase };
+}
+
+async function fotosExtraCarregarContainer(containerId) {
+  const cfg = _fotosExtraConfig[containerId];
+  const alvo = document.getElementById(containerId);
+  if (!cfg || !alvo) return;
+  try {
+    const r = await api(cfg.listarUrl);
+    alvo.innerHTML = (r.fotos || []).map(f => `
+      <div class="foto-extra-item">
+        <img src="${f.foto}" alt="Foto" onclick="ampliarFoto('${f.foto}')">
+        <button type="button" class="foto-extra-remover" title="Remover"
+                onclick="fotosExtraRemover(${f.id}, '${containerId}')">${icone('x', 'icone-11')}</button>
+      </div>`).join('') || `<p class="ajuda-texto" style="margin:0;">Nenhuma foto extra ainda.</p>`;
+  } catch { /* container fica vazio se falhar — não é campo obrigatório */ }
+}
+
+async function fotosExtraAdicionar(input, containerId) {
+  const arquivo = input.files && input.files[0];
+  const cfg = _fotosExtraConfig[containerId];
+  if (!arquivo || !cfg) return;
+  try {
+    const foto = await reduzirFotoInteira(arquivo);
+    await api(cfg.listarUrl, { method: 'POST', body: JSON.stringify({ foto }) });
+    await fotosExtraCarregarContainer(containerId);
+    toast('Foto adicionada', 'success');
+  } catch (e) {
+    toast(e.message || 'Não consegui adicionar a foto', 'error');
+  } finally {
+    input.value = '';
+  }
+}
+
+async function fotosExtraRemover(fotoId, containerId) {
+  const cfg = _fotosExtraConfig[containerId];
+  if (!cfg) return;
+  try {
+    await api(`${cfg.apagarBase}/${fotoId}`, { method: 'DELETE' });
+    await fotosExtraCarregarContainer(containerId);
+  } catch (e) {
+    toast(e.message || 'Não consegui remover a foto', 'error');
+  }
+}
+
 async function osAdicionarItemOrcamento(osId) {
   const nomeEl = document.getElementById('os-det-item-nome');
   const valorEl = document.getElementById('os-det-item-valor');
@@ -7144,10 +7310,12 @@ async function osSalvarEdicaoChamado(id) {
     taxa_vistoria: document.getElementById('os-ed-taxa-vistoria').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
     imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
+    setor_id: document.getElementById('os-ed-setor')?.value || undefined,
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
     await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify(corpo) });
+    if (corpo.setor_id) lembrarSetor(corpo.setor_id);
     toast('OS atualizada', 'success');
     _osEdicaoFoto = undefined;
     carregarOS();
@@ -7199,6 +7367,21 @@ async function abrirOSDetalhe(id) {
   _osEdicaoFoto = undefined;
   document.getElementById('os-detalhe-titulo').textContent =
     `OS #${String(o.id).padStart(6, '0')} · ${o.cliente_nome}`;
+
+  // Quantas vezes já atendemos esse cliente — pedido de 2026-08-31, mesma
+  // ideia do histórico que já existia na Nova OS (ver osHistoricoCliente),
+  // só que aqui dentro do detalhe de uma OS já aberta.
+  const subHist = document.getElementById('os-detalhe-historico-cliente');
+  if (subHist) {
+    subHist.textContent = '';
+    api(`/clientes/${o.cliente_id}`).then(rc => {
+      const total = (rc.ordens_servico || []).length;
+      const outras = total > 0 ? total - 1 : 0;
+      subHist.textContent = outras > 0
+        ? `Já atendemos este cliente ${outras}x antes desta OS.`
+        : 'Primeira OS deste cliente.';
+    }).catch(() => { subHist.textContent = ''; });
+  }
 
   // Pendente = já tem dia marcado e ninguém foi ainda. Decide se a OS comum
   // ("Ordens de Serviço") mostra o formulário de agendar ou só PUXA o que já
@@ -7326,7 +7509,13 @@ async function abrirOSDetalhe(id) {
       const dl = document.getElementById('os-det-orc-catalogo');
       if (dl) dl.innerHTML = rc.itens.map(i => `<option value="${esc(i.nome)}" data-valor="${i.valor}">`).join('');
     } catch { /* datalist fica vazio se falhar */ }
+  } else {
+    await preencherSelectSetorSeguro('os-ed-setor', o.setor_id);
   }
+
+  const fotosExtraId = `os-fotos-extra-${o.id}`;
+  fotosExtraRegistrar(fotosExtraId, `/ordens-servico/${o.id}/fotos`, '/ordens-servico/fotos');
+  fotosExtraCarregarContainer(fotosExtraId);
 
   document.getElementById('modal-os-detalhe').classList.add('open');
 }
@@ -7484,10 +7673,12 @@ async function osSalvarEdicao(id) {
       ? (document.getElementById('os-ed-garantia-inicio')?.value || null) : null,
     garantia_meses: tipoOsEditado === 'saida_oficina'
       ? (Number(document.getElementById('os-ed-garantia-meses')?.value) || 3) : null,
+    setor_id: document.getElementById('os-ed-setor')?.value || undefined,
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
     await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify(corpo) });
+    if (corpo.setor_id) lembrarSetor(corpo.setor_id);
     toast('OS atualizada', 'success');
     _osEdicaoFoto = undefined;
     carregarOS();
@@ -8278,6 +8469,10 @@ function _limparCamposEstoque() {
   estoqueMovFotoAtual = undefined;
   const previa = document.getElementById('estoque-mov-foto-previa');
   if (previa) previa.innerHTML = '';
+  // Fotos extras só existem no modo "editar" (precisa de um item já
+  // cadastrado — ver abrirEditarEstoque). Escondido nos outros 3 modos.
+  const grupoFotosExtra = document.getElementById('estoque-mov-grupo-fotos-extra');
+  if (grupoFotosExtra) grupoFotosExtra.style.display = 'none';
 }
 
 // undefined = não mexeu na foto (não manda o campo); null = removeu de
@@ -8398,6 +8593,9 @@ function abrirEditarEstoque(item) {
   _popularSelectEstoque(item.grupo_id || '');
   _visibilidadeModalEstoque({ desc: true, estoque: true, categoria: true, modelo: true, foto: true, obs: false });
   _estoqueRenderFotoPrevia(item.foto || null);
+  document.getElementById('estoque-mov-grupo-fotos-extra').style.display = '';
+  fotosExtraRegistrar('estoque-mov-fotos-extra', `/estoque/${item.id}/fotos`, '/estoque/fotos');
+  fotosExtraCarregarContainer('estoque-mov-fotos-extra');
   document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById('estoque-mov-aparelho').focus(), 80);
 }
@@ -8960,6 +9158,27 @@ const AT_TIPOS_OCULTOS = ['volto_depois', 'nao_atendido'];
 
 let _atDias = 30;
 let _atTipo = '';
+let _atBusca = '';       // normalizado (trim+minúsculo), só pra comparar
+let _atBuscaRaw = '';    // como a pessoa digitou — não "corrige" a caixa enquanto digita
+let _atUltimoResultado = null;
+
+// Filtro por nome digitado, aplicado sem nova ida ao servidor — a lista do
+// período já está na memória, então cada tecla só refaz o render local.
+// Pedido de 2026-08-31: achar um cliente na lista de Atendimentos exigia
+// rolar tudo à mão. Reconstruir o innerHTML troca o <input> por um novo
+// elemento (perde o foco) — por isso o foco e o cursor são devolvidos na mão
+// logo depois do render.
+function atBuscarNome(valor) {
+  _atBuscaRaw = valor || '';
+  _atBusca = _atBuscaRaw.trim().toLowerCase();
+  if (!_atUltimoResultado) return;
+  _atRenderizarDesfechos(_atUltimoResultado);
+  const campo = document.getElementById('at-busca');
+  if (campo) {
+    campo.focus();
+    campo.setSelectionRange(campo.value.length, campo.value.length);
+  }
+}
 
 function mudarPeriodoDesfechos(dias) {
   _atDias = dias;
@@ -8990,6 +9209,15 @@ async function carregarDesfechos() {
   }
 
   r.atendimentos = r.atendimentos.filter(a => !AT_TIPOS_OCULTOS.includes(a.desfecho));
+  _atUltimoResultado = r;
+  _atRenderizarDesfechos(r);
+}
+
+// Separado de carregarDesfechos pra poder refazer só o HTML (filtro de nome,
+// digitado) sem ir de novo ao servidor — ver atBuscarNome.
+function _atRenderizarDesfechos(r) {
+  const alvo = document.getElementById('at-conteudo');
+  if (!alvo) return;
 
   const cartoes = AT_TIPOS.map(t => `
     <button class="at-cartao ${t.classe} ${_atTipo === t.tipo ? 'ativo' : ''}"
@@ -9000,15 +9228,26 @@ async function carregarDesfechos() {
       <span class="at-nota">${t.nota}</span>
     </button>`).join('');
 
-  if (!r.atendimentos.length) {
-    alvo.innerHTML = `<div class="at-cartoes">${cartoes}</div>
+  const buscaHtml = `
+    <div class="form-group" style="margin-bottom:10px;">
+      <input class="form-input" id="at-busca" placeholder="Buscar por nome do cliente..."
+             value="${esc(_atBuscaRaw)}" oninput="atBuscarNome(this.value)">
+    </div>`;
+
+  const atendimentos = _atBusca
+    ? r.atendimentos.filter(a => (a.cliente || '').toLowerCase().includes(_atBusca))
+    : r.atendimentos;
+
+  if (!atendimentos.length) {
+    alvo.innerHTML = `<div class="at-cartoes">${cartoes}</div>${buscaHtml}
       <div class="historico-vazio">${icone('check', 'icone-24')}
-        <p>${_atTipo ? 'Nenhum atendimento desse tipo no período.'
-                     : 'Nenhum atendimento registrado neste período.'}</p></div>`;
+        <p>${_atBusca ? 'Nenhum cliente com esse nome no período.'
+             : (_atTipo ? 'Nenhum atendimento desse tipo no período.'
+                        : 'Nenhum atendimento registrado neste período.')}</p></div>`;
     return;
   }
 
-  const linhas = r.atendimentos.map(a => {
+  const linhas = atendimentos.map(a => {
     const t = AT_TIPOS.find(x => x.tipo === a.desfecho) || {};
     const detalhe = a.peca || a.motivo || '';
     const aparelho = [a.tipo_aparelho, a.modelo].filter(Boolean).join(' · ');
@@ -9049,6 +9288,7 @@ async function carregarDesfechos() {
 
   alvo.innerHTML = `
     <div class="at-cartoes">${cartoes}</div>
+    ${buscaHtml}
     ${_atTipo ? `<div class="at-filtro-aviso">Mostrando só
         <b>${esc((AT_TIPOS.find(x => x.tipo === _atTipo) || {}).rotulo || '')}</b>
         · <button class="at-limpar" onclick="filtrarDesfecho('${_atTipo}')">ver todos</button></div>` : ''}
