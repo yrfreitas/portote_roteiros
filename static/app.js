@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v149';
+const VERSAO_PAINEL = 'v150';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5450,6 +5450,13 @@ async function reduzirFotoInteira(arquivo, ladoMaximo = 1280, qualidade = 0.72) 
     cv.width = Math.round(largura * escala);
     cv.height = Math.round(altura * escala);
     const ctx = cv.getContext('2d');
+    // Print de tela costuma vir com canal alfa (PNG). JPEG não tem alfa —
+    // sem pintar um fundo antes, a área transparente vira PRETO no arquivo
+    // final (o canvas nasce transparente, e um pixel transparente convertido
+    // pra JPEG é preto), o que a pessoa via como "aceitou, mas não vem
+    // imagem nenhuma". Achado em 2026-08-31.
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(fonte, 0, 0, cv.width, cv.height);
     return cv.toDataURL('image/jpeg', qualidade);

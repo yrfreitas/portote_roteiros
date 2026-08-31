@@ -275,7 +275,15 @@
 //        peça nova quanto pra reentrada (sem apagar a que já existia se não
 //        trocar). Também shipado: etiqueta com QR Code por OS (escaneia e
 //        abre a OS direto, já logado) — botão "Etiqueta (QR)" no detalhe.
-const CACHE_VERSAO = 'portotec-roteiros-v149';
+// v150 = bug real confirmado com teste de pixel: print de tela (screenshot)
+//        quase sempre tem canal alfa (transparência), e a compressão de
+//        foto (reduzirFotoInteira, usada em TODO lugar que aceita foto)
+//        convertia pra JPEG sem pintar fundo antes — área transparente
+//        virava preto sólido no arquivo final. "Aceita mas não vem
+//        imagem" era isso: a foto salvava, só que preta por dentro. Fotos
+//        tiradas com câmera (sem transparência) nunca pegavam esse bug,
+//        só print de tela — por isso funcionava pra uns e não pra outros.
+const CACHE_VERSAO = 'portotec-roteiros-v150';
 
 const ARQUIVOS_CASCA = [
   '/',
