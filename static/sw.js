@@ -268,7 +268,14 @@
 //        mais de uma foto em OS e item de estoque, além da foto principal;
 //        (4) detalhe da OS mostra quantas vezes já atendemos aquele
 //        cliente; (5) busca por nome do cliente na aba Atendimentos.
-const CACHE_VERSAO = 'portotec-roteiros-v148';
+// v149 = achado real ao investigar "a foto não aparece no estoque": "Dar
+//        entrada" (o momento natural de fotografar uma peça nova) nunca
+//        teve campo de foto — só dava pra anexar depois, abrindo "Editar"
+//        separado. Agora a foto pode ser anexada já na entrada, tanto pra
+//        peça nova quanto pra reentrada (sem apagar a que já existia se não
+//        trocar). Também shipado: etiqueta com QR Code por OS (escaneia e
+//        abre a OS direto, já logado) — botão "Etiqueta (QR)" no detalhe.
+const CACHE_VERSAO = 'portotec-roteiros-v149';
 
 const ARQUIVOS_CASCA = [
   '/',

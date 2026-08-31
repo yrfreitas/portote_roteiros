@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v148';
+const VERSAO_PAINEL = 'v149';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -554,6 +554,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!podeUsuario('almoco_ver')) return;
     verificarAlmocoEventosNovos();
     setInterval(verificarAlmocoEventosNovos, 20000);
+  });
+
+  // Escaneou a etiqueta (QR) de uma OS — /os/<id>/abrir grava isso no body
+  // antes de mandar a página normal do painel (ver app.py). Espera o /api/eu
+  // resolver: sem isso a aba OS ainda está com display:none e o switch não
+  // funcionaria pra quem não tem a permissão (ou pra ninguém, na corrida).
+  carregarUsuarioLogadoPromise.then(() => {
+    const abrirOsId = Number(document.body.dataset.abrirOs);
+    if (!abrirOsId) return;
+    if (!podeUsuario('ordens_servico')) {
+      toast('Você não tem permissão para ver Ordens de Serviço.', 'error');
+      return;
+    }
+    switchMainTab('os');
+    abrirOSDetalhe(abrirOsId);
   });
 });
 
@@ -7497,8 +7512,11 @@ async function abrirOSDetalhe(id) {
         </button>
       </div>
     </div>
-    <div class="os-detalhe-secao" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-      <a class="btn btn-ghost btn-sm" href="/os/${o.id}/imprimir" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Imprimir OS</a>
+    <div class="os-detalhe-secao" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <a class="btn btn-ghost btn-sm" href="/os/${o.id}/imprimir" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Imprimir OS</a>
+        <a class="btn btn-ghost btn-sm" href="/os/${o.id}/etiqueta" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Etiqueta (QR)</a>
+      </div>
       <button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger-text);"
               onclick="osApagar(${o.id})">${icone('x', 'icone-13')} Apagar OS</button>
     </div>`;
@@ -8548,7 +8566,11 @@ function abrirEntradaEstoque(codigo = '', desc = '') {
     document.getElementById('estoque-mov-modelo').value = existente.modelo || '';
     document.getElementById('estoque-mov-preco').value = Number(existente.preco_venda) > 0 ? existente.preco_venda : '';
   }
-  _visibilidadeModalEstoque({ codigo: !codigo, desc: true, estoque: true, categoria: true, modelo: true, qtdcusto: true, custo: true, obs: true });
+  _visibilidadeModalEstoque({ codigo: !codigo, desc: true, estoque: true, categoria: true, modelo: true, qtdcusto: true, custo: true, foto: true, obs: true });
+  // Peça já existente entra com a foto que já tinha, pra poder trocar — sem
+  // isso o preview ficava vazio mesmo quando já existia uma (mesmo bug do
+  // texto: "entrada" nunca mostrava o que a peça já tinha).
+  _estoqueRenderFotoPrevia(existente?.foto || null);
   _labelQtd('Quantidade');
   document.getElementById('modal-estoque-mov').classList.add('open');
   setTimeout(() => document.getElementById(codigo ? 'estoque-mov-qtd' : 'estoque-mov-codigo').focus(), 80);
@@ -8640,9 +8662,12 @@ async function salvarMovEstoque() {
         toast('Entrada da nota no estoque.', 'success');
         osAvisarEsperando((rn.resultados || []).flatMap(x => x.os_esperando || []));
       } else {
-        const re = await api('/estoque/entrada', { method: 'POST', body: JSON.stringify({
+        const corpoEntrada = {
           codigo, descricao: val('estoque-mov-desc').trim(),
-          quantidade: qtd, custo_unit, obs, ...cat() }) });
+          quantidade: qtd, custo_unit, obs, ...cat(),
+        };
+        if (estoqueMovFotoAtual !== undefined) corpoEntrada.foto = estoqueMovFotoAtual;
+        const re = await api('/estoque/entrada', { method: 'POST', body: JSON.stringify(corpoEntrada) });
         toast('Entrada registrada.', 'success');
         osAvisarEsperando(re.os_esperando);
       }

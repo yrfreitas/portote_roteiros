@@ -80,7 +80,7 @@ def _num_ou_none(v):
 def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
                 origem="manual", referencia=None, obs=None,
                 marca=None, aparelho=None, modelo=None, preco_venda=None,
-                grupo_id="__manter__"):
+                grupo_id="__manter__", foto=None):
     """Entra peça no estoque, recalculando o custo médio ponderado.
 
     Reaproveitável de fora (é o que a NF-e vai chamar, fase 2), por isso recebe
@@ -89,7 +89,11 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
 
     marca/aparelho/modelo/preco_venda são opcionais e, quando a peça já existe,
     só sobrescrevem se vierem preenchidos — reentrar uma peça não apaga a
-    categoria que ela já tinha.
+    categoria que ela já tinha. `foto` segue a mesma regra — achado em
+    2026-08-31: "Dar entrada" (o momento natural de fotografar uma peça nova)
+    nunca teve campo de foto nenhum; só dava pra anexar depois, abrindo
+    "Editar" separadamente. Validação (formato/tamanho) é responsabilidade de
+    quem chama (ver rota /estoque/entrada) — aqui só grava o que chegou.
     """
     codigo = _norm_codigo(codigo)
     if not codigo:
@@ -136,11 +140,11 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
         novo_id = insert_returning_id(conn, """
             INSERT INTO estoque_itens
                 (codigo, descricao, marca, aparelho, modelo, grupo_id, saldo,
-                 custo_medio, preco_venda, criado_em, atualizado_em)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 custo_medio, preco_venda, foto, criado_em, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (codigo, (descricao or "").strip(), marca, aparelho, modelo,
               grupo_final if mexer_grupo else None,
-              quantidade, custo_unit, preco_venda or 0, _agora(), _agora()))
+              quantidade, custo_unit, preco_venda or 0, foto or None, _agora(), _agora()))
         _registrar_movimento(conn, novo_id, "entrada", quantidade, quantidade,
                              custo_unit, origem, referencia, obs)
         return {"item_id": novo_id, "saldo": quantidade, "custo_medio": custo_unit,
@@ -162,7 +166,7 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
     # não "não informado" — por isso o if em vez de truque de SQL.
     set_grupo = ", grupo_id = ?" if mexer_grupo else ""
     params = [saldo_novo, custo_novo, _agora(), (descricao or "").strip(),
-              marca, aparelho, modelo, preco_venda]
+              marca, aparelho, modelo, preco_venda, foto or ""]
     if mexer_grupo:
         params.append(grupo_final)
     params.append(item["id"])
@@ -173,7 +177,8 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
                marca       = COALESCE(NULLIF(?, ''), marca),
                aparelho    = COALESCE(NULLIF(?, ''), aparelho),
                modelo      = COALESCE(NULLIF(?, ''), modelo),
-               preco_venda = COALESCE(?, preco_venda){set_grupo}
+               preco_venda = COALESCE(?, preco_venda),
+               foto        = COALESCE(NULLIF(?, ''), foto){set_grupo}
          WHERE id = ?
     """, params)
     _registrar_movimento(conn, item["id"], "entrada", quantidade, saldo_novo,
@@ -420,6 +425,13 @@ def entrada():
     kw = {}
     if "grupo_id" in d:
         kw["grupo_id"] = d.get("grupo_id")
+    # Foto na entrada — achado em 2026-08-31: era o único jeito de cadastrar
+    # peça que NÃO deixava fotografar na hora, só editando depois. Mesma
+    # validação da edição (routes/estoque.py:editar_item).
+    if d.get("foto"):
+        if not _foto_valida(d["foto"]):
+            return jsonify({"erro": "Foto inválida ou grande demais."}), 400
+        kw["foto"] = d["foto"]
     try:
         with db_conn(commit=True) as conn:
             r = dar_entrada(conn, d.get("codigo"), d.get("descricao"),

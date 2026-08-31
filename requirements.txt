@@ -10,3 +10,5 @@ openpyxl==3.1.5
 gspread==6.2.1
 google-auth==2.56.3
 anthropic==0.69.0
+qrcode==8.2
+Pillow==12.3.0

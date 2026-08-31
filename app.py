@@ -668,6 +668,50 @@ def imprimir_os(os_id):
     return render_template("os_imprimir.html", **contexto)
 
 
+@app.route("/os/<int:os_id>/abrir")
+def abrir_os_por_qr(os_id):
+    """Pra onde o QR Code da etiqueta aponta (ver /os/<id>/etiqueta).
+
+    Não é um link público: cai no mesmo _exigir_autenticacao de sempre —
+    sem sessão, o próprio before_request redireciona pro login com
+    ?next=/os/<id>/abrir, e depois de entrar volta exatamente pra cá. Exige
+    login de propósito: quem escaneia a etiqueta física já está na oficina
+    trabalhando, não é o cliente.
+    """
+    return render_template("index.html", versao=VERSAO_APP, abrir_os=os_id)
+
+
+@app.route("/os/<int:os_id>/etiqueta")
+def etiqueta_os(os_id):
+    """Etiqueta pra colar no aparelho na entrada — pedido de 2026-08-31:
+    achar/trocar aparelho na bancada dependia de decorar ou escrever o
+    número da OS à mão. O QR aponta pra /os/<id>/abrir: escaneia com o
+    celular (já logado) e abre a OS direto, sem digitar nada.
+    """
+    import base64
+    import io as _io
+
+    import qrcode
+
+    with db_conn() as conn:
+        ordem = fetch_one(conn, """
+            SELECT os.id, os.tipo_aparelho, os.marca, os.modelo, os.defeito_declarado,
+                   c.nome AS cliente_nome
+              FROM ordens_servico os JOIN clientes c ON c.id = os.cliente_id
+             WHERE os.id = ?
+        """, (os_id,))
+    if not ordem:
+        return "<h1>Ordem de serviço não encontrada</h1>", 404
+
+    url_abrir = url_for("abrir_os_por_qr", os_id=os_id, _external=True)
+    img = qrcode.make(url_abrir, box_size=8, border=2)
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_data_uri = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+    return render_template("os_etiqueta.html", ordem=ordem, qr_data_uri=qr_data_uri)
+
+
 @app.route("/os/cliente/<token>")
 def imprimir_os_cliente(token):
     """Mesmo documento, sem login — o token de 32 bytes é a credencial
