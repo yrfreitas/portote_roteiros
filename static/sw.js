@@ -250,7 +250,18 @@
 //        POST/PUT/DELETE, então mesmo com "Ver e usar o Verificador de CEP"
 //        marcado, a busca sempre dava 403 "sem_regra_definida". A aba
 //        aparecia, o clique em Buscar é que nunca funcionava.
-const CACHE_VERSAO = 'portotec-roteiros-v146';
+// v147 = achado sério ao investigar reclamação de que o técnico Igor via
+//        rota de outros técnicos: login de papel "tecnico" (usuário/senha,
+//        não o link pessoal /tecnico/<token>) caía no MESMO painel do
+//        admin, e GET /api/tecnicos e /api/fichas nunca tiveram recorte —
+//        traziam todo mundo pra qualquer login. Corrigido nas duas rotas
+//        de listagem, na de detalhe de ficha, e nas de escrita de
+//        atendimento (editar/dar baixa/excluir/adicionar) — um login
+//        "tecnico" só enxerga e só mexe na própria ficha agora. Isso também
+//        explica o botão de almoço "sumido": ele só existe em /tecnico/
+//        <token>, não nesse painel — não tem correção de código pra isso,
+//        é o link certo que precisa ser usado no dia a dia.
+const CACHE_VERSAO = 'portotec-roteiros-v147';
 
 const ARQUIVOS_CASCA = [
   '/',

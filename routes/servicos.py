@@ -13,6 +13,21 @@ AVISO_IMPRECISO = ("Endereço aproximado (centroide do CEP). "
 
 STATUS_SERVICO_VALIDOS = {"pendente", "concluido"}
 
+
+def _servico_de_outro_tecnico(conn, ficha_id: int) -> bool:
+    """True quando quem faz a requisição é um login "tecnico" mexendo num
+    atendimento de ficha de OUTRO técnico.
+
+    Mesma falha de escopo achada em 2026-08-31 nas rotas de listagem (ver
+    routes/fichas.py e routes/tecnicos.py) — esta é a versão de ESCRITA: sem
+    isso, um login de campo com a permissão "atendimentos" ligada (padrão
+    para todo mundo) conseguia editar, dar baixa ou excluir o atendimento de
+    QUALQUER colega, não só o próprio."""
+    if session.get("papel") != "tecnico":
+        return False
+    ficha = fetch_one(conn, "SELECT tecnico_id FROM fichas WHERE id = ?", (ficha_id,))
+    return not ficha or ficha.get("tecnico_id") != session.get("tecnico_id")
+
 # "ativo" é BOOLEAN no Postgres e INTEGER no SQLite — comparar com o literal
 # errado quebra num dos dois. Mesmo motivo do ATIVO em routes/setores.py.
 _SETOR_ATIVO = "ativo IS TRUE" if IS_PG else "ativo = 1"
@@ -144,6 +159,8 @@ def adicionar_servico(ficha_id):
         ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
     if not ficha:
         return jsonify({"erro": "Ficha não encontrada"}), 404
+    if session.get("papel") == "tecnico" and ficha.get("tecnico_id") != session.get("tecnico_id"):
+        return jsonify({"erro": "Ficha não encontrada"}), 404
 
     geo = geocode_cep(cep, numero=numero)
     if not geo:
@@ -193,8 +210,10 @@ def editar_servico(servico_id):
 
     with db_conn() as conn:
         servico = fetch_one(conn, "SELECT * FROM servicos WHERE id = ?", (servico_id,))
-    if not servico:
-        return jsonify({"erro": "Serviço não encontrado"}), 404
+        if not servico:
+            return jsonify({"erro": "Serviço não encontrado"}), 404
+        if _servico_de_outro_tecnico(conn, servico["ficha_id"]):
+            return jsonify({"erro": "Serviço não encontrado"}), 404
 
     # Editar também exige setor. Assim, abrir um ponto antigo para corrigir
     # qualquer coisa já força a classificação que faltava, em vez de perpetuar
@@ -282,6 +301,8 @@ def alterar_status_servico(servico_id):
         """, (servico_id,))
         if not servico:
             return jsonify({"erro": "Serviço não encontrado"}), 404
+        if _servico_de_outro_tecnico(conn, servico["ficha_id"]):
+            return jsonify({"erro": "Serviço não encontrado"}), 404
         aplicar_status_servico(conn, servico_id, novo_status)
         # Mesma função que o app do técnico usa: o desfecho tem de ser gravado
         # igual venha de onde vier, senão as duas origens divergem e o
@@ -300,6 +321,8 @@ def remover_servico(servico_id):
     with db_conn(commit=True) as conn:
         servico = fetch_one(conn, "SELECT * FROM servicos WHERE id = ?", (servico_id,))
         if not servico:
+            return jsonify({"erro": "Serviço não encontrado"}), 404
+        if _servico_de_outro_tecnico(conn, servico["ficha_id"]):
             return jsonify({"erro": "Serviço não encontrado"}), 404
 
         ficha_id = servico["ficha_id"]

@@ -126,6 +126,24 @@ def zona_sp(cep) -> str:
 
 @tecnicos_bp.route("/tecnicos", methods=["GET"])
 def listar_tecnicos():
+    # Login de papel "tecnico" só enxerga o PRÓPRIO técnico — achado em
+    # 2026-08-31: essa rota alimenta a sidebar inteira do painel (um card por
+    # técnico) e todo select de "escolher técnico" do sistema, e nunca teve
+    # esse recorte. Um login de campo via usuário/senha (não o link pessoal
+    # em /tecnico/<token>) via a rota de todo mundo. Admin e recepcionista
+    # continuam vendo todos — só quem é o próprio técnico é que fica preso à
+    # própria linha.
+    papel = session.get("papel")
+    meu_tecnico_id = session.get("tecnico_id")
+    if papel == "tecnico":
+        if not meu_tecnico_id:
+            return jsonify([])
+        condicao_papel = "WHERE t.id = ?"
+        params_papel = (meu_tecnico_id,)
+    else:
+        condicao_papel = ""
+        params_papel = ()
+
     with db_conn() as conn:
         # A FOTO fica de fora da listagem de propósito.
         #
@@ -133,15 +151,16 @@ def listar_tecnicos():
         # cada auto-refresh do painel: com dois técnicos eram 62 KB de rede a
         # cada ciclo, para uma imagem que não muda. Agora vai em rota própria,
         # com cache longo no navegador — o painel baixa uma vez por sessão.
-        tecnicos = fetch_all(conn, """
+        tecnicos = fetch_all(conn, f"""
             SELECT t.id, t.nome, t.cor, t.token, t.created_at, t.ativo,
                    CASE WHEN t.foto IS NULL THEN 0 ELSE 1 END AS tem_foto,
                    COUNT(f.id) AS total_fichas
             FROM tecnicos t
             LEFT JOIN fichas f ON f.tecnico_id = t.id
+            {condicao_papel}
             GROUP BY t.id
             ORDER BY t.nome
-        """)
+        """, params_papel)
     return jsonify(tecnicos)
 
 

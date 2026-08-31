@@ -2,7 +2,7 @@ import logging
 import threading
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
 from database import (db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id, sql)
@@ -150,6 +150,18 @@ def ordenar_por_semana(fichas: list) -> list:
 def listar_fichas():
     tecnico_id = request.args.get("tecnico_id")
     status = request.args.get("status")
+
+    # Login de papel "tecnico" só pode listar a PRÓPRIA ficha — achado em
+    # 2026-08-31 junto com o mesmo recorte em GET /api/tecnicos. Sem isso,
+    # bastava pedir /api/fichas?tecnico_id=<outro id> (ou nem informar
+    # nenhum, trazendo TODAS) pra ver a rota de qualquer colega — a sidebar
+    # do painel só escondia visualmente, o servidor entregava igual.
+    # Sobrescreve o que veio na query: não é validação, é substituição.
+    if session.get("papel") == "tecnico":
+        meu_tecnico_id = session.get("tecnico_id")
+        if not meu_tecnico_id:
+            return jsonify([])
+        tecnico_id = meu_tecnico_id
 
     condicoes, params = [], []
     if tecnico_id:
@@ -344,6 +356,12 @@ def obter_ficha(ficha_id):
     with db_conn() as conn:
         ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
         if not ficha:
+            return jsonify({"erro": "Ficha não encontrada"}), 404
+        # Mesmo recorte de listar_fichas: login "tecnico" só abre a PRÓPRIA
+        # ficha, mesmo sabendo o id de outra (link direto, histórico antigo
+        # no navegador etc.). 404 igual à de "não existe" — não confirma pra
+        # quem tentou que o id pertence a outro técnico.
+        if session.get("papel") == "tecnico" and ficha.get("tecnico_id") != session.get("tecnico_id"):
             return jsonify({"erro": "Ficha não encontrada"}), 404
 
         servicos = fetch_all(
