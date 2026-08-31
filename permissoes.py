@@ -90,6 +90,13 @@ REGRAS = [
     ("/api/setores",               ("POST", "PUT", "DELETE"), "gerenciar_setores"),
     # Roteiros: escrita em fichas (inclui adicionar atendimento, otimizar...).
     ("/api/fichas",                ("POST", "PUT", "DELETE"), "roteiros"),
+    # Verificar CEP: essas duas rotas de busca nunca tiveram regra mapeada
+    # (achado em 2026-08-31, pedido pra liberar a Gabriela) — POST sem regra
+    # fecha por padrão pra quem não é admin (ver fim de checar_acesso), então
+    # cep_ver=True na pessoa não bastava, a busca sempre dava 403
+    # "sem_regra_definida" mesmo com a aba visível.
+    ("/api/verificar-cep",         None,                     "cep_ver"),
+    ("/api/verificar-endereco",    None,                     "cep_ver"),
     # Atendimentos existentes: editar, mover, transferir, excluir.
     ("/api/servicos",              ("POST", "PUT", "DELETE"), "atendimentos"),
     # Peças, usuários, relatórios, chat da equipe.

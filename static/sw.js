@@ -243,7 +243,14 @@
 //        nome e mensagem de OUTROS técnicos, e a Porto Tec quer que cada
 //        um veja só a própria rota. O chat da equipe continua existindo no
 //        painel (admin/recepcionista).
-const CACHE_VERSAO = 'portotec-roteiros-v145';
+// v146 = corrige Verificar CEP pra quem não é admin (pedido pra liberar a
+//        Gabriela): as rotas POST /api/verificar-cep e /api/verificar-endereco
+//        nunca tiveram regra em permissoes.py — desde a auditoria de
+//        segurança (v73), rota sem regra mapeada fecha por padrão pra
+//        POST/PUT/DELETE, então mesmo com "Ver e usar o Verificador de CEP"
+//        marcado, a busca sempre dava 403 "sem_regra_definida". A aba
+//        aparecia, o clique em Buscar é que nunca funcionava.
+const CACHE_VERSAO = 'portotec-roteiros-v146';
 
 const ARQUIVOS_CASCA = [
   '/',
