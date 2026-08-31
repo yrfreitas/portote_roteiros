@@ -3098,6 +3098,10 @@ select:focus-visible,
   border-radius: 7px; padding: 5px 10px;
 }
 .substituicao-seta { color: var(--text-muted); font-size: 12px; align-self: center; }
+.substituicao-chip-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.substituicao-preco { font-size: 11px; color: var(--text-muted); }
+.substituicao-preco-pendente { font-style: italic; }
+.substituicao-preco-data { color: var(--text-muted); opacity: .7; }
 
 /* Aba "Pedidos com comprovante" — cada peça pedida vira um cartão com dois
    lados: dados do cliente à esquerda, comprovante à direita. Lado a lado

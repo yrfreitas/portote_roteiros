@@ -1056,6 +1056,19 @@ _MIGRACOES_PG = [
         criado_em         TEXT,
         liberado_em       TEXT
     )""",
+    # Cache de preço do portal B2B da Panasonic — pedido de 2026-08-31. O
+    # SITE não consegue abrir aquele portal sozinho (login é por e-mail +
+    # sessão de navegador, que só existe no computador do Kalebe); um robô
+    # LOCAL consulta o preço e grava aqui por essa tabela, e o site só lê o
+    # que já está em cache. `pendente` marca um código que alguém pesquisou
+    # e ainda não tem preço — é a fila que o robô local processa primeiro.
+    """CREATE TABLE IF NOT EXISTS precos_panasonic (
+        codigo         TEXT PRIMARY KEY,
+        preco          TEXT,
+        pendente       BOOLEAN DEFAULT TRUE,
+        solicitado_em  TEXT,
+        atualizado_em  TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1266,6 +1279,13 @@ _MIGRACOES_SQLITE = [
         quantidade        REAL NOT NULL,
         criado_em         TEXT,
         liberado_em       TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS precos_panasonic (
+        codigo         TEXT PRIMARY KEY,
+        preco          TEXT,
+        pendente       INTEGER DEFAULT 1,
+        solicitado_em  TEXT,
+        atualizado_em  TEXT
     )""",
 ]
 

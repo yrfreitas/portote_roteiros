@@ -14,7 +14,8 @@ mais chance de erro do que começar do zero a cada import.
 """
 import io
 import logging
-from datetime import datetime
+import os
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 from openpyxl import load_workbook
@@ -45,6 +46,43 @@ def _texto_data(valor):
     if isinstance(valor, datetime):
         return valor.strftime("%Y-%m-%d")
     return str(valor).strip() or None
+
+
+def _agora():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _token_valido():
+    esperado = os.environ.get("PANASONIC_SYNC_TOKEN")
+    return bool(esperado) and request.headers.get("X-Sync-Token") == esperado
+
+
+def _precos_do_cache(conn, codigos):
+    """{codigo: {preco, atualizado_em}} pros códigos pedidos — só os que já
+    têm alguma linha em precos_panasonic (pendente ou não)."""
+    if not codigos:
+        return {}
+    marcador = ",".join("?" for _ in codigos)
+    linhas = fetch_all(conn, f"""
+        SELECT codigo, preco, atualizado_em FROM precos_panasonic
+         WHERE codigo IN ({marcador})
+    """, tuple(codigos))
+    return {l["codigo"]: l for l in linhas}
+
+
+def _marcar_pendente_se_novo(conn, codigos):
+    """Um código pesquisado que nunca foi consultado antes vira pendente —
+    é a fila que o robô local (Portotec/Softwear para Pedidos) processa
+    primeiro, priorizando o que alguém pediu de verdade em vez de varrer a
+    planilha inteira do zero."""
+    agora = _agora()
+    for codigo in codigos:
+        existe = fetch_one(conn, "SELECT codigo FROM precos_panasonic WHERE codigo = ?", (codigo,))
+        if not existe:
+            execute(conn, """
+                INSERT INTO precos_panasonic (codigo, pendente, solicitado_em)
+                VALUES (?, ?, ?)
+            """, (codigo, True if IS_PG else 1, agora))
 
 
 @substituicoes_bp.route("/pecas-substituicao/status", methods=["GET"])
@@ -86,6 +124,7 @@ def buscar():
             casamento = "parcial"
 
     resultados = []
+    todos_codigos = set()
     for l in linhas:
         substitutos = [l[f"substituto_{i}"] for i in range(1, 6) if l.get(f"substituto_{i}")]
         if not substitutos:
@@ -96,8 +135,81 @@ def buscar():
             "inicio_validade": l.get("inicio_validade"),
             "fim_validade": l.get("fim_validade"),
         })
+        todos_codigos.add(l["codigo"])
+        todos_codigos.update(substitutos)
+
+    # Preço Panasonic B2B: cache que o robô local mantém (ver
+    # _marcar_pendente_se_novo/POST /precos-panasonic mais abaixo — o site
+    # não consegue abrir aquele portal sozinho, quem consulta de verdade é
+    # o computador do Kalebe). Pesquisar aqui é o que ENTRA um código na
+    # fila desse robô pela primeira vez.
+    with db_conn(commit=True) as conn:
+        precos = _precos_do_cache(conn, list(todos_codigos))
+        _marcar_pendente_se_novo(conn, list(todos_codigos))
+
+    for r in resultados:
+        cache_principal = precos.get(r["codigo"])
+        r["preco_panasonic"] = cache_principal.get("preco") if cache_principal else None
+        r["preco_atualizado_em"] = cache_principal.get("atualizado_em") if cache_principal else None
+        r["substitutos_precos"] = [
+            {"codigo": s, "preco": (precos.get(s) or {}).get("preco")}
+            for s in r["substitutos"]
+        ]
 
     return jsonify({"codigo_buscado": codigo, "casamento": casamento, "resultados": resultados})
+
+
+@substituicoes_bp.route("/precos-panasonic/pendentes", methods=["GET"])
+def precos_pendentes():
+    """Fila pro robô local processar — protegida por token compartilhado
+    (não é login de usuário, é máquina falando com máquina)."""
+    if not _token_valido():
+        return jsonify({"erro": "Token inválido"}), 401
+    limite = min(int(request.args.get("limite", 30) or 30), 200)
+    with db_conn() as conn:
+        pendentes = fetch_all(conn, sql("""
+            SELECT codigo FROM precos_panasonic
+             WHERE pendente = ?
+             ORDER BY solicitado_em
+             LIMIT ?
+        """), (True if IS_PG else 1, limite))
+    return jsonify({"codigos": [p["codigo"] for p in pendentes]})
+
+
+@substituicoes_bp.route("/precos-panasonic", methods=["POST"])
+def gravar_precos():
+    """O robô local manda o resultado de volta — {itens: [{codigo, preco}]}.
+    `preco` None/vazio marca como consultado mas sem preço disponível (não
+    fica pendente pra sempre tentando de novo a cada rodada)."""
+    if not _token_valido():
+        return jsonify({"erro": "Token inválido"}), 401
+    d = request.get_json(silent=True) or {}
+    itens = d.get("itens") or []
+    if not itens:
+        return jsonify({"erro": "Mande 'itens': [{codigo, preco}]"}), 400
+
+    # UPDATE-e-só-se-preciso-INSERT em vez de ON CONFLICT: mesmo motivo do
+    # bump_revisao em database.py — ON CONFLICT tem diferença de dialeto
+    # entre SQLite e Postgres, e aqui não há necessidade de arriscar isso.
+    agora = _agora()
+    pendente_falso = False if IS_PG else 0
+    with db_conn(commit=True) as conn:
+        for item in itens:
+            codigo = _normalizar_codigo(item.get("codigo"))
+            if not codigo:
+                continue
+            preco = (item.get("preco") or "").strip() or None
+            afetadas = execute(conn, """
+                UPDATE precos_panasonic SET preco = ?, pendente = ?, atualizado_em = ?
+                 WHERE codigo = ?
+            """, (preco, pendente_falso, agora, codigo))
+            if not afetadas:
+                execute(conn, """
+                    INSERT INTO precos_panasonic (codigo, preco, pendente, atualizado_em)
+                    VALUES (?, ?, ?, ?)
+                """, (codigo, preco, pendente_falso, agora))
+
+    return jsonify({"mensagem": f"{len(itens)} preço(s) atualizado(s)"})
 
 
 @substituicoes_bp.route("/pecas-substituicao/importar", methods=["POST"])

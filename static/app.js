@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v152';
+const VERSAO_PAINEL = 'v153';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7935,6 +7935,20 @@ async function carregarStatusSubstituicao() {
   }
 }
 
+// Preço do portal B2B da Panasonic (pedido de 2026-08-31): o site não
+// consegue abrir aquele portal sozinho (login é por e-mail + sessão de
+// navegador que só existe no computador do Kalebe), então quem preenche
+// isso é um robô local rodando por fora, em background — daqui só lemos o
+// cache. "consultando" é o estado normal de um código pesquisado pela
+// primeira vez, não um erro.
+function _precoPanasonicHtml(preco, atualizadoEm) {
+  if (preco) {
+    const quando = atualizadoEm ? ` <span class="substituicao-preco-data">(${esc(atualizadoEm.slice(0, 10).split('-').reverse().join('/'))})</span>` : '';
+    return `<span class="substituicao-preco">${esc(preco)}${quando}</span>`;
+  }
+  return `<span class="substituicao-preco substituicao-preco-pendente">consultando preço...</span>`;
+}
+
 async function buscarSubstituicao() {
   const input = document.getElementById('substituicao-busca');
   const codigo = input.value.trim();
@@ -7949,14 +7963,23 @@ async function buscarSubstituicao() {
     }
     alvo.innerHTML = (r.casamento === 'parcial'
       ? `<p class="ajuda-texto">Não achei exato — mostrando parecidos:</p>` : '') +
-      r.resultados.map(res => `
+      r.resultados.map(res => {
+        const precosPorCodigo = {};
+        (res.substitutos_precos || []).forEach(sp => { precosPorCodigo[sp.codigo] = sp.preco; });
+        return `
         <div class="substituicao-cartao">
-          <div class="cod-original">Código <b>${esc(res.codigo)}</b> foi substituído por:</div>
+          <div class="cod-original">Código <b>${esc(res.codigo)}</b>
+            ${_precoPanasonicHtml(res.preco_panasonic, res.preco_atualizado_em)}
+            foi substituído por:</div>
           <div class="substituicao-lista">
             ${res.substitutos.map((s, i) => `${i > 0 ? '<span class="substituicao-seta">→</span>' : ''}
-              <span class="substituicao-chip">${esc(s)}</span>`).join('')}
+              <span class="substituicao-chip-wrap">
+                <span class="substituicao-chip">${esc(s)}</span>
+                ${_precoPanasonicHtml(precosPorCodigo[s], null)}
+              </span>`).join('')}
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
   } catch (e) {
     alvo.innerHTML = `<p class="vcep-erro" style="margin:0;">${esc(e.message)}</p>`;
   }

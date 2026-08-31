@@ -115,7 +115,12 @@ _CAMINHOS_PUBLICOS = {"/login", "/api/health", "/api/erro-cliente"}
 # não tem conta no sistema. O link de 16 bytes é a credencial — mesmo modelo do
 # link do técnico. Só expõem posição e destino daquele atendimento.
 _PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
-                      "/acompanhar/", "/api/rastreio/", "/api/chat/", "/os/cliente/")
+                      "/acompanhar/", "/api/rastreio/", "/api/chat/", "/os/cliente/",
+                      "/api/precos-panasonic")
+# /api/precos-panasonic* é público na camada de sessão porque quem chama é o
+# robô local (Portotec/Softwear para Pedidos), sem cookie de usuário — a
+# proteção real é o token compartilhado (_token_valido em substituicoes.py),
+# checado dentro da própria rota.
 
 
 # Controle de acesso por AÇÃO (ver permissoes.py), no lugar do antigo "só
