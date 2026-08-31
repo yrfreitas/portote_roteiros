@@ -290,7 +290,14 @@
 //        consumo real dos últimos 90 dias pra saber quem vai faltar
 //        primeiro. Também: card do Estoque com o NOME da peça em destaque
 //        e o código como linha secundária (era o contrário).
-const CACHE_VERSAO = 'portotec-roteiros-v151';
+// v152 = achado investigando "login da Nathalia não vê o roteiro": login
+//        de papel "tecnico" sem vínculo com nenhum técnico cadastrado (ver
+//        Acessos) cai no recorte de segurança do v147 (cada um só vê o
+//        próprio técnico) e mostrava sidebar vazia com a mensagem "Nenhum
+//        técnico cadastrado" — mentira nesse caso, parecia bug do sistema
+//        inteiro. Mensagem agora diz a causa certa e pra onde ir resolver
+//        (Diagnóstico → Acessos, vincular o login a um técnico).
+const CACHE_VERSAO = 'portotec-roteiros-v152';
 
 const ARQUIVOS_CASCA = [
   '/',

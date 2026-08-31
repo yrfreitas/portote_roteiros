@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v151';
+const VERSAO_PAINEL = 'v152';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2220,7 +2220,17 @@ async function carregarTecnicos() {
     carregarVisaoGeral(); // não espera — não trava o carregamento da sidebar
 
     if (tecnicos.length === 0) {
-      list.innerHTML = `<div style="padding:20px 14px;color:var(--text-muted);font-size:12px;text-align:center;">Nenhum técnico cadastrado.<br>Clique em + para adicionar.</div>`;
+      // Login "tecnico" sem vínculo com nenhum técnico cadastrado vê a lista
+      // vazia (recorte de segurança de 2026-08-31: cada um só enxerga o
+      // próprio técnico) — mas "nenhum técnico cadastrado" é mentira nesse
+      // caso e parece bug. Mensagem certa exige saber POR QUE veio vazio, e
+      // carregarTecnicos()/carregarUsuarioLogado() disparam juntos no
+      // carregamento da página — sem esperar aqui, essa checagem quase
+      // sempre pegava usuarioLogado ainda no valor padrão (achado testando).
+      if (carregarUsuarioLogadoPromise) await carregarUsuarioLogadoPromise;
+      list.innerHTML = (usuarioLogado.papel === 'tecnico' && !usuarioLogado.tecnico_id)
+        ? `<div style="padding:20px 14px;color:var(--text-muted);font-size:12px;text-align:center;">Este login (técnico) não está vinculado a nenhum técnico cadastrado.<br>Peça pro administrador conectar em Diagnóstico → Acessos.</div>`
+        : `<div style="padding:20px 14px;color:var(--text-muted);font-size:12px;text-align:center;">Nenhum técnico cadastrado.<br>Clique em + para adicionar.</div>`;
       return;
     }
 
