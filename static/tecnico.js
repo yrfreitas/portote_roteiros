@@ -593,14 +593,15 @@
   //
   // Botão grande e pouco toque: o técnico está de pé, na calçada, com uma
   // mão segurando o celular e a outra ocupada.
+  // Lista EXATA pedida pelo Kalebe em 2026-09-01, nesta ordem, sem
+  // "Resolvido" — ele tirou de propósito, não é esquecimento.
   const DESFECHOS = [
-    { tipo: 'resolvido',    rotulo: 'Resolvido',        sub: 'consertado na hora',    icone: '✓' },
-    { tipo: 'fazer_os',     rotulo: 'Fazer Ordem de Serviço', sub: 'dados + assinatura do cliente', icone: '📝' },
     { tipo: 'orcamento',    rotulo: 'Orçamento',        sub: 'dados + assinatura, escritório monta o valor', icone: '📋' },
-    { tipo: 'precisa_peca', rotulo: 'Precisa de peça',  sub: 'diagnosticado, falta peça', icone: '🔧' },
+    { tipo: 'precisa_peca', rotulo: 'Fazer Pedido de Peça', sub: 'diagnosticado, falta peça', icone: '🔧' },
+    { tipo: 'volto_depois', rotulo: 'Reagendar Cliente', sub: 'preciso retornar',      icone: '↻' },
     { tipo: 'cotacao_peca', rotulo: 'Cotação de peça',  sub: 'não sei o preço ainda', icone: '💰' },
-    { tipo: 'volto_depois', rotulo: 'Volto depois',     sub: 'preciso retornar',      icone: '↻' },
-    { tipo: 'nao_atendido', rotulo: 'Reagendar',        sub: 'não deu, precisa remarcar', icone: '!' },
+    { tipo: 'fazer_os',     rotulo: 'Fazer Ordem de Serviço', sub: 'dados + assinatura do cliente', icone: '📝' },
+    { tipo: 'nao_atendido', rotulo: 'Cliente Ausente / Não foi possível atender', sub: 'não deu, precisa remarcar', icone: '!' },
   ];
   const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                    'Aparelho sem defeito', 'Sem acesso ao local'];
@@ -1287,7 +1288,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v168';
+  const VERSAO_TELA = 'v169';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
