@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v153';
+const VERSAO_PAINEL = 'v154';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7957,11 +7957,26 @@ async function buscarSubstituicao() {
   alvo.innerHTML = '<p class="ajuda-texto">Buscando...</p>';
   try {
     const r = await api(`/pecas-substituicao?codigo=${encodeURIComponent(codigo)}`);
+
+    // Preço do PRÓPRIO código digitado -- sempre mostrado, tenha ou não
+    // substituto cadastrado na planilha (pedido de 2026-09-01: antes só
+    // aparecia preço quando o código batia com a tabela de substituição).
+    // Some se o código digitado já vai aparecer de novo lá embaixo como
+    // resultado de substituição exata, pra não repetir o mesmo preço 2x.
+    const jaAparecaComoResultado = r.resultados.some(res => res.codigo === r.codigo_buscado);
+    let html = jaAparecaComoResultado ? '' : `
+      <div class="substituicao-cartao">
+        <div class="cod-original">Código <b>${esc(r.codigo_buscado)}</b>
+          ${_precoPanasonicHtml(r.preco_panasonic, r.preco_atualizado_em)}
+        </div>
+      </div>`;
+
     if (!r.resultados.length) {
-      alvo.innerHTML = `<p class="ajuda-texto">Nenhuma substituição encontrada pra "${esc(codigo)}".</p>`;
+      html += `<p class="ajuda-texto">Sem substituição cadastrada na planilha pra "${esc(codigo)}".</p>`;
+      alvo.innerHTML = html;
       return;
     }
-    alvo.innerHTML = (r.casamento === 'parcial'
+    alvo.innerHTML = html + (r.casamento === 'parcial'
       ? `<p class="ajuda-texto">Não achei exato — mostrando parecidos:</p>` : '') +
       r.resultados.map(res => {
         const precosPorCodigo = {};

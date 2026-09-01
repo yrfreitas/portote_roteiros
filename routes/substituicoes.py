@@ -124,7 +124,11 @@ def buscar():
             casamento = "parcial"
 
     resultados = []
-    todos_codigos = set()
+    # O código digitado SEMPRE entra na fila de preço, tenha ou não substituto
+    # cadastrado na planilha (pedido de 2026-09-01) — antes só entrava se
+    # desse "match" na tabela de substituição, então a maioria das peças
+    # (que não têm substituto documentado) nunca recebia preço nenhum.
+    todos_codigos = {codigo}
     for l in linhas:
         substitutos = [l[f"substituto_{i}"] for i in range(1, 6) if l.get(f"substituto_{i}")]
         if not substitutos:
@@ -156,7 +160,16 @@ def buscar():
             for s in r["substitutos"]
         ]
 
-    return jsonify({"codigo_buscado": codigo, "casamento": casamento, "resultados": resultados})
+    cache_busca = precos.get(codigo)
+    return jsonify({
+        "codigo_buscado": codigo,
+        "casamento": casamento,
+        "resultados": resultados,
+        # Preço do PRÓPRIO código digitado, independente de ter substituto
+        # cadastrado — é o que faltava pra maioria das peças ter preço.
+        "preco_panasonic": cache_busca.get("preco") if cache_busca else None,
+        "preco_atualizado_em": cache_busca.get("atualizado_em") if cache_busca else None,
+    })
 
 
 @substituicoes_bp.route("/precos-panasonic/pendentes", methods=["GET"])
