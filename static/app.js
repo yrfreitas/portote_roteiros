@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v162';
+const VERSAO_PAINEL = 'v163';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6961,6 +6961,15 @@ async function osCriar() {
     if (tipoOs) corpo.tipo_os = tipoOs;
     corpo.garantia_inicio = document.getElementById('os-garantia-inicio').value || null;
     corpo.garantia_meses = Number(document.getElementById('os-garantia-meses').value) || 3;
+  } else if (_novaOSModelo === 'chamado_tecnico') {
+    // BUG CORRIGIDO EM 2026-09-01: Tipo de OS/termo fica visível e opcional
+    // pros 3 modelos (comentário em osEscolherModelo), mas faltava este
+    // branch — quem escolhia um termo ao abrir um Chamado Técnico tinha essa
+    // escolha jogada fora aqui, sem aviso nenhum (editar um já criado salvava
+    // normal, só a CRIAÇÃO perdia o dado). Mesmo tratamento opcional do
+    // Orçamento.
+    const tipoOs = document.getElementById('os-tipo').value;
+    if (tipoOs) corpo.tipo_os = tipoOs;
   }
 
   if (modo === 'existente') {
