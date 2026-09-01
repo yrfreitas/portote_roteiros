@@ -1208,6 +1208,28 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-cotacao-confirmar" role="dialog" aria-modal="true" aria-label="Confirmar cotação">
+  <div class="modal">
+    <div class="modal-title">Confirmar cotação</div>
+    <p class="ajuda-texto" style="margin:0 0 12px;">
+      O preço vira um item de verdade na OS de orçamento do cliente, e esta
+      cotação sai da fila — não dá pra desfazer.
+    </p>
+    <div class="form-group">
+      <label class="form-label" for="cotacao-confirmar-valor">Valor cotado (R$)</label>
+      <input class="form-input" type="number" step="0.01" min="0.01" id="cotacao-confirmar-valor" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="cotacao-confirmar-fornecedor">Casa de peças / fornecedor (opcional)</label>
+      <input class="form-input" id="cotacao-confirmar-fornecedor" autocomplete="off" placeholder="Ex: Peças SP">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="cotacao-confirmar-btn" onclick="confirmarCotacao()">Confirmar e enviar pro orçamento</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-cliente-detalhe" role="dialog" aria-modal="true" aria-label="Dados do cliente">
   <div class="modal">
     <div class="modal-title" id="cliente-detalhe-nome"></div>

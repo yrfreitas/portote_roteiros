@@ -596,6 +596,7 @@
   const DESFECHOS = [
     { tipo: 'resolvido',    rotulo: 'Resolvido',        sub: 'consertado na hora',    icone: '✓' },
     { tipo: 'fazer_os',     rotulo: 'Fazer Ordem de Serviço', sub: 'dados + assinatura do cliente', icone: '📝' },
+    { tipo: 'orcamento',    rotulo: 'Orçamento',        sub: 'dados + assinatura, escritório monta o valor', icone: '📋' },
     { tipo: 'precisa_peca', rotulo: 'Precisa de peça',  sub: 'diagnosticado, falta peça', icone: '🔧' },
     { tipo: 'cotacao_peca', rotulo: 'Cotação de peça',  sub: 'não sei o preço ainda', icone: '💰' },
     { tipo: 'volto_depois', rotulo: 'Volto depois',     sub: 'preciso retornar',      icone: '↻' },
@@ -840,6 +841,33 @@
       // com celular mais lento). getBoundingClientRect() força o reflow
       // pendente do innerHTML na hora — o canvas já sai com o tamanho certo.
       _tIniciarAssinatura();
+    } else if (tipo === 'orcamento') {
+      // Pedido de 2026-09-01: o técnico levanta o básico do cliente/aparelho
+      // e colhe assinatura — quem monta o valor do orçamento (itens/preços)
+      // é o escritório depois, por isso não pede solução nem forma de
+      // pagamento aqui (ainda não existem, o orçamento nem foi feito).
+      const s = (servicosAbertos || []).find(x => x.id === _desfechoServicoId) || {};
+      extra.innerHTML = `
+        <label class="t-df-rotulo" for="t-df-orc-nome">Nome do cliente</label>
+        <input class="t-df-input" id="t-df-orc-nome" value="${esc(s.cliente || '')}">
+        <label class="t-df-rotulo" for="t-df-orc-telefone">Telefone</label>
+        <input class="t-df-input" id="t-df-orc-telefone" value="${esc(s.telefone || '')}">
+        <div class="t-df-linha-dupla">
+          <div><label class="t-df-rotulo" for="t-df-orc-aparelho">Aparelho</label>
+            <input class="t-df-input" id="t-df-orc-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
+          <div><label class="t-df-rotulo" for="t-df-orc-modelo">Modelo</label>
+            <input class="t-df-input" id="t-df-orc-modelo" value="${esc(s.modelo || '')}"></div>
+        </div>
+        <label class="t-df-rotulo" for="t-df-orc-defeito">Defeito declarado</label>
+        <textarea class="t-df-input" id="t-df-orc-defeito" rows="2">${esc(s.descricao || '')}</textarea>
+        ${blocoFoto(false)}
+        <label class="t-df-rotulo">Assinatura do cliente <span class="t-df-obrigatorio">*</span></label>
+        <p class="t-df-ajuda">Passe o celular pro cliente assinar aqui com o dedo.</p>
+        <canvas id="t-assinatura-canvas" class="t-assinatura-canvas"></canvas>
+        <button type="button" class="t-df-limpar-assinatura" onclick="window._tLimparAssinatura()">Limpar assinatura</button>`;
+      // Mesmo motivo de fazer_os: chamada síncrona pra não perder o começo
+      // do traço se o cliente já estiver com o dedo na tela.
+      _tIniciarAssinatura();
     } else {
       extra.innerHTML = blocoFoto(false);
     }
@@ -908,8 +936,8 @@
     window._tValidarConfirmar();
   };
 
-  // Cotação de peça trava por código+nome+foto; Fazer OS trava por
-  // nome do cliente + assinatura de verdade (sem isso não tem o que
+  // Cotação de peça trava por código+nome+foto; Fazer OS e Orçamento travam
+  // por nome do cliente + assinatura de verdade (sem isso não tem o que
   // documentar) — os outros desfechos continuam livres.
   window._tValidarConfirmar = function () {
     const btn = document.getElementById('t-df-confirmar');
@@ -921,6 +949,9 @@
       ok = !!(codigo && nome && _desfechoFoto);
     } else if (_desfechoTipo === 'fazer_os') {
       const nome = document.getElementById('t-df-fos-nome')?.value.trim();
+      ok = !!(nome && _assinaturaTemTraco);
+    } else if (_desfechoTipo === 'orcamento') {
+      const nome = document.getElementById('t-df-orc-nome')?.value.trim();
       ok = !!(nome && _assinaturaTemTraco);
     }
     btn.disabled = !ok;
@@ -958,9 +989,23 @@
         desfecho.assinatura = _assinaturaCanvas.toDataURL('image/png');
       }
     }
+    if (_desfechoTipo === 'orcamento') {
+      desfecho.cliente_nome = document.getElementById('t-df-orc-nome')?.value.trim() || '';
+      desfecho.cliente_telefone = document.getElementById('t-df-orc-telefone')?.value.trim() || '';
+      desfecho.tipo_aparelho = document.getElementById('t-df-orc-aparelho')?.value.trim() || '';
+      desfecho.modelo = document.getElementById('t-df-orc-modelo')?.value.trim() || '';
+      desfecho.defeito_declarado = document.getElementById('t-df-orc-defeito')?.value.trim() || '';
+      // Foto vai como foto_produto (na OS, igual Fazer OS) -- é o que ajuda o
+      // escritório a montar o orçamento certo, não um registro solto do
+      // atendimento.
+      if (_desfechoFoto) desfecho.foto_produto = _desfechoFoto;
+      if (_assinaturaTemTraco && _assinaturaCanvas) {
+        desfecho.assinatura = _assinaturaCanvas.toDataURL('image/png');
+      }
+    }
     const obs = document.getElementById('t-df-obs')?.value.trim();
     if (obs) desfecho.observacao = obs;
-    if (_desfechoFoto && _desfechoTipo !== 'fazer_os') desfecho.foto = _desfechoFoto;
+    if (_desfechoFoto && _desfechoTipo !== 'fazer_os' && _desfechoTipo !== 'orcamento') desfecho.foto = _desfechoFoto;
     const id = _desfechoServicoId;
     window._tFecharDesfecho();
     window._tConcluirPonto(id, 'concluido', desfecho);
@@ -1242,7 +1287,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v167';
+  const VERSAO_TELA = 'v168';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

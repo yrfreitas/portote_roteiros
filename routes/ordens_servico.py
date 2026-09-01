@@ -1091,7 +1091,18 @@ def listar():
         condicoes.append("EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
         condicoes.append("os.oculta_fila_em IS NULL")
     elif fonte == "reagendamento":
-        condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+        # Pedido de 2026-09-01: só entra aqui quem veio de verdade de um
+        # desfecho de técnico em campo ("Reagendar"/nao_atendido ou "Volto
+        # depois"/volto_depois) — ANTES bastava "sem peça chegada e sem
+        # dia marcado", o que também trazia qualquer OS nova recém-aberta
+        # pelo escritório que simplesmente ainda não tinha visita agendada
+        # (isso não é reagendamento, é a PRIMEIRA vez — não devia misturar).
+        condicoes.append("""EXISTS (
+            SELECT 1 FROM servicos s
+            JOIN servico_desfecho sd ON sd.servico_id = s.id
+             WHERE s.ordem_servico_id = os.id
+               AND sd.desfecho IN ('nao_atendido', 'volto_depois')
+        )""")
         condicoes.append("os.oculta_fila_em IS NULL")
     # ?origem=panasonic|nossa|balcao — três lados. "balcao" (aba "Produtos da
     # loja") é SÓ quem a equipe marcou à mão (balcao_em preenchido) — pedido

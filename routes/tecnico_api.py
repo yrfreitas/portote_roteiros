@@ -247,8 +247,11 @@ def status_servico_tecnico(token, servico_id):
 
 # Desfechos possíveis de um atendimento. Lista FECHADA de propósito: o valor
 # alimenta contagem e filtro, e texto livre não soma nem filtra.
+# "orcamento" — pedido de 2026-09-01: o técnico levanta os dados básicos e
+# colhe assinatura em campo, e a OS nasce como Orçamento pra equipe do
+# escritório montar os itens/valores depois (ver _processar_orcamento).
 DESFECHOS_VALIDOS = {"resolvido", "precisa_peca", "volto_depois", "nao_atendido",
-                     "cotacao_peca", "fazer_os"}
+                     "cotacao_peca", "fazer_os", "orcamento"}
 
 # Desfechos que fazem sentido levar pra um dia futuro (o cliente exige nova
 # visita). "resolvido" e "cotacao_peca" terminam o atendimento ali mesmo —
@@ -497,6 +500,106 @@ def _processar_fazer_os(conn, servico, tecnico_id, desfecho, quem):
     return _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem)
 
 
+def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
+    """Desfecho "Orçamento" (pedido de 2026-09-01): o técnico levanta o
+    equipamento e colhe assinatura em campo, mas quem MONTA o orçamento
+    (itens/valores) é o escritório depois — por isso nasce
+    'aguardando_orcamento', não 'finalizada' (compare com
+    _criar_os_do_tecnico, que fecha o caso na hora). modelo_os='orcamento'
+    é o que faz a OS já cair certinha na tela de Ordens de Serviço, na
+    seção Itens/Valores que a equipe usa pra montar o orçamento — não é
+    uma tela nova, é a mesma que o Kalebe já usa pra qualquer orçamento.
+    """
+    cliente_nome = (desfecho.get("cliente_nome") or servico.get("cliente") or "").strip()
+    if not cliente_nome:
+        return None
+
+    from routes.clientes import criar_cliente
+
+    existente = fetch_one(conn, sql(
+        "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
+    if existente:
+        cliente_id = existente["id"]
+    else:
+        try:
+            cliente_id = criar_cliente(conn, {
+                "nome": cliente_nome,
+                "telefone": (desfecho.get("cliente_telefone") or servico.get("telefone") or "").strip(),
+            })
+        except ValueError:
+            return None
+
+    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    tipo_aparelho = (desfecho.get("tipo_aparelho") or servico.get("tipo_aparelho") or "").strip()
+    modelo = (desfecho.get("modelo") or servico.get("modelo") or "").strip()
+    defeito = (desfecho.get("defeito_declarado") or servico.get("descricao") or "").strip()
+    assinatura = _imagem_valida(desfecho.get("assinatura"))
+    foto = _imagem_valida(desfecho.get("foto_produto"))
+    token_cliente = secrets.token_urlsafe(24)
+
+    os_id = insert_returning_id(conn, sql("""
+        INSERT INTO ordens_servico
+            (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
+             foto, assinatura_cliente, tecnico_atendeu_id, taxa_avaliacao,
+             status, modelo_os, criado_em, criado_por, token_cliente)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """), (cliente_id, quem, tipo_aparelho, modelo, defeito, foto, assinatura,
+          tecnico_id, 0, "aguardando_orcamento", "orcamento", agora, quem, token_cliente))
+
+    execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
+           (os_id, servico["id"]))
+
+    return {"os_id": os_id, "token_cliente": token_cliente}
+
+
+def _atualizar_os_orcamento_existente(conn, ordem_servico_id, desfecho, quem):
+    """Mesma ideia de _fechar_os_existente, mas pro desfecho "Orçamento":
+    a OS já existe (veio de Agendar Clientes/aberta antes) — vira modelo
+    orçamento com o que o técnico levantou, sem finalizar nada."""
+    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    campos = ["modelo_os = ?", "status = ?", "atualizado_em = ?"]
+    valores = ["orcamento", "aguardando_orcamento", agora]
+
+    for campo_os, campo_desfecho in (("tipo_aparelho", "tipo_aparelho"),
+                                      ("modelo", "modelo"),
+                                      ("defeito_declarado", "defeito_declarado")):
+        valor = (desfecho.get(campo_desfecho) or "").strip()
+        if valor:
+            campos.append(f"{campo_os} = ?")
+            valores.append(valor)
+
+    assinatura = _imagem_valida(desfecho.get("assinatura"))
+    if assinatura:
+        campos.append("assinatura_cliente = ?")
+        valores.append(assinatura)
+    foto = _imagem_valida(desfecho.get("foto_produto"))
+    if foto:
+        campos.append("foto = ?")
+        valores.append(foto)
+
+    existente = fetch_one(conn, "SELECT token_cliente FROM ordens_servico WHERE id = ?",
+                          (ordem_servico_id,))
+    token_cliente = (existente or {}).get("token_cliente")
+    if not token_cliente:
+        token_cliente = secrets.token_urlsafe(24)
+        campos.append("token_cliente = ?")
+        valores.append(token_cliente)
+
+    valores.append(ordem_servico_id)
+    execute(conn, f"UPDATE ordens_servico SET {', '.join(campos)} WHERE id = ?", valores)
+
+    return {"os_id": ordem_servico_id, "token_cliente": token_cliente}
+
+
+def _processar_orcamento(conn, servico, tecnico_id, desfecho, quem):
+    if servico.get("ordem_servico_id"):
+        return _atualizar_os_orcamento_existente(conn, servico["ordem_servico_id"], desfecho, quem)
+    if not tecnico_id:
+        ficha = fetch_one(conn, "SELECT tecnico_id FROM fichas WHERE id = ?", (servico["ficha_id"],))
+        tecnico_id = (ficha or {}).get("tecnico_id")
+    return _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem)
+
+
 def _atualizar_status_os(conn, ordem_servico_id, tipo):
     if not ordem_servico_id:
         return
@@ -591,6 +694,8 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
     try:
         if tipo == "fazer_os":
             os_gerada = _processar_fazer_os(conn, servico, tecnico_id, desfecho, quem)
+        elif tipo == "orcamento":
+            os_gerada = _processar_orcamento(conn, servico, tecnico_id, desfecho, quem)
         elif tipo in DESFECHOS_REAGENDAVEIS and not ordem_servico_id:
             _criar_os_para_reagendamento(conn, servico, tipo, motivo, observacao, quem)
         else:

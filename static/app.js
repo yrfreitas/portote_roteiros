@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v167';
+const VERSAO_PAINEL = 'v168';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3217,6 +3217,7 @@ const DESFECHO_ROTULO = {
   volto_depois: { txt: 'Volta depois',    classe: 'df-volto' },
   nao_atendido: { txt: 'Reagendar',        classe: 'df-nao-atendido' },
   fazer_os:     { txt: 'OS feita em campo', classe: 'df-fazer-os' },
+  orcamento:    { txt: 'Orçamento',         classe: 'df-orcamento' },
 };
 
 function seloDesfecho(s) {
@@ -9664,6 +9665,8 @@ const AT_TIPOS = [
     classe: 'at-cotacao', nota: 'aguardando preço' },
   { tipo: 'fazer_os',     rotulo: 'OS feita em campo', curto: 'OS em campo',
     classe: 'at-fazer-os', nota: 'assinada pelo cliente' },
+  { tipo: 'orcamento',    rotulo: 'Orçamentos',       curto: 'Orçamento',
+    classe: 'at-orcamento', nota: 'aguardando montar valor' },
   { tipo: 'resolvido',    rotulo: 'Resolvidos',       curto: 'Resolvido',
     classe: 'at-ok',    nota: 'fechados na hora' },
 ];
@@ -9795,6 +9798,8 @@ function _atRenderizarDesfechos(r) {
         </div>
         <div class="at-baixa" id="at-baixa-${a.chave}">
           ${a.desfecho === 'precisa_peca' ? botaoBaixa(a) : ''}
+          ${a.desfecho === 'cotacao_peca' ? `
+            <button class="btn btn-primary btn-sm" onclick="abrirConfirmarCotacao(${a.servico_id})">Confirmar cotação</button>` : ''}
           ${(a.desfecho === 'fazer_os' || a.origem === 'os') && a.ordem_servico_id ? `
             <button class="btn btn-ghost btn-sm" onclick="abrirOSDetalhe(${a.ordem_servico_id})">Abrir OS</button>` : ''}
         </div>
@@ -9865,6 +9870,43 @@ function botaoBaixa(a) {
   }
   return `<button class="at-btn-baixa" onclick="abrirAnexarPedido('${a.chave}')">
             Já pedi</button>`;
+}
+
+// "Confirmar cotação" (pedido de 2026-09-01): o preço achado numa casa de
+// peças vira item de verdade na OS de orçamento do cliente, e a cotação
+// sai da fila — não é editável depois via este modal, então guarda só o
+// servico_id de quem está sendo confirmado agora.
+let _cotacaoConfirmarServicoId = null;
+
+function abrirConfirmarCotacao(servicoId) {
+  _cotacaoConfirmarServicoId = servicoId;
+  document.getElementById('cotacao-confirmar-valor').value = '';
+  document.getElementById('cotacao-confirmar-fornecedor').value = '';
+  document.getElementById('modal-cotacao-confirmar').classList.add('open');
+}
+
+async function confirmarCotacao() {
+  const valor = document.getElementById('cotacao-confirmar-valor').value;
+  const fornecedor = document.getElementById('cotacao-confirmar-fornecedor').value.trim();
+  if (!valor || Number(valor) <= 0) {
+    toast('Informe o valor cotado', 'error');
+    return;
+  }
+  const btn = document.getElementById('cotacao-confirmar-btn');
+  btn.disabled = true;
+  try {
+    const r = await api(`/desfechos/${_cotacaoConfirmarServicoId}/cotacao-confirmar`, {
+      method: 'POST',
+      body: JSON.stringify({ valor: Number(valor), fornecedor }),
+    });
+    fecharModais();
+    toast('Cotação confirmada — item já está no orçamento', 'success');
+    carregarDesfechos();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // "chave" identifica a linha na tela ("t12" = servico_id 12, "o5" =

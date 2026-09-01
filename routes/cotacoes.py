@@ -141,3 +141,96 @@ def remover(item_id):
     if not apagados:
         return jsonify({"erro": "Item não encontrado"}), 404
     return jsonify({"mensagem": "Item removido"})
+
+
+def _os_orcamento_do_cliente(conn, servico, quem):
+    """Acha (se o atendimento já tem OS) ou cria a OS-orçamento do cliente
+    deste atendimento, pra pendurar um item de cotação confirmada. Mesma
+    lógica de identificar cliente de
+    routes/tecnico_api.py:_criar_os_orcamento_do_tecnico, só que chamada
+    pelo ESCRITÓRIO confirmando o preço, não pelo técnico em campo (por
+    isso sem assinatura/foto aqui — quem colheria isso é o técnico, que já
+    foi embora a essa altura)."""
+    if servico.get("ordem_servico_id"):
+        os_id = servico["ordem_servico_id"]
+        execute(conn, """
+            UPDATE ordens_servico SET modelo_os = 'orcamento', status = 'aguardando_orcamento'
+             WHERE id = ? AND modelo_os != 'orcamento'
+        """, (os_id,))
+        return os_id
+
+    cliente_nome = (servico.get("cliente") or "").strip()
+    if not cliente_nome:
+        return None
+
+    from routes.clientes import criar_cliente
+    existente = fetch_one(conn, "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)", (cliente_nome,))
+    if existente:
+        cliente_id = existente["id"]
+    else:
+        try:
+            cliente_id = criar_cliente(conn, {"nome": cliente_nome, "telefone": servico.get("telefone") or ""})
+        except ValueError:
+            return None
+
+    import secrets
+    agora = _agora()
+    token_cliente = secrets.token_urlsafe(24)
+    os_id = insert_returning_id(conn, """
+        INSERT INTO ordens_servico
+            (cliente_id, atendente, tipo_aparelho, modelo, taxa_avaliacao,
+             status, modelo_os, criado_em, criado_por, token_cliente)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (cliente_id, quem, servico.get("tipo_aparelho") or "", servico.get("modelo") or "", 0,
+          "aguardando_orcamento", "orcamento", agora, quem, token_cliente))
+    execute(conn, "UPDATE servicos SET ordem_servico_id = ? WHERE id = ?", (os_id, servico["id"]))
+    return os_id
+
+
+@cotacoes_bp.route("/desfechos/<int:servico_id>/cotacao-confirmar", methods=["POST"])
+def confirmar_cotacao_desfecho(servico_id):
+    """Pedido de 2026-09-01: confirma o preço encontrado numa "casa de
+    peças" pra uma Cotação de Peça que veio de atendimento de técnico — a
+    peça vira um ITEM de verdade na OS de orçamento do cliente (cria a OS
+    se ele não tiver uma ainda), e o item de cotação SOME da fila — o
+    trabalho dele acabou, virou orçamento."""
+    d = request.get_json(silent=True) or {}
+    try:
+        valor = float(d.get("valor"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Informe o valor cotado"}), 400
+    if valor <= 0:
+        return jsonify({"erro": "O valor tem que ser maior que zero"}), 400
+    fornecedor = (d.get("fornecedor") or "").strip()
+
+    with db_conn(commit=True) as conn:
+        servico = fetch_one(conn, "SELECT * FROM servicos WHERE id = ?", (servico_id,))
+        if not servico:
+            return jsonify({"erro": "Atendimento não encontrado"}), 404
+        # A trava é a linha em `cotacoes` (a fila de verdade), não
+        # `servico_desfecho` — esse fica intacto de propósito como histórico
+        # do atendimento, então checá-lo deixaria confirmar a MESMA cotação
+        # várias vezes, duplicando o item no orçamento a cada clique.
+        cotacao = fetch_one(conn, "SELECT id FROM cotacoes WHERE servico_id = ?", (servico_id,))
+        if not cotacao:
+            return jsonify({"erro": "Essa cotação já foi confirmada ou não existe mais"}), 404
+        desfecho = fetch_one(conn, """
+            SELECT * FROM servico_desfecho WHERE servico_id = ? AND desfecho = 'cotacao_peca'
+        """, (servico_id,)) or {}
+
+        os_id = _os_orcamento_do_cliente(conn, servico, _autor())
+        if not os_id:
+            return jsonify({"erro": "Não consegui identificar o cliente desse atendimento pra montar a OS"}), 400
+
+        nome_item = desfecho.get("peca") or "Peça cotada"
+        if fornecedor:
+            nome_item = f"{nome_item} ({fornecedor})"
+        execute(conn, """
+            INSERT INTO ordem_servico_itens (ordem_servico_id, nome, valor, criado_em)
+            VALUES (?, ?, ?, ?)
+        """, (os_id, nome_item, valor, _agora()))
+
+        # Some da fila de cotação — o trabalho dela virou item de orçamento.
+        execute(conn, "DELETE FROM cotacoes WHERE servico_id = ?", (servico_id,))
+
+    return jsonify({"mensagem": "Cotação confirmada e enviada pro orçamento", "os_id": os_id})

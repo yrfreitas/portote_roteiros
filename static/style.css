@@ -3763,6 +3763,7 @@ select:focus-visible,
 .df-cotacao-peca  { background: var(--accent-dim);  color: var(--accent-text); }
 .df-volto         { background: rgba(34,211,238,.13); color: #7de3f4; }
 .df-nao-atendido  { background: var(--danger-dim);  color: var(--danger-text); }
+.df-orcamento     { background: var(--gold-dim);    color: var(--gold-text); }
 
 /* Áreas do item de roteiro (ver .roteiro-item: ações foram para a 2ª linha) */
 .roteiro-item > .drag-handle   { grid-area: puxador; align-self: center; }
@@ -3927,6 +3928,7 @@ select:focus-visible,
 .at-volta    { color: var(--accent-2); }
 .at-nao      { color: var(--danger); }
 .at-fazer-os { color: var(--accent-3); }
+.at-orcamento { color: var(--gold); }
 .at-ok       { color: var(--success); }
 
 .at-filtro-aviso {
@@ -3980,6 +3982,7 @@ select:focus-visible,
 .at-linha.at-volta    .at-etiqueta { background: var(--accent-2); }
 .at-linha.at-nao      .at-etiqueta { background: var(--danger); }
 .at-linha.at-fazer-os .at-etiqueta { background: var(--accent-3); }
+.at-linha.at-orcamento .at-etiqueta { background: var(--gold); }
 .at-linha.at-ok       .at-etiqueta { background: var(--success); }
 
 .at-ver-foto {
