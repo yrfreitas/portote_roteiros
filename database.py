@@ -1069,6 +1069,13 @@ _MIGRACOES_PG = [
         solicitado_em  TEXT,
         atualizado_em  TEXT
     )""",
+    # Aba "Produtos da loja" (pedido de 2026-09-01) — flag EXPLÍCITA, marcada
+    # à mão pela equipe (nunca inferida). Primeira tentativa foi deduzir
+    # "cliente de balcão" por não ter visita de técnico agendada, mas isso
+    # pegava OS de verdade que só ainda não tinham visita marcada — o Kalebe
+    # pediu pra desfazer na hora ("não quero que nada caia automático lá, só
+    # vá pra lá quando a gente jogar o cliente lá").
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS balcao_em TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1287,6 +1294,7 @@ _MIGRACOES_SQLITE = [
         solicitado_em  TEXT,
         atualizado_em  TEXT
     )""",
+    "ALTER TABLE ordens_servico ADD COLUMN balcao_em TEXT",
 ]
 
 

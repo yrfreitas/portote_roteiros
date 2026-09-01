@@ -1060,21 +1060,21 @@ def listar():
     elif fonte == "reagendamento":
         condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
         condicoes.append("os.oculta_fila_em IS NULL")
-    # ?origem=panasonic|nossa|balcao — três lados, pedido de 2026-09-01:
-    # "balcao" (aba "Produtos da loja") é o cliente que vem direto na loja,
-    # sem passar por Roteiros/técnico nenhum — nunca teve um `servicos`
-    # (visita) ligado a essa OS. "nossa" continua sendo o resto de sempre
-    # (cliente cadastrado na mão, chamado técnico do campo, reagendamento),
-    # agora só que excluindo quem é balcão, pra não aparecer nos dois lados.
-    _SEM_ROTEIRO = "NOT EXISTS (SELECT 1 FROM servicos s WHERE s.ordem_servico_id = os.id)"
+    # ?origem=panasonic|nossa|balcao — três lados. "balcao" (aba "Produtos da
+    # loja") é SÓ quem a equipe marcou à mão (balcao_em preenchido) — pedido
+    # explícito de 2026-09-01 depois de uma primeira tentativa por inferência
+    # (sem visita de técnico agendada) ter puxado OS de verdade que só ainda
+    # não tinham visita marcada: "não quero que nada caia automático lá, só
+    # vá pra lá quando a gente jogar o cliente lá". "nossa" volta a ser
+    # exatamente o que sempre foi (tudo que não é Panasonic), agora só
+    # excluindo quem foi marcado como balcão à mão.
     if origem == "panasonic":
         condicoes.append("EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
     elif origem == "balcao":
-        condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
-        condicoes.append(_SEM_ROTEIRO)
+        condicoes.append("os.balcao_em IS NOT NULL")
     elif origem == "nossa":
         condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
-        condicoes.append(f"NOT ({_SEM_ROTEIRO})")
+        condicoes.append("os.balcao_em IS NULL")
     where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
 
     with db_conn() as conn:
@@ -1106,16 +1106,14 @@ def listar():
         # Contagem por status respeita a origem escolhida (senão os números
         # dos cartões não bateriam com a lista de baixo), mas não os outros
         # filtros (status/dias/busca) — mesmo comportamento de sempre.
-        _sem_roteiro_contagem = "NOT EXISTS (SELECT 1 FROM servicos s WHERE s.ordem_servico_id = ordens_servico.id)"
         origem_sql = ""
         if origem == "panasonic":
             origem_sql = "WHERE EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)"
         elif origem == "balcao":
-            origem_sql = ("WHERE NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id) "
-                          f"AND {_sem_roteiro_contagem}")
+            origem_sql = "WHERE ordens_servico.balcao_em IS NOT NULL"
         elif origem == "nossa":
             origem_sql = ("WHERE NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id) "
-                          f"AND NOT ({_sem_roteiro_contagem})")
+                          "AND ordens_servico.balcao_em IS NULL")
         contagem = {s: 0 for s in STATUS_OS}
         todas_status = fetch_all(conn, f"SELECT status FROM ordens_servico {origem_sql}")
         for l in todas_status:
@@ -1974,3 +1972,27 @@ def reexibir_fila(os_id):
             return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
         execute(conn, "UPDATE ordens_servico SET oculta_fila_em = NULL WHERE id = ?", (os_id,))
     return jsonify({"mensagem": "De volta pra fila de Agendar Clientes"})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/balcao", methods=["POST"])
+def marcar_balcao(os_id):
+    """Move a OS pra aba "Produtos da loja" — SEMPRE manual (pedido de
+    2026-09-01: nada cai lá sozinho, só quando alguém decide que aquele
+    cliente é de balcão)."""
+    with db_conn(commit=True) as conn:
+        os_row = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (os_id,))
+        if not os_row:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        execute(conn, "UPDATE ordens_servico SET balcao_em = ? WHERE id = ?", (_agora(), os_id))
+    return jsonify({"mensagem": "Movida para Produtos da loja"})
+
+
+@ordens_servico_bp.route("/ordens-servico/<int:os_id>/balcao", methods=["DELETE"])
+def desmarcar_balcao(os_id):
+    """Desfaz o /balcao — volta pra "Nossas OS"."""
+    with db_conn(commit=True) as conn:
+        os_row = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (os_id,))
+        if not os_row:
+            return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+        execute(conn, "UPDATE ordens_servico SET balcao_em = NULL WHERE id = ?", (os_id,))
+    return jsonify({"mensagem": "De volta pra Nossas OS"})

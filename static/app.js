@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v163';
+const VERSAO_PAINEL = 'v164';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6195,20 +6195,82 @@ function osSwitchOrigemTab(tab) {
   document.getElementById('ostab-nossa')?.classList.toggle('active', tab === 'nossa');
   document.getElementById('ostab-panasonic')?.classList.toggle('active', tab === 'panasonic');
   document.getElementById('ostab-balcao')?.classList.toggle('active', tab === 'balcao');
+  document.getElementById('ostab-clientes')?.classList.toggle('active', tab === 'clientes');
   // Troca de aba é troca de conjunto de OS — filtro de status/busca da aba
   // anterior não faz sentido continuar aplicado na outra.
   _osFiltroStatus = '';
   _osBuscaTexto = '';
   document.getElementById('os-busca').value = '';
-  carregarOS();
+
+  // "Clientes" (pedido de 2026-09-01) é só cadastro — ver todo mundo em
+  // ordem alfabética sem passar por criar OS nenhuma. Não é mais um filtro
+  // de origem de OS, é uma vitrine diferente no mesmo lugar (esconde o que
+  // é específico de OS: métricas por status).
+  const ehClientes = tab === 'clientes';
+  document.getElementById('os-metricas-details').style.display = ehClientes ? 'none' : '';
+  document.getElementById('os-busca').placeholder = ehClientes
+    ? 'Buscar cliente por nome, CPF/CNPJ ou telefone...'
+    : 'Buscar por número da OS ou nome do cliente...';
+
+  if (ehClientes) {
+    carregarClientesTodos();
+  } else {
+    carregarOS();
+  }
 }
 
 function osBuscar(valor) {
   clearTimeout(_osBuscaTimer);
   _osBuscaTimer = setTimeout(() => {
     _osBuscaTexto = valor.trim();
-    carregarOS();
+    if (_osOrigemTab === 'clientes') { carregarClientesTodos(); } else { carregarOS(); }
   }, 300);
+}
+
+// Aba "Clientes" (pedido de 2026-09-01): só cadastro, em ordem alfabética,
+// sem passar por criar OS nenhuma — "uma aba que a gente consegue ver sem
+// fazer OS e tal". Reaproveita GET /clientes (mesmo que a busca de "Nova
+// OS" usa), só que sem o teto de 50 pensado pra autocomplete.
+async function carregarClientesTodos() {
+  const mount = document.getElementById('os-conteudo');
+  if (!mount) return;
+  mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
+
+  const params = new URLSearchParams({ limite: '5000' });
+  if (_osBuscaTexto) params.set('busca', _osBuscaTexto);
+
+  let r;
+  try {
+    r = await api(`/clientes?${params.toString()}`);
+  } catch (e) {
+    mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  if (!r.clientes.length) {
+    mount.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
+      <p>${_osBuscaTexto ? 'Nenhum cliente encontrado pra essa busca.' : 'Nenhum cliente cadastrado ainda.'}</p></div>`;
+    return;
+  }
+
+  const linhas = r.clientes.map(c => {
+    const endereco = [c.endereco, c.numero].filter(Boolean).join(', ');
+    const cidadeUf = [c.cidade, c.estado].filter(Boolean).join(' - ');
+    return `
+    <div class="os-linha" style="cursor:default;">
+      <div>
+        <div class="cliente">${esc(c.nome)}</div>
+        <div class="aparelho">${esc(c.cpf_cnpj) || '—'}</div>
+      </div>
+      <div class="defeito">${esc(c.telefone) || '—'}${c.email ? ' · ' + esc(c.email) : ''}</div>
+      <div>${esc([endereco, c.bairro, cidadeUf].filter(Boolean).join(' · ')) || '—'}</div>
+      <div></div>
+    </div>`;
+  }).join('');
+
+  mount.innerHTML = `
+    <p class="ajuda-texto" style="margin:0 0 10px;">${r.total} cliente${r.total !== 1 ? 's' : ''} cadastrado${r.total !== 1 ? 's' : ''}, em ordem alfabética.</p>
+    ${linhas}`;
 }
 
 async function carregarOS() {
@@ -7614,6 +7676,9 @@ async function abrirOSDetalhe(id) {
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <a class="btn btn-ghost btn-sm" href="/os/${o.id}/imprimir" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Imprimir OS</a>
         <a class="btn btn-ghost btn-sm" href="/os/${o.id}/etiqueta" target="_blank" rel="noopener">${icone('externo', 'icone-13')} Etiqueta (QR)</a>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="osAlternarBalcao(${o.id}, ${o.balcao_em ? 'true' : 'false'})">
+          ${o.balcao_em ? 'Tirar de "Produtos da loja"' : 'Mover para "Produtos da loja"'}
+        </button>
       </div>
       <button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger-text);"
               onclick="osApagar(${o.id})">${icone('x', 'icone-13')} Apagar OS</button>
@@ -7893,6 +7958,18 @@ async function osReexibirFila(id) {
     toast('De volta pra fila de Agendar Clientes', 'success');
     abrirOSDetalhe(id);
     carregarSeloAgendar();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// Mover pra "Produtos da loja" (aba balcão) — SEMPRE manual, pedido de
+// 2026-09-01. Nunca chamado automaticamente por nada.
+async function osAlternarBalcao(id, estaEmBalcao) {
+  try {
+    await api(`/ordens-servico/${id}/balcao`, { method: estaEmBalcao ? 'DELETE' : 'POST' });
+    toast(estaEmBalcao ? 'De volta pra Nossas OS' : 'Movida para Produtos da loja', 'success');
+    abrirOSDetalhe(id);
   } catch (e) {
     toast(e.message, 'error');
   }

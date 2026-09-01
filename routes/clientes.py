@@ -91,8 +91,16 @@ def listar_indicacoes():
 @clientes_bp.route("/clientes", methods=["GET"])
 def listar():
     """?busca filtra por nome, CPF/CNPJ ou telefone — os três jeitos que
-    alguém no telefone descreve um cliente."""
+    alguém no telefone descreve um cliente. ?limite (pedido de 2026-09-01,
+    aba "Clientes" em OS: ver todo mundo cadastrado, não só sugestão de
+    autocomplete) sobe o teto padrão de 50 — esse teto existe pra não pesar
+    a busca de "digite e apareça" da Nova OS, não faz sentido pra quem quer
+    o cadastro inteiro."""
     busca = (request.args.get("busca") or "").strip().lower()
+    try:
+        limite = min(int(request.args.get("limite", 50) or 50), 5000)
+    except (TypeError, ValueError):
+        limite = 50
 
     with db_conn() as conn:
         clientes = fetch_all(conn, "SELECT * FROM clientes ORDER BY nome")
@@ -105,7 +113,7 @@ def listar():
             or busca in (c.get("telefone") or "").lower()
         ]
 
-    return jsonify({"clientes": clientes[:50], "total": len(clientes)})
+    return jsonify({"clientes": clientes[:limite], "total": len(clientes)})
 
 
 @clientes_bp.route("/clientes/<int:cliente_id>", methods=["GET"])
