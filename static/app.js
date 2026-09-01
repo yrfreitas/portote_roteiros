@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v155';
+const VERSAO_PAINEL = 'v156';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7957,55 +7957,117 @@ function _precoPanasonicHtml(preco, atualizadoEm, pendente) {
   return `<span class="substituicao-preco substituicao-preco-pendente">consultando preço...</span>`;
 }
 
+// Monta o HTML dos resultados e diz se ainda sobrou algo pendente (pra quem
+// chama decidir se continua atualizando sozinho ou pode parar).
+function _renderSubstituicaoResultado(r, codigo) {
+  let pendente = false;
+
+  // Preço do PRÓPRIO código digitado -- sempre mostrado, tenha ou não
+  // substituto cadastrado na planilha (pedido de 2026-09-01: antes só
+  // aparecia preço quando o código batia com a tabela de substituição).
+  // Some se o código digitado já vai aparecer de novo lá embaixo como
+  // resultado de substituição exata, pra não repetir o mesmo preço 2x.
+  const jaAparecaComoResultado = r.resultados.some(res => res.codigo === r.codigo_buscado);
+  if (r.preco_pendente) pendente = true;
+  let html = jaAparecaComoResultado ? '' : `
+    <div class="substituicao-cartao">
+      <div class="cod-original">Código <b>${esc(r.codigo_buscado)}</b>
+        ${_precoPanasonicHtml(r.preco_panasonic, r.preco_atualizado_em, r.preco_pendente)}
+      </div>
+    </div>`;
+
+  if (!r.resultados.length) {
+    html += `<p class="ajuda-texto">Sem substituição cadastrada na planilha pra "${esc(codigo)}".</p>`;
+    return { html, pendente };
+  }
+  html += (r.casamento === 'parcial'
+    ? `<p class="ajuda-texto">Não achei exato — mostrando parecidos:</p>` : '') +
+    r.resultados.map(res => {
+      if (res.preco_pendente) pendente = true;
+      const precosPorCodigo = {};
+      (res.substitutos_precos || []).forEach(sp => {
+        precosPorCodigo[sp.codigo] = sp;
+        if (sp.pendente) pendente = true;
+      });
+      return `
+      <div class="substituicao-cartao">
+        <div class="cod-original">Código <b>${esc(res.codigo)}</b>
+          ${_precoPanasonicHtml(res.preco_panasonic, res.preco_atualizado_em, res.preco_pendente)}
+          foi substituído por:</div>
+        <div class="substituicao-lista">
+          ${res.substitutos.map((s, i) => `${i > 0 ? '<span class="substituicao-seta">→</span>' : ''}
+            <span class="substituicao-chip-wrap">
+              <span class="substituicao-chip">${esc(s)}</span>
+              ${_precoPanasonicHtml((precosPorCodigo[s] || {}).preco, null, (precosPorCodigo[s] || {}).pendente)}
+            </span>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+  return { html, pendente };
+}
+
+// Barra de progresso enquanto o robô local não termina de consultar (pedido
+// de 2026-09-01: sem isso, quem pesquisa vê "consultando preço..." parado e
+// acha que travou, mesmo quando o backend já respondeu — a tela só não
+// tinha como saber sozinha). MAX_ESPERA é o pior caso realista: até 2min pro
+// robô rodar de novo (Windows Task Scheduler) + ~30s de busca de verdade no
+// site da Panasonic. Não é um progresso exato (não dá pra saber a posição
+// na fila daqui), é só pra mostrar que o tempo está passando de verdade.
+const _SUBSTITUICAO_POLL_MS = 8000;
+const _SUBSTITUICAO_MAX_ESPERA_MS = 200000; // ~3min20, folga sobre o pior caso
+let _substituicaoBuscaToken = 0;
+
+function _barraProgressoHtml(elapsedMs) {
+  const pct = Math.min(95, Math.round((elapsedMs / _SUBSTITUICAO_MAX_ESPERA_MS) * 100));
+  return `
+    <div class="substituicao-progresso">
+      <div class="substituicao-progresso-barra" style="width:${pct}%"></div>
+    </div>
+    <p class="ajuda-texto substituicao-progresso-texto">Aguardando o robô consultar o preço no portal da Panasonic...</p>`;
+}
+
 async function buscarSubstituicao() {
   const input = document.getElementById('substituicao-busca');
   const codigo = input.value.trim();
   const alvo = document.getElementById('substituicao-resultado');
   if (!codigo) { alvo.innerHTML = ''; return; }
   alvo.innerHTML = '<p class="ajuda-texto">Buscando...</p>';
-  try {
-    const r = await api(`/pecas-substituicao?codigo=${encodeURIComponent(codigo)}`);
 
-    // Preço do PRÓPRIO código digitado -- sempre mostrado, tenha ou não
-    // substituto cadastrado na planilha (pedido de 2026-09-01: antes só
-    // aparecia preço quando o código batia com a tabela de substituição).
-    // Some se o código digitado já vai aparecer de novo lá embaixo como
-    // resultado de substituição exata, pra não repetir o mesmo preço 2x.
-    const jaAparecaComoResultado = r.resultados.some(res => res.codigo === r.codigo_buscado);
-    let html = jaAparecaComoResultado ? '' : `
-      <div class="substituicao-cartao">
-        <div class="cod-original">Código <b>${esc(r.codigo_buscado)}</b>
-          ${_precoPanasonicHtml(r.preco_panasonic, r.preco_atualizado_em, r.preco_pendente)}
-        </div>
-      </div>`;
+  // Invalida qualquer polling de uma busca anterior ainda rodando -- só o
+  // token mais recente pode continuar atualizando a tela.
+  const meuToken = ++_substituicaoBuscaToken;
+  const inicio = Date.now();
 
-    if (!r.resultados.length) {
-      html += `<p class="ajuda-texto">Sem substituição cadastrada na planilha pra "${esc(codigo)}".</p>`;
-      alvo.innerHTML = html;
+  const passo = async () => {
+    if (meuToken !== _substituicaoBuscaToken) return; // busca nova começou, desiste
+    let r;
+    try {
+      r = await api(`/pecas-substituicao?codigo=${encodeURIComponent(codigo)}`);
+    } catch (e) {
+      if (meuToken === _substituicaoBuscaToken) {
+        alvo.innerHTML = `<p class="vcep-erro" style="margin:0;">${esc(e.message)}</p>`;
+      }
       return;
     }
-    alvo.innerHTML = html + (r.casamento === 'parcial'
-      ? `<p class="ajuda-texto">Não achei exato — mostrando parecidos:</p>` : '') +
-      r.resultados.map(res => {
-        const precosPorCodigo = {};
-        (res.substitutos_precos || []).forEach(sp => { precosPorCodigo[sp.codigo] = sp; });
-        return `
-        <div class="substituicao-cartao">
-          <div class="cod-original">Código <b>${esc(res.codigo)}</b>
-            ${_precoPanasonicHtml(res.preco_panasonic, res.preco_atualizado_em, res.preco_pendente)}
-            foi substituído por:</div>
-          <div class="substituicao-lista">
-            ${res.substitutos.map((s, i) => `${i > 0 ? '<span class="substituicao-seta">→</span>' : ''}
-              <span class="substituicao-chip-wrap">
-                <span class="substituicao-chip">${esc(s)}</span>
-                ${_precoPanasonicHtml((precosPorCodigo[s] || {}).preco, null, (precosPorCodigo[s] || {}).pendente)}
-              </span>`).join('')}
-          </div>
-        </div>`;
-      }).join('');
-  } catch (e) {
-    alvo.innerHTML = `<p class="vcep-erro" style="margin:0;">${esc(e.message)}</p>`;
-  }
+    if (meuToken !== _substituicaoBuscaToken) return;
+
+    const { html, pendente } = _renderSubstituicaoResultado(r, codigo);
+    const decorrido = Date.now() - inicio;
+    if (pendente && decorrido < _SUBSTITUICAO_MAX_ESPERA_MS) {
+      alvo.innerHTML = html + _barraProgressoHtml(decorrido);
+      setTimeout(passo, _SUBSTITUICAO_POLL_MS);
+    } else if (pendente) {
+      // Estourou o tempo de espera -- para de tentar sozinho, mas deixa
+      // claro que ainda pode aparecer (o robô pode estar atrasado, não é
+      // erro). Pesquisar de novo reinicia a espera.
+      alvo.innerHTML = html + `<p class="ajuda-texto">Ainda não voltou depois de alguns minutos —
+        pesquise de novo daqui a pouco pra tentar atualizar.</p>`;
+    } else {
+      alvo.innerHTML = html;
+    }
+  };
+
+  await passo();
 }
 
 async function importarSubstituicao(botao) {
