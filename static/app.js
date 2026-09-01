@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v156';
+const VERSAO_PAINEL = 'v157';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -9560,7 +9560,7 @@ function _atRenderizarDesfechos(r) {
           ${a.numero_os ? `<div class="at-sub">OS ${esc(a.numero_os)}</div>` : ''}
         </div>
         <div class="at-foto" id="at-foto-${a.chave}">
-          ${a.fotos ? `<button class="at-ver-foto" onclick="verFotosDoAtendimento(${a.servico_id})">
+          ${a.fotos ? `<button class="at-ver-foto" onclick="verFotosDoAtendimento(${a.servico_id}, '${a.chave}')">
               ${a.fotos} foto${a.fotos !== 1 ? 's' : ''}</button>` : ''}
           ${a.peca_foto ? `<img class="at-thumb" src="${a.peca_foto}" alt="Foto da peça" onclick="ampliarFoto(this.src)">` : ''}
         </div>
@@ -9594,8 +9594,16 @@ function _atRenderizarDesfechos(r) {
 
 // Busca a foto só quando alguém pede. Trazer as imagens junto da lista
 // deixaria a abertura da aba lenta por um dado que se olha de um por vez.
-async function verFotosDoAtendimento(servicoId) {
-  const slot = document.getElementById(`at-foto-${servicoId}`);
+//
+// BUG CORRIGIDO EM 2026-09-01: o container é montado com id
+// `at-foto-${a.chave}` (ex: "at-foto-t689"), mas o botão só mandava
+// `a.servico_id` (o número puro, "689") pra esta função, que procurava por
+// "at-foto-689" -- nunca achava, `if (!slot) return` saía em silêncio, sem
+// erro nenhum. Clicar não fazia NADA, e não tinha como saber por quê sem
+// reproduzir passo a passo. Agora recebe os dois: `chave` pro id do
+// container, `servicoId` só pra chamada da API.
+async function verFotosDoAtendimento(servicoId, chave) {
+  const slot = document.getElementById(`at-foto-${chave}`);
   if (!slot) return;
   slot.innerHTML = '<span class="at-sub">abrindo...</span>';
   try {
