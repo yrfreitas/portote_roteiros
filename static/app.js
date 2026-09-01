@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v164';
+const VERSAO_PAINEL = 'v165';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6254,23 +6254,72 @@ async function carregarClientesTodos() {
   }
 
   const linhas = r.clientes.map(c => {
-    const endereco = [c.endereco, c.numero].filter(Boolean).join(', ');
     const cidadeUf = [c.cidade, c.estado].filter(Boolean).join(' - ');
+    const iniciais = (c.nome || '?').trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
     return `
-    <div class="os-linha" style="cursor:default;">
-      <div>
-        <div class="cliente">${esc(c.nome)}</div>
-        <div class="aparelho">${esc(c.cpf_cnpj) || '—'}</div>
+    <div class="cliente-linha" onclick="abrirClienteDetalhe(${c.id})">
+      <div class="cliente-linha-avatar">${esc(iniciais)}</div>
+      <div class="cliente-linha-principal">
+        <div class="cliente-linha-nome">${esc(c.nome)}</div>
+        <div class="cliente-linha-doc">${esc(c.cpf_cnpj) || 'sem CPF/CNPJ cadastrado'}</div>
       </div>
-      <div class="defeito">${esc(c.telefone) || '—'}${c.email ? ' · ' + esc(c.email) : ''}</div>
-      <div>${esc([endereco, c.bairro, cidadeUf].filter(Boolean).join(' · ')) || '—'}</div>
-      <div></div>
+      <div class="cliente-linha-lado">
+        <div class="cliente-linha-contato">${esc(c.telefone) || '—'}</div>
+        <div class="cliente-linha-cidade">${esc(cidadeUf) || (c.email ? esc(c.email) : '—')}</div>
+      </div>
     </div>`;
   }).join('');
 
   mount.innerHTML = `
-    <p class="ajuda-texto" style="margin:0 0 10px;">${r.total} cliente${r.total !== 1 ? 's' : ''} cadastrado${r.total !== 1 ? 's' : ''}, em ordem alfabética.</p>
-    ${linhas}`;
+    <p class="ajuda-texto" style="margin:0 0 10px;">${r.total} cliente${r.total !== 1 ? 's' : ''} cadastrado${r.total !== 1 ? 's' : ''}, em ordem alfabética. Clique num cliente pra ver o cadastro completo.</p>
+    <div class="cliente-lista">${linhas}</div>`;
+}
+
+// Modal "interfacezinha" (pedido de 2026-09-01: a lista crua ficava "jogada
+// e feia") pra ver o cadastro completo sem lotar a linha da lista.
+async function abrirClienteDetalhe(clienteId) {
+  document.getElementById('cliente-detalhe-nome').textContent = 'Carregando...';
+  document.getElementById('cliente-detalhe-corpo').innerHTML = '';
+  document.getElementById('modal-cliente-detalhe').classList.add('open');
+
+  let r;
+  try {
+    r = await api(`/clientes/${clienteId}`);
+  } catch (e) {
+    document.getElementById('cliente-detalhe-corpo').innerHTML = `<p class="vcep-erro" style="margin:0;">${esc(e.message)}</p>`;
+    return;
+  }
+
+  const c = r.cliente;
+  document.getElementById('cliente-detalhe-nome').textContent = c.nome;
+
+  const linha = (rotulo, valor) => valor ? `
+    <div class="cliente-detalhe-linha">
+      <span class="cliente-detalhe-rotulo">${esc(rotulo)}</span>
+      <span class="cliente-detalhe-valor">${esc(valor)}</span>
+    </div>` : '';
+
+  const endereco = [c.endereco, c.numero, c.complemento].filter(Boolean).join(', ');
+  const cidadeUf = [c.cidade, c.estado].filter(Boolean).join(' - ');
+  const enderecoCompleto = [endereco, c.bairro].filter(Boolean).join(', ');
+  const localCompleto = [cidadeUf, c.cep].filter(Boolean).join(' · CEP ');
+
+  document.getElementById('cliente-detalhe-corpo').innerHTML = `
+    ${linha('CPF/CNPJ', c.cpf_cnpj)}
+    ${linha('Telefone', c.telefone)}
+    ${linha('E-mail', c.email)}
+    ${linha('Endereço', enderecoCompleto)}
+    ${linha('Cidade', localCompleto)}
+    ${linha('Indicação', c.indicacao)}
+    ${linha('Observação', c.obs)}
+    <div class="cliente-detalhe-linha">
+      <span class="cliente-detalhe-rotulo">Cadastrado em</span>
+      <span class="cliente-detalhe-valor">${esc((c.criado_em || '').slice(0, 10).split('-').reverse().join('/'))}${c.cadastrado_por ? ' por ' + esc(c.cadastrado_por) : ''}</span>
+    </div>
+    <div class="cliente-detalhe-linha">
+      <span class="cliente-detalhe-rotulo">Ordens de serviço</span>
+      <span class="cliente-detalhe-valor">${r.ordens_servico.length}</span>
+    </div>`;
 }
 
 async function carregarOS() {
