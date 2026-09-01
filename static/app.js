@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v169';
+const VERSAO_PAINEL = 'v170';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5458,16 +5458,17 @@ async function aplicarConciliacao(fichaId) {
 // Mesmas quatro opções do app do técnico, e grava pela mesma função no
 // servidor: o desfecho não pode depender de quem concluiu, senão o relatório
 // vira duas contagens diferentes.
+// Lista EXATA pedida pelo Kalebe em 2026-09-01, nesta ordem, sem
+// "Resolvido" — mesma lista de static/tecnico.js, ele tirou de propósito.
+// Esta é a versão de quem dá baixa pelo PAINEL (não pelo /t/<token>) —
+// tem que ter as mesmas opções, senão quem usa o painel fica pra trás.
 const DF_OPCOES = [
-  { tipo: 'resolvido',    rotulo: 'Resolvido',       sub: 'consertado na hora' },
-  { tipo: 'precisa_peca', rotulo: 'Precisa de peça', sub: 'diagnosticado, falta peça' },
+  { tipo: 'orcamento',    rotulo: 'Orçamento',       sub: 'dados + assinatura, escritório monta o valor' },
+  { tipo: 'precisa_peca', rotulo: 'Fazer Pedido de Peça', sub: 'diagnosticado, falta peça' },
+  { tipo: 'volto_depois', rotulo: 'Reagendar Cliente', sub: 'precisa retornar' },
   { tipo: 'cotacao_peca', rotulo: 'Cotação de peça', sub: 'não sei o preço ainda' },
-  // Pedido de 2026-08-28: quem dá baixa por AQUI (painel/roteiro) precisa
-  // da mesma opção que já existe na tela própria do técnico — sem isso só
-  // quem usa o link /t/<token> conseguia fechar OS em campo com assinatura.
   { tipo: 'fazer_os',     rotulo: 'Fazer Ordem de Serviço', sub: 'dados + assinatura do cliente' },
-  { tipo: 'volto_depois', rotulo: 'Volta depois',    sub: 'precisa retornar' },
-  { tipo: 'nao_atendido', rotulo: 'Reagendar',       sub: 'não deu para fazer, precisa remarcar' },
+  { tipo: 'nao_atendido', rotulo: 'Cliente Ausente / Não foi possível atender', sub: 'não deu para fazer, precisa remarcar' },
 ];
 const DF_MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                     'Aparelho sem defeito', 'Sem acesso ao local'];
@@ -5720,6 +5721,31 @@ function escolherDesfecho(tipo) {
     // força o reflow pendente do innerHTML na hora, então não precisa esperar
     // nada — o canvas já está com o tamanho certo neste mesmo tick.
     iniciarAssinaturaDesfecho();
+  } else if (tipo === 'orcamento') {
+    // Pedido de 2026-09-01: mesma ideia de "Fazer Ordem de Serviço", só que
+    // mais enxuto (sem solução/forma de pagamento — ainda não existem, o
+    // orçamento nem foi montado) — quem monta o valor é o escritório depois,
+    // na mesma tela de Itens/Valores de qualquer orçamento.
+    const s = servicosAtuais.find(x => x.id === _dfServico) || {};
+    extra.innerHTML = `
+      <label class="form-label" for="df-orc-nome">Nome do cliente</label>
+      <input class="form-input" id="df-orc-nome" value="${esc(s.cliente || '')}" oninput="validarConfirmarDesfecho()">
+      <label class="form-label" style="margin-top:10px;" for="df-orc-telefone">Telefone</label>
+      <input class="form-input" id="df-orc-telefone" value="${esc(s.telefone || '')}">
+      <div class="form-row" style="margin-top:10px;">
+        <div class="form-group"><label class="form-label" for="df-orc-aparelho">Aparelho</label>
+          <input class="form-input" id="df-orc-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
+        <div class="form-group"><label class="form-label" for="df-orc-modelo">Modelo</label>
+          <input class="form-input" id="df-orc-modelo" value="${esc(s.modelo || '')}"></div>
+      </div>
+      <label class="form-label" for="df-orc-defeito">Defeito declarado</label>
+      <textarea class="form-input" id="df-orc-defeito" rows="2">${esc(s.descricao || '')}</textarea>
+      ${blocoFotoPainel('Foto do produto', 'Opcional — ajuda o escritório a montar o orçamento certo.')}
+      <label class="form-label" style="margin-top:14px;">Assinatura do cliente <span class="df-obrigatorio">*</span></label>
+      <p class="df-ajuda">Peça pro cliente assinar aqui com o dedo ou o mouse.</p>
+      <canvas id="df-assinatura-canvas" class="df-assinatura-canvas"></canvas>
+      <button type="button" class="df-limpar-assinatura" onclick="limparAssinaturaDesfecho()">Limpar assinatura</button>`;
+    iniciarAssinaturaDesfecho();
   } else {
     extra.innerHTML = '';
   }
@@ -5747,6 +5773,9 @@ function validarConfirmarDesfecho() {
     // Trava por nome do cliente + assinatura de verdade — sem isso não tem
     // o que documentar (mesma regra da tela do técnico).
     const nome = document.getElementById('df-fos-nome')?.value.trim();
+    ok = !!(nome && _dfAssinaturaTemTraco);
+  } else if (_dfTipo === 'orcamento') {
+    const nome = document.getElementById('df-orc-nome')?.value.trim();
     ok = !!(nome && _dfAssinaturaTemTraco);
   }
   btn.disabled = !ok;
@@ -5778,9 +5807,18 @@ async function confirmarDesfecho() {
     if (_dfFoto) desfecho.foto_produto = _dfFoto;
     if (_dfAssinaturaTemTraco && _dfAssinaturaCanvas) desfecho.assinatura = _dfAssinaturaCanvas.toDataURL('image/png');
   }
+  if (_dfTipo === 'orcamento') {
+    desfecho.cliente_nome = document.getElementById('df-orc-nome')?.value.trim() || '';
+    desfecho.cliente_telefone = document.getElementById('df-orc-telefone')?.value.trim() || '';
+    desfecho.tipo_aparelho = document.getElementById('df-orc-aparelho')?.value.trim() || '';
+    desfecho.modelo = document.getElementById('df-orc-modelo')?.value.trim() || '';
+    desfecho.defeito_declarado = document.getElementById('df-orc-defeito')?.value.trim() || '';
+    if (_dfFoto) desfecho.foto_produto = _dfFoto;
+    if (_dfAssinaturaTemTraco && _dfAssinaturaCanvas) desfecho.assinatura = _dfAssinaturaCanvas.toDataURL('image/png');
+  }
   const obs = document.getElementById('df-obs')?.value.trim();
   if (obs) desfecho.observacao = obs;
-  if (_dfFoto && _dfTipo !== 'fazer_os') desfecho.foto = _dfFoto;
+  if (_dfFoto && _dfTipo !== 'fazer_os' && _dfTipo !== 'orcamento') desfecho.foto = _dfFoto;
   const svc = _dfServico, ficha = _dfFicha;
   fecharDesfecho();
   await alternarStatusServico(svc, 'concluido', ficha, desfecho);
