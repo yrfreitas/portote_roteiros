@@ -57,14 +57,28 @@ def _token_valido():
     return bool(esperado) and request.headers.get("X-Sync-Token") == esperado
 
 
+def _pendente_bool(linha_cache):
+    """Nenhuma linha em precos_panasonic ainda == igual a pendente (acabou de
+    entrar na fila agora mesmo, _marcar_pendente_se_novo roda DEPOIS dessa
+    leitura). SQLite guarda pendente como 0/1, Postgres como bool nativo —
+    normaliza os dois pra um bool limpo no JSON."""
+    if linha_cache is None:
+        return True
+    return bool(linha_cache.get("pendente"))
+
+
 def _precos_do_cache(conn, codigos):
-    """{codigo: {preco, atualizado_em}} pros códigos pedidos — só os que já
-    têm alguma linha em precos_panasonic (pendente ou não)."""
+    """{codigo: {preco, atualizado_em, pendente}} pros códigos pedidos — só os
+    que já têm alguma linha em precos_panasonic (pendente ou não). `pendente`
+    é o que diferencia "robô ainda não verificou" de "robô já verificou e a
+    Panasonic não tem preço pra mostrar" — sem isso os dois casos pareciam a
+    mesma coisa ("consultando...") pro técnico, e um preço ausente permanente
+    parecia estar travado pra sempre (confusão relatada em 2026-09-01)."""
     if not codigos:
         return {}
     marcador = ",".join("?" for _ in codigos)
     linhas = fetch_all(conn, f"""
-        SELECT codigo, preco, atualizado_em FROM precos_panasonic
+        SELECT codigo, preco, atualizado_em, pendente FROM precos_panasonic
          WHERE codigo IN ({marcador})
     """, tuple(codigos))
     return {l["codigo"]: l for l in linhas}
@@ -155,8 +169,10 @@ def buscar():
         cache_principal = precos.get(r["codigo"])
         r["preco_panasonic"] = cache_principal.get("preco") if cache_principal else None
         r["preco_atualizado_em"] = cache_principal.get("atualizado_em") if cache_principal else None
+        r["preco_pendente"] = _pendente_bool(cache_principal)
         r["substitutos_precos"] = [
-            {"codigo": s, "preco": (precos.get(s) or {}).get("preco")}
+            {"codigo": s, "preco": (precos.get(s) or {}).get("preco"),
+             "pendente": _pendente_bool(precos.get(s))}
             for s in r["substitutos"]
         ]
 
@@ -169,6 +185,7 @@ def buscar():
         # cadastrado — é o que faltava pra maioria das peças ter preço.
         "preco_panasonic": cache_busca.get("preco") if cache_busca else None,
         "preco_atualizado_em": cache_busca.get("atualizado_em") if cache_busca else None,
+        "preco_pendente": _pendente_bool(cache_busca),
     })
 
 

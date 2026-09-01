@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v154';
+const VERSAO_PAINEL = 'v155';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7939,12 +7939,20 @@ async function carregarStatusSubstituicao() {
 // consegue abrir aquele portal sozinho (login é por e-mail + sessão de
 // navegador que só existe no computador do Kalebe), então quem preenche
 // isso é um robô local rodando por fora, em background — daqui só lemos o
-// cache. "consultando" é o estado normal de um código pesquisado pela
-// primeira vez, não um erro.
-function _precoPanasonicHtml(preco, atualizadoEm) {
+// cache. Três estados, não dois (corrigido em 2026-09-01 — antes "sem preço
+// ainda" e "já verificado, Panasonic não mostra preço" pareciam a mesma
+// coisa, e o segundo caso é PERMANENTE, então parecia estar travado pra
+// sempre em "consultando..."):
+//   1. pendente=true  -> robô ainda não passou por esse código.
+//   2. pendente=false, sem preço -> já verificou, Panasonic não tem preço.
+//   3. tem preço -> mostra o valor.
+function _precoPanasonicHtml(preco, atualizadoEm, pendente) {
   if (preco) {
     const quando = atualizadoEm ? ` <span class="substituicao-preco-data">(${esc(atualizadoEm.slice(0, 10).split('-').reverse().join('/'))})</span>` : '';
     return `<span class="substituicao-preco">${esc(preco)}${quando}</span>`;
+  }
+  if (pendente === false) {
+    return `<span class="substituicao-preco substituicao-preco-indisponivel">preço indisponível no portal</span>`;
   }
   return `<span class="substituicao-preco substituicao-preco-pendente">consultando preço...</span>`;
 }
@@ -7967,7 +7975,7 @@ async function buscarSubstituicao() {
     let html = jaAparecaComoResultado ? '' : `
       <div class="substituicao-cartao">
         <div class="cod-original">Código <b>${esc(r.codigo_buscado)}</b>
-          ${_precoPanasonicHtml(r.preco_panasonic, r.preco_atualizado_em)}
+          ${_precoPanasonicHtml(r.preco_panasonic, r.preco_atualizado_em, r.preco_pendente)}
         </div>
       </div>`;
 
@@ -7980,17 +7988,17 @@ async function buscarSubstituicao() {
       ? `<p class="ajuda-texto">Não achei exato — mostrando parecidos:</p>` : '') +
       r.resultados.map(res => {
         const precosPorCodigo = {};
-        (res.substitutos_precos || []).forEach(sp => { precosPorCodigo[sp.codigo] = sp.preco; });
+        (res.substitutos_precos || []).forEach(sp => { precosPorCodigo[sp.codigo] = sp; });
         return `
         <div class="substituicao-cartao">
           <div class="cod-original">Código <b>${esc(res.codigo)}</b>
-            ${_precoPanasonicHtml(res.preco_panasonic, res.preco_atualizado_em)}
+            ${_precoPanasonicHtml(res.preco_panasonic, res.preco_atualizado_em, res.preco_pendente)}
             foi substituído por:</div>
           <div class="substituicao-lista">
             ${res.substitutos.map((s, i) => `${i > 0 ? '<span class="substituicao-seta">→</span>' : ''}
               <span class="substituicao-chip-wrap">
                 <span class="substituicao-chip">${esc(s)}</span>
-                ${_precoPanasonicHtml(precosPorCodigo[s], null)}
+                ${_precoPanasonicHtml((precosPorCodigo[s] || {}).preco, null, (precosPorCodigo[s] || {}).pendente)}
               </span>`).join('')}
           </div>
         </div>`;
