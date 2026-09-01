@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v170';
+const VERSAO_PAINEL = 'v171';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5675,7 +5675,8 @@ function escolherDesfecho(tipo) {
     extra.innerHTML = `<label class="form-label">Por quê?</label>
       <div class="df-motivos">${DF_MOTIVOS.map(mo =>
         `<button class="df-motivo" data-motivo="${esc(mo)}"
-                 onclick="escolherMotivoDesfecho(this)">${esc(mo)}</button>`).join('')}</div>`;
+                 onclick="escolherMotivoDesfecho(this)">${esc(mo)}</button>`).join('')}</div>
+      ${blocoFotoPainel('Foto do comprovante', 'Comprova que o técnico foi até o cliente — porta fechada, endereço, o que for.')}`;
   } else if (tipo === 'fazer_os') {
     // Mesma ideia da tela própria do técnico (static/tecnico.js) — dados do
     // cliente, defeito, solução, forma de pagamento e assinatura, tudo numa
@@ -5777,6 +5778,10 @@ function validarConfirmarDesfecho() {
   } else if (_dfTipo === 'orcamento') {
     const nome = document.getElementById('df-orc-nome')?.value.trim();
     ok = !!(nome && _dfAssinaturaTemTraco);
+  } else if (_dfTipo === 'nao_atendido') {
+    // Foto obrigatória — comprovante de que o técnico foi até o cliente.
+    // Pedido de 2026-09-01, depois de reclamação sem comprovação.
+    ok = !!_dfFoto;
   }
   btn.disabled = !ok;
 }

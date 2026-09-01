@@ -723,10 +723,13 @@
     window._tValidarConfirmar();
   };
 
-  function blocoFoto(destaque) {
+  function blocoFoto(destaque, rotulo, ajuda) {
+    rotulo = rotulo || 'Foto da etiqueta';
+    const textoAjuda = ajuda !== undefined ? ajuda
+      : (destaque ? 'É dela que sai o modelo e o número de série para pedir a peça.' : '');
     return `
-      <label class="t-df-rotulo">Foto da etiqueta ${destaque ? '' : '(opcional)'}</label>
-      ${destaque ? '<p class="t-df-ajuda">É dela que sai o modelo e o número de série para pedir a peça.</p>' : ''}
+      <label class="t-df-rotulo">${rotulo} ${destaque ? '' : '(opcional)'}</label>
+      ${textoAjuda ? `<p class="t-df-ajuda">${textoAjuda}</p>` : ''}
       <label class="t-df-foto-botao">
         Tirar foto
         <input type="file" accept="image/*" capture="environment"
@@ -795,7 +798,7 @@
             <button class="t-df-motivo" data-motivo="${esc(m)}"
                     onclick="window._tEscolherMotivo(this)">${esc(m)}</button>`).join('')}
         </div>
-        ${blocoFoto(false)}`;
+        ${blocoFoto(true, 'Foto do comprovante', 'Comprova que você foi até o cliente — porta fechada, endereço, o que for.')}`;
     } else if (tipo === 'volto_depois') {
       extra.innerHTML = blocoFoto(false);
     } else if (tipo === 'fazer_os') {
@@ -954,6 +957,10 @@
     } else if (_desfechoTipo === 'orcamento') {
       const nome = document.getElementById('t-df-orc-nome')?.value.trim();
       ok = !!(nome && _assinaturaTemTraco);
+    } else if (_desfechoTipo === 'nao_atendido') {
+      // Foto obrigatória — comprovante de que o técnico foi até o cliente.
+      // Pedido de 2026-09-01, depois de reclamação sem comprovação.
+      ok = !!_desfechoFoto;
     }
     btn.disabled = !ok;
   };
@@ -1288,7 +1295,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v170';
+  const VERSAO_TELA = 'v171';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
