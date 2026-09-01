@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v165';
+const VERSAO_PAINEL = 'v166';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6150,6 +6150,19 @@ const OS_STATUS_ROTULO = {
   cancelada:              'Cancelada',
 };
 
+// Status PRÓPRIO da aba "Produtos da loja" (pedido de 2026-09-01) — espelha
+// STATUS_LOJA_ROTULO em routes/ordens_servico.py. Campo separado do status
+// normal de OS, ciclo de vida diferente (não tem agendamento de visita).
+const STATUS_LOJA_ROTULO = {
+  aprovado:              'Aprovado',
+  reprovado:             'Reprovado',
+  aguardando_aprovacao:  'Aguardando aprovação',
+  aguardando_orcamento:  'Aguardando orçamento',
+  conserto_atrasado:     'Conserto Atrasado',
+  aguardando_peca:       'Aguardando peça',
+  abandonado:            'Produtos abandonados',
+};
+
 // Mesma lista do <select id="os-tipo"> da Nova OS — cada tipo imprime um
 // termo diferente na OS (ver TIPOS_OS_ROTULO em routes/ordens_servico.py).
 const TIPOS_OS_ROTULO = {
@@ -6341,7 +6354,11 @@ async function carregarOS() {
     return;
   }
 
-  const cartoes = Object.entries(OS_STATUS_ROTULO).map(([chave, rotulo]) => `
+  // "Produtos da loja" tem quadradinhos PRÓPRIOS (pedido de 2026-09-01) —
+  // não são os status de OS normais, contagem já vem calculada certa do
+  // backend (ver listar() em routes/ordens_servico.py).
+  const rotulosCartoes = _osOrigemTab === 'balcao' ? STATUS_LOJA_ROTULO : OS_STATUS_ROTULO;
+  const cartoes = Object.entries(rotulosCartoes).map(([chave, rotulo]) => `
     <button class="os-cartao${_osFiltroStatus === chave ? ' ativo' : ''}" onclick="osFiltrar('${chave}')">
       <div class="n">${r.contagem[chave] ?? 0}</div>
       <div class="rot">${rotulo}</div>
@@ -6366,8 +6383,13 @@ async function carregarOS() {
     return;
   }
 
+  const ehBalcao = _osOrigemTab === 'balcao';
   const linhas = r.ordens.map(o => {
-    const statusClasse = o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso';
+    const statusChave = ehBalcao ? o.status_loja : o.status;
+    const statusRotulo = ehBalcao ? STATUS_LOJA_ROTULO[statusChave] : OS_STATUS_ROTULO[statusChave];
+    const statusClasse = ehBalcao
+      ? (statusChave === 'aprovado' ? 'ok' : statusChave === 'reprovado' || statusChave === 'abandonado' ? 'neutro' : 'aviso')
+      : (o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso');
     const modeloClasse = o.modelo_os === 'chamado_tecnico' ? 'chamado' : o.modelo_os === 'orcamento' ? 'orcamento' : '';
     return `
     <div class="os-linha status-${statusClasse}" onclick="abrirOSDetalhe(${o.id})">
@@ -6381,7 +6403,7 @@ async function carregarOS() {
       </div>
       <div class="defeito">${esc(o.defeito_declarado || '—')}</div>
       <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
-        <span class="conc-tag ${statusClasse}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
+        <span class="conc-tag ${statusClasse}">${esc(statusRotulo || 'Sem status')}</span>
         ${o.visita_data
           ? `<span class="conc-tag ok" title="${o.visita_tecnico ? 'Técnico: ' + esc(o.visita_tecnico) : ''}">
                📅 ${esc(o.visita_data.split('-').reverse().join('/'))}</span>`
@@ -7627,6 +7649,11 @@ async function abrirOSDetalhe(id) {
   const opcoesStatus = Object.entries(OS_STATUS_ROTULO)
     .map(([v, t]) => `<option value="${v}"${o.status === v ? ' selected' : ''}>${t}</option>`).join('');
 
+  // Status da loja (pedido de 2026-09-01) — só faz sentido pra quem já foi
+  // movido pra "Produtos da loja" (balcao_em preenchido).
+  const opcoesStatusLoja = `<option value="">Sem status ainda...</option>` + Object.entries(STATUS_LOJA_ROTULO)
+    .map(([v, t]) => `<option value="${v}"${o.status_loja === v ? ' selected' : ''}>${t}</option>`).join('');
+
   const opcoesTipoOs = `<option value="">Selecione...</option>` + Object.entries(TIPOS_OS_ROTULO)
     .map(([v, t]) => `<option value="${v}"${o.tipo_os === v ? ' selected' : ''}>${t}</option>`).join('');
 
@@ -7654,6 +7681,11 @@ async function abrirOSDetalhe(id) {
                   onclick="osReexibirFila(${o.id})">Devolver pra fila</button>
         </p>` : ''}
     </div>
+    ${o.balcao_em ? `
+    <div class="os-detalhe-secao">
+      <label class="form-label">Status na loja</label>
+      <select class="form-input" onchange="osAtualizarStatusLoja(${o.id}, this.value)">${opcoesStatusLoja}</select>
+    </div>` : ''}
     ${_osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico)}
     ${!o.os_pai_id ? `
     <div class="os-detalhe-secao">
@@ -8046,6 +8078,18 @@ async function osAtualizarStatus(id, status) {
     toast('Status atualizado', 'success');
     carregarOS();
     carregarSeloAgendar();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// Status PRÓPRIO de "Produtos da loja" (pedido de 2026-09-01) — só aparece
+// no detalhe de quem já tem balcao_em preenchido.
+async function osAtualizarStatusLoja(id, statusLoja) {
+  try {
+    await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify({ status_loja: statusLoja }) });
+    toast('Status atualizado', 'success');
+    carregarOS();
   } catch (e) {
     toast(e.message, 'error');
   }

@@ -1076,6 +1076,12 @@ _MIGRACOES_PG = [
     # pediu pra desfazer na hora ("não quero que nada caia automático lá, só
     # vá pra lá quando a gente jogar o cliente lá").
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS balcao_em TEXT",
+    # Status PRÓPRIO de "Produtos da loja" (pedido de 2026-09-01) — ver
+    # STATUS_LOJA em routes/ordens_servico.py. Campo separado do `status`
+    # normal de propósito: ciclo de vida diferente (aprovação de orçamento
+    # de peça avulsa, conserto atrasado, abandono), sem relação com
+    # agendamento de visita.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS status_loja TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1295,6 +1301,7 @@ _MIGRACOES_SQLITE = [
         atualizado_em  TEXT
     )""",
     "ALTER TABLE ordens_servico ADD COLUMN balcao_em TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN status_loja TEXT",
 ]
 
 

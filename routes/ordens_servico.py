@@ -34,6 +34,27 @@ STATUS_OS = [
     "aprovada", "finalizada", "cancelada",
 ]
 
+# Status PRÓPRIO da aba "Produtos da loja" — pedido de 2026-09-01. Campo
+# separado (status_loja), não reaproveita STATUS_OS de propósito: o ciclo de
+# vida de balcão é outro (aprovação de orçamento de peça avulsa, conserto
+# atrasado, produto abandonado pelo cliente) e não tem nada a ver com
+# agendamento de visita/técnico — misturar os dois no mesmo campo deixaria
+# "aguardando_agendamento" selecionável num produto de balcão, que nunca
+# agenda nada.
+STATUS_LOJA = [
+    "aprovado", "reprovado", "aguardando_aprovacao", "aguardando_orcamento",
+    "conserto_atrasado", "aguardando_peca", "abandonado",
+]
+STATUS_LOJA_ROTULO = {
+    "aprovado": "Aprovado",
+    "reprovado": "Reprovado",
+    "aguardando_aprovacao": "Aguardando aprovação",
+    "aguardando_orcamento": "Aguardando orçamento",
+    "conserto_atrasado": "Conserto Atrasado",
+    "aguardando_peca": "Aguardando peça",
+    "abandonado": "Produtos abandonados",
+}
+
 TERMOS_PADRAO = (
     "O cliente autoriza a avaliação técnica do equipamento acima descrito. "
     "A taxa de avaliação é devida independentemente da aprovação do orçamento, "
@@ -1045,7 +1066,10 @@ def listar():
     else:
         condicoes.append("os.os_pai_id IS NULL")
     if status:
-        condicoes.append("os.status = ?")
+        # "Produtos da loja" tem status PRÓPRIO (status_loja), independente
+        # do ciclo de vida normal de OS — ver STATUS_LOJA. Pedido de
+        # 2026-09-01: quadradinhos diferentes só nessa aba.
+        condicoes.append("os.status_loja = ?" if origem == "balcao" else "os.status = ?")
         params.append(status)
     if cliente_id:
         condicoes.append("os.cliente_id = ?")
@@ -1114,11 +1138,18 @@ def listar():
         elif origem == "nossa":
             origem_sql = ("WHERE NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id) "
                           "AND ordens_servico.balcao_em IS NULL")
-        contagem = {s: 0 for s in STATUS_OS}
-        todas_status = fetch_all(conn, f"SELECT status FROM ordens_servico {origem_sql}")
-        for l in todas_status:
-            if l["status"] in contagem:
-                contagem[l["status"]] += 1
+        if origem == "balcao":
+            contagem = {s: 0 for s in STATUS_LOJA}
+            todas_status = fetch_all(conn, f"SELECT status_loja FROM ordens_servico {origem_sql}")
+            for l in todas_status:
+                if l["status_loja"] in contagem:
+                    contagem[l["status_loja"]] += 1
+        else:
+            contagem = {s: 0 for s in STATUS_OS}
+            todas_status = fetch_all(conn, f"SELECT status FROM ordens_servico {origem_sql}")
+            for l in todas_status:
+                if l["status"] in contagem:
+                    contagem[l["status"]] += 1
 
     if busca:
         numero = busca.lstrip("#").lstrip("0") or "0"
@@ -1695,6 +1726,16 @@ def editar(os_id):
             if status == "finalizada":
                 campos.append("finalizada_em = ?")
                 valores.append(_agora())
+        if "status_loja" in d:
+            # Status PRÓPRIO de "Produtos da loja" — ver STATUS_LOJA. Campo
+            # solto de propósito (não é obrigatório mover pra balcão antes):
+            # quem grava certo é a tela, que só mostra esse seletor quando
+            # balcao_em já está preenchido.
+            status_loja = (d.get("status_loja") or "").strip()
+            if status_loja and status_loja not in STATUS_LOJA:
+                return jsonify({"erro": f"Status de loja inválido. Use um de: {', '.join(STATUS_LOJA)}"}), 400
+            campos.append("status_loja = ?")
+            valores.append(status_loja or None)
         if "tipo_os" in d:
             if modelo_efetivo == "os":
                 erro_tipo_os, tipo_os = _validar_tipo_os(d.get("tipo_os"))
