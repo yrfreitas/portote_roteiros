@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v160';
+const VERSAO_PAINEL = 'v161';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2680,6 +2680,11 @@ async function carregarPedidosComComprovante() {
             pedida ${esc(quando)}${p.pedido_por ? ' por ' + esc(p.pedido_por) : ''}
             ${p.numero_os ? ` · OS ${esc(p.numero_os)}` : ''}
           </div>
+          <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;"
+                  onclick="desfazerPedidoPeca(${p.servico_id ?? 'null'}, ${p.pedido_os_id ?? 'null'})"
+                  title="Volta pra Atendimentos como 'Precisa de peça', sem comprovante — pra corrigir e pedir de novo">
+            Desfazer pedido
+          </button>
         </div>
         <div class="pp-lado-imagem">
           ${p.pedido_foto
@@ -2688,6 +2693,27 @@ async function carregarPedidosComComprovante() {
         </div>
       </div>`;
   }).join('');
+}
+
+// Desfaz uma baixa feita sem querer ou com o comprovante errado — pedido de
+// 2026-09-01 (caso real: Angela Maria, foto trocada). Volta a aparecer em
+// Atendimentos como "Precisa de peça" pra corrigir e pedir de novo. NÃO
+// apaga o que já foi escrito na planilha do Panasonic, se tiver chegado lá.
+async function desfazerPedidoPeca(servicoId, pedidoOsId) {
+  if (!confirm('Desfazer esse pedido? Ele volta pra fila de "Precisa de peça" em Atendimentos, sem o comprovante.')) return;
+  try {
+    if (servicoId) {
+      await api(`/desfechos/${servicoId}/pedido`, { method: 'DELETE' });
+    } else if (pedidoOsId) {
+      await api(`/pedidos-peca-os/${pedidoOsId}/pedido`, { method: 'DELETE' });
+    } else {
+      return;
+    }
+    toast('Pedido desfeito — já aparece de novo em Atendimentos', 'success');
+    carregarPedidosComComprovante();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
 }
 
 async function carregarPecas() {

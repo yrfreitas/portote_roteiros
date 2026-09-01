@@ -463,6 +463,35 @@ def marcar_peca_pedida(servico_id):
     return jsonify({"pedido_em": agora, "pedido_por": quem, "tem_foto": bool(foto), "aviso": aviso})
 
 
+@relatorios_bp.route("/desfechos/<int:servico_id>/pedido", methods=["DELETE"])
+def desfazer_peca_pedida(servico_id):
+    """Desfaz a baixa — pedido de 2026-09-01: comprovante errado anexado
+    sem querer, precisa voltar pra fila de "Precisa de peça" (Atendimentos)
+    pra corrigir e pedir de novo. NÃO apaga a linha já escrita na planilha
+    do Panasonic (se a baixa tiver chegado até lá) — isso é manual, fica um
+    registro a mais lá, inofensivo."""
+    with db_conn(commit=True) as conn:
+        afetadas = execute(conn, sql(
+            "UPDATE servico_desfecho SET pedido_em = NULL, pedido_por = NULL, "
+            "pedido_foto = NULL WHERE servico_id = ?"), (servico_id,))
+    if not afetadas:
+        return jsonify({"erro": "Atendimento não encontrado"}), 404
+    return jsonify({"mensagem": "Pedido desfeito — volta a aparecer em Atendimentos"})
+
+
+@relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>/pedido", methods=["DELETE"])
+def desfazer_peca_os_pedida(pedido_id):
+    """Mesma coisa, pro pedido de peça batido direto na OS (sem visita de
+    técnico) — ver marcar_peca_os_pedida logo abaixo."""
+    with db_conn(commit=True) as conn:
+        afetadas = execute(conn, sql(
+            "UPDATE pedido_peca_os SET pedido_em = NULL, pedido_por = NULL, "
+            "pedido_foto = NULL WHERE id = ?"), (pedido_id,))
+    if not afetadas:
+        return jsonify({"erro": "Pedido não encontrado"}), 404
+    return jsonify({"mensagem": "Pedido desfeito"})
+
+
 @relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>/pedido", methods=["POST"])
 def marcar_peca_os_pedida(pedido_id):
     """Igual a marcar_peca_pedida, mas para peça pedida direto na OS (sem
