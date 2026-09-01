@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v159';
+const VERSAO_PAINEL = 'v160';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6558,6 +6558,7 @@ async function abrirModalNovaOS() {
   document.getElementById('os-chamado-tecnico-solo').innerHTML = opcoesTecnicoNovo;
 
   osCarregarCatalogoDatalist();
+  osCarregarTiposAparelho();
 
   document.getElementById('modal-nova-os').classList.add('open');
 }
@@ -6631,6 +6632,22 @@ function _osColetarImprimirOcultar(idContainer) {
   return Array.from(raiz.querySelectorAll('.os-imp-campo'))
     .filter(chk => chk.offsetParent !== null && !chk.checked)
     .map(chk => chk.dataset.campo);
+}
+
+// Sugestões de "Tipo de aparelho" (Equipamento) — pedido de 2026-09-01:
+// "microondas, purificador de água, air fryer" como sugestão em vez de
+// digitar toda vez do zero. Datalist único e compartilhado (mesmo id) entre
+// Nova OS e o detalhe de uma OS já aberta — só precisa carregar uma vez por
+// sessão, já que os tipos não mudam a cada clique.
+let _tiposAparelhoCarregados = false;
+async function osCarregarTiposAparelho() {
+  if (_tiposAparelhoCarregados) return;
+  try {
+    const r = await api('/tipos-aparelho');
+    document.getElementById('os-tipos-aparelho-catalogo').innerHTML =
+      r.tipos.map(t => `<option value="${esc(t)}">`).join('');
+    _tiposAparelhoCarregados = true;
+  } catch { /* datalist fica vazio se falhar — não trava o resto do modal */ }
 }
 
 async function osCarregarCatalogoDatalist() {
@@ -6971,7 +6988,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="form-row">
       <div class="form-group">
         <div class="form-label-linha"><label class="form-label" for="os-ed-tipo">Tipo</label>${_impCheck('tipo_aparelho', oc)}</div>
-        <input class="form-input" id="os-ed-tipo" value="${esc(o.tipo_aparelho)}"></div>
+        <input class="form-input" id="os-ed-tipo" list="os-tipos-aparelho-catalogo" value="${esc(o.tipo_aparelho)}"></div>
       <div class="form-group">
         <div class="form-label-linha"><label class="form-label" for="os-ed-marca">Marca</label>${_impCheck('marca', oc)}</div>
         <input class="form-input" id="os-ed-marca" value="${esc(o.marca)}"></div>
@@ -7575,6 +7592,7 @@ async function abrirOSDetalhe(id) {
   } else {
     await preencherSelectSetorSeguro('os-ed-setor', o.setor_id);
   }
+  osCarregarTiposAparelho();
 
   const fotosExtraId = `os-fotos-extra-${o.id}`;
   fotosExtraRegistrar(fotosExtraId, `/ordens-servico/${o.id}/fotos`, '/ordens-servico/fotos');

@@ -925,6 +925,40 @@ def listar_modelos():
     return jsonify({"modelos": [{"chave": m, "rotulo": MODELOS_OS_ROTULO[m]} for m in MODELOS_OS]})
 
 
+# Tipos de aparelho comuns na loja (pedido de 2026-09-01: "microondas,
+# purificador de água, air fryer") — semente pra já aparecer sugestão antes
+# de qualquer OS existir com esses valores. Cresce sozinho depois: ver
+# listar_tipos_aparelho, que junta isto com os valores já usados de verdade.
+TIPOS_APARELHO_SEMENTE = [
+    "Micro-ondas", "Purificador de Água", "Air Fryer", "Geladeira",
+    "Freezer", "Lava-louças", "Lavadora", "Secadora", "Adega",
+    "Cafeteira", "Liquidificador", "Ventilador", "Ar-condicionado",
+    "Aspirador de Pó", "Fritadeira Elétrica", "Forno Elétrico",
+]
+
+
+@ordens_servico_bp.route("/tipos-aparelho", methods=["GET"])
+def listar_tipos_aparelho():
+    """Sugestões pro campo "Tipo" do Equipamento — mistura a semente fixa com
+    o que já foi digitado de verdade em OS anteriores, sem duplicar (mesmo
+    nome com capitalização diferente vira um só, prevalece a semente/o mais
+    usado). Não é obrigatório escolher da lista — datalist, não select."""
+    with db_conn() as conn:
+        usados = fetch_all(conn, """
+            SELECT tipo_aparelho, COUNT(*) AS n FROM ordens_servico
+             WHERE tipo_aparelho IS NOT NULL AND tipo_aparelho != ''
+             GROUP BY tipo_aparelho ORDER BY n DESC
+        """)
+    vistos = {}
+    for nome in TIPOS_APARELHO_SEMENTE:
+        vistos[nome.lower()] = nome
+    for l in usados:
+        chave = l["tipo_aparelho"].strip().lower()
+        if chave and chave not in vistos:
+            vistos[chave] = l["tipo_aparelho"].strip()
+    return jsonify({"tipos": sorted(vistos.values(), key=str.lower)})
+
+
 @ordens_servico_bp.route("/catalogo-servicos", methods=["GET"])
 def listar_catalogo_servicos():
     """Lista de serviço+valor já cadastrados antes, pra reaproveitar num
