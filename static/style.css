@@ -4668,14 +4668,6 @@ select:focus-visible,
   display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 10px; max-height: 62vh; overflow-y: auto; padding-right: 2px;
 }
-/* Mesma grid da Vendas, só mais baixa -- dentro de um modal de OS já
-   cheio de outros campos, 62vh tomaria a tela inteira. */
-.os-produtos-loja-grid {
-  max-height: 260px; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  margin-bottom: 4px;
-}
-.os-produtos-loja-grid .venda-produto-nome,
-.os-produtos-loja-grid .venda-produto-cod { font-size: 11px; }
 .venda-produto-card {
   display: flex; flex-direction: column; align-items: stretch; text-align: left;
   background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);

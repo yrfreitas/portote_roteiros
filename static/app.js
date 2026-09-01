@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v158';
+const VERSAO_PAINEL = 'v157';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6558,7 +6558,6 @@ async function abrirModalNovaOS() {
   document.getElementById('os-chamado-tecnico-solo').innerHTML = opcoesTecnicoNovo;
 
   osCarregarCatalogoDatalist();
-  osFiltrarProdutosLojaNovo();
 
   document.getElementById('modal-nova-os').classList.add('open');
 }
@@ -6632,90 +6631,6 @@ function _osColetarImprimirOcultar(idContainer) {
   return Array.from(raiz.querySelectorAll('.os-imp-campo'))
     .filter(chk => chk.offsetParent !== null && !chk.checked)
     .map(chk => chk.dataset.campo);
-}
-
-// ─── Barra de produtos da loja (Nova OS / detalhe de OS) ─────────────────
-//
-// Pedido de 2026-09-01: escolher visual (com foto) em vez de só digitar
-// nome/valor na mão. Reaproveita o MESMO catálogo com foto que a tela de
-// Vendas usa (vendaProdutosCache, /vendas/produtos) — evita duplicar o
-// carregamento se as duas telas forem abertas na mesma sessão. Funciona
-// idêntico nos 3 modelos (OS, Orçamento, Chamado Técnico) porque os três
-// escrevem na MESMA lista de itens por baixo.
-async function _carregarProdutosLojaSeNecessario() {
-  if (vendaProdutosCache.length) return;
-  try {
-    const r = await api('/vendas/produtos');
-    vendaProdutosCache = r.itens || [];
-  } catch { /* barra fica vazia se falhar — não trava o resto do formulário */ }
-}
-
-function _renderGridProdutosLoja(gridId, termo, onClickFn) {
-  const grid = document.getElementById(gridId);
-  if (!grid) return;
-  const t = (termo || '').trim().toLowerCase();
-  let itens = vendaProdutosCache;
-  if (t) {
-    itens = itens.filter(i =>
-      (i.codigo || '').toLowerCase().includes(t) ||
-      (i.descricao || '').toLowerCase().includes(t) ||
-      (i.marca || '').toLowerCase().includes(t) ||
-      (i.modelo || '').toLowerCase().includes(t));
-  }
-  if (!itens.length) {
-    grid.innerHTML = '<div class="vazio-box">Nenhum produto encontrado.</div>';
-    return;
-  }
-  // Teto de 60 cartões: sem filtro, o catálogo inteiro (145+ produtos)
-  // deixaria o modal pesado pra rolar sem ganhar nada — quem quer um
-  // específico já digita algumas letras.
-  grid.innerHTML = itens.slice(0, 60).map(i => `
-    <button type="button" class="venda-produto-card" onclick="${onClickFn(i)}">
-      ${i.foto
-        ? `<img class="venda-produto-foto" src="${i.foto}" alt="${esc(i.descricao || i.codigo)}">`
-        : `<div class="venda-produto-sem-foto">sem foto</div>`}
-      <div class="venda-produto-nome">${esc(i.descricao || i.codigo)}</div>
-      <div class="venda-produto-cod">${esc(i.codigo)}</div>
-      <div class="venda-produto-preco">${_brlVenda(i.preco_venda)}</div>
-    </button>`).join('');
-}
-
-async function osFiltrarProdutosLojaNovo() {
-  await _carregarProdutosLojaSeNecessario();
-  const termo = document.getElementById('os-produtos-loja-busca')?.value || '';
-  _renderGridProdutosLoja('os-produtos-loja-grid', termo, i => `osEscolherProdutoLojaNovo(${i.id})`);
-}
-
-function osEscolherProdutoLojaNovo(id) {
-  const p = vendaProdutosCache.find(i => i.id === id);
-  if (!p) return;
-  _novosItensOrcamento.push({ nome: p.descricao || p.codigo, valor: Number(p.preco_venda) || 0 });
-  _renderItensOrcamentoNovo();
-  toast(`"${p.descricao || p.codigo}" adicionado`, 'success');
-}
-
-async function osFiltrarProdutosLojaDetalhe(osId) {
-  await _carregarProdutosLojaSeNecessario();
-  const termo = document.getElementById('os-det-produtos-loja-busca')?.value || '';
-  _renderGridProdutosLoja('os-det-produtos-loja-grid', termo, i => `osEscolherProdutoLojaDetalhe(${i.id}, ${osId})`);
-}
-
-async function osEscolherProdutoLojaDetalhe(id, osId) {
-  const p = vendaProdutosCache.find(i => i.id === id);
-  if (!p) return;
-  try {
-    const r = await api(`/ordens-servico/${osId}/itens`, {
-      method: 'POST',
-      // salvar_catalogo:false -- já é um produto conhecido (estoque_itens),
-      // não precisa duplicar no catálogo de serviços digitados à mão.
-      body: JSON.stringify({ nome: p.descricao || p.codigo, valor: Number(p.preco_venda) || 0, salvar_catalogo: false }),
-    });
-    _osItensAtuais = r.itens;
-    document.getElementById('os-det-itens-lista').innerHTML = osRenderItensOrcamento(_osItensAtuais);
-    toast(`"${p.descricao || p.codigo}" adicionado`, 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
 }
 
 async function osCarregarCatalogoDatalist() {
@@ -7085,13 +7000,6 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="os-detalhe-secao">
       <div class="form-label-linha"><p class="form-separador" style="margin:0;">Itens / Valores</p>${_impCheck('valores', oc)}</div>
       <div id="os-det-itens-lista">${osRenderItensOrcamento(_osItensAtuais)}</div>
-
-      <input type="text" id="os-det-produtos-loja-busca" class="form-input venda-busca-input"
-             placeholder="Bipar código de barras ou pesquisar produto da loja..."
-             autocomplete="off" oninput="osFiltrarProdutosLojaDetalhe(${o.id})">
-      <div class="venda-grid os-produtos-loja-grid" id="os-det-produtos-loja-grid"></div>
-
-      <p class="form-separador" style="margin-top:14px;">ou digite manualmente</p>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="os-det-item-nome">Serviço / peça / mão de obra</label>
@@ -7658,18 +7566,13 @@ async function abrirOSDetalhe(id) {
               onclick="osApagar(${o.id})">${icone('x', 'icone-13')} Apagar OS</button>
     </div>`;
 
-  // Catálogo de serviços digitados e barra de produtos da loja valem pros 3
-  // modelos (Itens/Valores não é mais exclusivo de Orçamento, ver comentário
-  // acima de itensSecao) — antes só carregava o datalist quando era
-  // orçamento, deixando OS/Chamado Técnico sem autocomplete nenhum.
-  try {
-    const rc = await api('/catalogo-servicos');
-    const dl = document.getElementById('os-det-orc-catalogo');
-    if (dl) dl.innerHTML = rc.itens.map(i => `<option value="${esc(i.nome)}" data-valor="${i.valor}">`).join('');
-  } catch { /* datalist fica vazio se falhar */ }
-  osFiltrarProdutosLojaDetalhe(o.id);
-
-  if (o.modelo_os !== 'orcamento') {
+  if (o.modelo_os === 'orcamento') {
+    try {
+      const rc = await api('/catalogo-servicos');
+      const dl = document.getElementById('os-det-orc-catalogo');
+      if (dl) dl.innerHTML = rc.itens.map(i => `<option value="${esc(i.nome)}" data-valor="${i.valor}">`).join('');
+    } catch { /* datalist fica vazio se falhar */ }
+  } else {
     await preencherSelectSetorSeguro('os-ed-setor', o.setor_id);
   }
 
