@@ -1060,10 +1060,21 @@ def listar():
     elif fonte == "reagendamento":
         condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
         condicoes.append("os.oculta_fila_em IS NULL")
+    # ?origem=panasonic|nossa|balcao — três lados, pedido de 2026-09-01:
+    # "balcao" (aba "Produtos da loja") é o cliente que vem direto na loja,
+    # sem passar por Roteiros/técnico nenhum — nunca teve um `servicos`
+    # (visita) ligado a essa OS. "nossa" continua sendo o resto de sempre
+    # (cliente cadastrado na mão, chamado técnico do campo, reagendamento),
+    # agora só que excluindo quem é balcão, pra não aparecer nos dois lados.
+    _SEM_ROTEIRO = "NOT EXISTS (SELECT 1 FROM servicos s WHERE s.ordem_servico_id = os.id)"
     if origem == "panasonic":
         condicoes.append("EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+    elif origem == "balcao":
+        condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+        condicoes.append(_SEM_ROTEIRO)
     elif origem == "nossa":
         condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+        condicoes.append(f"NOT ({_SEM_ROTEIRO})")
     where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
 
     with db_conn() as conn:
@@ -1095,11 +1106,16 @@ def listar():
         # Contagem por status respeita a origem escolhida (senão os números
         # dos cartões não bateriam com a lista de baixo), mas não os outros
         # filtros (status/dias/busca) — mesmo comportamento de sempre.
+        _sem_roteiro_contagem = "NOT EXISTS (SELECT 1 FROM servicos s WHERE s.ordem_servico_id = ordens_servico.id)"
         origem_sql = ""
         if origem == "panasonic":
             origem_sql = "WHERE EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)"
+        elif origem == "balcao":
+            origem_sql = ("WHERE NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id) "
+                          f"AND {_sem_roteiro_contagem}")
         elif origem == "nossa":
-            origem_sql = "WHERE NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)"
+            origem_sql = ("WHERE NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id) "
+                          f"AND NOT ({_sem_roteiro_contagem})")
         contagem = {s: 0 for s in STATUS_OS}
         todas_status = fetch_all(conn, f"SELECT status FROM ordens_servico {origem_sql}")
         for l in todas_status:

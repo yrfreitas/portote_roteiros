@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v161';
+const VERSAO_PAINEL = 'v162';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6194,6 +6194,7 @@ function osSwitchOrigemTab(tab) {
   _osOrigemTab = tab;
   document.getElementById('ostab-nossa')?.classList.toggle('active', tab === 'nossa');
   document.getElementById('ostab-panasonic')?.classList.toggle('active', tab === 'panasonic');
+  document.getElementById('ostab-balcao')?.classList.toggle('active', tab === 'balcao');
   // Troca de aba é troca de conjunto de OS — filtro de status/busca da aba
   // anterior não faz sentido continuar aplicado na outra.
   _osFiltroStatus = '';
