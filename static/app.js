@@ -247,7 +247,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v166';
+const VERSAO_PAINEL = 'v167';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6356,8 +6356,13 @@ async function carregarOS() {
 
   // "Produtos da loja" tem quadradinhos PRÓPRIOS (pedido de 2026-09-01) —
   // não são os status de OS normais, contagem já vem calculada certa do
-  // backend (ver listar() em routes/ordens_servico.py).
-  const rotulosCartoes = _osOrigemTab === 'balcao' ? STATUS_LOJA_ROTULO : OS_STATUS_ROTULO;
+  // backend (ver listar() em routes/ordens_servico.py). "Selecionar status"
+  // vem primeiro: é onde cai quem acabou de ser movido pra cá e ainda não
+  // tem status nenhum — sem esse quadradinho a OS ficava invisível, sem
+  // nenhum filtro que a trouxesse de volta pra tela.
+  const rotulosCartoes = _osOrigemTab === 'balcao'
+    ? { sem_status: 'Selecionar status', ...STATUS_LOJA_ROTULO }
+    : OS_STATUS_ROTULO;
   const cartoes = Object.entries(rotulosCartoes).map(([chave, rotulo]) => `
     <button class="os-cartao${_osFiltroStatus === chave ? ' ativo' : ''}" onclick="osFiltrar('${chave}')">
       <div class="n">${r.contagem[chave] ?? 0}</div>

@@ -1068,9 +1068,18 @@ def listar():
     if status:
         # "Produtos da loja" tem status PRÓPRIO (status_loja), independente
         # do ciclo de vida normal de OS — ver STATUS_LOJA. Pedido de
-        # 2026-09-01: quadradinhos diferentes só nessa aba.
-        condicoes.append("os.status_loja = ?" if origem == "balcao" else "os.status = ?")
-        params.append(status)
+        # 2026-09-01: quadradinhos diferentes só nessa aba. "sem_status" é o
+        # quadradinho extra pra quem acabou de ser movido pra cá e ainda não
+        # tem status_loja nenhum — sem ele, essa OS não batia com nenhum dos
+        # 7 status reais e sumia da tela sem jeito de achar de novo.
+        if origem == "balcao" and status == "sem_status":
+            condicoes.append("(os.status_loja IS NULL OR os.status_loja = '')")
+        elif origem == "balcao":
+            condicoes.append("os.status_loja = ?")
+            params.append(status)
+        else:
+            condicoes.append("os.status = ?")
+            params.append(status)
     if cliente_id:
         condicoes.append("os.cliente_id = ?")
         params.append(cliente_id)
@@ -1139,11 +1148,17 @@ def listar():
             origem_sql = ("WHERE NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id) "
                           "AND ordens_servico.balcao_em IS NULL")
         if origem == "balcao":
+            # "sem_status" (pedido de 2026-09-01): sem isso, uma OS recém-
+            # movida pra cá (balcao_em preenchido, status_loja ainda vazio)
+            # não bate com nenhum dos 7 quadradinhos e fica invisível — não
+            # existe filtro nenhum que a traga de volta pra tela.
             contagem = {s: 0 for s in STATUS_LOJA}
+            contagem["sem_status"] = 0
             todas_status = fetch_all(conn, f"SELECT status_loja FROM ordens_servico {origem_sql}")
             for l in todas_status:
-                if l["status_loja"] in contagem:
-                    contagem[l["status_loja"]] += 1
+                chave = l["status_loja"] or "sem_status"
+                if chave in contagem:
+                    contagem[chave] += 1
         else:
             contagem = {s: 0 for s in STATUS_OS}
             todas_status = fetch_all(conn, f"SELECT status FROM ordens_servico {origem_sql}")
