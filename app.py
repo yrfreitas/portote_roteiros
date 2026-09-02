@@ -424,6 +424,21 @@ def listar_changelog():
     return jsonify({"entradas": linhas})
 
 
+@app.route("/api/log-exportacoes", methods=["GET"])
+def listar_log_exportacoes():
+    """Rastreabilidade de exportação de dados (pedido de 2026-09-02, LGPD)
+    — quem baixou o quê e quando. Atrás da mesma permissão de diagnóstico:
+    é informação sobre o USO do sistema, não do dia a dia do atendimento."""
+    from database import fetch_all
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT id, usuario, rota, detalhe, criado_em FROM log_exportacoes
+             ORDER BY id DESC LIMIT 100
+        """)
+    return jsonify({"registros": linhas})
+
+
 @app.route("/api/changelog", methods=["POST"])
 def criar_changelog():
     from database import execute
@@ -895,6 +910,35 @@ def versao():
             dados["agendar_pendentes"] = (agendar or {}).get("n", 0)
         except Exception:
             dados["agendar_pendentes"] = 0
+
+        # SOS de técnico em campo (pedido de 2026-09-02) — prioridade máxima,
+        # por isso lista NOME, não só contagem (o sino já mostra número pros
+        # outros itens, mas "alguém precisa de ajuda" merece dizer quem).
+        try:
+            sos = fetch_all(conn, """
+                SELECT t.id, t.nome, ts.sos_em FROM tecnico_status ts
+                  JOIN tecnicos t ON t.id = ts.tecnico_id
+                 WHERE ts.sos_ativo = TRUE
+            """ if IS_PG else """
+                SELECT t.id, t.nome, ts.sos_em FROM tecnico_status ts
+                  JOIN tecnicos t ON t.id = ts.tecnico_id
+                 WHERE ts.sos_ativo = 1
+            """)
+            dados["sos_tecnicos"] = sos
+        except Exception:
+            dados["sos_tecnicos"] = []
+
+        # Estoque abaixo do mínimo (pedido de 2026-09-02) — a aba Estoque já
+        # calculava isso por item; só faltava alguém fora dela saber que
+        # existe sem precisar abrir a aba pra descobrir.
+        try:
+            estoque = fetch_one(conn, """
+                SELECT COUNT(*) AS n FROM estoque_itens
+                 WHERE minimo > 0 AND saldo <= minimo
+            """)
+            dados["estoque_abaixo_minimo"] = (estoque or {}).get("n", 0)
+        except Exception:
+            dados["estoque_abaixo_minimo"] = 0
 
         return jsonify(dados)
 

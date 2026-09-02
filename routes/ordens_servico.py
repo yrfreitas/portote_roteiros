@@ -1264,6 +1264,13 @@ def exportar():
     buffer.seek(0)
 
     nome_arquivo = f"ordens-servico-{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+
+    from database import registrar_exportacao
+    with db_conn(commit=True) as conn:
+        registrar_exportacao(conn, session.get("usuario_nome") or "",
+                             "/ordens-servico/exportar",
+                             f"status={status or 'todos'} dias={dias or 'todos'}")
+
     return send_file(
         buffer, as_attachment=True, download_name=nome_arquivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -6,14 +6,45 @@ Serviço precisa de um cadastro de verdade, e a base de clientes serve a
 outros usos futuros (histórico, marketing, financeiro) que texto solto nunca
 serviria.
 """
+import re
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request, session
 
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
+from permissoes import pode
 from services.geo import consultar_cep
 
 clientes_bp = Blueprint("clientes", __name__)
+
+
+def _mascarar_documento(valor):
+    """CPF/CNPJ mascarado (pedido de 2026-09-02, LGPD) — mostra só os 3
+    primeiros e 2 últimos dígitos, preservando pontuação (123.***.***-00).
+    Quem tem a permissão 'ver_cpf_completo' recebe o valor de verdade."""
+    if not valor:
+        return valor
+    digitos = re.sub(r"\D", "", valor)
+    if len(digitos) < 6:
+        return valor
+    meio = "*" * (len(digitos) - 5)
+    mascarado = digitos[:3] + meio + digitos[-2:]
+    resultado, idx = [], 0
+    for ch in valor:
+        if ch.isdigit():
+            resultado.append(mascarado[idx])
+            idx += 1
+        else:
+            resultado.append(ch)
+    return "".join(resultado)
+
+
+def _aplicar_mascara_cpf(clientes):
+    if pode("ver_cpf_completo"):
+        return clientes
+    for c in clientes:
+        c["cpf_cnpj"] = _mascarar_documento(c.get("cpf_cnpj"))
+    return clientes
 
 # Lista FECHADA de propósito — mesmo motivo dos desfechos: texto livre não
 # soma nem filtra, e "de onde vêm nossos clientes" é pergunta de negócio.
@@ -113,7 +144,8 @@ def listar():
             or busca in (c.get("telefone") or "").lower()
         ]
 
-    return jsonify({"clientes": clientes[:limite], "total": len(clientes)})
+    pagina = _aplicar_mascara_cpf(clientes[:limite])
+    return jsonify({"clientes": pagina, "total": len(clientes)})
 
 
 @clientes_bp.route("/clientes/<int:cliente_id>", methods=["GET"])
@@ -129,6 +161,7 @@ def obter(cliente_id):
               FROM ordens_servico WHERE cliente_id = ? ORDER BY id DESC
         """, (cliente_id,))
 
+    _aplicar_mascara_cpf([cliente])
     return jsonify({"cliente": cliente, "ordens_servico": ordens})
 
 
@@ -153,9 +186,17 @@ def editar(cliente_id):
         return jsonify({"erro": "Indicação inválida"}), 400
 
     with db_conn(commit=True) as conn:
-        existe = fetch_one(conn, "SELECT id FROM clientes WHERE id = ?", (cliente_id,))
+        existe = fetch_one(conn, "SELECT id, cpf_cnpj FROM clientes WHERE id = ?", (cliente_id,))
         if not existe:
             return jsonify({"erro": "Cliente não encontrado"}), 404
+
+        # Defesa contra a própria máscara de CPF/CNPJ (2026-09-02): quem não
+        # tem 'ver_cpf_completo' recebe o documento com "*" na resposta do
+        # GET — se essa tela reenviar o objeto inteiro num PUT (edição
+        # inline, por exemplo), o valor mascarado NUNCA pode sobrescrever o
+        # de verdade no banco. Um CPF/CNPJ de verdade nunca tem "*".
+        if "*" in campos["cpf_cnpj"]:
+            campos["cpf_cnpj"] = existe.get("cpf_cnpj") or ""
 
         execute(conn, """
             UPDATE clientes SET nome=?, tipo_pessoa=?, cpf_cnpj=?, telefone=?,

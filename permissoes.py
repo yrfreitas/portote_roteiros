@@ -40,6 +40,7 @@ CATALOGO = [
     {"chave": "pecas",              "area": "Peças",       "rotulo": "Ver a aba Peças (compras / nota fiscal)"},
     {"chave": "cotacao",            "area": "Peças",       "rotulo": "Ver e usar a aba Cotação (peças aguardando preço / substituição)"},
     {"chave": "ordens_servico",     "area": "OS",          "rotulo": "Ver e abrir Ordens de Serviço (inclui Agendar Clientes)"},
+    {"chave": "ver_cpf_completo",   "area": "OS",          "rotulo": "Ver CPF/CNPJ do cliente por completo (sem quem não tem, vem mascarado)"},
     {"chave": "estoque_ver",        "area": "Estoque",     "rotulo": "Ver o Estoque"},
     {"chave": "estoque_editar",     "area": "Estoque",     "rotulo": "Mexer no Estoque (entrada, saída, ajuste, criar)"},
     {"chave": "estoque_excluir",    "area": "Estoque",     "rotulo": "Excluir peças e estoques"},
@@ -79,6 +80,9 @@ REGRAS = [
     ("/api/diagnostico/chat",      None,                     "diagnostico"),
     ("/api/changelog",             ("POST",),                "diagnostico_editar"),
     ("/api/changelog",             None,                     "diagnostico"),
+    # Log de exportação (LGPD, 2026-09-02): informação sobre uso do sistema,
+    # mesma sensibilidade do resto do Diagnóstico.
+    ("/api/log-exportacoes",       None,                     "diagnostico"),
     ("/api/diagnostico",           None,                     "diagnostico"),
     ("/api/rastreios/diagnostico", None,                     "diagnostico"),
     ("/api/pedidos/diagnostico",   None,                     "diagnostico"),

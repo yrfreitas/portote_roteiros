@@ -234,6 +234,11 @@ def resumo():
                   WHERE registrado_em >= ? AND registrado_em < ?) AS ontem
         """, (hoje_inicio, ontem_inicio, hoje_inicio))
 
+        estoque_baixo = fetch_one(conn, """
+            SELECT COUNT(*) AS n FROM estoque_itens
+             WHERE minimo > 0 AND saldo <= minimo
+        """)["n"]
+
     return jsonify({
         "setores": linhas,
         "total": total,
@@ -243,4 +248,5 @@ def resumo():
         "pecas_esperando_muito": pecas_esperando_muito,
         "concluidos_hoje": concluidos["hoje"],
         "concluidos_ontem": concluidos["ontem"],
+        "estoque_abaixo_minimo": estoque_baixo,
     })

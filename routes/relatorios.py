@@ -8,7 +8,8 @@ from flask import Blueprint, jsonify, request, send_file
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-from database import db_conn, execute, fetch_all, fetch_one, sql
+from database import (db_conn, execute, fetch_all, fetch_one,
+                      insert_returning_id, sql)
 
 relatorios_bp = Blueprint("relatorios", __name__)
 
@@ -96,6 +97,14 @@ def exportar_historico():
     buffer.seek(0)
 
     nome_arquivo = f"historico-rotas-{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+
+    from flask import session
+
+    from database import registrar_exportacao
+    with db_conn(commit=True) as conn:
+        registrar_exportacao(conn, session.get("usuario_nome") or "",
+                             "/historico/exportar", f"dias={dias or 'todos'}")
+
     return send_file(
         buffer, as_attachment=True, download_name=nome_arquivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -516,6 +525,120 @@ def apagar_pedido_peca_os(pedido_id):
     if not afetadas:
         return jsonify({"erro": "Pedido não encontrado"}), 404
     return jsonify({"mensagem": "Removido de Atendimentos"})
+
+
+@relatorios_bp.route("/pedidos-peca-os/manual", methods=["POST"])
+def criar_pedido_peca_manual():
+    """Pedido de peça criado NA MÃO, sem vir de um désfecho de técnico
+    (pedido de 2026-09-02) — pra quando o pedido já nasce sabido, sem
+    precisar fingir uma visita. Body: {peca, descricao, cliente_id} OU
+    {peca, descricao, cliente_novo: {nome, telefone}}.
+
+    Precisa de uma OS por trás (pedido_peca_os.ordem_servico_id é NOT NULL —
+    é o mesmo vínculo que TODO pedido direto na OS já usa), então cria uma OS
+    mínima pro cliente automaticamente, do jeito que "peça chegou" já faz
+    hoje na aba Peças — não é novidade, é o mesmo caminho."""
+    from flask import session
+
+    from routes.clientes import criar_cliente
+
+    dados = request.get_json(silent=True) or {}
+    peca = (dados.get("peca") or "").strip()[:200]
+    if not peca:
+        return jsonify({"erro": "Informe a peça"}), 400
+    descricao = (dados.get("descricao") or "").strip()[:600]
+    quem = (session.get("usuario_nome") or "").strip()[:80] or "Administrador"
+    agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_conn(commit=True) as conn:
+        cliente_id = dados.get("cliente_id")
+        if not cliente_id:
+            cliente_novo = dados.get("cliente_novo") or {}
+            try:
+                cliente_id = criar_cliente(conn, cliente_novo)
+            except ValueError as exc:
+                return jsonify({"erro": str(exc)}), 400
+        else:
+            existe = fetch_one(conn, sql("SELECT id FROM clientes WHERE id = ?"), (cliente_id,))
+            if not existe:
+                return jsonify({"erro": "Cliente não encontrado"}), 404
+
+        os_id = insert_returning_id(conn, sql("""
+            INSERT INTO ordens_servico (cliente_id, defeito_declarado, status,
+                                        modelo_os, criado_em, criado_por, atendente)
+            VALUES (?, ?, 'aguardando_agendamento', 'os', ?, ?, ?)
+        """), (cliente_id, f"Pedido de peça: {peca}" + (f" — {descricao}" if descricao else ""),
+               agora, quem, quem))
+
+        pedido_id = insert_returning_id(conn, sql("""
+            INSERT INTO pedido_peca_os (ordem_servico_id, peca, descricao, criado_em, criado_por)
+            VALUES (?, ?, ?, ?, ?)
+        """), (os_id, peca, descricao, agora, quem))
+
+    return jsonify({"mensagem": "Pedido criado", "id": pedido_id, "ordem_servico_id": os_id}), 201
+
+
+@relatorios_bp.route("/relatorios/negocio", methods=["GET"])
+def relatorios_negocio():
+    """Três números de negócio pedidos em 2026-09-02: previsão de
+    faturamento, desempenho por setor mês a mês, e de onde vêm mais
+    chamados (bairro). Junto numa rota só pra não multiplicar consulta."""
+    hoje = datetime.now()
+    inicio_mes = hoje.strftime("%Y-%m-01 00:00:00")
+
+    with db_conn() as conn:
+        # Previsão: valor de orçamento APROVADO este mês (ainda não é
+        # faturamento realizado — é o que está pra entrar).
+        previsao = fetch_one(conn, sql("""
+            SELECT COALESCE(SUM(i.valor), 0) AS total, COUNT(DISTINCT os.id) AS os
+              FROM ordens_servico os
+              JOIN ordem_servico_itens i ON i.ordem_servico_id = os.id
+             WHERE os.orcamento_aprovado_em >= ?
+        """), (inicio_mes,))
+
+        # Desempenho por setor, últimos 6 meses — mês calculado em Python
+        # (mesmo motivo de sempre: SQLite e Postgres não compartilham função
+        # de data), agrupado depois de trazer as linhas.
+        seis_meses = (hoje - timedelta(days=180)).strftime("%Y-%m-%d 00:00:00")
+        linhas_setor = fetch_all(conn, sql("""
+            SELECT s.nome AS setor, sv.concluido_em
+              FROM servicos sv
+              JOIN setores s ON s.id = sv.setor_id
+             WHERE sv.concluido_em IS NOT NULL AND sv.concluido_em >= ?
+        """), (seis_meses,))
+
+        # Ranking de bairro — de onde vêm mais chamados (cliente ligado à OS).
+        bairros = fetch_all(conn, sql("""
+            SELECT COALESCE(NULLIF(c.bairro, ''), NULLIF(c.cidade, ''), 'Não informado') AS local,
+                   COUNT(*) AS total
+              FROM ordens_servico os
+              JOIN clientes c ON c.id = os.cliente_id
+             GROUP BY local
+             ORDER BY total DESC
+             LIMIT 10
+        """))
+
+    por_mes_setor = defaultdict(lambda: defaultdict(int))
+    for l in linhas_setor:
+        mes = (l.get("concluido_em") or "")[:7]
+        if mes:
+            por_mes_setor[mes][l["setor"]] += 1
+    setores_no_periodo = sorted({s for meses in por_mes_setor.values() for s in meses})
+    comparativo_setores = [
+        {"mes": mes, **{s: por_mes_setor[mes].get(s, 0) for s in setores_no_periodo}}
+        for mes in sorted(por_mes_setor.keys())
+    ]
+
+    return jsonify({
+        "previsao_faturamento": {
+            "valor": round(float(previsao["total"] or 0), 2),
+            "orcamentos": previsao["os"],
+            "mes_referencia": hoje.strftime("%m/%Y"),
+        },
+        "comparativo_setores": comparativo_setores,
+        "setores": setores_no_periodo,
+        "ranking_bairros": bairros,
+    })
 
 
 @relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>/pedido", methods=["POST"])

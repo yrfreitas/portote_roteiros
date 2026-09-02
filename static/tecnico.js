@@ -608,6 +608,15 @@
   const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                    'Aparelho sem defeito', 'Sem acesso ao local'];
 
+  // Checklist obrigatório antes de fechar OS em campo (pedido de 2026-09-02)
+  // — genérico pra qualquer aparelho, não por tipo (evitaria manter uma
+  // lista própria por categoria sem necessidade agora).
+  const CHECKLIST_ITENS = [
+    'Testei o aparelho antes de sair',
+    'Expliquei pro cliente o que foi feito',
+    'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+  ];
+
   // Mesma lista de static/app.js e routes/ordens_servico.py:TIPOS_OS_ROTULO —
   // pedido de 2026-08-28: o técnico escolhe o termo jurídico da OS que ele
   // mesmo fecha em campo (ver "Fazer Ordem de Serviço" logo abaixo).
@@ -725,6 +734,101 @@
     window._tValidarConfirmar();
   };
 
+  // SOS (pedido de 2026-09-02) — endereço perigoso, acidente, imprevisto em
+  // campo. Manda a posição atual se o navegador conseguir pegar rápido, mas
+  // NÃO espera por ela — em emergência, esperar GPS é o oposto do que se quer.
+  window._tPedirSos = function () {
+    if (!confirm('Confirma pedido de ajuda ao escritório agora?')) return;
+    const enviar = (lat, lng) => {
+      api(`/${TOKEN}/sos`, { method: 'POST', body: JSON.stringify({ lat, lng }) })
+        .then(() => toast('Escritório avisado. Aguarde contato.'))
+        .catch(() => toast('Sem internet — tente de novo assim que possível.'));
+    };
+    if (navigator.geolocation) {
+      const jaEnviou = { v: false };
+      const disparar = (lat, lng) => { if (!jaEnviou.v) { jaEnviou.v = true; enviar(lat, lng); } };
+      navigator.geolocation.getCurrentPosition(
+        (pos) => disparar(pos.coords.latitude, pos.coords.longitude),
+        () => disparar(null, null),
+        { timeout: 3000 });
+      setTimeout(() => disparar(null, null), 3200);
+    } else {
+      enviar(null, null);
+    }
+  };
+
+  // Ler código de barras/QR pela câmera (pedido de 2026-09-02) — mesma ideia
+  // do bipar de nota fiscal do painel, só que genérico pra qualquer campo.
+  let _tScanCamera = null;
+
+  // Máscara de telefone (pedido de 2026-09-02) — mesma lógica do painel.
+  window._tFormatarTelefone = function (input) {
+    let v = input.value.replace(/\D/g, '').slice(0, 11);
+    if (v.length > 10) v = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+    else if (v.length > 6) v = `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
+    else if (v.length > 2) v = `(${v.slice(0, 2)}) ${v.slice(2)}`;
+    input.value = v;
+  };
+
+  window._tTemCameraScan = function () {
+    return ('BarcodeDetector' in window) && !!navigator.mediaDevices?.getUserMedia;
+  };
+
+  // A tela do técnico monta a interface toda via JS (não tem esse modal no
+  // HTML estático) — cria uma vez, na primeira chamada, e reaproveita depois.
+  function _tGarantirModalScan() {
+    if (document.getElementById('t-modal-scan')) return;
+    const div = document.createElement('div');
+    div.id = 't-modal-scan';
+    div.className = 't-modal-scan';
+    div.innerHTML = `
+      <div class="t-modal-scan-fundo" onclick="window._tFecharScanCodigo()"></div>
+      <div class="t-modal-scan-painel">
+        <p class="t-df-rotulo">Aponte a câmera pro código</p>
+        <video id="t-scan-video" autoplay playsinline muted></video>
+        <button type="button" class="t-df-limpar-assinatura" onclick="window._tFecharScanCodigo()">Cancelar</button>
+      </div>`;
+    document.body.appendChild(div);
+  }
+
+  window._tAbrirScanCodigo = async function (inputId) {
+    _tGarantirModalScan();
+    const modal = document.getElementById('t-modal-scan');
+    if (!modal) return;
+    modal.dataset.alvo = inputId;
+    modal.classList.add('aberta');
+    const video = document.getElementById('t-scan-video');
+    try {
+      const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'qr_code'] });
+      _tScanCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = _tScanCamera;
+      await video.play();
+      const tick = async () => {
+        if (!_tScanCamera) return;
+        try {
+          const cods = await detector.detect(video);
+          if (cods.length) {
+            const alvo = document.getElementById(modal.dataset.alvo);
+            if (alvo) { alvo.value = cods[0].rawValue; alvo.dispatchEvent(new Event('input')); }
+            window._tFecharScanCodigo();
+            return;
+          }
+        } catch { /* frame ruim: tenta o próximo */ }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    } catch (e) {
+      window._tFecharScanCodigo();
+    }
+  };
+
+  window._tFecharScanCodigo = function () {
+    if (_tScanCamera) { _tScanCamera.getTracks().forEach(t => t.stop()); _tScanCamera = null; }
+    const video = document.getElementById('t-scan-video');
+    if (video) video.srcObject = null;
+    document.getElementById('t-modal-scan')?.classList.remove('aberta');
+  };
+
   function blocoFoto(destaque, rotulo, ajuda) {
     rotulo = rotulo || 'Foto da etiqueta';
     const textoAjuda = ajuda !== undefined ? ajuda
@@ -786,8 +890,11 @@
       // sai sem como identificar a peça de verdade (ver window._tValidarConfirmar).
       extra.innerHTML = `
         <label class="t-df-rotulo" for="t-df-codigo">Código da peça</label>
-        <input class="t-df-input" id="t-df-codigo" autocomplete="off"
-               placeholder="Ex: DE97-01234A" oninput="window._tValidarConfirmar()">
+        <div class="t-campo-com-scan">
+          <input class="t-df-input" id="t-df-codigo" autocomplete="off"
+                 placeholder="Ex: DE97-01234A" oninput="window._tValidarConfirmar()">
+          ${window._tTemCameraScan() ? `<button type="button" class="t-btn-scan-codigo" onclick="window._tAbrirScanCodigo('t-df-codigo')">📷</button>` : ''}
+        </div>
         <label class="t-df-rotulo" for="t-df-nome-peca">Nome da peça</label>
         <input class="t-df-input" id="t-df-nome-peca" autocomplete="off"
                placeholder="Ex: Placa eletrônica" oninput="window._tValidarConfirmar()">
@@ -812,7 +919,7 @@
         <label class="t-df-rotulo" for="t-df-fos-nome">Nome do cliente</label>
         <input class="t-df-input" id="t-df-fos-nome" value="${esc(s.cliente || '')}">
         <label class="t-df-rotulo" for="t-df-fos-telefone">Telefone</label>
-        <input class="t-df-input" id="t-df-fos-telefone" value="${esc(s.telefone || '')}">
+        <input class="t-df-input" id="t-df-fos-telefone" value="${esc(s.telefone || '')}" oninput="window._tFormatarTelefone(this)">
         <div class="t-df-linha-dupla">
           <div><label class="t-df-rotulo" for="t-df-fos-aparelho">Aparelho</label>
             <input class="t-df-input" id="t-df-fos-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
@@ -836,6 +943,14 @@
           ${Object.entries(TIPOS_OS_ROTULO).map(([v, r]) => `<option value="${v}">${esc(r)}</option>`).join('')}
         </select>
         ${blocoFoto(false)}
+        <label class="t-df-rotulo">Checklist antes de fechar <span class="t-df-obrigatorio">*</span></label>
+        <div class="t-df-checklist">
+          ${CHECKLIST_ITENS.map((item, i) => `
+            <label class="t-df-checklist-item">
+              <input type="checkbox" data-checklist="${i}" onchange="window._tValidarConfirmar()">
+              ${esc(item)}
+            </label>`).join('')}
+        </div>
         <label class="t-df-rotulo">Assinatura do cliente <span class="t-df-obrigatorio">*</span></label>
         <p class="t-df-ajuda">Passe o celular pro cliente assinar aqui com o dedo.</p>
         <canvas id="t-assinatura-canvas" class="t-assinatura-canvas"></canvas>
@@ -857,7 +972,7 @@
         <label class="t-df-rotulo" for="t-df-orc-nome">Nome do cliente</label>
         <input class="t-df-input" id="t-df-orc-nome" value="${esc(s.cliente || '')}">
         <label class="t-df-rotulo" for="t-df-orc-telefone">Telefone</label>
-        <input class="t-df-input" id="t-df-orc-telefone" value="${esc(s.telefone || '')}">
+        <input class="t-df-input" id="t-df-orc-telefone" value="${esc(s.telefone || '')}" oninput="window._tFormatarTelefone(this)">
         <div class="t-df-linha-dupla">
           <div><label class="t-df-rotulo" for="t-df-orc-aparelho">Aparelho</label>
             <input class="t-df-input" id="t-df-orc-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
@@ -955,7 +1070,9 @@
       ok = !!(codigo && nome && _desfechoFoto);
     } else if (_desfechoTipo === 'fazer_os') {
       const nome = document.getElementById('t-df-fos-nome')?.value.trim();
-      ok = !!(nome && _assinaturaTemTraco);
+      const checks = document.querySelectorAll('[data-checklist]');
+      const checklistOk = checks.length > 0 && Array.from(checks).every(c => c.checked);
+      ok = !!(nome && _assinaturaTemTraco && checklistOk);
     } else if (_desfechoTipo === 'orcamento') {
       const nome = document.getElementById('t-df-orc-nome')?.value.trim();
       ok = !!(nome && _assinaturaTemTraco);
@@ -994,6 +1111,9 @@
       desfecho.solucao_os = document.getElementById('t-df-fos-solucao')?.value.trim() || '';
       desfecho.forma_pagamento = document.getElementById('t-df-fos-pagamento')?.value || '';
       desfecho.tipo_os = document.getElementById('t-df-fos-tipo-os')?.value || '';
+      desfecho.checklist = JSON.stringify(CHECKLIST_ITENS.map((item, i) => ({
+        item, marcado: !!document.querySelector(`[data-checklist="${i}"]`)?.checked,
+      })));
       if (_desfechoFoto) desfecho.foto_produto = _desfechoFoto;
       if (_assinaturaTemTraco && _assinaturaCanvas) {
         desfecho.assinatura = _assinaturaCanvas.toDataURL('image/png');
@@ -1297,7 +1417,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v176';
+  const VERSAO_TELA = 'v177';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v176';
+const VERSAO_PAINEL = 'v177';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -328,9 +328,11 @@ function _conferirVersaoDoPainel(versaoServidor) {
   aviso.innerHTML = `
     <span class="aviso-ponto" aria-hidden="true"></span>
     <span class="aviso-texto">Nova versão do sistema</span>
+    <button type="button" class="aviso-btn aviso-btn-ghost" id="aviso-versao-changelog">O que mudou?</button>
     <button type="button" class="aviso-btn" id="aviso-versao-btn">Recarregar</button>`;
   document.body.appendChild(aviso);
   document.getElementById('aviso-versao-btn').onclick = () => location.reload();
+  document.getElementById('aviso-versao-changelog').onclick = () => abrirChangelogPopup();
 }
 
 // Chamado depois das escrituras do próprio usuário: a tela dele já se
@@ -553,6 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
   iniciarAutoRefresh();
   iniciarFiltroHistorico();
   carregarUsuarioLogadoPromise = carregarUsuarioLogado();
+  verificarTourPrimeiraVez();
   iniciarChatPainel();
   carregarTecnicos();
   _vcepRenderHistorico();
@@ -1018,12 +1021,14 @@ async function atualizarChatEquipe() {
       const minha = m.autor_nome === (usuarioLogado.nome || '');
       const tipo = m.autor_tipo === 'sistema' ? 'sistema' : (minha ? 'minha' : 'deles');
       const nome = tipo === 'deles' ? `<b>${esc(m.autor_nome || '')}</b><br>` : '';
+      const texto = m.texto ? destacarMencoes(esc(m.texto)) : '';
       corpo.insertAdjacentHTML('beforeend',
-        `<div class="msg ${tipo}">${nome}${esc(m.texto)}
+        `<div class="msg ${tipo}">${nome}${texto}${_anexoHtmlChat(m)}
            <span class="hora">${esc((m.criado_em || '').slice(11, 16))}</span></div>`);
       chatUltimoIdPainel = Math.max(chatUltimoIdPainel, m.id);
     });
     if ((d.mensagens || []).length) corpo.scrollTop = corpo.scrollHeight;
+    _pintarDigitando(d.digitando && d.digitando.length ? `${d.digitando.join(', ')} digitando...` : '');
   } catch { /* sem rede: próximo ciclo */ }
   // finally é obrigatório: sem ele a trava ficaria presa para sempre na
   // primeira falha de rede, e o chat da equipe pararia de atualizar em
@@ -1031,11 +1036,32 @@ async function atualizarChatEquipe() {
   finally { chatBuscando = false; }
 }
 
+// @menção (pedido de 2026-09-02): só destaque visual, sem validar se o nome
+// existe de verdade — é pra chamar atenção ao bater o olho na conversa, não
+// um sistema de notificação por pessoa (a sala de equipe é compartilhada,
+// todo mundo já vê tudo). Roda DEPOIS do esc() — nunca antes — senão um
+// "@<script>" digitado por alguém virava HTML de verdade.
+function destacarMencoes(textoEscapado) {
+  return textoEscapado.replace(/(^|\s)@(\w[\w.]{0,29})/g,
+    (m, pre, nome) => `${pre}<span class="msg-mencao">@${nome}</span>`);
+}
+
+// Anexo de arquivo no chat (pedido de 2026-09-02) — mesmo padrão de foto em
+// base64 já usado em outros lugares do sistema, sem storage externo.
+function _anexoHtmlChat(m) {
+  if (!m.anexo) return '';
+  if ((m.anexo_tipo || '').startsWith('image/')) {
+    return `<img class="msg-anexo-img" src="${m.anexo}" alt="${esc(m.anexo_nome || 'imagem')}" onclick="ampliarFoto(this.src)">`;
+  }
+  return `<a class="msg-anexo-arquivo" href="${m.anexo}" download="${esc(m.anexo_nome || 'arquivo')}">📎 ${esc(m.anexo_nome || 'arquivo anexado')}</a>`;
+}
+
 function _msgHtml(m) {
   const tipo = m.autor_tipo === 'cliente' ? 'deles'
              : (m.autor_tipo === 'sistema' ? 'sistema' : 'minha');
   const nome = tipo === 'deles' && m.autor_nome ? `<b>${esc(m.autor_nome)}</b><br>` : '';
-  return `<div class="msg ${tipo}">${nome}${esc(m.texto)}
+  const texto = m.texto ? destacarMencoes(esc(m.texto)) : '';
+  return `<div class="msg ${tipo}">${nome}${texto}${_anexoHtmlChat(m)}
             <span class="hora">${esc((m.criado_em || '').slice(11, 16))}</span></div>`;
 }
 
@@ -1113,6 +1139,7 @@ async function atualizarConversaAberta() {
       novas++;
     });
     if (novas) corpo.scrollTop = corpo.scrollHeight;
+    _pintarDigitando(d.outro_digitando ? 'digitando...' : '');
   } catch { /* sem rede: próximo ciclo */ }
   finally { chatBuscando = false; }
 }
@@ -1148,6 +1175,7 @@ const NOTIF_ITENS = [
   { chave: 'agendar', label: 'Clientes esperando agendamento', acao: () => switchMainTab('agendar') },
   { chave: 'erros', label: 'Erro registrado no Diagnóstico', acao: () => switchMainTab('diagnostico') },
   { chave: 'chat', label: 'Mensagem não lida no chat', acao: () => document.getElementById('painel-chat-bolha')?.click() },
+  { chave: 'estoque', label: 'Peça abaixo do estoque mínimo', acao: () => switchMainTab('estoque') },
 ];
 
 // Som de notificação (pedido de 2026-09-02) — desligado por padrão de
@@ -1178,14 +1206,18 @@ function _tocarBeepNotificacao() {
   } catch (e) { /* navegador sem suporte, sem som mesmo — não é crítico */ }
 }
 
+let _notifSos = [];
+
 function pintarNotificacoes(dados) {
   _notif = {
     chat: dados.chat_nao_lidas || 0,
     pecas: dados.pecas_pendentes || 0,
     agendar: dados.agendar_pendentes || 0,
     erros: dados.erros_abertos || 0,
+    estoque: dados.estoque_abaixo_minimo || 0,
   };
-  const total = _notif.chat + _notif.pecas + _notif.agendar + _notif.erros;
+  _notifSos = dados.sos_tecnicos || [];
+  const total = _notif.chat + _notif.pecas + _notif.agendar + _notif.erros + _notif.estoque + _notifSos.length;
 
   // Só toca quando SOBE em relação à última leitura — a primeira leitura da
   // página (_notifTotalAnterior === null) não conta como "chegou agora".
@@ -1206,6 +1238,11 @@ function _renderNotificacoes() {
   const painel = document.getElementById('notif-painel');
   if (!painel) return;
   const itens = NOTIF_ITENS.filter(i => _notif[i.chave] > 0);
+  const sosHtml = _notifSos.map(t => `
+    <div class="notif-item notif-item-sos">
+      <span>🆘 <b>${esc(t.nome)}</b> pediu ajuda</span>
+      <button type="button" class="btn btn-sm btn-ghost" onclick="resolverSosNotif(${t.id})">Resolver</button>
+    </div>`).join('');
   painel.innerHTML = `
     <div class="notif-titulo">
       Notificações
@@ -1214,13 +1251,23 @@ function _renderNotificacoes() {
         som
       </label>
     </div>
+    ${sosHtml}
     ${itens.length ? itens.map((i, idx) => `
       <button type="button" class="notif-item" onclick="_notifClicar(${idx})">
         <span class="notif-item-num">${_notif[i.chave]}</span>
         <span>${esc(i.label)}</span>
       </button>`).join('')
-      : '<div class="notif-vazio">Tudo em dia por aqui.</div>'}`;
+      : (sosHtml ? '' : '<div class="notif-vazio">Tudo em dia por aqui.</div>')}`;
   painel._itensAtuais = itens;
+}
+
+async function resolverSosNotif(tecnicoId) {
+  try {
+    await api(`/tecnicos/${tecnicoId}/sos-resolver`, { method: 'PUT' });
+    toast('SOS encerrado', 'success');
+    await sincronizarRevisaoSilenciosa();
+    if (document.getElementById('notif-painel')?.classList.contains('aberto')) _renderNotificacoes();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 function _notifClicar(idx) {
@@ -1258,11 +1305,66 @@ window.addEventListener('beforeunload', (e) => {
   }
 });
 
+function _pintarDigitando(texto) {
+  const el = document.getElementById('painel-chat-digitando');
+  if (el) el.textContent = texto || '';
+}
+
+// Anexo pendente de envio (imagem ou PDF) — pedido de 2026-09-02.
+let _chatAnexoPendente = null;
+let _chatAnexoNomePendente = null;
+
+async function escolherAnexoChat(input) {
+  const arquivo = input.files && input.files[0];
+  input.value = '';
+  if (!arquivo) return;
+  if (arquivo.size > 4 * 1024 * 1024) { toast('Arquivo muito grande (máx. 4MB)', 'error'); return; }
+  if (!arquivo.type.startsWith('image/') && arquivo.type !== 'application/pdf') {
+    toast('Só imagem ou PDF', 'error'); return;
+  }
+  const leitor = new FileReader();
+  leitor.onload = () => {
+    _chatAnexoPendente = leitor.result;
+    _chatAnexoNomePendente = arquivo.name;
+    const previa = document.getElementById('painel-chat-anexo-previa');
+    if (previa) {
+      previa.style.display = 'flex';
+      previa.querySelector('span').textContent = `📎 ${arquivo.name}`;
+    }
+  };
+  leitor.readAsDataURL(arquivo);
+}
+
+function removerAnexoChat() {
+  _chatAnexoPendente = null;
+  _chatAnexoNomePendente = null;
+  const previa = document.getElementById('painel-chat-anexo-previa');
+  if (previa) previa.style.display = 'none';
+}
+
+// Ping de "digitando" (pedido de 2026-09-02) — no máximo 1 a cada 2s
+// enquanto a pessoa digita, pra não virar uma requisição por tecla.
+let _chatUltimoPingDigitando = 0;
+function sinalizarDigitandoChat() {
+  const agora = Date.now();
+  if (agora - _chatUltimoPingDigitando < 2000) return;
+  _chatUltimoPingDigitando = agora;
+  if (chatModo === 'equipe') {
+    api('/equipe/digitando', { method: 'POST' }).catch(() => {});
+  } else if (chatSalaAberta) {
+    api(`/chat/${chatSalaAberta}/digitando`, {
+      method: 'POST', body: JSON.stringify({ autor: 'empresa' }),
+    }).catch(() => {});
+  }
+}
+
 function iniciarChatPainel() {
   const bolha = document.getElementById('painel-chat-bolha');
   const janela = document.getElementById('painel-chat-janela');
   const form = document.getElementById('painel-chat-form');
   if (!bolha) return;
+
+  document.getElementById('painel-chat-texto')?.addEventListener('input', sinalizarDigitandoChat);
 
   bolha.addEventListener('click', () => {
     const abrindo = !janela.classList.contains('aberto');
@@ -1274,18 +1376,22 @@ function iniciarChatPainel() {
     e.preventDefault();
     const campo = document.getElementById('painel-chat-texto');
     const texto = campo.value.trim();
-    if (!texto) return;
+    const anexo = _chatAnexoPendente, anexoNome = _chatAnexoNomePendente;
+    if (!texto && !anexo) return;
     if (chatModo !== 'equipe' && !chatSalaAberta) return;
     campo.value = '';
     campo.focus();                    // continua digitando sem tirar a mão
-    const provisoria = _msgProvisoria(texto);
+    removerAnexoChat();
+    const provisoria = _msgProvisoria(texto || (anexoNome ? `📎 ${anexoNome}` : ''));
     chatUltimaAtividade = Date.now();
+    const corpo = { texto };
+    if (anexo) { corpo.anexo = anexo; corpo.anexo_nome = anexoNome; }
     try {
       if (chatModo === 'equipe') {
-        await api('/equipe/mensagens', { method: 'POST', body: JSON.stringify({ texto }) });
+        await api('/equipe/mensagens', { method: 'POST', body: JSON.stringify(corpo) });
       } else {
         await api(`/chat/${chatSalaAberta}/responder`, {
-          method: 'POST', body: JSON.stringify({ texto }),
+          method: 'POST', body: JSON.stringify(corpo),
         });
       }
       // A provisória sai e a de verdade entra pela busca — assim ela vem
@@ -1767,6 +1873,11 @@ async function carregarDiagnostico() {
     <div class="diag-secao">O que já mudou</div>
     <div id="changelog-corpo"><div class="ajuda-texto">Carregando...</div></div>`);
 
+  // ── Log de exportação (LGPD/rastreabilidade — pedido de 2026-09-02).
+  partes.push(`
+    <div class="diag-secao">Exportações recentes</div>
+    <div id="log-exportacoes-corpo"><div class="ajuda-texto">Carregando...</div></div>`);
+
   partes.push(`
     <div class="diag-secao">Converse com a IA sobre o sistema</div>
     <p class="ajuda-texto" style="margin:0 0 8px;">
@@ -1789,11 +1900,31 @@ async function carregarDiagnostico() {
         : '');
   if (podeUsuario('gerenciar_usuarios')) carregarAcessos();
   carregarChangelog();
+  carregarLogExportacoes();
   carregarChatDiagnostico();
 }
 
-async function carregarChangelog() {
-  const alvo = document.getElementById('changelog-corpo');
+async function carregarLogExportacoes() {
+  const alvo = document.getElementById('log-exportacoes-corpo');
+  if (!alvo) return;
+  try {
+    const r = await api('/log-exportacoes');
+    const linhas = r.registros || [];
+    alvo.innerHTML = !linhas.length
+      ? '<div class="ajuda-texto">Nenhuma exportação registrada ainda.</div>'
+      : linhas.map(l => `
+        <div class="changelog-linha">
+          <span class="changelog-versao">${esc(l.usuario || '—')}</span>
+          <span class="changelog-resumo">${esc(l.rota)}${l.detalhe ? ' · ' + esc(l.detalhe) : ''}</span>
+          <span class="changelog-data">${esc((l.criado_em || '').slice(0, 16).replace('T', ' '))}</span>
+        </div>`).join('');
+  } catch (e) {
+    alvo.innerHTML = `<div class="ajuda-texto">${esc(e.message)}</div>`;
+  }
+}
+
+async function carregarChangelog(alvoId = 'changelog-corpo') {
+  const alvo = document.getElementById(alvoId);
   if (!alvo) return;
   try {
     const r = await api('/changelog');
@@ -1807,8 +1938,68 @@ async function carregarChangelog() {
           <span class="changelog-data">${esc((e.criado_em || '').slice(0, 16).replace('T', ' '))}</span>
         </div>`).join('');
   } catch (e) {
-    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    // Sem permissão de diagnóstico, por exemplo — não é erro fatal aqui, é
+    // só quem clicou não ter acesso ao detalhe do que mudou.
+    alvo.innerHTML = `<div class="ajuda-texto">${esc(e.message)}</div>`;
   }
+}
+
+// "O que mudou" a partir do aviso de nova versão (pedido de 2026-09-02) — o
+// changelog já existia dentro de Diagnóstico, mas era preciso saber que
+// existia e ter permissão pra abrir aquela aba. Isso aqui é um popup
+// pequeno, direto do próprio aviso, pra quem só quer ver o resumo.
+function abrirChangelogPopup() {
+  document.getElementById('modal-changelog')?.classList.add('open');
+  carregarChangelog('changelog-corpo-popup');
+}
+
+// Central de ajuda (pedido de 2026-09-02) — FAQ curto, direto no painel, sem
+// precisar perguntar pra alguém ou procurar em outro lugar.
+const AJUDA_FAQ = [
+  { p: 'Como crio uma Ordem de Serviço?', r: 'Aba "OS" → botão "+ Nova OS". Escolha o modelo (OS, Orçamento ou Chamado Técnico), o cliente (existente ou novo) e preencha o aparelho/defeito.' },
+  { p: 'Como sei se uma peça está esperando pedido?', r: 'Sino de notificações no topo, ou aba Atendimentos → cartão "Precisam de peça". De lá dá pra marcar "Já pedi" e anexar o comprovante.' },
+  { p: 'Como classifico um atendimento sem setor?', r: 'A Visão Geral (aba Roteiros, sem ficha aberta) mostra um alerta "atendimentos sem setor" — clique nele pra classificar em lote.' },
+  { p: 'Onde vejo o histórico de um cliente?', r: 'Aba OS → sub-aba "Clientes" → clique no cliente. Mostra cadastro, aparelhos já atendidos e permite editar telefone/observação na hora.' },
+  { p: 'Como troco entre tema claro e escuro?', r: 'Botão de sol/lua no canto superior direito do header.' },
+  { p: 'Um atendimento entrou errado em "Precisam de peça", como removo?', r: 'Passe o mouse na linha e clique no ✕. Dá pra desfazer por alguns segundos antes de apagar de vez, e também dá pra selecionar vários de uma vez.' },
+];
+
+function abrirAjuda() {
+  const corpo = document.getElementById('ajuda-corpo');
+  if (corpo) {
+    corpo.innerHTML = AJUDA_FAQ.map(f => `
+      <div class="ajuda-item">
+        <div class="ajuda-pergunta">${esc(f.p)}</div>
+        <div class="ajuda-resposta">${esc(f.r)}</div>
+      </div>`).join('');
+  }
+  document.getElementById('modal-ajuda')?.classList.add('open');
+}
+
+// Tour guiado (pedido de 2026-09-02) — só na PRIMEIRA vez que este navegador
+// abre o painel (localStorage, por navegador — não por usuário: reinstalar
+// no celular ou trocar de PC mostra de novo, e não incomoda quem já viu).
+function verificarTourPrimeiraVez() {
+  try {
+    if (localStorage.getItem('portotec-tour-visto') === '1') return;
+  } catch (e) { return; }
+  const corpo = document.getElementById('tour-corpo');
+  if (corpo) {
+    corpo.innerHTML = `
+      <p class="ajuda-texto" style="margin-bottom:10px;">Um resumo rápido antes de começar:</p>
+      <div class="ajuda-item"><div class="ajuda-pergunta">🔔 Sino de notificações</div>
+        <div class="ajuda-resposta">Peça pendente, cliente esperando agendamento, erro do sistema — tudo num lugar só, no header.</div></div>
+      <div class="ajuda-item"><div class="ajuda-pergunta">☀️ Tema claro/escuro</div>
+        <div class="ajuda-resposta">Botão de sol/lua ao lado do sino, se o escuro incomodar.</div></div>
+      <div class="ajuda-item"><div class="ajuda-pergunta">❓ Ajuda</div>
+        <div class="ajuda-resposta">O botão de interrogação abre este mesmo tipo de resumo, com perguntas frequentes, a qualquer momento.</div></div>`;
+  }
+  document.getElementById('modal-tour')?.classList.add('open');
+}
+
+function fecharTour() {
+  try { localStorage.setItem('portotec-tour-visto', '1'); } catch (e) {}
+  fecharModais();
 }
 
 function _renderMensagemChatDiag(m) {
@@ -2365,10 +2556,54 @@ async function copiarTexto(txt) {
   }
 }
 
+// Cache local em IndexedDB (pedido de 2026-09-02, "abrir mais rápido em
+// conexão ruim") — NÃO muda o caminho feliz: com internet normal, sempre usa
+// a resposta fresca do servidor, igual sempre foi. Só entra em cena quando a
+// rede falha (offline, timeout, Railway fora do ar por um instante) — nesse
+// caso mostra o último dado bom conhecido em vez de tela de erro.
+const _IDB_NOME = 'portotec-cache', _IDB_STORE = 'respostas';
+function _idbAbrir() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(_IDB_NOME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(_IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function _idbGet(chave) {
+  const db = await _idbAbrir();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(_IDB_STORE, 'readonly').objectStore(_IDB_STORE).get(chave);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function _idbSet(chave, valor) {
+  const db = await _idbAbrir();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(_IDB_STORE, 'readwrite').objectStore(_IDB_STORE).put(valor, chave);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+async function _apiComCache(path) {
+  try {
+    const fresco = await api(path);
+    _idbSet(path, fresco).catch(() => {});
+    return fresco;
+  } catch (e) {
+    try {
+      const cache = await _idbGet(path);
+      if (cache !== undefined) return cache;
+    } catch (e2) { /* IndexedDB indisponível — segue com o erro original */ }
+    throw e;
+  }
+}
+
 async function carregarTecnicos() {
   const list = document.getElementById('sidebar-list');
   try {
-    tecnicos = await api('/tecnicos');
+    tecnicos = await _apiComCache('/tecnicos');
     carregarVisaoGeral(); // não espera — não trava o carregamento da sidebar
 
     if (tecnicos.length === 0) {
@@ -2568,6 +2803,11 @@ function _renderAlertasVisaoGeral(r) {
       texto: `atendimento${r.sem_setor !== 1 ? 's' : ''} sem setor classificado`,
       acao: () => abrirClassificacaoEmLote(),
     },
+    r.estoque_abaixo_minimo > 0 && {
+      n: r.estoque_abaixo_minimo,
+      texto: `peça${r.estoque_abaixo_minimo !== 1 ? 's' : ''} do estoque abaixo do mínimo`,
+      acao: () => switchMainTab('estoque'),
+    },
   ].filter(Boolean);
 
   if (!itens.length) { alvo.innerHTML = ''; return; }
@@ -2674,6 +2914,55 @@ function iniciarFiltroHistorico() {
   });
 }
 
+// Previsão de faturamento, comparativo de setor por mês e ranking de bairro
+// (pedido de 2026-09-02) — três relatórios de negócio numa rota só.
+async function carregarRelatoriosNegocio() {
+  const alvo = document.getElementById('relatorios-negocio');
+  if (!alvo) return;
+  let d;
+  try { d = await api('/relatorios/negocio'); } catch { alvo.innerHTML = ''; return; }
+
+  const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const p = d.previsao_faturamento || {};
+
+  const tabelaSetores = (d.comparativo_setores || []).length ? `
+    <div class="rel-neg-tabela-wrap">
+      <table class="estoque-hist-tabela">
+        <thead><tr><th>Mês</th>${(d.setores || []).map(s => `<th style="text-align:right;">${esc(s)}</th>`).join('')}</tr></thead>
+        <tbody>${d.comparativo_setores.map(l => `
+          <tr><td>${esc(l.mes)}</td>${(d.setores || []).map(s => `<td style="text-align:right;">${l[s] || 0}</td>`).join('')}</tr>
+        `).join('')}</tbody>
+      </table>
+    </div>` : '<p class="ajuda-texto">Sem dados de setor nos últimos 6 meses.</p>';
+
+  const listaBairros = (d.ranking_bairros || []).length ? `
+    <div class="rel-neg-bairros">
+      ${d.ranking_bairros.map(b => `
+        <div class="rel-neg-bairro-linha">
+          <span>${esc(b.local)}</span>
+          <div class="vg-setor-barra"><div class="vg-setor-preenchido" style="width:${Math.round((b.total / d.ranking_bairros[0].total) * 100)}%"></div></div>
+          <span class="cliente-detalhe-valor">${b.total}</span>
+        </div>`).join('')}
+    </div>` : '<p class="ajuda-texto">Sem OS com bairro cadastrado.</p>';
+
+  alvo.innerHTML = `
+    <div class="diag-secao" style="margin-top:20px;">Relatórios de negócio</div>
+    <div class="historico-stats" style="margin-bottom:14px;">
+      <div class="vg-stat">
+        <div class="vg-valor">${brl(p.valor)}</div>
+        <div class="vg-label">Previsão de faturamento (${esc(p.mes_referencia || '')})</div>
+      </div>
+      <div class="vg-stat">
+        <div class="vg-valor">${p.orcamentos || 0}</div>
+        <div class="vg-label">Orçamento${p.orcamentos !== 1 ? 's' : ''} aprovado${p.orcamentos !== 1 ? 's' : ''} este mês</div>
+      </div>
+    </div>
+    <div class="rel-neg-titulo">Atendimentos por setor (6 meses)</div>
+    ${tabelaSetores}
+    <div class="rel-neg-titulo" style="margin-top:14px;">De onde vêm os chamados</div>
+    ${listaBairros}`;
+}
+
 async function carregarHistorico() {
   const statsEl = document.getElementById('historico-stats');
   const listaEl = document.getElementById('historico-lista');
@@ -2707,6 +2996,8 @@ async function carregarHistorico() {
       </div>
     `;
 
+    carregarRelatoriosNegocio();
+
     if (fichas.length === 0) {
       listaEl.innerHTML = `
         <div class="historico-vazio">
@@ -2726,7 +3017,8 @@ async function carregarHistorico() {
           <div class="historico-item-meta">
             ${f.concluida_em ? `<span>${icone('calendario', 'icone-11')} ${formatarDataHora(f.concluida_em)}</span>` : ''}
             <span>${f.total_servicos} atendimento${f.total_servicos !== 1 ? 's' : ''}</span>
-            <span>${fmtKm(f.distancia_total)} km</span>
+            <span>${fmtKm(f.distancia_total)} km planejados</span>
+            <span id="km-real-${f.id}"></span>
             ${f.conciliada_em ? `<span class="conc-tag ok" style="font-size:8px;padding:2px 6px;">planilha ok</span>` : ''}
           </div>
         </div>
@@ -2735,6 +3027,18 @@ async function carregarHistorico() {
         </button>
       </div>
     `).join('');
+
+    // Km real por GPS (pedido de 2026-09-02) — busca depois, uma ficha de
+    // cada vez, sem travar a lista principal. Só existe a partir de quando
+    // rastreio_pings passou a ser gravado; rotas antigas ficam sem o dado,
+    // silenciosamente (não é erro, é ausência de histórico).
+    ordenadas.forEach(f => {
+      api(`/fichas/${f.id}/km-real`).then(r => {
+        if (r.km_real == null) return;
+        const el = document.getElementById(`km-real-${f.id}`);
+        if (el) el.textContent = `· ${fmtKm(r.km_real)} km reais`;
+      }).catch(() => {});
+    });
   } catch (e) {
     listaEl.innerHTML = `<div class="historico-vazio"><p>Falha ao carregar histórico.</p></div>`;
     console.error('Erro ao carregar histórico', e);
@@ -5742,6 +6046,14 @@ const DF_OPCOES = [
   { tipo: 'fazer_os',     rotulo: 'Fazer Ordem de Serviço', sub: 'dados + assinatura do cliente' },
   { tipo: 'nao_atendido', rotulo: 'Cliente Ausente / Não foi possível atender', sub: 'não deu para fazer, precisa remarcar' },
 ];
+
+// Mesma lista de static/tecnico.js — checklist obrigatório antes de fechar
+// OS em campo, pedido de 2026-09-02.
+const CHECKLIST_ITENS = [
+  'Testei o aparelho antes de sair',
+  'Expliquei pro cliente o que foi feito',
+  'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+];
 const DF_MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                     'Aparelho sem defeito', 'Sem acesso ao local'];
 
@@ -5936,8 +6248,11 @@ function escolherDesfecho(tipo) {
     // Código, nome e foto obrigatórios — mesma regra do app do técnico
     // (ver validarConfirmarDesfecho). Sem os três não dá pra cotar direito.
     extra.innerHTML = `<label class="form-label" for="df-codigo">Código da peça</label>
-      <input class="form-input" id="df-codigo" autocomplete="off"
-             placeholder="Ex: DE97-01234A" oninput="validarConfirmarDesfecho()">
+      <div class="campo-com-scan">
+        <input class="form-input" id="df-codigo" autocomplete="off"
+               placeholder="Ex: DE97-01234A" oninput="validarConfirmarDesfecho()">
+        ${temCameraScan() ? `<button type="button" class="btn-scan-codigo" title="Ler código de barras/QR pela câmera" onclick="abrirScanCodigo('df-codigo')">📷</button>` : ''}
+      </div>
       <label class="form-label" style="margin-top:10px;" for="df-nome-peca">Nome da peça</label>
       <input class="form-input" id="df-nome-peca" autocomplete="off"
              placeholder="Ex: Placa eletrônica" oninput="validarConfirmarDesfecho()">
@@ -5959,7 +6274,7 @@ function escolherDesfecho(tipo) {
       <label class="form-label" for="df-fos-nome">Nome do cliente</label>
       <input class="form-input" id="df-fos-nome" value="${esc(s.cliente || '')}" oninput="validarConfirmarDesfecho()">
       <label class="form-label" style="margin-top:10px;" for="df-fos-telefone">Telefone</label>
-      <input class="form-input" id="df-fos-telefone" value="${esc(s.telefone || '')}">
+      <input class="form-input" id="df-fos-telefone" value="${esc(s.telefone || '')}" oninput="formatarTelefone(this)">
       <div class="form-row" style="margin-top:10px;">
         <div class="form-group"><label class="form-label" for="df-fos-aparelho">Aparelho</label>
           <input class="form-input" id="df-fos-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
@@ -5983,6 +6298,14 @@ function escolherDesfecho(tipo) {
         ${Object.entries(TIPOS_OS_ROTULO).map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}
       </select>
       ${blocoFotoPainel('Foto do produto', 'Opcional — registra o estado do aparelho na hora do fechamento.')}
+      <label class="form-label" style="margin-top:14px;">Checklist antes de fechar <span class="df-obrigatorio">*</span></label>
+      <div class="t-df-checklist">
+        ${CHECKLIST_ITENS.map((item, i) => `
+          <label class="t-df-checklist-item">
+            <input type="checkbox" data-checklist-painel="${i}" onchange="validarConfirmarDesfecho()">
+            ${esc(item)}
+          </label>`).join('')}
+      </div>
       <label class="form-label" style="margin-top:14px;">Assinatura do cliente <span class="df-obrigatorio">*</span></label>
       <p class="df-ajuda">Peça pro cliente assinar aqui com o dedo ou o mouse.</p>
       <canvas id="df-assinatura-canvas" class="df-assinatura-canvas"></canvas>
@@ -6004,7 +6327,7 @@ function escolherDesfecho(tipo) {
       <label class="form-label" for="df-orc-nome">Nome do cliente</label>
       <input class="form-input" id="df-orc-nome" value="${esc(s.cliente || '')}" oninput="validarConfirmarDesfecho()">
       <label class="form-label" style="margin-top:10px;" for="df-orc-telefone">Telefone</label>
-      <input class="form-input" id="df-orc-telefone" value="${esc(s.telefone || '')}">
+      <input class="form-input" id="df-orc-telefone" value="${esc(s.telefone || '')}" oninput="formatarTelefone(this)">
       <div class="form-row" style="margin-top:10px;">
         <div class="form-group"><label class="form-label" for="df-orc-aparelho">Aparelho</label>
           <input class="form-input" id="df-orc-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
@@ -6046,7 +6369,9 @@ function validarConfirmarDesfecho() {
     // Trava por nome do cliente + assinatura de verdade — sem isso não tem
     // o que documentar (mesma regra da tela do técnico).
     const nome = document.getElementById('df-fos-nome')?.value.trim();
-    ok = !!(nome && _dfAssinaturaTemTraco);
+    const checks = document.querySelectorAll('[data-checklist-painel]');
+    const checklistOk = checks.length > 0 && Array.from(checks).every(c => c.checked);
+    ok = !!(nome && _dfAssinaturaTemTraco && checklistOk);
   } else if (_dfTipo === 'orcamento') {
     const nome = document.getElementById('df-orc-nome')?.value.trim();
     ok = !!(nome && _dfAssinaturaTemTraco);
@@ -6081,6 +6406,9 @@ async function confirmarDesfecho() {
     desfecho.solucao_os = document.getElementById('df-fos-solucao')?.value.trim() || '';
     desfecho.forma_pagamento = document.getElementById('df-fos-pagamento')?.value || '';
     desfecho.tipo_os = document.getElementById('df-fos-tipo-os')?.value || '';
+    desfecho.checklist = JSON.stringify(CHECKLIST_ITENS.map((item, i) => ({
+      item, marcado: !!document.querySelector(`[data-checklist-painel="${i}"]`)?.checked,
+    })));
     if (_dfFoto) desfecho.foto_produto = _dfFoto;
     if (_dfAssinaturaTemTraco && _dfAssinaturaCanvas) desfecho.assinatura = _dfAssinaturaCanvas.toDataURL('image/png');
   }
@@ -6648,6 +6976,29 @@ async function abrirClienteDetalhe(clienteId) {
   const enderecoCompleto = [endereco, c.bairro].filter(Boolean).join(', ');
   const localCompleto = [cidadeUf, c.cep].filter(Boolean).join(' · CEP ');
 
+  // Aparelhos recorrentes (pedido de 2026-09-02): não é cadastro à parte —
+  // já dá pra derivar de toda OS que esse cliente já teve, agrupando por
+  // tipo+modelo. Ver o histórico completo bate o olho mais rápido que abrir
+  // OS por OS pra descobrir "ele já trouxe essa geladeira antes?".
+  const aparelhosMap = new Map();
+  (r.ordens_servico || []).forEach(o => {
+    if (!o.tipo_aparelho) return;
+    const chave = `${o.tipo_aparelho}|${o.modelo || ''}`;
+    const atual = aparelhosMap.get(chave)
+      || { tipo: o.tipo_aparelho, modelo: o.modelo, vezes: 0, osId: o.id, defeito: o.defeito_declarado };
+    atual.vezes += 1;
+    aparelhosMap.set(chave, atual);
+  });
+  const aparelhosHtml = aparelhosMap.size ? `
+    <div class="cliente-detalhe-secao">Aparelhos já atendidos</div>
+    <div class="cliente-aparelhos-lista">
+      ${Array.from(aparelhosMap.values()).map(a => `
+        <div class="cliente-aparelho-item" onclick="abrirOSDetalhe(${a.osId})" title="Ver a última OS deste aparelho">
+          <div class="cliente-aparelho-nome">${esc(a.tipo)}${a.modelo ? ' · ' + esc(a.modelo) : ''}</div>
+          <div class="cliente-aparelho-meta">${a.vezes}x atendido${a.vezes !== 1 ? 's' : ''}${a.defeito ? ' · ' + esc(a.defeito) : ''}</div>
+        </div>`).join('')}
+    </div>` : '';
+
   document.getElementById('cliente-detalhe-corpo').innerHTML = `
     ${linha('CPF/CNPJ', c.cpf_cnpj)}
     ${linhaEditavelCliente('Telefone', 'telefone', c.telefone)}
@@ -6663,7 +7014,8 @@ async function abrirClienteDetalhe(clienteId) {
     <div class="cliente-detalhe-linha">
       <span class="cliente-detalhe-rotulo">Ordens de serviço</span>
       <span class="cliente-detalhe-valor">${r.ordens_servico.length}</span>
-    </div>`;
+    </div>
+    ${aparelhosHtml}`;
 }
 
 // Edição inline (pedido de 2026-09-02): telefone e observação são os campos
@@ -7097,6 +7449,7 @@ async function abrirModalNovaOS() {
   document.querySelectorAll('#modal-nova-os .os-imp-campo').forEach(chk => { chk.checked = true; });
   document.getElementById('os-cep-status').textContent = '';
   _osCepUltimo = '';
+  _osCepValido = null;
   document.getElementById('os-busca-cliente').value = '';
   document.getElementById('os-resultado-cliente').innerHTML = '';
   document.getElementById('os-historico-cliente').innerHTML = '';
@@ -7307,12 +7660,17 @@ function _renderItensOrcamentoNovo() {
 }
 
 let _osCepUltimo = '';
+// Validação de verdade do CEP (pedido de 2026-09-02) — antes só formatava/
+// autocompletava; agora um CEP inexistente barra salvar a OS (cliente NOVO).
+// null = campo vazio (não obrigatório) ou ainda não conferido.
+let _osCepValido = null;
 
 async function osBuscarCep(valor) {
   const cep = (valor || '').replace(/\D/g, '');
   const status = document.getElementById('os-cep-status');
   if (cep.length !== 8) {
     status.textContent = '';
+    _osCepValido = cep.length === 0 ? null : false;   // meio digitado = inválido até completar
     return;
   }
   if (cep === _osCepUltimo) return;  // já buscou esse CEP, não repete a toa
@@ -7326,11 +7684,16 @@ async function osBuscarCep(valor) {
     document.getElementById('os-cidade').value = r.cidade || '';
     document.getElementById('os-estado').value = r.estado || '';
     status.textContent = r.endereco ? '' : 'CEP achado, mas sem rua (preencha na mão)';
+    _osCepValido = true;
     // Foco vai pro número: é o único dado que o CEP nunca traz, e a pessoa
     // já está com a mão no teclado — economiza um clique.
     document.getElementById('os-numero').focus();
   } catch {
-    status.textContent = 'CEP não encontrado — preencha o endereço na mão';
+    // Validação de verdade (pedido de 2026-09-02): antes só avisava e deixava
+    // passar — um CEP que não existe vira endereço errado pro roteiro do
+    // técnico. Agora barra salvar (ver osCriar) em vez de só sugerir.
+    status.textContent = 'CEP não encontrado — confira o número (isso vai travar salvar a OS)';
+    _osCepValido = false;
   }
 }
 
@@ -7524,6 +7887,14 @@ async function osCriar() {
     const nome = document.getElementById('os-nome').value.trim();
     if (!nome) {
       toast('Informe o nome do cliente', 'error');
+      return;
+    }
+    // Validação de verdade do CEP (pedido de 2026-09-02) — se tem CEP
+    // digitado, ele PRECISA existir de verdade (achado no ViaCEP); campo
+    // vazio continua permitido (nem todo cliente sabe o CEP na hora).
+    if (_osCepValido === false) {
+      toast('CEP não encontrado — confira o número ou apague o campo', 'error');
+      document.getElementById('os-cep').focus();
       return;
     }
     corpo.cliente_novo = {
@@ -9695,6 +10066,57 @@ function g2(n) {
   return (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 }
 
+// Ler código de barras/QR de uma peça pela câmera e jogar num campo
+// qualquer (pedido de 2026-09-02) — mesma técnica do bipar de nota fiscal
+// (BarcodeDetector nativo), só que genérico: qualquer código, em qualquer
+// campo, sem exigir 44 dígitos nem abrir o fluxo de entrada de estoque.
+function temCameraScan() {
+  return ('BarcodeDetector' in window) && !!navigator.mediaDevices?.getUserMedia;
+}
+
+let _scanCamera = null;
+
+async function abrirScanCodigo(inputId) {
+  const modal = document.getElementById('modal-scan-codigo');
+  if (!modal) return;
+  modal.dataset.alvo = inputId;
+  modal.classList.add('open');
+  const video = document.getElementById('scan-codigo-video');
+  try {
+    const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'qr_code'] });
+    _scanCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = _scanCamera;
+    await video.play();
+    const tick = async () => {
+      if (!_scanCamera) return;
+      try {
+        const cods = await detector.detect(video);
+        if (cods.length) {
+          const alvo = document.getElementById(modal.dataset.alvo);
+          if (alvo) {
+            alvo.value = cods[0].rawValue;
+            alvo.dispatchEvent(new Event('input'));
+          }
+          fecharScanCodigo();
+          return;
+        }
+      } catch { /* frame ruim: tenta o próximo */ }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  } catch (e) {
+    toast('Não consegui abrir a câmera.', 'error');
+    fecharScanCodigo();
+  }
+}
+
+function fecharScanCodigo() {
+  if (_scanCamera) { _scanCamera.getTracks().forEach(t => t.stop()); _scanCamera = null; }
+  const video = document.getElementById('scan-codigo-video');
+  if (video) video.srcObject = null;
+  document.getElementById('modal-scan-codigo')?.classList.remove('open');
+}
+
 async function abrirBiparNota() {
   biparItens = []; biparChave = '';
   biparNavId = null;
@@ -9970,6 +10392,7 @@ function fecharModais() {
   // Fechar por fora (clique no fundo / Esc) também precisa soltar a câmera do
   // bipar — senão a luz da câmera fica acesa com o modal já fechado.
   if (typeof _pararCameraBipar === 'function') _pararCameraBipar();
+  if (_scanCamera) { _scanCamera.getTracks().forEach(t => t.stop()); _scanCamera = null; }
 }
 
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
@@ -10208,9 +10631,12 @@ function _atRenderizarDesfechos(r) {
     </button>`).join('');
 
   const buscaHtml = `
-    <div class="form-group" style="margin-bottom:10px;">
-      <input class="form-input" id="at-busca" placeholder="Buscar por nome do cliente..."
-             value="${esc(_atBuscaRaw)}" oninput="atBuscarNome(this.value)">
+    <div class="form-group" style="margin-bottom:10px;display:flex;gap:8px;align-items:flex-end;">
+      <div style="flex:1;">
+        <input class="form-input" id="at-busca" placeholder="Buscar por nome do cliente..."
+               value="${esc(_atBuscaRaw)}" oninput="atBuscarNome(this.value)">
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" onclick="abrirNovoPedidoManual()">+ Novo pedido</button>
     </div>`;
 
   const atendimentos = _atBusca
@@ -10380,6 +10806,96 @@ function removerAtendimento(chave) {
   }, () => {
     if (linha) { linha.style.opacity = '1'; linha.style.pointerEvents = ''; }
   });
+}
+
+// Novo pedido de peça MANUAL, sem vir de désfecho de técnico (pedido de
+// 2026-09-02) — cliente existente (busca) ou novo (nome+telefone).
+let _pmModo = 'existente';
+let _pmClienteSelecionado = null;
+let _pmBuscaTimer = null;
+
+function abrirNovoPedidoManual() {
+  _pmModo = 'existente';
+  _pmClienteSelecionado = null;
+  document.getElementById('pm-modo-existente').classList.add('ativa');
+  document.getElementById('pm-modo-novo').classList.remove('ativa');
+  document.getElementById('pm-cliente-existente').style.display = '';
+  document.getElementById('pm-cliente-novo').style.display = 'none';
+  document.getElementById('pm-busca-cliente').value = '';
+  document.getElementById('pm-resultado-cliente').innerHTML = '';
+  document.getElementById('pm-nome-novo').value = '';
+  document.getElementById('pm-telefone-novo').value = '';
+  document.getElementById('pm-peca').value = '';
+  document.getElementById('pm-descricao').value = '';
+  document.getElementById('modal-pedido-manual').classList.add('open');
+  pedidoManualValidar();
+}
+
+function pedidoManualEscolherModo(modo) {
+  _pmModo = modo;
+  document.getElementById('pm-modo-existente').classList.toggle('ativa', modo === 'existente');
+  document.getElementById('pm-modo-novo').classList.toggle('ativa', modo === 'novo');
+  document.getElementById('pm-cliente-existente').style.display = modo === 'existente' ? '' : 'none';
+  document.getElementById('pm-cliente-novo').style.display = modo === 'novo' ? '' : 'none';
+  pedidoManualValidar();
+}
+
+function pedidoManualBuscarCliente(termo) {
+  clearTimeout(_pmBuscaTimer);
+  const alvo = document.getElementById('pm-resultado-cliente');
+  if (!termo || termo.trim().length < 2) { alvo.innerHTML = ''; return; }
+  _pmBuscaTimer = setTimeout(async () => {
+    let r;
+    try { r = await api(`/clientes?busca=${encodeURIComponent(termo.trim())}`); }
+    catch (e) { alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`; return; }
+    alvo.innerHTML = !r.clientes.length
+      ? `<p class="ajuda-texto" style="margin-top:8px;">Ninguém encontrado — use "Cliente novo".</p>`
+      : r.clientes.map(c => `
+        <div class="os-resultado-item${_pmClienteSelecionado?.id === c.id ? ' selecionado' : ''}"
+             onclick='pedidoManualSelecionarCliente(${c.id}, ${JSON.stringify(c.nome)})'>${esc(c.nome)}</div>`).join('');
+  }, 300);
+}
+
+function pedidoManualSelecionarCliente(id, nome) {
+  _pmClienteSelecionado = { id, nome };
+  document.getElementById('pm-busca-cliente').value = nome;
+  document.getElementById('pm-resultado-cliente').innerHTML = '';
+  pedidoManualValidar();
+}
+
+function pedidoManualValidar() {
+  const peca = document.getElementById('pm-peca')?.value.trim();
+  const clienteOk = _pmModo === 'existente'
+    ? !!_pmClienteSelecionado
+    : !!document.getElementById('pm-nome-novo')?.value.trim();
+  const btn = document.getElementById('pm-confirmar');
+  if (btn) btn.disabled = !(peca && clienteOk);
+}
+
+async function confirmarPedidoManual() {
+  const corpo = {
+    peca: document.getElementById('pm-peca').value.trim(),
+    descricao: document.getElementById('pm-descricao').value.trim(),
+  };
+  if (_pmModo === 'existente') {
+    corpo.cliente_id = _pmClienteSelecionado.id;
+  } else {
+    corpo.cliente_novo = {
+      nome: document.getElementById('pm-nome-novo').value.trim(),
+      telefone: document.getElementById('pm-telefone-novo').value.trim(),
+    };
+  }
+  const btn = document.getElementById('pm-confirmar');
+  btn.disabled = true;
+  try {
+    await api('/pedidos-peca-os/manual', { method: 'POST', body: JSON.stringify(corpo) });
+    toast('Pedido criado', 'success');
+    fecharModais();
+    carregarDesfechos();
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false;
+  }
 }
 
 // Ações em lote em "Precisam de peça" (pedido de 2026-09-02): marcar vários

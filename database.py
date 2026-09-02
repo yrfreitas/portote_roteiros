@@ -1082,6 +1082,43 @@ _MIGRACOES_PG = [
     # de peça avulsa, conserto atrasado, abandono), sem relação com
     # agendamento de visita.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS status_loja TEXT",
+
+    # Leva de pedidos de 2026-09-02 (backlog de ideias que o Kalebe foi
+    # guardando ao longo da sessão — ver memória de projeto). Anexo no chat:
+    # mesmo padrão de foto em base64 já usado em servico_foto/pedido_peca_os,
+    # sem storage externo.
+    "ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS anexo TEXT",
+    "ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS anexo_nome TEXT",
+    "ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS anexo_tipo TEXT",
+    # Checklist do desfecho (JSON: [{item, marcado}]) — obrigatório por tipo
+    # de aparelho antes de fechar a OS em campo.
+    "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS checklist TEXT",
+    # SOS do técnico: tecnico_status já existe como "estado atual" (não
+    # histórico) — o SOS é exatamente esse tipo de dado, então entra ali
+    # em vez de criar tabela nova.
+    "ALTER TABLE tecnico_status ADD COLUMN IF NOT EXISTS sos_ativo BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE tecnico_status ADD COLUMN IF NOT EXISTS sos_em TEXT",
+    "ALTER TABLE tecnico_status ADD COLUMN IF NOT EXISTS sos_lat DOUBLE PRECISION",
+    "ALTER TABLE tecnico_status ADD COLUMN IF NOT EXISTS sos_lng DOUBLE PRECISION",
+    # Log de exportação (LGPD/rastreabilidade) — quem baixou o quê e quando.
+    """CREATE TABLE IF NOT EXISTS log_exportacoes (
+        id         SERIAL PRIMARY KEY,
+        usuario    TEXT,
+        rota       TEXT NOT NULL,
+        detalhe    TEXT,
+        criado_em  TEXT
+    )""",
+    # Histórico de posição do técnico (rastreios só guarda a ÚLTIMA) — pra
+    # calcular quilometragem REAL rodada (soma de trecho a trecho) vs a
+    # planejada (fichas.distancia_total). Poda própria: sem isso a tabela
+    # cresce pra sempre (um ping a cada poucos segundos, o dia inteiro).
+    """CREATE TABLE IF NOT EXISTS rastreio_pings (
+        id         SERIAL PRIMARY KEY,
+        token      TEXT NOT NULL,
+        lat        DOUBLE PRECISION,
+        lng        DOUBLE PRECISION,
+        criado_em  TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1302,7 +1339,40 @@ _MIGRACOES_SQLITE = [
     )""",
     "ALTER TABLE ordens_servico ADD COLUMN balcao_em TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN status_loja TEXT",
+
+    "ALTER TABLE mensagens ADD COLUMN anexo TEXT",
+    "ALTER TABLE mensagens ADD COLUMN anexo_nome TEXT",
+    "ALTER TABLE mensagens ADD COLUMN anexo_tipo TEXT",
+    "ALTER TABLE servico_desfecho ADD COLUMN checklist TEXT",
+    "ALTER TABLE tecnico_status ADD COLUMN sos_ativo INTEGER DEFAULT 0",
+    "ALTER TABLE tecnico_status ADD COLUMN sos_em TEXT",
+    "ALTER TABLE tecnico_status ADD COLUMN sos_lat REAL",
+    "ALTER TABLE tecnico_status ADD COLUMN sos_lng REAL",
+    """CREATE TABLE IF NOT EXISTS log_exportacoes (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario    TEXT,
+        rota       TEXT NOT NULL,
+        detalhe    TEXT,
+        criado_em  TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS rastreio_pings (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        token      TEXT NOT NULL,
+        lat        REAL,
+        lng        REAL,
+        criado_em  TEXT
+    )""",
 ]
+
+
+def registrar_exportacao(conn, usuario: str, rota: str, detalhe: str = "") -> None:
+    """Log de quem exportou o quê e quando (pedido de 2026-09-02, LGPD/
+    rastreabilidade) — export de dados de cliente é o tipo de coisa que
+    precisa de "quem pegou isso e quando" se um dia alguém perguntar."""
+    execute(conn, sql(
+        "INSERT INTO log_exportacoes (usuario, rota, detalhe, criado_em) "
+        "VALUES (?, ?, ?, ?)"),
+        (usuario, rota, detalhe[:300], datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
 
 def sincronizar_sequences(conn):

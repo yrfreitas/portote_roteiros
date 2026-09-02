@@ -28,22 +28,59 @@ chat_bp = Blueprint("chat", __name__)
 # Texto maior que isso é engano ou abuso — e a caixa do chat nem comporta.
 TAMANHO_MAXIMO = 1000
 
+# Anexo em base64 direto na coluna (mesmo padrão de servico_foto/pedido_peca_os
+# — sem storage externo). 4MB de base64 já cobre um PDF de nota comum sem
+# deixar a tabela mensagens pesada demais.
+ANEXO_MAXIMO = 4 * 1024 * 1024
+_TIPOS_ANEXO_ACEITOS = ("image/", "application/pdf")
+
 _ATIVO = "ativo IS TRUE" if IS_PG else "ativo = 1"
+
+# "Digitando..." (pedido de 2026-09-02) — estado EFÊMERO, não precisa de
+# tabela: um dict em memória do processo já resolve (mesma lógica do
+# flask-limiter em extensions.py, só funciona certo com 1 worker, que é o
+# que o Procfile já usa). Guarda {(sala, autor_tipo ou nome): timestamp}.
+_digitando: dict = {}
+_JANELA_DIGITANDO = 4  # segundos — tempo que "digitando" fica valendo sem novo ping
+
+
+def _marcar_digitando(chave) -> None:
+    _digitando[chave] = datetime.now(timezone.utc).timestamp()
+
+
+def _esta_digitando(chave) -> bool:
+    t = _digitando.get(chave)
+    return bool(t and (datetime.now(timezone.utc).timestamp() - t) < _JANELA_DIGITANDO)
 
 
 def _agora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _anexo_valido(anexo):
+    if not isinstance(anexo, str) or not anexo.startswith("data:"):
+        return False
+    if len(anexo) > ANEXO_MAXIMO:
+        return False
+    return any(anexo.startswith(f"data:{t}") for t in _TIPOS_ANEXO_ACEITOS)
+
+
 def publicar(conn, sala: str, texto: str, autor_tipo: str = "sistema",
-             autor_nome: str = "Porto Tec") -> None:
+             autor_nome: str = "Porto Tec", anexo=None, anexo_nome=None) -> None:
     """Grava uma mensagem. Usado também pelo aviso automático de "a caminho",
     por isso recebe a conexão de fora — para entrar na mesma transação de quem
     chamou, e não sobrar mensagem de um rastreio que falhou ao ser criado."""
+    anexo_tipo = None
+    if anexo and not _anexo_valido(anexo):
+        anexo = None
+    elif anexo:
+        anexo_tipo = anexo.split(";")[0].replace("data:", "")
     execute(conn, """
-        INSERT INTO mensagens (sala, autor_tipo, autor_nome, texto, criado_em)
-        VALUES (?, ?, ?, ?, ?)
-    """, (sala, autor_tipo, autor_nome, texto[:TAMANHO_MAXIMO], _agora()))
+        INSERT INTO mensagens (sala, autor_tipo, autor_nome, texto, criado_em,
+                                anexo, anexo_nome, anexo_tipo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (sala, autor_tipo, autor_nome, texto[:TAMANHO_MAXIMO], _agora(),
+          anexo, (anexo_nome or "")[:150] if anexo else None, anexo_tipo))
 
 
 def _rastreio_da_sala(conn, sala: str):
@@ -74,20 +111,24 @@ def ler(sala):
             return jsonify({"erro": "Conversa não encontrada"}), 404
 
         linhas = fetch_all(conn, """
-            SELECT id, autor_tipo, autor_nome, texto, criado_em
+            SELECT id, autor_tipo, autor_nome, texto, criado_em,
+                   anexo, anexo_nome, anexo_tipo
               FROM mensagens WHERE sala = ? AND id > ?
              ORDER BY id
         """, (sala, desde))
 
     return jsonify({"mensagens": linhas,
-                    "ultimo_id": linhas[-1]["id"] if linhas else desde})
+                    "ultimo_id": linhas[-1]["id"] if linhas else desde,
+                    "outro_digitando": _esta_digitando((sala, "empresa"))})
 
 
 @chat_bp.route("/chat/<sala>", methods=["POST"])
 def escrever(sala):
     """O cliente manda mensagem. Também público, mesmo motivo."""
-    texto = ((request.get_json(silent=True) or {}).get("texto") or "").strip()
-    if not texto:
+    dados = request.get_json(silent=True) or {}
+    texto = (dados.get("texto") or "").strip()
+    anexo = dados.get("anexo")
+    if not texto and not anexo:
         return jsonify({"erro": "Escreva alguma coisa"}), 400
 
     with db_conn(commit=True) as conn:
@@ -96,9 +137,21 @@ def escrever(sala):
             return jsonify({"erro": "Conversa não encontrada"}), 404
 
         publicar(conn, sala, texto, autor_tipo="cliente",
-                 autor_nome=r.get("cliente") or "Cliente")
+                 autor_nome=r.get("cliente") or "Cliente",
+                 anexo=anexo, anexo_nome=dados.get("anexo_nome"))
 
     return jsonify({"ok": True}), 201
+
+
+@chat_bp.route("/chat/<sala>/digitando", methods=["POST"])
+def sinalizar_digitando(sala):
+    """Ping efêmero de "estou digitando" — público, cliente ou empresa (o
+    autor vem no corpo porque essa rota não sabe quem está logado)."""
+    autor = ((request.get_json(silent=True) or {}).get("autor") or "").strip()
+    if autor not in ("cliente", "empresa"):
+        return jsonify({"erro": "autor inválido"}), 400
+    _marcar_digitando((sala, autor))
+    return jsonify({"ok": True})
 
 
 # ─── Lado da EMPRESA (painel, exige login) ──────────────────────────────
@@ -150,8 +203,10 @@ def responder(sala):
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
 
-    texto = ((request.get_json(silent=True) or {}).get("texto") or "").strip()
-    if not texto:
+    dados = request.get_json(silent=True) or {}
+    texto = (dados.get("texto") or "").strip()
+    anexo = dados.get("anexo")
+    if not texto and not anexo:
         return jsonify({"erro": "Escreva alguma coisa"}), 400
 
     autor = session.get("usuario_nome") or "Porto Tec"
@@ -159,7 +214,8 @@ def responder(sala):
     with db_conn(commit=True) as conn:
         if not _rastreio_da_sala(conn, sala):
             return jsonify({"erro": "Conversa não encontrada"}), 404
-        publicar(conn, sala, texto, autor_tipo="empresa", autor_nome=autor)
+        publicar(conn, sala, texto, autor_tipo="empresa", autor_nome=autor,
+                 anexo=anexo, anexo_nome=dados.get("anexo_nome"))
         execute(conn, f"""
             UPDATE mensagens SET lida = {'TRUE' if IS_PG else '1'}
              WHERE sala = ? AND autor_tipo = 'cliente'
@@ -218,7 +274,8 @@ SALA_EQUIPE = "equipe"
 def _mensagens_equipe(desde: int):
     with db_conn() as conn:
         return fetch_all(conn, """
-            SELECT id, autor_tipo, autor_nome, texto, criado_em
+            SELECT id, autor_tipo, autor_nome, texto, criado_em,
+                   anexo, anexo_nome, anexo_tipo
               FROM mensagens WHERE sala = ? AND id > ?
              ORDER BY id
         """, (SALA_EQUIPE, desde))
@@ -236,8 +293,17 @@ def equipe_ler():
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
     linhas = _mensagens_equipe(_desde())
+    quem_sou_eu = session.get("usuario_nome") or "Administrador"
+    # Lista de quem mais está digitando AGORA, excluindo eu mesmo — no chat
+    # de equipe pode ter mais de uma pessoa, por isso é lista e não bool.
+    agora = datetime.now(timezone.utc).timestamp()
+    quem_digita = sorted({
+        nome for (s, nome), t in _digitando.items()
+        if s == SALA_EQUIPE and nome != quem_sou_eu and (agora - t) < _JANELA_DIGITANDO
+    })
     return jsonify({"mensagens": linhas,
-                    "ultimo_id": linhas[-1]["id"] if linhas else _desde()})
+                    "ultimo_id": linhas[-1]["id"] if linhas else _desde(),
+                    "digitando": quem_digita})
 
 
 @chat_bp.route("/equipe/mensagens", methods=["POST"])
@@ -245,12 +311,24 @@ def equipe_escrever():
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
 
-    texto = ((request.get_json(silent=True) or {}).get("texto") or "").strip()
-    if not texto:
+    dados = request.get_json(silent=True) or {}
+    texto = (dados.get("texto") or "").strip()
+    anexo = dados.get("anexo")
+    if not texto and not anexo:
         return jsonify({"erro": "Escreva alguma coisa"}), 400
 
     with db_conn(commit=True) as conn:
         publicar(conn, SALA_EQUIPE, texto,
                  autor_tipo=session.get("papel") or "admin",
-                 autor_nome=session.get("usuario_nome") or "Administrador")
+                 autor_nome=session.get("usuario_nome") or "Administrador",
+                 anexo=anexo, anexo_nome=dados.get("anexo_nome"))
     return jsonify({"ok": True}), 201
+
+
+@chat_bp.route("/equipe/digitando", methods=["POST"])
+def equipe_digitando():
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    nome = session.get("usuario_nome") or "Administrador"
+    _marcar_digitando((SALA_EQUIPE, nome))
+    return jsonify({"ok": True})

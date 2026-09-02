@@ -90,6 +90,43 @@ def almoco_status(token):
     return jsonify({"em_almoco": em_almoco, "desde": ultimo["quando"] if em_almoco else None})
 
 
+@tecnico_api_bp.route("/<token>/sos", methods=["POST"])
+def sos_ativar(token):
+    """SOS do técnico (pedido de 2026-09-02) — endereço perigoso, acidente,
+    imprevisto em campo. Grava em tecnico_status (é estado ATUAL, não
+    histórico — mesma tabela do ping de versão/GPS) e o escritório vê como
+    alerta prioritário no painel até alguém resolver."""
+    dados = request.get_json(silent=True) or {}
+    with db_conn(commit=True) as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        mudou = execute(conn, sql("""
+            UPDATE tecnico_status SET sos_ativo = ?, sos_em = ?, sos_lat = ?, sos_lng = ?
+             WHERE tecnico_id = ?
+        """), (True, agora, dados.get("lat"), dados.get("lng"), tecnico["id"]))
+        if not mudou:
+            execute(conn, sql("""
+                INSERT INTO tecnico_status (tecnico_id, sos_ativo, sos_em, sos_lat, sos_lng)
+                VALUES (?, ?, ?, ?, ?)
+            """), (tecnico["id"], True, agora, dados.get("lat"), dados.get("lng")))
+    return jsonify({"mensagem": "SOS registrado — o escritório foi avisado"}), 201
+
+
+@tecnico_api_bp.route("/<token>/sos", methods=["DELETE"])
+def sos_resolver(token):
+    """Escritório marca como resolvido (o técnico também pode, se foi engano)."""
+    with db_conn(commit=True) as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+        execute(conn, sql("""
+            UPDATE tecnico_status SET sos_ativo = ? WHERE tecnico_id = ?
+        """), (False, tecnico["id"]))
+    return jsonify({"mensagem": "SOS encerrado"})
+
+
 @tecnico_api_bp.route("/<token>/almoco/iniciar", methods=["POST"])
 def almoco_iniciar(token):
     with db_conn(commit=True) as conn:
@@ -654,6 +691,9 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
     # lá conhece ("cliente pediu para voltar de manhã", "tomada queimada").
     observacao = (desfecho.get("observacao") or "").strip()[:600]
     foto = desfecho.get("foto")
+    # Checklist do "Fazer OS" (pedido de 2026-09-02) — string JSON pronta,
+    # só limitando tamanho pra não virar campo livre gigante.
+    checklist = (desfecho.get("checklist") or "").strip()[:2000] or None
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Cotação de peça exige código, nome E foto — sem os três não é uma peça
@@ -672,9 +712,9 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
             (servico_id,))
     execute(conn, sql(
         "INSERT INTO servico_desfecho (servico_id, desfecho, motivo, peca, "
-        "codigo, observacao, registrado_em, registrado_por) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"),
-        (servico_id, tipo, motivo, peca, codigo, observacao, agora, quem))
+        "codigo, observacao, registrado_em, registrado_por, checklist) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+        (servico_id, tipo, motivo, peca, codigo, observacao, agora, quem, checklist))
 
     if tipo == "cotacao_peca":
         _criar_cotacao_do_desfecho(conn, servico_id, codigo, nome_peca, foto, quem)

@@ -106,6 +106,7 @@
         </button>
         <div class="notif-painel" id="notif-painel"></div>
       </div>
+      <button type="button" class="btn-tema" id="btn-ajuda" onclick="abrirAjuda()" title="Ajuda" aria-label="Ajuda">?</button>
       <button type="button" class="btn-tema" id="btn-tema" onclick="alternarTema()" title="Trocar tema claro/escuro" aria-label="Trocar tema">
         <svg class="icone-svg icone-16 icone-sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/></svg>
         <svg class="icone-svg icone-16 icone-lua" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -265,6 +266,8 @@
         <div class="tendencia-titulo">Tendência por técnico (8 semanas)</div>
         <div id="tendencia-lista"></div>
       </div>
+
+      <div id="relatorios-negocio"></div>
 
       <div id="historico-lista"></div>
     </div>
@@ -570,7 +573,7 @@
     <div class="estoque-mov-linha">
       <div class="form-group">
         <label class="form-label" for="venda-cliente-telefone">Telefone (opcional)</label>
-        <input type="text" class="form-input" id="venda-cliente-telefone" maxlength="20">
+        <input type="text" class="form-input" id="venda-cliente-telefone" maxlength="20" oninput="formatarTelefone(this)">
       </div>
       <div class="form-group">
         <label class="form-label" for="venda-cliente-cpf">CPF/CNPJ (opcional)</label>
@@ -1181,7 +1184,15 @@
     <small>Clientes que escreveram pelo link de acompanhamento</small>
   </div>
   <div class="chat-corpo" id="painel-chat-corpo"></div>
+  <div class="chat-digitando" id="painel-chat-digitando"></div>
+  <div class="chat-anexo-previa" id="painel-chat-anexo-previa" style="display:none;">
+    <span></span>
+    <button type="button" onclick="removerAnexoChat()" title="Remover anexo">✕</button>
+  </div>
   <form class="chat-envio" id="painel-chat-form" style="display:none;">
+    <label class="chat-anexo-botao" title="Anexar imagem ou PDF">
+      📎<input type="file" accept="image/*,application/pdf" onchange="escolherAnexoChat(this)" hidden>
+    </label>
     <input id="painel-chat-texto" placeholder="Responder..." autocomplete="off" maxlength="1000">
     <button type="submit">↑</button>
   </form>
@@ -1261,6 +1272,78 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-scan-codigo" role="dialog" aria-modal="true" aria-label="Ler código">
+  <div class="modal">
+    <div class="modal-title">Aponte a câmera pro código</div>
+    <video id="scan-codigo-video" class="scan-codigo-video" autoplay playsinline muted></video>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharScanCodigo()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-changelog" role="dialog" aria-modal="true" aria-label="O que mudou">
+  <div class="modal">
+    <div class="modal-title">O que mudou</div>
+    <div id="changelog-corpo-popup"><div class="ajuda-texto">Carregando...</div></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-pedido-manual" role="dialog" aria-modal="true" aria-label="Novo pedido de peça">
+  <div class="modal">
+    <div class="modal-title">Novo pedido de peça</div>
+    <p class="ajuda-texto" style="margin:0 0 12px;">Pra quando o pedido já nasce sabido, sem precisar vir de um atendimento de técnico.</p>
+
+    <label class="form-label">Cliente</label>
+    <div class="df-motivos" style="margin-bottom:8px;">
+      <button type="button" class="df-motivo ativa" id="pm-modo-existente" onclick="pedidoManualEscolherModo('existente')">Cliente existente</button>
+      <button type="button" class="df-motivo" id="pm-modo-novo" onclick="pedidoManualEscolherModo('novo')">Cliente novo</button>
+    </div>
+
+    <div id="pm-cliente-existente">
+      <input class="form-input" id="pm-busca-cliente" autocomplete="off" placeholder="Digite pra buscar..." oninput="pedidoManualBuscarCliente(this.value)">
+      <div id="pm-resultado-cliente"></div>
+    </div>
+    <div id="pm-cliente-novo" style="display:none;">
+      <input class="form-input" id="pm-nome-novo" placeholder="Nome do cliente" style="margin-bottom:8px;" oninput="pedidoManualValidar()">
+      <input class="form-input" id="pm-telefone-novo" placeholder="Telefone (opcional)" oninput="formatarTelefone(this)">
+    </div>
+
+    <label class="form-label" style="margin-top:14px;">Peça</label>
+    <input class="form-input" id="pm-peca" placeholder="Código ou nome da peça" oninput="pedidoManualValidar()">
+    <label class="form-label" style="margin-top:10px;">Observação (opcional)</label>
+    <textarea class="form-input" id="pm-descricao" rows="2"></textarea>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="pm-confirmar" disabled onclick="confirmarPedidoManual()">Criar pedido</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-ajuda" role="dialog" aria-modal="true" aria-label="Ajuda">
+  <div class="modal">
+    <div class="modal-title">Central de ajuda</div>
+    <div id="ajuda-corpo" class="ajuda-corpo"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-tour" role="dialog" aria-modal="true" aria-label="Bem-vindo">
+  <div class="modal">
+    <div class="modal-title">Bem-vindo ao painel da Porto Tec</div>
+    <div id="tour-corpo" class="ajuda-corpo"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" onclick="fecharTour()">Entendi, vamos lá</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-cliente-rapido" role="dialog" aria-modal="true" aria-label="Cadastrar cliente">
   <div class="modal">
     <div class="modal-title">Cadastrar cliente</div>
@@ -1274,7 +1357,7 @@
     </div>
     <div class="form-group">
       <label class="form-label" for="cliente-rapido-telefone">Telefone (opcional)</label>
-      <input class="form-input" id="cliente-rapido-telefone" autocomplete="off">
+      <input class="form-input" id="cliente-rapido-telefone" autocomplete="off" oninput="formatarTelefone(this)">
     </div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>
@@ -1375,7 +1458,7 @@
       </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label" for="os-telefone">Telefone</label>
-          <input class="form-input" id="os-telefone"></div>
+          <input class="form-input" id="os-telefone" oninput="formatarTelefone(this)"></div>
         <div class="form-group"><label class="form-label" for="os-email">E-mail</label>
           <input class="form-input" id="os-email"></div>
       </div>

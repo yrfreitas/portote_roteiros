@@ -258,13 +258,19 @@ def _gravar_posicao(conn, tecnico_id, lat, lng, precisao):
     a posição que chega é descartada, mesmo que o aplicativo continue ligado.
     """
     abertos = fetch_all(conn, f"""
-        SELECT ra.id, ra.criado_em, ra.servico_id FROM rastreios ra
+        SELECT ra.id, ra.criado_em, ra.servico_id, ra.token FROM rastreios ra
           JOIN servicos sv ON sv.id = ra.servico_id
          WHERE ra.tecnico_id = ? AND {_ATIVO} AND sv.status <> 'concluido'
     """, (tecnico_id,))
 
     vivos = [r for r in abertos if not _expirado(r.get("criado_em"))]
     for r in vivos:
+        # Histórico de posição (pedido de 2026-09-02, "km real vs planejado")
+        # — rastreios só guarda a ÚLTIMA posição; isto aqui é o traço todo,
+        # pra somar trecho a trecho depois (ver km_real_ficha em tecnicos.py).
+        execute(conn,
+            "INSERT INTO rastreio_pings (token, lat, lng, criado_em) VALUES (?, ?, ?, ?)",
+            (r.get("token") or "", lat, lng, _agora()))
         # A previsão é REFEITA a cada posição, a partir de onde o técnico está
         # de verdade. Antes ela era calculada uma única vez, na saída, medindo
         # da parada ANTERIOR da rota até o destino — o que produzia coisas como

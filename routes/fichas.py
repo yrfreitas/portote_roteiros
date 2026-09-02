@@ -8,7 +8,7 @@ from database import (db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id, sql)
 from services.geo import geocode_cep
 from services.otimizador import (
-    MINUTOS_PARADA, calcular_rota_fixa, calcular_tempo, otimizar_rota,
+    MINUTOS_PARADA, calcular_rota_fixa, calcular_tempo, haversine, otimizar_rota,
 )
 from services.push import notificar_tecnico
 
@@ -860,3 +860,39 @@ def recalcular_distancia_ordem_fixa(conn, ficha_id, ficha) -> dict:
         "tempo_minutos":   r["tempo_minutos"],
         "sem_coordenada":  len(servicos) - len(validos),
     }
+
+@fichas_bp.route("/fichas/<int:ficha_id>/km-real", methods=["GET"])
+def km_real_ficha(ficha_id):
+    """Quilometragem REAL, medida pelo GPS trecho a trecho (pedido de
+    2026-09-02), pra comparar com fichas.distancia_total (planejada).
+
+    Só existe a partir de quando rastreio_pings passou a ser gravado
+    (2026-09-02) — fichas concluídas antes disso não têm ping nenhum, e a
+    resposta diz isso em vez de fingir zero quilômetro rodado.
+    """
+    with db_conn() as conn:
+        tokens = fetch_all(conn, """
+            SELECT DISTINCT ra.token FROM rastreios ra
+              JOIN servicos sv ON sv.id = ra.servico_id
+             WHERE sv.ficha_id = ? AND ra.token IS NOT NULL
+        """, (ficha_id,))
+        if not tokens:
+            return jsonify({"km_real": None, "motivo": "sem rastreio nesta ficha"})
+
+        total_km = 0.0
+        tem_ping = False
+        for t in tokens:
+            pings = fetch_all(conn, """
+                SELECT lat, lng FROM rastreio_pings
+                 WHERE token = ? AND lat IS NOT NULL AND lng IS NOT NULL
+                 ORDER BY id
+            """, (t["token"],))
+            if len(pings) >= 2:
+                tem_ping = True
+            for i in range(1, len(pings)):
+                total_km += haversine(pings[i - 1]["lat"], pings[i - 1]["lng"],
+                                       pings[i]["lat"], pings[i]["lng"])
+
+    if not tem_ping:
+        return jsonify({"km_real": None, "motivo": "sem posição suficiente registrada"})
+    return jsonify({"km_real": round(total_km, 1)})

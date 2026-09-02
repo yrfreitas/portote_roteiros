@@ -250,6 +250,19 @@ def foto_tecnico(tecnico_id):
     return jsonify({"mensagem": "Foto atualizada" if foto else "Foto removida"})
 
 
+@tecnicos_bp.route("/tecnicos/<int:tecnico_id>/sos-resolver", methods=["PUT"])
+def sos_resolver_admin(tecnico_id):
+    """Escritório encerra o SOS pelo painel (pedido de 2026-09-02) — quem não
+    tem o link do técnico em mãos ainda precisa poder desligar o alerta."""
+    with db_conn(commit=True) as conn:
+        afetadas = execute(conn, sql(
+            "UPDATE tecnico_status SET sos_ativo = ? WHERE tecnico_id = ?"),
+            (False, tecnico_id))
+    if not afetadas:
+        return jsonify({"erro": "Técnico não encontrado"}), 404
+    return jsonify({"mensagem": "SOS encerrado"})
+
+
 @tecnicos_bp.route("/tecnicos/<int:tecnico_id>", methods=["DELETE"])
 def deletar_tecnico(tecnico_id):
     """Desativa em vez de apagar quando já tem ficha ligada — mesmo motivo do
