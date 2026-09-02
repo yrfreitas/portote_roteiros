@@ -574,6 +574,11 @@ def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     foto = _imagem_valida(desfecho.get("foto_produto"))
     token_cliente = secrets.token_urlsafe(24)
 
+    # Pedido de 2026-09-02: se o técnico já combinou o valor com o cliente na
+    # hora ("feito no local"), a OS já nasce com o item lançado e pronta pra
+    # aprovação — não precisa passar pelo escritório montar preço primeiro.
+    status_inicial = _status_orcamento(desfecho)
+
     os_id = insert_returning_id(conn, sql("""
         INSERT INTO ordens_servico
             (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
@@ -581,12 +586,41 @@ def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
              status, modelo_os, criado_em, criado_por, token_cliente)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """), (cliente_id, quem, tipo_aparelho, modelo, defeito, foto, assinatura,
-          tecnico_id, 0, "aguardando_orcamento", "orcamento", agora, quem, token_cliente))
+          tecnico_id, 0, status_inicial, "orcamento", agora, quem, token_cliente))
 
     execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
            (os_id, servico["id"]))
 
+    _lancar_item_orcamento_local(conn, os_id, desfecho, agora)
+
     return {"os_id": os_id, "token_cliente": token_cliente}
+
+
+def _status_orcamento(desfecho) -> str:
+    try:
+        local = bool(desfecho.get("orcamento_local")) and float(desfecho.get("valor_local") or 0) > 0
+    except (TypeError, ValueError):
+        local = False
+    return "aguardando_aprovacao" if local else "aguardando_orcamento"
+
+
+def _lancar_item_orcamento_local(conn, os_id, desfecho, agora):
+    """Se o técnico marcou "feito no local", lança o item de orçamento na
+    hora — do contrário a OS fica sem item nenhum, esperando o escritório
+    montar (comportamento de sempre)."""
+    if not desfecho.get("orcamento_local"):
+        return
+    try:
+        valor = float(desfecho.get("valor_local") or 0)
+    except (TypeError, ValueError):
+        valor = 0
+    if valor <= 0:
+        return
+    nome_item = (desfecho.get("item_local") or "").strip() or "Orçamento feito em campo"
+    execute(conn, sql("""
+        INSERT INTO ordem_servico_itens (ordem_servico_id, nome, valor, criado_em)
+        VALUES (?, ?, ?, ?)
+    """), (os_id, nome_item, valor, agora))
 
 
 def _atualizar_os_orcamento_existente(conn, ordem_servico_id, desfecho, quem):
@@ -595,7 +629,7 @@ def _atualizar_os_orcamento_existente(conn, ordem_servico_id, desfecho, quem):
     orçamento com o que o técnico levantou, sem finalizar nada."""
     agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     campos = ["modelo_os = ?", "status = ?", "atualizado_em = ?"]
-    valores = ["orcamento", "aguardando_orcamento", agora]
+    valores = ["orcamento", _status_orcamento(desfecho), agora]
 
     for campo_os, campo_desfecho in (("tipo_aparelho", "tipo_aparelho"),
                                       ("modelo", "modelo"),
@@ -624,6 +658,8 @@ def _atualizar_os_orcamento_existente(conn, ordem_servico_id, desfecho, quem):
 
     valores.append(ordem_servico_id)
     execute(conn, f"UPDATE ordens_servico SET {', '.join(campos)} WHERE id = ?", valores)
+
+    _lancar_item_orcamento_local(conn, ordem_servico_id, desfecho, agora)
 
     return {"os_id": ordem_servico_id, "token_cliente": token_cliente}
 

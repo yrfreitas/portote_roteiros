@@ -653,6 +653,11 @@
   let _desfechoServicoId = null;
   let _desfechoTipo = null;
   let _desfechoFoto = null;
+  // Desfecho "Orçamento" (pedido de 2026-09-02): o técnico pode já ter
+  // combinado o valor com o cliente na hora ("feito no local") em vez de
+  // sempre deixar pro escritório montar depois ("na base") — ver
+  // window._tEscolherModoOrcamento.
+  let _orcamentoModoLocal = false;
 
   // Reduz mantendo a imagem INTEIRA — sem recorte.
   //
@@ -968,7 +973,22 @@
       // é o escritório depois, por isso não pede solução nem forma de
       // pagamento aqui (ainda não existem, o orçamento nem foi feito).
       const s = (servicosAbertos || []).find(x => x.id === _desfechoServicoId) || {};
+      _orcamentoModoLocal = false;
       extra.innerHTML = `
+        <label class="t-df-rotulo">Onde vai ser feito o orçamento? <span class="t-df-obrigatorio">*</span></label>
+        <div class="t-df-motivos">
+          <button type="button" class="t-df-motivo ativa" data-modo="base"
+                  onclick="window._tEscolherModoOrcamento(this)">Fazer orçamento na base</button>
+          <button type="button" class="t-df-motivo" data-modo="local"
+                  onclick="window._tEscolherModoOrcamento(this)">Orçamento feito no local</button>
+        </div>
+        <div id="t-df-orc-valor-bloco" style="display:none;">
+          <label class="t-df-rotulo" for="t-df-orc-valor">Valor combinado com o cliente (R$)</label>
+          <input class="t-df-input" type="number" step="0.01" min="0.01" inputmode="decimal"
+                 id="t-df-orc-valor" oninput="window._tValidarConfirmar()">
+          <label class="t-df-rotulo" for="t-df-orc-item">O que foi orçado</label>
+          <input class="t-df-input" id="t-df-orc-item" placeholder="Ex: Troca do compressor">
+        </div>
         <label class="t-df-rotulo" for="t-df-orc-nome">Nome do cliente</label>
         <input class="t-df-input" id="t-df-orc-nome" value="${esc(s.cliente || '')}">
         <label class="t-df-rotulo" for="t-df-orc-telefone">Telefone</label>
@@ -1075,13 +1095,22 @@
       ok = !!(nome && _assinaturaTemTraco && checklistOk);
     } else if (_desfechoTipo === 'orcamento') {
       const nome = document.getElementById('t-df-orc-nome')?.value.trim();
-      ok = !!(nome && _assinaturaTemTraco);
+      const valorLocal = Number(document.getElementById('t-df-orc-valor')?.value);
+      ok = !!(nome && _assinaturaTemTraco && (!_orcamentoModoLocal || valorLocal > 0));
     } else if (_desfechoTipo === 'nao_atendido') {
       // Foto obrigatória — comprovante de que o técnico foi até o cliente.
       // Pedido de 2026-09-01, depois de reclamação sem comprovação.
       ok = !!_desfechoFoto;
     }
     btn.disabled = !ok;
+  };
+
+  window._tEscolherModoOrcamento = function (botao) {
+    document.querySelectorAll('#t-df-extra .t-df-motivo').forEach(b => b.classList.toggle('ativa', b === botao));
+    _orcamentoModoLocal = botao.dataset.modo === 'local';
+    const bloco = document.getElementById('t-df-orc-valor-bloco');
+    if (bloco) bloco.style.display = _orcamentoModoLocal ? '' : 'none';
+    window._tValidarConfirmar();
   };
 
   window._tEscolherMotivo = function (botao) {
@@ -1120,6 +1149,11 @@
       }
     }
     if (_desfechoTipo === 'orcamento') {
+      desfecho.orcamento_local = _orcamentoModoLocal;
+      if (_orcamentoModoLocal) {
+        desfecho.valor_local = Number(document.getElementById('t-df-orc-valor')?.value) || 0;
+        desfecho.item_local = document.getElementById('t-df-orc-item')?.value.trim() || '';
+      }
       desfecho.cliente_nome = document.getElementById('t-df-orc-nome')?.value.trim() || '';
       desfecho.cliente_telefone = document.getElementById('t-df-orc-telefone')?.value.trim() || '';
       desfecho.tipo_aparelho = document.getElementById('t-df-orc-aparelho')?.value.trim() || '';
@@ -1417,7 +1451,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v178';
+  const VERSAO_TELA = 'v179';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
