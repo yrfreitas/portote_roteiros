@@ -47,6 +47,13 @@
   --danger-dim:    rgba(248,113,113,0.10);
   --danger-text:   #fca5a5;
 
+  /* Faltavam tokens de texto pro ciano e pro cinza-azulado usados em
+     badges (peça enviada/marcada, criado) — por isso ficaram hardcoded
+     direto na regra em vez de var(), e por isso quebravam no tema claro
+     (mesma causa do --text acima). */
+  --cyan-text:  #7de3f4;
+  --muted-text: #b8c8de;
+
   --text-primary:   #eaf0fb;
   --text-secondary: #aebdd6;
   --text-muted:     #8496b3;
@@ -136,6 +143,9 @@
   --danger:        #dc2626;
   --danger-dim:    rgba(220,38,38,0.08);
   --danger-text:   #b91c1c;
+
+  --cyan-text:  #0e7490;
+  --muted-text: #475569;
 
   --text-primary:   #101828;
   --text-secondary: #3f4b63;
@@ -463,10 +473,10 @@ header {
   border-radius: 5px; font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .5px; white-space: nowrap;
 }
-.e-criado   { background: rgba(148,178,220,.12); color: #b8c8de; }
+.e-criado   { background: rgba(148,178,220,.12); color: var(--muted-text); }
 .e-aprovado { background: var(--accent-dim); color: var(--accent-text, #a6c8ff); }
 .e-faturado { background: var(--gold-dim); color: var(--gold-text, #fbd38d); }
-.e-enviado  { background: rgba(34,211,238,.14); color: #7de3f4; }
+.e-enviado  { background: rgba(34,211,238,.14); color: var(--cyan-text); }
 .e-chegou   { background: var(--success-dim); color: var(--success-text, #86efac); }
 
 .peca-linha.chegou { border-left-color: var(--accent-2, #22d3ee); }
@@ -529,7 +539,7 @@ header {
 .peca-chegou:hover { background: var(--bg-hover); color: var(--text, #e6edf7); }
 .peca-chegou.marcado {
   border-style: solid; border-color: var(--accent-2, #22d3ee);
-  background: rgba(34,211,238,.12); color: #7de3f4;
+  background: rgba(34,211,238,.12); color: var(--cyan-text);
 }
 .peca-chegou:disabled { opacity: .55; cursor: default; }
 
@@ -1503,7 +1513,7 @@ header::after {
   font-family: var(--font-mono);
   font-size: 26px;
   font-weight: 500;
-  color: #fff;
+  color: var(--text-primary);
   text-shadow: 0 0 24px rgba(166,200,255,0.35);
   letter-spacing: -0.5px;
 }
@@ -1661,7 +1671,7 @@ header::after {
   font-family: var(--font-mono);
   font-size: 30px;
   font-weight: 500;
-  color: #fff;
+  color: var(--text-primary);
   text-shadow: 0 0 30px rgba(166,200,255,0.4);
   letter-spacing: -0.5px;
 }
@@ -2697,7 +2707,7 @@ mark.realce-busca {
   font-size: 16px;
   font-weight: 500;
   font-family: var(--font-mono);
-  color: #fff;
+  color: var(--text-primary);
   letter-spacing: -0.3px;
 }
 .vcep-met-lbl {
@@ -3757,9 +3767,9 @@ select:focus-visible,
   display: inline-block; font-size: 10.5px; font-weight: 700;
   padding: 3px 9px; border-radius: 99px; white-space: nowrap;
 }
-.diag-selo.ok    { background: rgba(42,160,92,.16);  color: #6ee7a0; }
-.diag-selo.aviso { background: rgba(224,168,42,.16); color: #f0c65a; }
-.diag-selo.ruim  { background: rgba(224,60,60,.16);  color: #ff8a8a; }
+.diag-selo.ok    { background: rgba(42,160,92,.16);  color: var(--success-text); }
+.diag-selo.aviso { background: rgba(224,168,42,.16); color: var(--gold-text); }
+.diag-selo.ruim  { background: rgba(224,60,60,.16);  color: var(--danger-text); }
 
 .diag-erro {
   padding: 8px 10px; margin-bottom: 6px;
@@ -3874,7 +3884,7 @@ select:focus-visible,
   position: fixed; right: 18px; bottom: 80px; z-index: 900;
   width: min(360px, calc(100vw - 36px)); max-height: min(500px, 72vh);
   display: none; flex-direction: column;
-  background: var(--bg-elev, #10161c); border: 1px solid var(--border);
+  background: var(--bg-elevated); border: 1px solid var(--border);
   border-radius: 14px; box-shadow: 0 10px 34px rgba(0,0,0,.55); overflow: hidden;
 }
 .chat-janela.aberto { display: flex; }
@@ -3891,9 +3901,9 @@ select:focus-visible,
 
 .msg { max-width: 82%; padding: 8px 11px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
 .msg .hora { display: block; font-size: 10px; opacity: .6; margin-top: 3px; }
-.msg.deles { align-self: flex-start; background: rgba(255,255,255,.06); border-bottom-left-radius: 4px; }
+.msg.deles { align-self: flex-start; background: var(--bg-hover); border-bottom-left-radius: 4px; }
 .msg.minha { align-self: flex-end; background: var(--accent); border-bottom-right-radius: 4px; }
-.msg.sistema { align-self: center; background: rgba(42,160,92,.14); color: #9fe3ba; font-size: 12px; text-align: center; }
+.msg.sistema { align-self: center; background: rgba(42,160,92,.14); color: var(--success-text); font-size: 12px; text-align: center; }
 
 .conversa-item {
   padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px;
@@ -3919,7 +3929,7 @@ select:focus-visible,
   background: none; border: none; color: var(--text-muted);
   cursor: pointer; padding: 2px 4px; flex: none; border-radius: 5px;
 }
-.conversa-apagar:hover { color: #ff8a8a; background: rgba(224,76,76,.12); }
+.conversa-apagar:hover { color: var(--danger-text); background: rgba(224,76,76,.12); }
 
 /* Desfecho do atendimento, visto no painel. Cor por tipo, com o nome escrito
    junto — quem lê precisa saber POR QUE o atendimento fechou, e "precisa de
@@ -3932,7 +3942,7 @@ select:focus-visible,
 .df-resolvido     { background: var(--success-dim); color: var(--success-text); }
 .df-precisa-peca  { background: var(--gold-dim);    color: var(--gold-text); }
 .df-cotacao-peca  { background: var(--accent-dim);  color: var(--accent-text); }
-.df-volto         { background: rgba(34,211,238,.13); color: #7de3f4; }
+.df-volto         { background: rgba(34,211,238,.13); color: var(--cyan-text); }
 .df-nao-atendido  { background: var(--danger-dim);  color: var(--danger-text); }
 .df-orcamento     { background: var(--gold-dim);    color: var(--gold-text); }
 
@@ -4302,9 +4312,9 @@ select:focus-visible,
   grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
   margin-top: 7px; padding: 7px 11px; border-radius: 9px; font-size: 11.5px;
   background: rgba(34,211,238,.10); border: 1px solid rgba(34,211,238,.3);
-  color: #b6ecf7;
+  color: var(--cyan-text);
 }
-.at-no-carro b { color: #fff; }
+.at-no-carro b { color: var(--text-primary); }
 .at-carro-icone { font-size: 13px; }
 
 /* Resumo no topo ao abrir a aba. Faixa por linha se perde na rolagem. */
@@ -4445,9 +4455,9 @@ select:focus-visible,
 .aviso-linha.grave {
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(224,168,42,.25);
-  color: #ffb4b4;
+  color: var(--danger-text);
 }
-.aviso-linha.grave b { color: #fff; }
+.aviso-linha.grave b { color: var(--text-primary); }
 
 /* ─── Reagendar (técnico + dia no modal de editar) ────────────────────
    Junta o que antes eram dois lugares diferentes. Cartões clicáveis em vez
@@ -4814,7 +4824,7 @@ select:focus-visible,
 .peca-agendar:disabled { opacity: .6; cursor: default; }
 .peca-agendar.enviado {
   border-style: solid; border-color: var(--accent-2, #22d3ee);
-  background: rgba(34,211,238,.12); color: #7de3f4;
+  background: rgba(34,211,238,.12); color: var(--cyan-text);
 }
 
 /* Estados auxiliares reutilizados pela aba */
