@@ -8,6 +8,7 @@ pode ter uma geladeira Panasonic e uma lavadora Philco, e separar no nível
 do ponto é o que permite contabilizar certo.
 """
 import logging
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 
@@ -198,9 +199,48 @@ def resumo():
     # painel sem deixar rastro.
     classificados = sum(linha["pontos"] for linha in linhas)
 
+    # Alertas da Visão Geral (pedido de 2026-09-02) pegam carona aqui — é o
+    # mesmo endpoint que a tela já chama pra montar o resumo por setor, então
+    # nenhum polling novo. "Atrasada" e "esperando muito" são limiares
+    # arbitrários (3 e 2 dias) — não existe SLA configurável no sistema hoje,
+    # e um número fixo já é bem melhor que nenhum alerta.
+    with db_conn() as conn:
+        limite_os = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+        os_atrasadas = fetch_one(conn, """
+            SELECT COUNT(*) AS n FROM ordens_servico
+             WHERE status = 'aguardando_agendamento' AND criado_em < ?
+        """, (limite_os,))["n"]
+
+        limite_peca = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+        pecas_esperando_muito = fetch_one(conn, """
+            SELECT
+                (SELECT COUNT(*) FROM servico_desfecho
+                  WHERE desfecho = 'precisa_peca' AND pedido_em IS NULL
+                    AND registrado_em < ?) +
+                (SELECT COUNT(*) FROM pedido_peca_os
+                  WHERE pedido_em IS NULL AND criado_em < ?) AS n
+        """, (limite_peca, limite_peca))["n"]
+
+        # Hoje x ontem (pedido de 2026-09-02): comparação por INTERVALO de data
+        # calculado em Python, não por função de data do banco — SQLite e
+        # Postgres não compartilham a mesma sintaxe (ver comentário em
+        # routes/fichas.py) e isso aqui já resolve pros dois.
+        hoje_inicio = datetime.now().strftime("%Y-%m-%d 00:00:00")
+        ontem_inicio = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
+        concluidos = fetch_one(conn, """
+            SELECT
+                (SELECT COUNT(*) FROM servico_desfecho WHERE registrado_em >= ?) AS hoje,
+                (SELECT COUNT(*) FROM servico_desfecho
+                  WHERE registrado_em >= ? AND registrado_em < ?) AS ontem
+        """, (hoje_inicio, ontem_inicio, hoje_inicio))
+
     return jsonify({
         "setores": linhas,
         "total": total,
         "sem_setor": total - classificados,
         "escopo": "tudo" if escopo_tudo else "abertas",
+        "os_atrasadas": os_atrasadas,
+        "pecas_esperando_muito": pecas_esperando_muito,
+        "concluidos_hoje": concluidos["hoje"],
+        "concluidos_ontem": concluidos["ontem"],
     })

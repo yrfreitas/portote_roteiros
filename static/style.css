@@ -1517,6 +1517,37 @@ header::after {
   text-align: center;
   min-width: 0;
 }
+/* Só na Visão Geral (não no Histórico, que reusa .vg-stat sem ser
+   clicável) — pedido de 2026-09-02: clicar rola até o detalhe por técnico
+   logo abaixo, em vez do número ser só decoração. */
+.visao-geral-stats .vg-stat {
+  cursor: pointer; transition: background .14s, transform .14s;
+}
+.visao-geral-stats .vg-stat:hover { background: var(--bg-elevated); transform: translateY(-1px); }
+
+.vg-alertas { display: flex; flex-direction: column; gap: 6px; padding: 12px 18px 0; }
+.vg-alerta {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: left; padding: 9px 12px; border-radius: 9px;
+  background: var(--gold-dim); border: 1px solid rgba(245,181,68,.35);
+  color: var(--gold-text); font: 650 12.5px inherit; font-family: inherit;
+  cursor: pointer; transition: background .14s;
+}
+.vg-alerta:hover { background: rgba(245,181,68,.22); }
+.vg-alerta-num {
+  flex-shrink: 0; min-width: 22px; height: 22px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(245,181,68,.25); font-weight: 800; font-size: 12px;
+}
+
+.vg-comparativo {
+  padding: 10px 18px 0; font-size: 12.5px; color: var(--text-secondary);
+}
+.vg-comparativo b { color: var(--text-primary); font-size: 14px; }
+.vg-comparativo-dif { margin-left: 6px; font-weight: 700; }
+.vg-comparativo-dif.ok      { color: var(--success-text); }
+.vg-comparativo-dif.aviso   { color: var(--danger-text); }
+.vg-comparativo-dif.neutro  { color: var(--text-muted); }
 .vg-valor {
   font-family: var(--font-mono);
   font-size: 26px;
@@ -2413,9 +2444,16 @@ mark.realce-busca {
 }
 .notif-painel.aberto { display: block; }
 .notif-titulo {
+  display: flex; align-items: center; justify-content: space-between;
   font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
   color: var(--text-muted); padding: 8px 10px 6px;
 }
+.notif-som-toggle {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 600; text-transform: none; letter-spacing: 0;
+  cursor: pointer; color: var(--text-muted);
+}
+.notif-som-toggle input { cursor: pointer; width: 12px; height: 12px; accent-color: var(--accent); }
 .notif-item {
   display: flex; align-items: center; gap: 10px;
   width: 100%; text-align: left; padding: 10px; border-radius: 9px;
@@ -4076,11 +4114,21 @@ select:focus-visible,
 .lupa-fundo img {
   max-width: 96vw; max-height: 92vh; border-radius: 10px;
   box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  touch-action: none; user-select: none;
 }
 .lupa-dica {
   position: fixed; bottom: 18px; left: 0; right: 0; text-align: center;
   color: var(--text-muted); font-size: 12px; pointer-events: none;
 }
+.lupa-fechar {
+  position: fixed; top: 18px; right: 18px; z-index: 4001;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+  color: #fff; font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.lupa-fechar:hover { background: rgba(255,255,255,.18); }
 
 /* Área da foto dentro da folha de desfecho (painel) */
 .df-ajuda { margin: 0 0 9px; font-size: 12px; color: var(--text-muted); line-height: 1.45; }

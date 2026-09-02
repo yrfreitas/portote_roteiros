@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v174';
+const VERSAO_PAINEL = 'v175';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1150,6 +1150,34 @@ const NOTIF_ITENS = [
   { chave: 'chat', label: 'Mensagem não lida no chat', acao: () => document.getElementById('painel-chat-bolha')?.click() },
 ];
 
+// Som de notificação (pedido de 2026-09-02) — desligado por padrão de
+// propósito: um bipe surgindo sozinho num escritório sem ninguém pedir é
+// mais suscetível a incomodar do que ajudar. Só toca se a pessoa ligar no
+// próprio painel de notificações, e a escolha fica salva por navegador.
+let _notifSomAtivo = localStorage.getItem('portotec-notif-som') === '1';
+let _notifTotalAnterior = null;
+let _audioCtx = null;
+
+function alternarSomNotificacao(ligado) {
+  _notifSomAtivo = ligado;
+  try { localStorage.setItem('portotec-notif-som', ligado ? '1' : '0'); } catch (e) {}
+}
+
+function _tocarBeepNotificacao() {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const osc = _audioCtx.createOscillator();
+    const ganho = _audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    ganho.gain.setValueAtTime(0.0001, _audioCtx.currentTime);
+    ganho.gain.exponentialRampToValueAtTime(0.12, _audioCtx.currentTime + 0.02);
+    ganho.gain.exponentialRampToValueAtTime(0.0001, _audioCtx.currentTime + 0.35);
+    osc.connect(ganho); ganho.connect(_audioCtx.destination);
+    osc.start(); osc.stop(_audioCtx.currentTime + 0.35);
+  } catch (e) { /* navegador sem suporte, sem som mesmo — não é crítico */ }
+}
+
 function pintarNotificacoes(dados) {
   _notif = {
     chat: dados.chat_nao_lidas || 0,
@@ -1158,6 +1186,14 @@ function pintarNotificacoes(dados) {
     erros: dados.erros_abertos || 0,
   };
   const total = _notif.chat + _notif.pecas + _notif.agendar + _notif.erros;
+
+  // Só toca quando SOBE em relação à última leitura — a primeira leitura da
+  // página (_notifTotalAnterior === null) não conta como "chegou agora".
+  if (_notifSomAtivo && _notifTotalAnterior !== null && total > _notifTotalAnterior) {
+    _tocarBeepNotificacao();
+  }
+  _notifTotalAnterior = total;
+
   const badge = document.getElementById('badge-notif');
   if (badge) {
     badge.textContent = total > 99 ? '99+' : total;
@@ -1171,7 +1207,13 @@ function _renderNotificacoes() {
   if (!painel) return;
   const itens = NOTIF_ITENS.filter(i => _notif[i.chave] > 0);
   painel.innerHTML = `
-    <div class="notif-titulo">Notificações</div>
+    <div class="notif-titulo">
+      Notificações
+      <label class="notif-som-toggle">
+        <input type="checkbox" ${_notifSomAtivo ? 'checked' : ''} onchange="alternarSomNotificacao(this.checked)">
+        som
+      </label>
+    </div>
     ${itens.length ? itens.map((i, idx) => `
       <button type="button" class="notif-item" onclick="_notifClicar(${idx})">
         <span class="notif-item-num">${_notif[i.chave]}</span>
@@ -1202,6 +1244,18 @@ function fecharNotificacoes() {
 document.addEventListener('click', (e) => {
   const wrap = document.querySelector('.notif-wrap');
   if (wrap && !wrap.contains(e.target)) fecharNotificacoes();
+});
+
+// Aviso antes de fechar/recarregar com modal aberto (pedido de 2026-09-02):
+// "Nova OS" e os formulários de desfecho têm bastante campo — fechar a aba
+// sem querer no meio disso perdia tudo sem chance de voltar atrás. O texto
+// do aviso é escolha do navegador (Chrome/Firefox ignoram o que vai em
+// returnValue e mostram o deles próprio), então só o preventDefault importa.
+window.addEventListener('beforeunload', (e) => {
+  if (document.querySelector('.modal-overlay.open')) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
 });
 
 function iniciarChatPainel() {
@@ -2482,6 +2536,74 @@ async function carregarVisaoGeral() {
   carregarResumoSetores();
 }
 
+// Rola até o detalhe por técnico — pedido de 2026-09-02 ("números
+// clicáveis"): os 4 números do topo são resumo do que já está logo abaixo,
+// então clicar neles rola pra lá em vez de ser só decoração.
+function vgIrParaDetalhe() {
+  document.getElementById('visao-geral-tecnicos')
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// Alertas no topo da Visão Geral (pedido de 2026-09-02): OS parada há mais
+// de 3 dias sem agendar, peça esperando pedido há mais de 2 dias, ou
+// atendimento sem setor — cada um já manda pra lista certa filtrada, em vez
+// de só aparecer escondido numa aba que ninguém abre por padrão.
+function _renderAlertasVisaoGeral(r) {
+  const alvo = document.getElementById('vg-alertas');
+  if (!alvo) return;
+
+  const itens = [
+    r.os_atrasadas > 0 && {
+      n: r.os_atrasadas,
+      texto: `OS parada${r.os_atrasadas !== 1 ? 's' : ''} há mais de 3 dias sem agendar`,
+      acao: () => switchMainTab('agendar'),
+    },
+    r.pecas_esperando_muito > 0 && {
+      n: r.pecas_esperando_muito,
+      texto: `peça${r.pecas_esperando_muito !== 1 ? 's' : ''} esperando pedido há mais de 2 dias`,
+      acao: () => { switchMainTab('atendimentos'); if (_atTipo !== 'precisa_peca') filtrarDesfecho('precisa_peca'); },
+    },
+    r.sem_setor > 0 && {
+      n: r.sem_setor,
+      texto: `atendimento${r.sem_setor !== 1 ? 's' : ''} sem setor classificado`,
+      acao: () => abrirClassificacaoEmLote(),
+    },
+  ].filter(Boolean);
+
+  if (!itens.length) { alvo.innerHTML = ''; return; }
+
+  alvo.innerHTML = itens.map((i, idx) => `
+    <button type="button" class="vg-alerta" onclick="_vgAlertaClicar(${idx})">
+      <span class="vg-alerta-num">${i.n}</span>
+      <span>${esc(i.texto)}</span>
+    </button>`).join('');
+  alvo._itens = itens;
+}
+
+function _vgAlertaClicar(idx) {
+  document.getElementById('vg-alertas')?._itens[idx]?.acao();
+}
+
+// "Hoje x ontem" (pedido de 2026-09-02): compara atendimentos CONCLUÍDOS
+// (servico_desfecho.registrado_em) — throughput de verdade, não só fila em
+// aberto, que é o que os 4 números do topo já mostram.
+function _renderComparativoVisaoGeral(r) {
+  const alvo = document.getElementById('vg-comparativo');
+  if (!alvo) return;
+  const hoje = r.concluidos_hoje || 0;
+  const ontem = r.concluidos_ontem || 0;
+  if (!hoje && !ontem) { alvo.innerHTML = ''; return; }
+
+  const dif = hoje - ontem;
+  const seta = dif > 0 ? '↑' : dif < 0 ? '↓' : '→';
+  const classe = dif > 0 ? 'ok' : dif < 0 ? 'aviso' : 'neutro';
+  const difTxto = dif === 0 ? 'igual a ontem' : `${seta}${Math.abs(dif)} vs ontem`;
+
+  alvo.innerHTML = `
+    <b>${hoje}</b> atendimento${hoje !== 1 ? 's' : ''} concluído${hoje !== 1 ? 's' : ''} hoje
+    <span class="vg-comparativo-dif ${classe}">${difTxto}</span>`;
+}
+
 // Quanto cada frente (Panasonic / Philco / Loja) representa. Sem isso, tudo
 // vira um número só e não dá pra saber de onde vem o trabalho.
 async function carregarResumoSetores() {
@@ -2490,6 +2612,8 @@ async function carregarResumoSetores() {
 
   try {
     const r = await api('/setores/resumo');
+    _renderAlertasVisaoGeral(r);
+    _renderComparativoVisaoGeral(r);
     const lista = (r.setores || []).filter(s => s.pontos > 0);
     const semSetor = r.sem_setor || 0;
     if (lista.length === 0 && semSetor === 0) { alvo.innerHTML = ''; return; }
@@ -3291,16 +3415,65 @@ async function carregarFotosDoRoteiro(servicoIds) {
 
 // Clique amplia. É lendo o número de série ampliado que se pede a peça —
 // miniatura de 62px não serve para isso.
+// Lightbox com zoom/arraste (pedido de 2026-09-02) — antes só ampliava, sem
+// jeito de dar zoom pra ler etiqueta/número de série de foto tirada longe
+// ou torta. Fechar é só clicando no FUNDO ou no X/Esc — clicar na imagem é
+// pro arrastar, não pode fechar por engano no meio do zoom.
 function ampliarFoto(src) {
   const lupa = document.createElement('div');
   lupa.className = 'lupa-fundo';
-  lupa.innerHTML = `<img src="${src}" alt="Etiqueta ampliada">
-                    <div class="lupa-dica">clique para fechar</div>`;
-  lupa.onclick = () => lupa.remove();
-  document.addEventListener('keydown', function fechar(ev) {
-    if (ev.key === 'Escape') { lupa.remove(); document.removeEventListener('keydown', fechar); }
-  });
+  lupa.innerHTML = `
+    <button type="button" class="lupa-fechar" title="Fechar (Esc)">✕</button>
+    <img src="${src}" alt="Etiqueta ampliada" class="lupa-img" draggable="false">
+    <div class="lupa-dica">scroll dá zoom · arraste move · duplo clique reseta</div>`;
   document.body.appendChild(lupa);
+
+  const img = lupa.querySelector('.lupa-img');
+  let escala = 1, x = 0, y = 0, arrastando = false, inicioX = 0, inicioY = 0;
+
+  const aplicar = () => {
+    img.style.transform = `translate(${x}px, ${y}px) scale(${escala})`;
+    img.style.cursor = escala > 1 ? 'grab' : 'zoom-in';
+  };
+
+  const onWheel = (ev) => {
+    ev.preventDefault();
+    escala = Math.min(5, Math.max(1, escala + (ev.deltaY < 0 ? 0.25 : -0.25)));
+    if (escala === 1) { x = 0; y = 0; }
+    aplicar();
+  };
+  const onDown = (ev) => {
+    if (escala === 1) return;
+    ev.preventDefault();
+    arrastando = true;
+    inicioX = ev.clientX - x; inicioY = ev.clientY - y;
+    img.style.cursor = 'grabbing';
+  };
+  const onMove = (ev) => {
+    if (!arrastando) return;
+    x = ev.clientX - inicioX; y = ev.clientY - inicioY;
+    aplicar();
+  };
+  const onUp = () => { arrastando = false; aplicar(); };
+  const onDbl = () => { escala = 1; x = 0; y = 0; aplicar(); };
+  const onEsc = (ev) => { if (ev.key === 'Escape') fechar(); };
+
+  const fechar = () => {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    document.removeEventListener('keydown', onEsc);
+    lupa.remove();
+  };
+
+  img.addEventListener('wheel', onWheel, { passive: false });
+  img.addEventListener('mousedown', onDown);
+  img.addEventListener('dblclick', onDbl);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  document.addEventListener('keydown', onEsc);
+  lupa.querySelector('.lupa-fechar').onclick = fechar;
+  lupa.addEventListener('click', (ev) => { if (ev.target === lupa) fechar(); });
+  aplicar();
 }
 
 // ─── Desfecho do atendimento (visto do escritório) ──────────────────
