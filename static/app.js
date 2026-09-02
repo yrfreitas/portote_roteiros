@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v179';
+const VERSAO_PAINEL = 'v180';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -988,6 +988,10 @@ As mensagens somem para os dois lados. O atendimento e o link continuam.`)) retu
 // e não em /api/chat/<sala>, porque aquele caminho é público — a conversa
 // interna lá seria legível por qualquer um que digitasse o endereço.
 async function abrirChatEquipe() {
+  // Pedido de 2026-09-02: técnico não vê chat de equipe (mesma regra já
+  // aplicada no celular em 2026-08-29) — servidor barra com 403 de qualquer
+  // jeito, isso aqui só evita a tela vazia/erro ao clicar.
+  if (usuarioLogado.papel === 'tecnico') return;
   chatModo = 'equipe';
   chatSalaAberta = null;
   chatUltimoIdPainel = 0;
@@ -1024,7 +1028,7 @@ async function atualizarChatEquipe() {
       const texto = m.texto ? destacarMencoes(esc(m.texto)) : '';
       corpo.insertAdjacentHTML('beforeend',
         `<div class="msg ${tipo}">${nome}${texto}${_anexoHtmlChat(m)}
-           <span class="hora">${esc((m.criado_em || '').slice(11, 16))}</span></div>`);
+           <span class="hora">${esc(hora(m.criado_em))}</span></div>`);
       chatUltimoIdPainel = Math.max(chatUltimoIdPainel, m.id);
     });
     if ((d.mensagens || []).length) corpo.scrollTop = corpo.scrollHeight;
@@ -1062,7 +1066,7 @@ function _msgHtml(m) {
   const nome = tipo === 'deles' && m.autor_nome ? `<b>${esc(m.autor_nome)}</b><br>` : '';
   const texto = m.texto ? destacarMencoes(esc(m.texto)) : '';
   return `<div class="msg ${tipo}">${nome}${texto}${_anexoHtmlChat(m)}
-            <span class="hora">${esc((m.criado_em || '').slice(11, 16))}</span></div>`;
+            <span class="hora">${esc(hora(m.criado_em))}</span></div>`;
 }
 
 async function carregarConversas() {
@@ -1077,7 +1081,7 @@ async function carregarConversas() {
   topo.innerHTML = `
     <div class="chat-abas">
       <button class="chat-aba ativa" onclick="carregarConversas()">Clientes</button>
-      <button class="chat-aba" onclick="abrirChatEquipe()">Equipe</button>
+      ${usuarioLogado.papel === 'tecnico' ? '' : `<button class="chat-aba" onclick="abrirChatEquipe()">Equipe</button>`}
     </div>`;
 
   let d;
@@ -1962,7 +1966,7 @@ async function carregarLogExportacoes() {
         <div class="changelog-linha">
           <span class="changelog-versao">${esc(l.usuario || '—')}</span>
           <span class="changelog-resumo">${esc(l.rota)}${l.detalhe ? ' · ' + esc(l.detalhe) : ''}</span>
-          <span class="changelog-data">${esc((l.criado_em || '').slice(0, 16).replace('T', ' '))}</span>
+          <span class="changelog-data">${esc(dataHoraCompleta(l.criado_em))}</span>
         </div>`).join('');
   } catch (e) {
     alvo.innerHTML = `<div class="ajuda-texto">${esc(e.message)}</div>`;
@@ -1981,7 +1985,7 @@ async function carregarChangelog(alvoId = 'changelog-corpo') {
         <div class="changelog-linha">
           ${e.versao ? `<span class="changelog-versao">${esc(e.versao)}</span>` : ''}
           <span class="changelog-resumo">${esc(e.resumo)}</span>
-          <span class="changelog-data">${esc((e.criado_em || '').slice(0, 16).replace('T', ' '))}</span>
+          <span class="changelog-data">${esc(dataHoraCompleta(e.criado_em))}</span>
         </div>`).join('');
   } catch (e) {
     // Sem permissão de diagnóstico, por exemplo — não é erro fatal aqui, é
@@ -3238,7 +3242,7 @@ async function carregarPedidosComComprovante() {
 
   alvo.innerHTML = pedidos.map(p => {
     const aparelho = [p.tipo_aparelho, p.modelo].filter(Boolean).join(' · ');
-    const quando = (p.pedido_em || '').slice(0, 10).split('-').reverse().join('/');
+    const quando = parseDataBanco(p.pedido_em)?.toLocaleDateString('pt-BR') || '';
     return `
       <div class="pp-cartao">
         <div class="pp-lado-dados">
@@ -3891,7 +3895,7 @@ async function alternarChegada(linha) {
     });
     btn.classList.toggle('marcado', marcando);
     btn.textContent = marcando ? '📦 chegou' : 'marcar chegada';
-    btn.title = marcando ? `Chegou em ${new Date().toISOString().slice(0, 16).replace('T', ' ')} — clique para desfazer`
+    btn.title = marcando ? `Chegou em ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — clique para desfazer`
                           : 'Marcar que a peça chegou na oficina';
     el.classList.toggle('chegou', marcando);
     el.dataset.estagio = marcando ? 'chegou' : 'ENVIADO';
@@ -7055,7 +7059,7 @@ async function abrirClienteDetalhe(clienteId) {
     ${linhaEditavelCliente('Observação', 'obs', c.obs, true)}
     <div class="cliente-detalhe-linha">
       <span class="cliente-detalhe-rotulo">Cadastrado em</span>
-      <span class="cliente-detalhe-valor">${esc((c.criado_em || '').slice(0, 10).split('-').reverse().join('/'))}${c.cadastrado_por ? ' por ' + esc(c.cadastrado_por) : ''}</span>
+      <span class="cliente-detalhe-valor">${esc(parseDataBanco(c.criado_em)?.toLocaleDateString('pt-BR') || '')}${c.cadastrado_por ? ' por ' + esc(c.cadastrado_por) : ''}</span>
     </div>
     <div class="cliente-detalhe-linha">
       <span class="cliente-detalhe-rotulo">Ordens de serviço</span>
@@ -8167,7 +8171,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     const aprovacaoOrcamento = o.orcamento_aprovado_em ? `
     <div class="os-detalhe-secao">
       <p class="form-separador">Peças reservadas</p>
-      <p class="ajuda-texto" style="margin:0 0 8px;">Orçamento aprovado em ${esc((o.orcamento_aprovado_em || '').slice(0, 10).split('-').reverse().join('/'))}. Reservar tranca a peça pra esta OS sem tirar do saldo geral — vira baixa de verdade sozinha quando registrada em "Peças usadas".</p>
+      <p class="ajuda-texto" style="margin:0 0 8px;">Orçamento aprovado em ${esc(parseDataBanco(o.orcamento_aprovado_em)?.toLocaleDateString('pt-BR') || '')}. Reservar tranca a peça pra esta OS sem tirar do saldo geral — vira baixa de verdade sozinha quando registrada em "Peças usadas".</p>
       <div id="os-reservas-lista-${o.id}"><span class="ajuda-texto">carregando...</span></div>
       <div class="form-row" style="margin-top:8px;">
         <div class="form-group">
@@ -8500,7 +8504,7 @@ async function abrirOSDetalhe(id) {
       <select class="form-input" onchange="osAtualizarStatus(${o.id}, this.value)">${opcoesStatus}</select>
       ${o.status === 'aguardando_agendamento' && o.oculta_fila_em ? `
         <p class="ajuda-texto" style="margin:8px 0 0;">
-          Removida da fila de Agendar Clientes em ${esc((o.oculta_fila_em || '').slice(0, 16).replace('T', ' '))}.
+          Removida da fila de Agendar Clientes em ${esc(dataHoraCompleta(o.oculta_fila_em))}.
           <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px;"
                   onclick="osReexibirFila(${o.id})">Devolver pra fila</button>
         </p>` : ''}
@@ -8560,7 +8564,7 @@ async function abrirOSDetalhe(id) {
         </div>
         <div class="form-group">
           <label class="form-label" for="os-agendar-data">Data</label>
-          <input class="form-input" type="date" id="os-agendar-data" min="${new Date().toISOString().slice(0,10)}">
+          <input class="form-input" type="date" id="os-agendar-data" min="${hojeLocal()}">
         </div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="osAgendar(${o.id})">Agendar</button>
@@ -8618,7 +8622,7 @@ function osRenderPecas(pecas) {
   return pecas.map(p => `
     <div class="os-visita-linha">
       <span><b>${esc(p.codigo)}</b>${p.descricao ? ' — ' + esc(p.descricao) : ''} · ${Number(p.quantidade)}x</span>
-      <span style="color:var(--text-muted);font-size:11px;">${esc((p.criado_em || '').split(' ')[0].split('-').reverse().join('/'))}</span>
+      <span style="color:var(--text-muted);font-size:11px;">${esc(parseDataBanco(p.criado_em)?.toLocaleDateString('pt-BR') || '')}</span>
     </div>`).join('');
 }
 
@@ -8996,7 +9000,7 @@ async function carregarStatusSubstituicao() {
 //   3. tem preço -> mostra o valor.
 function _precoPanasonicHtml(preco, atualizadoEm, pendente) {
   if (preco) {
-    const quando = atualizadoEm ? ` <span class="substituicao-preco-data">(${esc(atualizadoEm.slice(0, 10).split('-').reverse().join('/'))})</span>` : '';
+    const quando = atualizadoEm ? ` <span class="substituicao-preco-data">(${esc(parseDataBanco(atualizadoEm)?.toLocaleDateString('pt-BR') || '')})</span>` : '';
     return `<span class="substituicao-preco">${esc(preco)}${quando}</span>`;
   }
   if (pendente === false) {
@@ -10518,6 +10522,32 @@ function formatarDataHora(dt) {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
+// Pedido de 2026-09-02 ("todo horário do site está bugado"): achado ao
+// investigar o almoço — o MESMO erro (fatiar a string crua do banco, que é
+// UTC, como se as posições 11-16 já fossem a hora local) estava espalhado
+// em vários lugares que nunca passavam por parseDataBanco. hora() e
+// dataHoraCompleta() abaixo são os substitutos — sempre convertendo antes
+// de exibir.
+function hora(dt) {
+  const d = parseDataBanco(dt);
+  return d ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+}
+
+function dataHoraCompleta(dt) {
+  const d = parseDataBanco(dt);
+  if (!d) return '—';
+  return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+// "Hoje" em AAAA-MM-DD LOCAL — new Date().toISOString() dá a data em UTC, que
+// vira amanhã depois das ~21h em Brasília (mesmo bug de fuso de cima).
+function hojeLocal() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 function formatarTempo(minutos) {
   if (minutos < 60) return `${minutos}min`;
   const h = Math.floor(minutos / 60), m = minutos % 60;
@@ -10721,8 +10751,8 @@ function _atRenderizarDesfechos(r) {
             <input type="checkbox" class="at-check" data-chave="${a.chave}"
                    ${_atSelecionados.has(a.chave) ? 'checked' : ''}
                    onchange="atToggleSelecao('${a.chave}', this.checked)">` : ''}
-          <span class="at-data">${esc((a.registrado_em || '').slice(0, 10).split('-').reverse().join('/'))}</span>
-          <span class="at-hora">${esc((a.registrado_em || '').slice(11, 16))}</span>
+          <span class="at-data">${esc(parseDataBanco(a.registrado_em)?.toLocaleDateString('pt-BR') || '')}</span>
+          <span class="at-hora">${esc(hora(a.registrado_em))}</span>
         </div>
         <div class="at-quem">
           <div class="at-cliente">${esc(a.cliente) || 'Cliente sem nome'}</div>
@@ -10816,7 +10846,7 @@ async function verFotosDoAtendimento(servicoId, chave) {
 // cor da linha que responde a pergunta de longe.
 function botaoBaixa(a) {
   if (a.pedido_em) {
-    const quando = (a.pedido_em || '').slice(0, 10).split('-').reverse().join('/');
+    const quando = parseDataBanco(a.pedido_em)?.toLocaleDateString('pt-BR') || '';
     return `<span class="at-pedida" title="Pedida em ${esc(a.pedido_em)}${
       a.pedido_por ? ' por ' + esc(a.pedido_por) : ''}">✓ pedida ${esc(quando)}</span>`;
   }
@@ -11344,7 +11374,7 @@ async function carregarVendasRecentes() {
         <span class="venda-recente-cliente">${esc(v.cliente_nome)}</span>
         <span class="venda-recente-itens">${v.total_itens} ${v.total_itens === 1 ? 'item' : 'itens'}</span>
         <span class="venda-recente-valor">${_brlVenda(v.valor_total)}</span>
-        <span class="venda-recente-quando">${esc((v.criado_em || '').slice(0, 16).replace('T', ' '))}</span>
+        <span class="venda-recente-quando">${esc(dataHoraCompleta(v.criado_em))}</span>
         <a class="btn btn-ghost btn-xs" href="/vendas/${v.id}/imprimir" target="_blank" rel="noopener">Imprimir</a>
       </div>`).join('');
   } catch (e) {

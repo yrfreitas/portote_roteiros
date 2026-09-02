@@ -65,6 +65,16 @@ TODAS = [c["chave"] for c in CATALOGO]
 # um "false" explícito, que sempre vence sobre este padrão (ver `efetivas`).
 PADRAO_TECNICO = set(TODAS)
 
+# Papel "tecnico" é diferente: pedido explícito de 2026-09-02, ao contrário
+# da decisão de 2026-08-26 acima (que continua valendo pra recepcionista). O
+# técnico já tem uma tela própria pra tudo que precisa (o link pessoal em
+# /t/<token>: própria rota, reordenar parada, dar baixa, bater o almoço) —
+# aqui no painel principal ele só deve ENXERGAR a própria rota (ver_rota),
+# sem editar ficha/cliente nem se meter em Estoque, OS, Peças etc. Chat de
+# cliente e chat de equipe não são catálogo (são recorte por papel direto em
+# routes/chat.py), por isso não aparecem aqui.
+PADRAO_PAPEL_TECNICO = {"roteiros_ver"}
+
 # Portão central: (prefixo_da_rota, métodos ou None p/ todos, ação exigida).
 # É avaliado em ordem; a PRIMEIRA regra cujo prefixo casa decide. Por isso as
 # regras mais específicas de estoque (por método) vêm antes da genérica.
@@ -149,10 +159,12 @@ def _overrides(bruto) -> dict:
 
 def efetivas(papel: str, permissoes_bruto=None) -> dict:
     """Dicionário {acao: bool} já resolvido para um usuário."""
-    if (papel or "").strip() == "admin":
+    papel = (papel or "").strip()
+    if papel == "admin":
         return {a: True for a in TODAS}
     ov = _overrides(permissoes_bruto)
-    return {a: bool(ov[a]) if a in ov else (a in PADRAO_TECNICO) for a in TODAS}
+    padrao = PADRAO_PAPEL_TECNICO if papel == "tecnico" else PADRAO_TECNICO
+    return {a: bool(ov[a]) if a in ov else (a in padrao) for a in TODAS}
 
 
 def _caps_do_request() -> dict:

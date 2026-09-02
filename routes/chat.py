@@ -157,9 +157,21 @@ def sinalizar_digitando(sala):
 # ─── Lado da EMPRESA (painel, exige login) ──────────────────────────────
 @chat_bp.route("/chat/conversas", methods=["GET"])
 def conversas():
-    """Conversas com mensagem, mais recente primeiro — a caixa de entrada."""
+    """Conversas com mensagem, mais recente primeiro — a caixa de entrada.
+
+    Login "tecnico" (pedido de 2026-09-02): só vê conversa de atendimento
+    seu, mesmo motivo do recorte em routes/fichas.py de 2026-08-31 — sem
+    isso ele lia o que qualquer colega combinou com o cliente de outro."""
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
+
+    condicao_tecnico = ""
+    params = []
+    if session.get("papel") == "tecnico":
+        if not session.get("tecnico_id"):
+            return jsonify({"conversas": [], "nao_lidas": 0})
+        condicao_tecnico = "WHERE ra.tecnico_id = ?"
+        params.append(session["tecnico_id"])
 
     with db_conn() as conn:
         linhas = fetch_all(conn, f"""
@@ -173,9 +185,10 @@ def conversas():
               JOIN rastreios ra ON ra.token = m.sala
               JOIN servicos sv  ON sv.id = ra.servico_id
               JOIN tecnicos t   ON t.id = ra.tecnico_id
+             {condicao_tecnico}
              GROUP BY m.sala, sv.cliente, t.nome, ra.ativo
              ORDER BY MAX(m.id) DESC
-        """)
+        """, params)
 
     # Não lidas conta em CIMA de todas as conversas — corta antes disso e o
     # badge do painel mentiria pro que ficou de fora dos 50 primeiros.
@@ -288,10 +301,19 @@ def _desde():
         return 0
 
 
+def _tecnico_sem_chat_equipe():
+    """Removido do celular em 2026-08-29 (via ausência do botão) — pedido de
+    2026-09-02 fecha o mesmo buraco pro login de papel "tecnico" no painel,
+    que batia direto nestas rotas sem passar por nenhuma checagem."""
+    return session.get("papel") == "tecnico"
+
+
 @chat_bp.route("/equipe/mensagens", methods=["GET"])
 def equipe_ler():
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
+    if _tecnico_sem_chat_equipe():
+        return jsonify({"erro": "Sem acesso ao chat da equipe"}), 403
     linhas = _mensagens_equipe(_desde())
     quem_sou_eu = session.get("usuario_nome") or "Administrador"
     # Lista de quem mais está digitando AGORA, excluindo eu mesmo — no chat
@@ -310,6 +332,8 @@ def equipe_ler():
 def equipe_escrever():
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
+    if _tecnico_sem_chat_equipe():
+        return jsonify({"erro": "Sem acesso ao chat da equipe"}), 403
 
     dados = request.get_json(silent=True) or {}
     texto = (dados.get("texto") or "").strip()
@@ -329,6 +353,8 @@ def equipe_escrever():
 def equipe_digitando():
     if not session.get("admin"):
         return jsonify({"erro": "Não autenticado"}), 401
+    if _tecnico_sem_chat_equipe():
+        return jsonify({"erro": "Sem acesso ao chat da equipe"}), 403
     nome = session.get("usuario_nome") or "Administrador"
     _marcar_digitando((SALA_EQUIPE, nome))
     return jsonify({"ok": True})
