@@ -593,9 +593,11 @@
   //
   // Botão grande e pouco toque: o técnico está de pé, na calçada, com uma
   // mão segurando o celular e a outra ocupada.
-  // Lista EXATA pedida pelo Kalebe em 2026-09-01, nesta ordem, sem
-  // "Resolvido" — ele tirou de propósito, não é esquecimento.
+  // Lista pedida pelo Kalebe em 2026-09-01 (sem "Resolvido") e "Resolvido"
+  // voltou em 2026-09-02, a pedido dele de novo — ele tinha tirado de
+  // propósito antes, mas quis de volta pra aparecer na aba Atendimentos.
   const DESFECHOS = [
+    { tipo: 'resolvido',    rotulo: 'Resolvido',        sub: 'consertei na hora, nada pendente', icone: '✅' },
     { tipo: 'orcamento',    rotulo: 'Orçamento',        sub: 'dados + assinatura, escritório monta o valor', icone: '📋' },
     { tipo: 'precisa_peca', rotulo: 'Fazer Pedido de Peça', sub: 'diagnosticado, falta peça', icone: '🔧' },
     { tipo: 'volto_depois', rotulo: 'Reagendar Cliente', sub: 'preciso retornar',      icone: '↻' },
@@ -1295,7 +1297,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v175';
+  const VERSAO_TELA = 'v176';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

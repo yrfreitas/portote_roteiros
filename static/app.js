@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v175';
+const VERSAO_PAINEL = 'v176';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5729,11 +5729,12 @@ async function aplicarConciliacao(fichaId) {
 // Mesmas quatro opções do app do técnico, e grava pela mesma função no
 // servidor: o desfecho não pode depender de quem concluiu, senão o relatório
 // vira duas contagens diferentes.
-// Lista EXATA pedida pelo Kalebe em 2026-09-01, nesta ordem, sem
-// "Resolvido" — mesma lista de static/tecnico.js, ele tirou de propósito.
-// Esta é a versão de quem dá baixa pelo PAINEL (não pelo /t/<token>) —
-// tem que ter as mesmas opções, senão quem usa o painel fica pra trás.
+// Lista pedida pelo Kalebe em 2026-09-01 (sem "Resolvido") — e "Resolvido"
+// voltou em 2026-09-02 a pedido dele de novo, pra aparecer na aba
+// Atendimentos. Mesma lista de static/tecnico.js — tem que ter as mesmas
+// opções, senão quem usa o painel fica pra trás de quem usa o /t/<token>.
 const DF_OPCOES = [
+  { tipo: 'resolvido',    rotulo: 'Resolvido',       sub: 'consertou na hora, nada pendente' },
   { tipo: 'orcamento',    rotulo: 'Orçamento',       sub: 'dados + assinatura, escritório monta o valor' },
   { tipo: 'precisa_peca', rotulo: 'Fazer Pedido de Peça', sub: 'diagnosticado, falta peça' },
   { tipo: 'volto_depois', rotulo: 'Reagendar Cliente', sub: 'precisa retornar' },
