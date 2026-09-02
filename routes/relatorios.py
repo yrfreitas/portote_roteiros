@@ -492,6 +492,32 @@ def desfazer_peca_os_pedida(pedido_id):
     return jsonify({"mensagem": "Pedido desfeito"})
 
 
+@relatorios_bp.route("/desfechos/<int:servico_id>", methods=["DELETE"])
+def apagar_desfecho(servico_id):
+    """Tira uma linha de vez da lista de Atendimentos — pedido de 2026-09-02,
+    entrou coisa errada em "Precisam de peça" sem jeito de remover.
+
+    Apaga só o DESFECHO (o que foi registrado sobre a visita), não a visita
+    nem a OS por trás — a linha some daqui, o resto do sistema não muda."""
+    with db_conn(commit=True) as conn:
+        afetadas = execute(conn, sql(
+            "DELETE FROM servico_desfecho WHERE servico_id = ?"), (servico_id,))
+    if not afetadas:
+        return jsonify({"erro": "Atendimento não encontrado"}), 404
+    return jsonify({"mensagem": "Removido de Atendimentos"})
+
+
+@relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>", methods=["DELETE"])
+def apagar_pedido_peca_os(pedido_id):
+    """Mesma coisa, pro pedido de peça batido direto na OS (sem visita)."""
+    with db_conn(commit=True) as conn:
+        afetadas = execute(conn, sql(
+            "DELETE FROM pedido_peca_os WHERE id = ?"), (pedido_id,))
+    if not afetadas:
+        return jsonify({"erro": "Pedido não encontrado"}), 404
+    return jsonify({"mensagem": "Removido de Atendimentos"})
+
+
 @relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>/pedido", methods=["POST"])
 def marcar_peca_os_pedida(pedido_id):
     """Igual a marcar_peca_pedida, mas para peça pedida direto na OS (sem

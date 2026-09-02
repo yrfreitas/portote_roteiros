@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v173';
+const VERSAO_PAINEL = 'v174';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -302,6 +302,7 @@ async function _lerRevisao() {
   const dados = await resp.json();
   _conferirVersaoDoPainel(dados.app);
   if (typeof pintarBadgeChat === 'function') pintarBadgeChat(dados.chat_nao_lidas);
+  if (typeof pintarNotificacoes === 'function') pintarNotificacoes(dados);
   return dados.revisao;
 }
 
@@ -1131,6 +1132,77 @@ function pintarBadgeChat(n) {
 async function atualizarBadgeChat() {
   try { pintarBadgeChat((await api('/chat/conversas')).nao_lidas); } catch {}
 }
+
+// ─── Central de notificações (pedido de 2026-09-02) ────────────────────
+// Junta peças pendentes, fila de agendar, erro de diagnóstico e chat num
+// sino só, em vez de cada um ter seu selo espalhado pela tela. Os números
+// vêm de /api/versao (dados), que já é chamado a cada 10s por outro motivo —
+// nenhum polling novo.
+let _notif = { chat: 0, pecas: 0, agendar: 0, erros: 0 };
+
+const NOTIF_ITENS = [
+  { chave: 'pecas', label: 'Peças esperando pedido', acao: () => {
+      switchMainTab('atendimentos');
+      if (typeof filtrarDesfecho === 'function' && _atTipo !== 'precisa_peca') filtrarDesfecho('precisa_peca');
+    } },
+  { chave: 'agendar', label: 'Clientes esperando agendamento', acao: () => switchMainTab('agendar') },
+  { chave: 'erros', label: 'Erro registrado no Diagnóstico', acao: () => switchMainTab('diagnostico') },
+  { chave: 'chat', label: 'Mensagem não lida no chat', acao: () => document.getElementById('painel-chat-bolha')?.click() },
+];
+
+function pintarNotificacoes(dados) {
+  _notif = {
+    chat: dados.chat_nao_lidas || 0,
+    pecas: dados.pecas_pendentes || 0,
+    agendar: dados.agendar_pendentes || 0,
+    erros: dados.erros_abertos || 0,
+  };
+  const total = _notif.chat + _notif.pecas + _notif.agendar + _notif.erros;
+  const badge = document.getElementById('badge-notif');
+  if (badge) {
+    badge.textContent = total > 99 ? '99+' : total;
+    badge.classList.toggle('tem', total > 0);
+  }
+  if (document.getElementById('notif-painel')?.classList.contains('aberto')) _renderNotificacoes();
+}
+
+function _renderNotificacoes() {
+  const painel = document.getElementById('notif-painel');
+  if (!painel) return;
+  const itens = NOTIF_ITENS.filter(i => _notif[i.chave] > 0);
+  painel.innerHTML = `
+    <div class="notif-titulo">Notificações</div>
+    ${itens.length ? itens.map((i, idx) => `
+      <button type="button" class="notif-item" onclick="_notifClicar(${idx})">
+        <span class="notif-item-num">${_notif[i.chave]}</span>
+        <span>${esc(i.label)}</span>
+      </button>`).join('')
+      : '<div class="notif-vazio">Tudo em dia por aqui.</div>'}`;
+  painel._itensAtuais = itens;
+}
+
+function _notifClicar(idx) {
+  const itens = document.getElementById('notif-painel')?._itensAtuais || [];
+  itens[idx]?.acao();
+  fecharNotificacoes();
+}
+
+function alternarNotificacoes() {
+  const painel = document.getElementById('notif-painel');
+  if (!painel) return;
+  const abrindo = !painel.classList.contains('aberto');
+  if (abrindo) { _renderNotificacoes(); painel.classList.add('aberto'); }
+  else painel.classList.remove('aberto');
+}
+
+function fecharNotificacoes() {
+  document.getElementById('notif-painel')?.classList.remove('aberto');
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.notif-wrap');
+  if (wrap && !wrap.contains(e.target)) fecharNotificacoes();
+});
 
 function iniciarChatPainel() {
   const bolha = document.getElementById('painel-chat-bolha');
@@ -6388,6 +6460,7 @@ async function abrirClienteDetalhe(clienteId) {
   }
 
   const c = r.cliente;
+  _clienteDetalheAtual = c;
   document.getElementById('cliente-detalhe-nome').textContent = c.nome;
 
   const linha = (rotulo, valor) => valor ? `
@@ -6403,12 +6476,12 @@ async function abrirClienteDetalhe(clienteId) {
 
   document.getElementById('cliente-detalhe-corpo').innerHTML = `
     ${linha('CPF/CNPJ', c.cpf_cnpj)}
-    ${linha('Telefone', c.telefone)}
+    ${linhaEditavelCliente('Telefone', 'telefone', c.telefone)}
     ${linha('E-mail', c.email)}
     ${linha('Endereço', enderecoCompleto)}
     ${linha('Cidade', localCompleto)}
     ${linha('Indicação', c.indicacao)}
-    ${linha('Observação', c.obs)}
+    ${linhaEditavelCliente('Observação', 'obs', c.obs, true)}
     <div class="cliente-detalhe-linha">
       <span class="cliente-detalhe-rotulo">Cadastrado em</span>
       <span class="cliente-detalhe-valor">${esc((c.criado_em || '').slice(0, 10).split('-').reverse().join('/'))}${c.cadastrado_por ? ' por ' + esc(c.cadastrado_por) : ''}</span>
@@ -6417,6 +6490,62 @@ async function abrirClienteDetalhe(clienteId) {
       <span class="cliente-detalhe-rotulo">Ordens de serviço</span>
       <span class="cliente-detalhe-valor">${r.ordens_servico.length}</span>
     </div>`;
+}
+
+// Edição inline (pedido de 2026-09-02): telefone e observação são os campos
+// que mais mudam depois do cadastro, e antes disso só dava pra corrigir
+// recriando o cliente. Clica no valor, vira campo, salva sozinho ao sair —
+// sem modal de edição à parte. Manda o cliente INTEIRO no PUT (não só o
+// campo mudado) porque a rota /clientes/<id> substitui a linha toda; ver
+// _campos() em routes/clientes.py.
+let _clienteDetalheAtual = null;
+
+function linhaEditavelCliente(rotulo, campo, valor, multilinha) {
+  return `
+    <div class="cliente-detalhe-linha">
+      <span class="cliente-detalhe-rotulo">${esc(rotulo)}</span>
+      <span class="cliente-detalhe-valor cliente-detalhe-editavel" onclick="_clienteEditarCampo(this, '${campo}', ${!!multilinha})">${
+        valor ? esc(valor) : '<span class="cliente-detalhe-vazio">clique para preencher</span>'
+      }</span>
+    </div>`;
+}
+
+function _clienteEditarCampo(span, campo, multilinha) {
+  if (span.querySelector('input, textarea')) return;
+  const atual = _clienteDetalheAtual[campo] || '';
+  span.innerHTML = multilinha
+    ? `<textarea class="form-input cliente-edit-input" rows="2">${esc(atual)}</textarea>`
+    : `<input class="form-input cliente-edit-input" value="${esc(atual)}">`;
+  const input = span.querySelector('.cliente-edit-input');
+  input.focus();
+  if (!multilinha) input.select();
+
+  let salvando = false;
+  const encerrar = async (salvar) => {
+    if (salvando) return;
+    salvando = true;
+    const novo = input.value.trim();
+    if (salvar && novo !== atual) {
+      input.disabled = true;
+      try {
+        await api(`/clientes/${_clienteDetalheAtual.id}`, {
+          method: 'PUT', body: JSON.stringify({ ..._clienteDetalheAtual, [campo]: novo }),
+        });
+        _clienteDetalheAtual[campo] = novo;
+        toast('Salvo', 'success');
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    }
+    const v = _clienteDetalheAtual[campo];
+    span.innerHTML = v ? esc(v) : '<span class="cliente-detalhe-vazio">clique para preencher</span>';
+  };
+
+  input.addEventListener('blur', () => encerrar(true));
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && !multilinha) { ev.preventDefault(); input.blur(); }
+    if (ev.key === 'Escape') { ev.preventDefault(); encerrar(false); }
+  });
 }
 
 // Esqueleto no formato de .os-linha (mesmo grid de 4 colunas) — só pra
@@ -9772,6 +9901,34 @@ function toast(msg, type = 'info') {
     setTimeout(() => el.remove(), 300);
   }, 4000);
 }
+
+// Toast com "Desfazer" — pedido de 2026-09-02, pra ações destrutivas não
+// dependerem só de um confirm() antes. `confirmar` só roda de verdade depois
+// de `segundos` sem clicar em desfazer; `cancelar` (opcional) desfaz o que a
+// tela já tiver mudado na hora (ex: linha esmaecida) enquanto espera.
+function toastDesfazer(msg, confirmar, cancelar, segundos = 6) {
+  const container = document.getElementById('toast-container');
+  if (!container) { confirmar(); return; }
+
+  const el = document.createElement('div');
+  el.className = 'toast info';
+  el.innerHTML = `<span style="display:inline-flex;color:var(--accent-text);">${icone('info', 'icone-13')}</span>
+    <span style="flex:1;">${esc(msg)}</span>
+    <button type="button" class="toast-desfazer-btn">Desfazer</button>`;
+  container.appendChild(el);
+
+  const sumir = () => {
+    el.style.opacity = '0';
+    el.style.transition = 'opacity 0.3s';
+    setTimeout(() => el.remove(), 300);
+  };
+  const prazo = setTimeout(() => { confirmar(); sumir(); }, segundos * 1000);
+  el.querySelector('.toast-desfazer-btn').onclick = () => {
+    clearTimeout(prazo);
+    cancelar?.();
+    sumir();
+  };
+}
 // ═══ Atendimentos: o que o técnico registrou em campo ══════════════════
 //
 // Junta num lugar só o que antes ficava espalhado ponto a ponto dentro de
@@ -9808,6 +9965,7 @@ let _atTipo = '';
 let _atBusca = '';       // normalizado (trim+minúsculo), só pra comparar
 let _atBuscaRaw = '';    // como a pessoa digitou — não "corrige" a caixa enquanto digita
 let _atUltimoResultado = null;
+let _atSelecionados = new Set();   // chaves marcadas pro "Remover selecionados"
 
 // Filtro por nome digitado, aplicado sem nova ida ao servidor — a lista do
 // período já está na memória, então cada tecla só refaz o render local.
@@ -9885,6 +10043,18 @@ function _atRenderizarDesfechos(r) {
     ? r.atendimentos.filter(a => (a.cliente || '').toLowerCase().includes(_atBusca))
     : r.atendimentos;
 
+  // Seleção em lote (pedido de 2026-09-02) é só pra "Precisa de peça" — é o
+  // único tipo com remoção possível hoje. Seleção zera a cada recarga da
+  // lista de propósito: um item some/muda de posição, manter marcado o que
+  // já não está mais na tela na mesma linha vira confusão.
+  _atSelecionados.clear();
+  const barraSelecaoHtml = `
+    <div class="at-barra-selecao" id="at-barra-selecao" style="display:none;">
+      <span id="at-selecao-contagem">0 selecionados</span>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="atLimparSelecao()">Cancelar</button>
+      <button type="button" class="btn btn-sm at-btn-remover-lote" onclick="atRemoverSelecionados()">Remover selecionados</button>
+    </div>`;
+
   if (!atendimentos.length) {
     alvo.innerHTML = `<div class="at-cartoes">${cartoes}</div>${buscaHtml}
       <div class="historico-vazio">${icone('check', 'icone-24')}
@@ -9901,6 +10071,10 @@ function _atRenderizarDesfechos(r) {
     return `
       <div class="at-linha ${t.classe}${a.pedido_em ? ' pedida' : ''}" id="at-linha-${a.chave}">
         <div class="at-quando">
+          ${a.desfecho === 'precisa_peca' ? `
+            <input type="checkbox" class="at-check" data-chave="${a.chave}"
+                   ${_atSelecionados.has(a.chave) ? 'checked' : ''}
+                   onchange="atToggleSelecao('${a.chave}', this.checked)">` : ''}
           <span class="at-data">${esc((a.registrado_em || '').slice(0, 10).split('-').reverse().join('/'))}</span>
           <span class="at-hora">${esc((a.registrado_em || '').slice(11, 16))}</span>
         </div>
@@ -9926,6 +10100,9 @@ function _atRenderizarDesfechos(r) {
         </div>
         <div class="at-baixa" id="at-baixa-${a.chave}">
           ${a.desfecho === 'precisa_peca' ? botaoBaixa(a) : ''}
+          ${a.desfecho === 'precisa_peca' ? `
+            <button class="at-btn-remover" title="Remover esta linha — entrou errado"
+                    onclick="removerAtendimento('${a.chave}')">✕</button>` : ''}
           ${a.desfecho === 'cotacao_peca' ? `
             <button class="btn btn-primary btn-sm" onclick="abrirConfirmarCotacao(${a.servico_id})">Confirmar cotação</button>` : ''}
           ${(a.desfecho === 'fazer_os' || a.origem === 'os') && a.ordem_servico_id ? `
@@ -9941,6 +10118,7 @@ function _atRenderizarDesfechos(r) {
     ${_atTipo ? `<div class="at-filtro-aviso">Mostrando só
         <b>${esc((AT_TIPOS.find(x => x.tipo === _atTipo) || {}).rotulo || '')}</b>
         · <button class="at-limpar" onclick="filtrarDesfecho('${_atTipo}')">ver todos</button></div>` : ''}
+    ${barraSelecaoHtml}
     <div class="at-tabela">
       <div class="at-cabecalho">
         <span>Quando</span><span>Cliente</span><span>O que aconteceu</span>
@@ -9998,6 +10176,87 @@ function botaoBaixa(a) {
   }
   return `<button class="at-btn-baixa" onclick="abrirAnexarPedido('${a.chave}')">
             Já pedi</button>`;
+}
+
+// Tira a linha da lista de vez — pedido de 2026-09-02 (entrou cliente
+// errado em "Precisam de peça" e não tinha como remover). "chave" vem do
+// backend com prefixo t/o (ver relatorios.py listar_desfechos): 't' é
+// servico_desfecho (visita de técnico), 'o' é pedido_peca_os (pedido batido
+// direto na OS, sem visita) — cada um tem sua própria rota de apagar.
+//
+// Desfazer com toast em vez de confirm() (pedido de 2026-09-02): a linha
+// esmaece na hora, e só apaga de vez no servidor se ninguém desfizer a
+// tempo — sem caixinha de "tem certeza?" toda vez.
+function removerAtendimento(chave) {
+  const linha = document.getElementById('at-linha-' + chave);
+  if (linha) {
+    linha.style.transition = 'opacity .2s';
+    linha.style.opacity = '0.35';
+    linha.style.pointerEvents = 'none';
+  }
+  toastDesfazer('Atendimento removido da lista.', async () => {
+    const id = chave.slice(1);
+    const rota = chave.startsWith('o') ? `/pedidos-peca-os/${id}` : `/desfechos/${id}`;
+    try {
+      await api(rota, { method: 'DELETE' });
+    } catch (e) {
+      toast(e.message, 'error');
+      await carregarDesfechos();
+    }
+  }, () => {
+    if (linha) { linha.style.opacity = '1'; linha.style.pointerEvents = ''; }
+  });
+}
+
+// Ações em lote em "Precisam de peça" (pedido de 2026-09-02): marcar vários
+// e remover de uma vez, em vez de clicar no ✕ linha por linha.
+function atToggleSelecao(chave, marcado) {
+  if (marcado) _atSelecionados.add(chave); else _atSelecionados.delete(chave);
+  _atAtualizarBarraSelecao();
+}
+
+function _atAtualizarBarraSelecao() {
+  const barra = document.getElementById('at-barra-selecao');
+  if (!barra) return;
+  const n = _atSelecionados.size;
+  barra.style.display = n > 0 ? 'flex' : 'none';
+  const contagem = document.getElementById('at-selecao-contagem');
+  if (contagem) contagem.textContent = `${n} selecionado${n !== 1 ? 's' : ''}`;
+}
+
+function atLimparSelecao() {
+  _atSelecionados.clear();
+  document.querySelectorAll('.at-check').forEach(c => c.checked = false);
+  _atAtualizarBarraSelecao();
+}
+
+function atRemoverSelecionados() {
+  const chaves = [..._atSelecionados];
+  if (!chaves.length) return;
+
+  chaves.forEach(chave => {
+    const linha = document.getElementById('at-linha-' + chave);
+    if (linha) { linha.style.transition = 'opacity .2s'; linha.style.opacity = '0.35'; linha.style.pointerEvents = 'none'; }
+  });
+  _atSelecionados.clear();
+  _atAtualizarBarraSelecao();
+
+  const plural = chaves.length !== 1;
+  toastDesfazer(`${chaves.length} atendimento${plural ? 's' : ''} removido${plural ? 's' : ''} da lista.`, async () => {
+    const resultados = await Promise.allSettled(chaves.map(chave => {
+      const id = chave.slice(1);
+      const rota = chave.startsWith('o') ? `/pedidos-peca-os/${id}` : `/desfechos/${id}`;
+      return api(rota, { method: 'DELETE' });
+    }));
+    const falhas = resultados.filter(r => r.status === 'rejected').length;
+    if (falhas) toast(`${falhas} não puderam ser removidos.`, 'error');
+    await carregarDesfechos();
+  }, () => {
+    chaves.forEach(chave => {
+      const linha = document.getElementById('at-linha-' + chave);
+      if (linha) { linha.style.opacity = '1'; linha.style.pointerEvents = ''; }
+    });
+  });
 }
 
 // "Confirmar cotação" (pedido de 2026-09-01): o preço achado numa casa de

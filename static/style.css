@@ -214,6 +214,14 @@
 :root[data-theme="light"] .modal {
   background: linear-gradient(160deg, #ffffff, #f3f5fa 96%);
 }
+/* Mesmo bug do .modal, achado depois: .toast (todo aviso de "salvo"/"erro")
+   e .drawer (painel lateral) tinham o mesmo gradiente fixo escuro. */
+:root[data-theme="light"] .toast {
+  background: linear-gradient(160deg, #ffffff, #f3f5fa 96%);
+}
+:root[data-theme="light"] .drawer {
+  background: linear-gradient(160deg, #ffffff, #f3f5fa 96%);
+}
 
 /* ─── RESET ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2279,6 +2287,13 @@ header::after {
   box-shadow: var(--shadow-pop);
   animation: toastIn 0.3s cubic-bezier(.22,.68,0,1);
 }
+.toast-desfazer-btn {
+  flex: none; padding: 5px 11px; border-radius: 7px; cursor: pointer;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  color: var(--accent-text); font: 700 12px inherit; font-family: inherit;
+  white-space: nowrap; transition: background .15s;
+}
+.toast-desfazer-btn:hover { background: var(--accent-glow); }
 .toast.success { border-left: 3px solid var(--success); box-shadow: var(--shadow-pop), -6px 0 20px -8px var(--success); }
 .toast.error   { border-left: 3px solid var(--danger);  box-shadow: var(--shadow-pop), -6px 0 20px -8px var(--danger); }
 .toast.info    { border-left: 3px solid var(--accent);  box-shadow: var(--shadow-pop), -6px 0 20px -8px var(--accent); }
@@ -2356,6 +2371,67 @@ mark.realce-busca {
 
 /* ─── ALTERNAR TEMA ──────────────────────────────────────────────
    Botão no header — sol/lua conforme o tema atual. */
+/* ─── SINO DE NOTIFICAÇÕES ────────────────────────────────────────
+   Junta num lugar só o que hoje é selo espalhado (peças pendentes, fila de
+   agendar, erro de diagnóstico, chat) — pedido de 2026-09-02. Os números
+   pegam carona no polling que já existe (/api/versao, a cada 10s) —
+   nenhuma rota nova só pra isso. */
+.notif-wrap { position: relative; }
+.btn-notif {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.btn-notif:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-bright); }
+.badge-notif {
+  position: absolute; top: -2px; right: -2px; min-width: 17px; height: 17px;
+  border-radius: 99px; background: var(--danger); color: #fff;
+  font-size: 10.5px; font-weight: 700; display: none;
+  align-items: center; justify-content: center; padding: 0 4px;
+}
+.badge-notif.tem { display: flex; }
+
+.notif-painel {
+  display: none;
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 200;
+  width: 300px; max-height: 70vh; overflow-y: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border-hi);
+  background: linear-gradient(160deg, rgba(17,28,49,0.97), rgba(6,9,17,0.98));
+  backdrop-filter: blur(22px);
+  box-shadow: var(--shadow-pop);
+  padding: 8px;
+}
+:root[data-theme="light"] .notif-painel {
+  background: linear-gradient(160deg, #ffffff, #f3f5fa 96%);
+}
+.notif-painel.aberto { display: block; }
+.notif-titulo {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--text-muted); padding: 8px 10px 6px;
+}
+.notif-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: left; padding: 10px; border-radius: 9px;
+  background: none; border: none; cursor: pointer;
+  font: inherit; color: var(--text-primary); font-size: 13px;
+  transition: background .14s;
+}
+.notif-item:hover { background: var(--bg-hover); }
+.notif-item-num {
+  flex-shrink: 0; min-width: 24px; height: 24px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--danger-dim); color: var(--danger-text);
+  font-weight: 700; font-size: 12px;
+}
+.notif-vazio { padding: 18px 10px; text-align: center; color: var(--text-muted); font-size: 12.5px; }
+
 .btn-tema {
   display: flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; flex-shrink: 0;
@@ -4120,6 +4196,19 @@ select:focus-visible,
   color: var(--accent-text); font: inherit; text-decoration: underline;
 }
 
+.at-barra-selecao {
+  align-items: center; gap: 12px;
+  padding: 10px 14px; margin-bottom: 12px; border-radius: 10px;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  font-size: 12.5px; font-weight: 650; color: var(--accent-text);
+}
+.at-btn-remover-lote {
+  margin-left: auto; background: var(--danger-dim); border: 1px solid var(--danger);
+  color: var(--danger-text); font-weight: 700;
+}
+.at-btn-remover-lote:hover { background: rgba(248,113,113,0.22); }
+.at-check { cursor: pointer; width: 15px; height: 15px; accent-color: var(--accent); }
+
 .at-tabela { border: 1px solid var(--border); border-radius: 13px; overflow: hidden; }
 .at-cabecalho, .at-linha {
   display: grid;
@@ -4217,6 +4306,7 @@ select:focus-visible,
 .at-linha.pedida { background: rgba(52,211,153,.07); border-left-color: var(--success); }
 .at-linha.pedida:hover { background: rgba(52,211,153,.12); }
 
+.at-baixa { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .at-btn-baixa {
   padding: 7px 12px; border-radius: 9px; cursor: pointer; white-space: nowrap;
   background: var(--success-dim); border: 1px solid rgba(52,211,153,.38);
@@ -4224,6 +4314,13 @@ select:focus-visible,
   transition: background .15s, transform .12s;
 }
 .at-btn-baixa:hover { background: rgba(52,211,153,.22); transform: translateY(-1px); }
+.at-btn-remover {
+  padding: 5px 9px; border-radius: 7px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 12px; line-height: 1; font-family: inherit;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.at-btn-remover:hover { background: var(--danger-dim); border-color: var(--danger); color: var(--danger-text); }
 .at-pedida {
   font-size: 11.5px; font-weight: 650; color: var(--success-text);
   white-space: nowrap; cursor: help;
@@ -4911,6 +5008,14 @@ select:focus-visible,
   letter-spacing: .04em; flex: 0 0 auto;
 }
 .cliente-detalhe-valor { font-size: 13.5px; color: var(--text-primary); text-align: right; }
+.cliente-detalhe-editavel {
+  cursor: pointer; border-radius: 6px; padding: 2px 6px; margin: -2px -6px;
+  border-bottom: 1px dashed var(--border-bright);
+  transition: background .14s, border-color .14s;
+}
+.cliente-detalhe-editavel:hover { background: var(--bg-hover); border-color: var(--accent); }
+.cliente-detalhe-vazio { color: var(--text-faint); font-style: italic; }
+.cliente-edit-input { font-size: 13.5px; padding: 5px 8px; width: 100%; max-width: 220px; }
 
 .venda-carrinho {
   background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);

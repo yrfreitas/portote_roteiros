@@ -863,6 +863,39 @@ def versao():
             dados["chat_nao_lidas"] = (nl or {}).get("n", 0)
         except Exception:
             dados["chat_nao_lidas"] = 0
+
+        # Mesma lógica da badge de chat: números da central de notificações
+        # (pedido de 2026-09-02) pegam carona aqui em vez de abrir polling
+        # próprio — são só COUNT() simples, custo desprezível a cada 10s.
+        try:
+            erros = fetch_one(conn, """
+                SELECT COUNT(*) AS n FROM erros_cliente
+                 WHERE status IS NULL OR status != 'resolvido'
+            """)
+            dados["erros_abertos"] = (erros or {}).get("n", 0)
+        except Exception:
+            dados["erros_abertos"] = 0
+
+        try:
+            pecas = fetch_one(conn, """
+                SELECT
+                    (SELECT COUNT(*) FROM servico_desfecho
+                      WHERE desfecho = 'precisa_peca' AND pedido_em IS NULL) +
+                    (SELECT COUNT(*) FROM pedido_peca_os WHERE pedido_em IS NULL) AS n
+            """)
+            dados["pecas_pendentes"] = (pecas or {}).get("n", 0)
+        except Exception:
+            dados["pecas_pendentes"] = 0
+
+        try:
+            agendar = fetch_one(conn, """
+                SELECT COUNT(*) AS n FROM ordens_servico
+                 WHERE status = 'aguardando_agendamento'
+            """)
+            dados["agendar_pendentes"] = (agendar or {}).get("n", 0)
+        except Exception:
+            dados["agendar_pendentes"] = 0
+
         return jsonify(dados)
 
 
