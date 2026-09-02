@@ -629,16 +629,23 @@ def _montar_documento_os(os_id):
            and ordem.get("garantia_meses")
         else _GARANTIA_MESES.get(ordem.get("tipo_os"))
     )
+    # Pedido de 2026-09-02: "não ir do dia que colocamos pra imprimir" — sem
+    # garantia_inicio preenchida, isto aqui caía pra datetime.now() e
+    # imprimia a garantia começando no dia em que ALGUÉM CLICOU IMPRIMIR
+    # (podia ser semanas depois do atendimento de verdade). O template já
+    # tinha um "else" pronto pra esse caso (linhas em branco pra preencher
+    # à mão, ver os_imprimir.html) — só nunca era usado porque o fallback
+    # aqui embaixo sempre entregava uma data "válida" antes de chegar lá.
     garantia_inicio_br = garantia_fim_br = garantia_prazo_rotulo = None
     if garantia_meses:
-        try:
-            base = (datetime.strptime(ordem["garantia_inicio"], "%Y-%m-%d")
-                   if ordem.get("garantia_inicio") else datetime.now())
-        except ValueError:
-            base = datetime.now()
-        garantia_inicio_br = base.strftime("%d/%m/%Y")
-        garantia_fim_br = _somar_meses(base, garantia_meses).strftime("%d/%m/%Y")
         garantia_prazo_rotulo = "1 ano" if garantia_meses == 12 else f"{garantia_meses} meses"
+        if ordem.get("garantia_inicio"):
+            try:
+                base = datetime.strptime(ordem["garantia_inicio"], "%Y-%m-%d")
+                garantia_inicio_br = base.strftime("%d/%m/%Y")
+                garantia_fim_br = _somar_meses(base, garantia_meses).strftime("%d/%m/%Y")
+            except ValueError:
+                pass   # data inválida no banco — imprime em branco, não inventa uma
 
     termos = TERMOS_POR_TIPO.get(ordem.get("tipo_os"), TERMOS_PADRAO)
     # O termo padrão de "saida_oficina" tem "03 (três) meses" escrito por

@@ -358,7 +358,7 @@
     {% else %}
     <div class="campo-manual">Data de início: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
     <div class="campo-manual">Data final: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
-    <div class="campo-manual">Prazo de garantia: <span class="linha-preenchimento"></span></div>
+    <div class="campo-manual">Prazo de garantia: {% if garantia_prazo_rotulo %}{{ garantia_prazo_rotulo }}{% else %}<span class="linha-preenchimento"></span>{% endif %}</div>
     {% endif %}
     {% endif %}
 
@@ -445,7 +445,7 @@
     {% else %}
     <div class="campo-manual">Data de início: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
     <div class="campo-manual">Data final: <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span> / <span class="linha-preenchimento"></span></div>
-    <div class="campo-manual">Prazo de garantia: <span class="linha-preenchimento"></span></div>
+    <div class="campo-manual">Prazo de garantia: {% if garantia_prazo_rotulo %}{{ garantia_prazo_rotulo }}{% else %}<span class="linha-preenchimento"></span>{% endif %}</div>
     {% endif %}
     {% endif %}
 
