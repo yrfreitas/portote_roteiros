@@ -1319,25 +1319,39 @@
     <div class="modal-title">Novo pedido de peça</div>
     <p class="ajuda-texto" style="margin:0 0 12px;">Pra quando o pedido já nasce sabido, sem precisar vir de um atendimento de técnico.</p>
 
-    <label class="form-label">Cliente</label>
+    <label class="form-label">Isto é...</label>
     <div class="df-motivos" style="margin-bottom:8px;">
-      <button type="button" class="df-motivo ativa" id="pm-modo-existente" onclick="pedidoManualEscolherModo('existente')">Cliente existente</button>
-      <button type="button" class="df-motivo" id="pm-modo-novo" onclick="pedidoManualEscolherModo('novo')">Cliente novo</button>
+      <button type="button" class="df-motivo ativa" id="pm-tipo-cliente" onclick="pedidoManualEscolherTipo('cliente')">Pedido de cliente</button>
+      <button type="button" class="df-motivo" id="pm-tipo-estoque" onclick="pedidoManualEscolherTipo('estoque')">Repor estoque (sem cliente)</button>
     </div>
 
-    <div id="pm-cliente-existente">
-      <input class="form-input" id="pm-busca-cliente" autocomplete="off" placeholder="Digite pra buscar..." oninput="pedidoManualBuscarCliente(this.value)">
-      <div id="pm-resultado-cliente"></div>
-    </div>
-    <div id="pm-cliente-novo" style="display:none;">
-      <input class="form-input" id="pm-nome-novo" placeholder="Nome do cliente" style="margin-bottom:8px;" oninput="pedidoManualValidar()">
-      <input class="form-input" id="pm-telefone-novo" placeholder="Telefone (opcional)" oninput="formatarTelefone(this)">
+    <div id="pm-bloco-cliente">
+      <label class="form-label">Cliente</label>
+      <div class="df-motivos" style="margin-bottom:8px;">
+        <button type="button" class="df-motivo ativa" id="pm-modo-existente" onclick="pedidoManualEscolherModo('existente')">Cliente existente</button>
+        <button type="button" class="df-motivo" id="pm-modo-novo" onclick="pedidoManualEscolherModo('novo')">Cliente novo</button>
+      </div>
+
+      <div id="pm-cliente-existente">
+        <input class="form-input" id="pm-busca-cliente" autocomplete="off" placeholder="Digite pra buscar..." oninput="pedidoManualBuscarCliente(this.value)">
+        <div id="pm-resultado-cliente"></div>
+      </div>
+      <div id="pm-cliente-novo" style="display:none;">
+        <input class="form-input" id="pm-nome-novo" placeholder="Nome do cliente" style="margin-bottom:8px;" oninput="pedidoManualValidar()">
+        <input class="form-input" id="pm-telefone-novo" placeholder="Telefone (opcional)" oninput="formatarTelefone(this)">
+      </div>
     </div>
 
     <label class="form-label" style="margin-top:14px;">Peça</label>
     <input class="form-input" id="pm-peca" placeholder="Código ou nome da peça" oninput="pedidoManualValidar()">
     <label class="form-label" style="margin-top:10px;">Observação (opcional)</label>
     <textarea class="form-input" id="pm-descricao" rows="2"></textarea>
+
+    <div class="form-group" style="margin-top:10px;">
+      <label class="form-label" for="pm-foto">Foto do comprovante da compra (opcional)</label>
+      <input class="form-input" type="file" accept="image/*" capture="environment" id="pm-foto">
+      <span class="ajuda-texto" id="pm-foto-status"></span>
+    </div>
 
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" onclick="fecharModais()">Cancelar</button>

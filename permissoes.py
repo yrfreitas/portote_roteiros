@@ -73,7 +73,7 @@ PADRAO_TECNICO = set(TODAS)
 # sem editar ficha/cliente nem se meter em Estoque, OS, Peças etc. Chat de
 # cliente e chat de equipe não são catálogo (são recorte por papel direto em
 # routes/chat.py), por isso não aparecem aqui.
-PADRAO_PAPEL_TECNICO = {"roteiros_ver"}
+PADRAO_PAPEL_TECNICO = {"roteiros_ver", "atendimentos"}
 
 # Portão central: (prefixo_da_rota, métodos ou None p/ todos, ação exigida).
 # É avaliado em ordem; a PRIMEIRA regra cujo prefixo casa decide. Por isso as

@@ -530,14 +530,21 @@ def apagar_pedido_peca_os(pedido_id):
 @relatorios_bp.route("/pedidos-peca-os/manual", methods=["POST"])
 def criar_pedido_peca_manual():
     """Pedido de peça criado NA MÃO, sem vir de um désfecho de técnico
-    (pedido de 2026-09-02) — pra quando o pedido já nasce sabido, sem
-    precisar fingir uma visita. Body: {peca, descricao, cliente_id} OU
-    {peca, descricao, cliente_novo: {nome, telefone}}.
+    (pedido de 2026-09-02, revisado no mesmo dia depois do pedido de mover
+    isso pra "Pedidos com comprovante"). Body: {peca, descricao, foto}
+    + OU {cliente_id} OU {cliente_novo: {nome, telefone}} OU nenhum dos
+    dois (reposição de estoque, sem cliente nenhum).
 
-    Precisa de uma OS por trás (pedido_peca_os.ordem_servico_id é NOT NULL —
-    é o mesmo vínculo que TODO pedido direto na OS já usa), então cria uma OS
-    mínima pro cliente automaticamente, do jeito que "peça chegou" já faz
-    hoje na aba Peças — não é novidade, é o mesmo caminho."""
+    Não fabrica mais uma OS pra pendurar o pedido: pedido_peca_os.
+    ordem_servico_id é NULLABLE desde a migração de 2026-09-02 justamente
+    pra isso — pedido sem cliente não tem do que ser "ordem de serviço".
+    Cliente_id (também novo na tabela) vai direto, sem OS no meio.
+
+    Foto é OBRIGATÓRIA (diferente do pedido que nasce de désfecho de
+    técnico, onde dá pra marcar "precisa de peça" sem foto e completar
+    depois): sem OS por trás, um pedido sem foto não tem em lugar nenhum
+    pra reaparecer e ser completado — nasceria pendente e órfão pra
+    sempre. Já entra marcado como pedido (pedido_em/pedido_por/pedido_foto)."""
     from flask import session
 
     from routes.clientes import criar_cliente
@@ -550,32 +557,36 @@ def criar_pedido_peca_manual():
     quem = (session.get("usuario_nome") or "").strip()[:80] or "Administrador"
     agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
+    # Foto OBRIGATÓRIA aqui (diferente da cotação de peça): esta tela é
+    # "Pedidos com comprovante" — sem OS por trás, um pedido sem foto não
+    # tem em lugar nenhum pra reaparecer depois pra alguém completar.
+    foto = _foto_valida(dados.get("foto"))
+    if not foto:
+        return jsonify({"erro": "Anexe a foto do comprovante da compra"}), 400
+
     with db_conn(commit=True) as conn:
         cliente_id = dados.get("cliente_id")
-        if not cliente_id:
-            cliente_novo = dados.get("cliente_novo") or {}
+        cliente_novo = dados.get("cliente_novo")
+        if cliente_id:
+            existe = fetch_one(conn, sql("SELECT id FROM clientes WHERE id = ?"), (cliente_id,))
+            if not existe:
+                return jsonify({"erro": "Cliente não encontrado"}), 404
+        elif cliente_novo:
             try:
                 cliente_id = criar_cliente(conn, cliente_novo)
             except ValueError as exc:
                 return jsonify({"erro": str(exc)}), 400
         else:
-            existe = fetch_one(conn, sql("SELECT id FROM clientes WHERE id = ?"), (cliente_id,))
-            if not existe:
-                return jsonify({"erro": "Cliente não encontrado"}), 404
-
-        os_id = insert_returning_id(conn, sql("""
-            INSERT INTO ordens_servico (cliente_id, defeito_declarado, status,
-                                        modelo_os, criado_em, criado_por, atendente)
-            VALUES (?, ?, 'aguardando_agendamento', 'os', ?, ?, ?)
-        """), (cliente_id, f"Pedido de peça: {peca}" + (f" — {descricao}" if descricao else ""),
-               agora, quem, quem))
+            cliente_id = None   # reposição de estoque — sem cliente mesmo
 
         pedido_id = insert_returning_id(conn, sql("""
-            INSERT INTO pedido_peca_os (ordem_servico_id, peca, descricao, criado_em, criado_por)
-            VALUES (?, ?, ?, ?, ?)
-        """), (os_id, peca, descricao, agora, quem))
+            INSERT INTO pedido_peca_os
+                (cliente_id, peca, descricao, criado_em, criado_por,
+                 pedido_em, pedido_por, pedido_foto)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """), (cliente_id, peca, descricao, agora, quem, agora, quem, foto))
 
-    return jsonify({"mensagem": "Pedido criado", "id": pedido_id, "ordem_servico_id": os_id}), 201
+    return jsonify({"mensagem": "Pedido criado", "id": pedido_id}), 201
 
 
 @relatorios_bp.route("/relatorios/negocio", methods=["GET"])
@@ -728,13 +739,20 @@ def listar_pedidos_de_peca():
         for l in linhas:
             l["pedido_os_id"] = None
 
+        # LEFT JOIN em tudo (pedido de 2026-09-02, revisão): pedido manual
+        # pode não ter OS nenhuma por trás (cliente_id direto na própria
+        # tabela) ou não ter cliente nenhum (reposição de estoque) — INNER
+        # JOIN sumia com essas linhas inteiras da lista, silenciosamente.
+        # COALESCE pega o cliente de onde tiver: direto, ou via OS antiga.
         pecas_os = fetch_all(conn, sql("""
             SELECT p.id AS pedido_os_id, p.peca, p.descricao AS observacao,
                    p.pedido_em, p.pedido_por, p.pedido_foto,
-                   c.nome AS cliente, os.tipo_aparelho, os.modelo
+                   COALESCE(c.nome, c2.nome) AS cliente,
+                   os.tipo_aparelho, os.modelo
               FROM pedido_peca_os p
-              JOIN ordens_servico os ON os.id = p.ordem_servico_id
-              JOIN clientes c ON c.id = os.cliente_id
+              LEFT JOIN ordens_servico os ON os.id = p.ordem_servico_id
+              LEFT JOIN clientes c  ON c.id = p.cliente_id
+              LEFT JOIN clientes c2 ON c2.id = os.cliente_id
              WHERE p.pedido_em IS NOT NULL
         """))
         for p in pecas_os:

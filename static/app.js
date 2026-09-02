@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v181';
+const VERSAO_PAINEL = 'v182';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3234,19 +3234,22 @@ async function carregarPedidosComComprovante() {
   const pedidos = r.pedidos || [];
   document.getElementById('ptab-pedidos-cont').textContent = pedidos.length || '';
 
+  const botaoNovo = `<button type="button" class="btn btn-primary btn-sm" style="margin-bottom:10px;"
+      onclick="abrirNovoPedidoManual()">+ Novo pedido</button>`;
+
   if (!pedidos.length) {
-    alvo.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
+    alvo.innerHTML = botaoNovo + `<div class="historico-vazio">${icone('check', 'icone-24')}
       <p>Nenhuma peça pedida com comprovante ainda.</p></div>`;
     return;
   }
 
-  alvo.innerHTML = pedidos.map(p => {
+  alvo.innerHTML = botaoNovo + pedidos.map(p => {
     const aparelho = [p.tipo_aparelho, p.modelo].filter(Boolean).join(' · ');
     const quando = parseDataBanco(p.pedido_em)?.toLocaleDateString('pt-BR') || '';
     return `
       <div class="pp-cartao">
         <div class="pp-lado-dados">
-          <div class="pp-cliente">${esc(p.cliente) || 'Cliente sem nome'}</div>
+          <div class="pp-cliente">${p.cliente ? esc(p.cliente) : '📦 Reposição de estoque'}</div>
           ${p.endereco_completo ? `<div class="pp-sub">${esc(p.endereco_completo)}</div>` : ''}
           ${aparelho ? `<div class="pp-sub">${esc(aparelho)}</div>` : ''}
           ${p.peca ? `<div class="pp-peca">Peça: ${esc(p.peca)}</div>` : ''}
@@ -10782,12 +10785,9 @@ function _atRenderizarDesfechos(r) {
     </button>`).join('');
 
   const buscaHtml = `
-    <div class="form-group" style="margin-bottom:10px;display:flex;gap:8px;align-items:flex-end;">
-      <div style="flex:1;">
-        <input class="form-input" id="at-busca" placeholder="Buscar por nome do cliente..."
-               value="${esc(_atBuscaRaw)}" oninput="atBuscarNome(this.value)">
-      </div>
-      <button type="button" class="btn btn-primary btn-sm" onclick="abrirNovoPedidoManual()">+ Novo pedido</button>
+    <div class="form-group" style="margin-bottom:10px;">
+      <input class="form-input" id="at-busca" placeholder="Buscar por nome do cliente..."
+             value="${esc(_atBuscaRaw)}" oninput="atBuscarNome(this.value)">
     </div>`;
 
   const atendimentos = _atBusca
@@ -10960,14 +10960,23 @@ function removerAtendimento(chave) {
 }
 
 // Novo pedido de peça MANUAL, sem vir de désfecho de técnico (pedido de
-// 2026-09-02) — cliente existente (busca) ou novo (nome+telefone).
+// 2026-09-02) — cliente existente (busca) ou novo (nome+telefone), OU sem
+// cliente nenhum quando é só reposição de estoque. Pedido de 2026-09-02
+// (revisão): mora em "Pedidos com comprovante" (aba Peças), não mais em
+// Atendimentos, e a foto do comprovante entra JUNTO na criação — não é mais
+// um passo separado de "marcar como pedido" depois.
+let _pmTipo = 'cliente';   // 'cliente' ou 'estoque'
 let _pmModo = 'existente';
 let _pmClienteSelecionado = null;
 let _pmBuscaTimer = null;
 
 function abrirNovoPedidoManual() {
+  _pmTipo = 'cliente';
   _pmModo = 'existente';
   _pmClienteSelecionado = null;
+  document.getElementById('pm-tipo-cliente').classList.add('ativa');
+  document.getElementById('pm-tipo-estoque').classList.remove('ativa');
+  document.getElementById('pm-bloco-cliente').style.display = '';
   document.getElementById('pm-modo-existente').classList.add('ativa');
   document.getElementById('pm-modo-novo').classList.remove('ativa');
   document.getElementById('pm-cliente-existente').style.display = '';
@@ -10978,7 +10987,17 @@ function abrirNovoPedidoManual() {
   document.getElementById('pm-telefone-novo').value = '';
   document.getElementById('pm-peca').value = '';
   document.getElementById('pm-descricao').value = '';
+  document.getElementById('pm-foto').value = '';
+  document.getElementById('pm-foto-status').textContent = '';
   document.getElementById('modal-pedido-manual').classList.add('open');
+  pedidoManualValidar();
+}
+
+function pedidoManualEscolherTipo(tipo) {
+  _pmTipo = tipo;
+  document.getElementById('pm-tipo-cliente').classList.toggle('ativa', tipo === 'cliente');
+  document.getElementById('pm-tipo-estoque').classList.toggle('ativa', tipo === 'estoque');
+  document.getElementById('pm-bloco-cliente').style.display = tipo === 'cliente' ? '' : 'none';
   pedidoManualValidar();
 }
 
@@ -11016,11 +11035,12 @@ function pedidoManualSelecionarCliente(id, nome) {
 
 function pedidoManualValidar() {
   const peca = document.getElementById('pm-peca')?.value.trim();
-  const clienteOk = _pmModo === 'existente'
+  const temFoto = !!document.getElementById('pm-foto')?.files?.length;
+  const clienteOk = _pmTipo === 'estoque' || (_pmModo === 'existente'
     ? !!_pmClienteSelecionado
-    : !!document.getElementById('pm-nome-novo')?.value.trim();
+    : !!document.getElementById('pm-nome-novo')?.value.trim());
   const btn = document.getElementById('pm-confirmar');
-  if (btn) btn.disabled = !(peca && clienteOk);
+  if (btn) btn.disabled = !(peca && temFoto && clienteOk);
 }
 
 async function confirmarPedidoManual() {
@@ -11028,23 +11048,42 @@ async function confirmarPedidoManual() {
     peca: document.getElementById('pm-peca').value.trim(),
     descricao: document.getElementById('pm-descricao').value.trim(),
   };
-  if (_pmModo === 'existente') {
-    corpo.cliente_id = _pmClienteSelecionado.id;
-  } else {
-    corpo.cliente_novo = {
-      nome: document.getElementById('pm-nome-novo').value.trim(),
-      telefone: document.getElementById('pm-telefone-novo').value.trim(),
-    };
+  if (_pmTipo === 'cliente') {
+    if (_pmModo === 'existente') {
+      corpo.cliente_id = _pmClienteSelecionado.id;
+    } else {
+      corpo.cliente_novo = {
+        nome: document.getElementById('pm-nome-novo').value.trim(),
+        telefone: document.getElementById('pm-telefone-novo').value.trim(),
+      };
+    }
   }
+
   const btn = document.getElementById('pm-confirmar');
+  const campoFoto = document.getElementById('pm-foto');
+  const statusFoto = document.getElementById('pm-foto-status');
+  const arquivo = campoFoto?.files?.[0];
+  if (arquivo) {
+    statusFoto.textContent = 'Processando foto...';
+    try {
+      corpo.foto = await reduzirFotoInteira(arquivo);
+    } catch (e) {
+      statusFoto.textContent = '';
+      toast(e.message, 'error');
+      return;
+    }
+  }
+
   btn.disabled = true;
   try {
     await api('/pedidos-peca-os/manual', { method: 'POST', body: JSON.stringify(corpo) });
     toast('Pedido criado', 'success');
     fecharModais();
-    carregarDesfechos();
+    carregarPedidosComComprovante();
   } catch (e) {
+    statusFoto.textContent = '';
     toast(e.message, 'error');
+  } finally {
     btn.disabled = false;
   }
 }
