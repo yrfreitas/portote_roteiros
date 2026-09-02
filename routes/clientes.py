@@ -161,8 +161,26 @@ def obter(cliente_id):
               FROM ordens_servico WHERE cliente_id = ? ORDER BY id DESC
         """, (cliente_id,))
 
+        # Dia real do atendimento (pedido de 2026-09-02: "puxe direto do dia
+        # que ela foi atendida" pra preencher o início da garantia sozinho,
+        # em vez de depender de alguém lembrar a data de cabeça). Casa pelo
+        # vínculo de verdade (ordem_servico_id) OU, na falta dele, pelo nome
+        # — mesma rede de segurança usada no reaproveite de OS em campo.
+        visita = fetch_one(conn, """
+            SELECT MAX(f.data_referencia) AS data
+              FROM servicos s
+              JOIN fichas f ON f.id = s.ficha_id
+             WHERE s.status = 'concluido'
+               AND (s.ordem_servico_id IN (SELECT id FROM ordens_servico WHERE cliente_id = ?)
+                    OR LOWER(s.cliente) = LOWER(?))
+        """, (cliente_id, cliente["nome"]))
+
     _aplicar_mascara_cpf([cliente])
-    return jsonify({"cliente": cliente, "ordens_servico": ordens})
+    return jsonify({
+        "cliente": cliente,
+        "ordens_servico": ordens,
+        "ultima_visita": (visita or {}).get("data"),
+    })
 
 
 @clientes_bp.route("/clientes", methods=["POST"])

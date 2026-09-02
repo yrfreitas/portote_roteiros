@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v185';
+const VERSAO_PAINEL = 'v186';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7929,6 +7929,17 @@ async function osSelecionarCliente(id, nome) {
   document.getElementById('os-vincular-pai').style.display = 'none';
   try {
     const r = await api(`/clientes/${id}`);
+
+    // Pedido de 2026-09-02: "na hora de gerar a garantia... puxe direto do
+    // dia que ela foi atendida" — em vez de digitar de cabeça, o início da
+    // garantia já vem preenchido com o dia real do atendimento concluído.
+    // Só entra se o campo ainda estiver vazio — não pisa em cima do que a
+    // pessoa já tiver digitado na mão.
+    const campoGarantia = document.getElementById('os-garantia-inicio');
+    if (campoGarantia && !campoGarantia.value && r.ultima_visita) {
+      campoGarantia.value = r.ultima_visita;
+    }
+
     const anteriores = r.ordens_servico || [];
     if (anteriores.length === 0) {
       alvo.innerHTML = `<p class="ajuda-texto">Primeira OS deste cliente.</p>`;
