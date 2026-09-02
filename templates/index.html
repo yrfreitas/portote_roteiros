@@ -902,7 +902,7 @@
       <div class="form-group">
         <label class="form-label" for="add-cliente">Cliente</label>
         <input type="text" class="form-input" id="add-cliente"
-               placeholder="Nome do cliente">
+               placeholder="Nome do cliente" onblur="_sugerirVinculoOS('add')">
       </div>
       <div class="form-group">
         <label class="form-label" for="add-telefone">Telefone <span class="form-obrigatorio">*</span></label>
@@ -971,6 +971,14 @@
     <div class="modal-title">Editar Atendimento Técnico</div>
     <input type="hidden" id="edit-servico-id">
     <input type="hidden" id="edit-ficha-id">
+    <input type="hidden" id="edit-ordem-servico-id">
+
+    <div class="form-group">
+      <label class="form-label" for="edit-busca-os">Cliente já tem uma OS? Busque pelo nome pra vincular</label>
+      <input type="text" class="form-input" id="edit-busca-os" autocomplete="off"
+             placeholder="Digite o nome do cliente..." oninput="editBuscarClienteComOS(this.value)">
+      <div id="edit-busca-os-resultado"></div>
+    </div>
 
     <div class="form-row">
       <div class="form-group">
@@ -990,7 +998,7 @@
       <div class="form-group">
         <label class="form-label" for="edit-cliente">Cliente</label>
         <input type="text" class="form-input" id="edit-cliente"
-               placeholder="Nome do cliente">
+               placeholder="Nome do cliente" onblur="_sugerirVinculoOS('edit')">
       </div>
       <div class="form-group">
         <label class="form-label" for="edit-telefone">Telefone <span class="form-obrigatorio">*</span></label>

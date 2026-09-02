@@ -215,6 +215,24 @@ def editar_servico(servico_id):
         if _servico_de_outro_tecnico(conn, servico["ficha_id"]):
             return jsonify({"erro": "Serviço não encontrado"}), 404
 
+    # Vincular a uma OS já aberta (pedido de 2026-09-02, achado no caso da
+    # Maria Cristina): até aqui só dava pra ligar isso na CRIAÇÃO do
+    # atendimento — quem criou sem buscar a OS ficava sem jeito nenhum de
+    # corrigir depois, e a OS nunca recebia o desfecho do técnico porque a
+    # ponta ficava solta. "ordem_servico_id" só entra se vier explícito no
+    # corpo (None/ausente não mexe no que já estava).
+    ordem_servico_id = servico.get("ordem_servico_id")
+    if "ordem_servico_id" in data:
+        novo_os_id = data.get("ordem_servico_id")
+        if novo_os_id:
+            with db_conn() as conn:
+                os_existe = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (novo_os_id,))
+            if not os_existe:
+                return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
+            ordem_servico_id = novo_os_id
+        else:
+            ordem_servico_id = None
+
     # Editar também exige setor. Assim, abrir um ponto antigo para corrigir
     # qualquer coisa já força a classificação que faltava, em vez de perpetuar
     # o ponto órfão. Se o cliente não mandou o campo, cai no que já estava —
@@ -258,7 +276,7 @@ def editar_servico(servico_id):
                SET cep = ?, numero = ?, endereco_completo = ?,
                    lat = ?, lng = ?, cliente = ?, descricao = ?,
                    tipo_aparelho = ?, modelo = ?, numero_os = ?,
-                   setor_id = ?, telefone = ?
+                   setor_id = ?, telefone = ?, ordem_servico_id = ?
              WHERE id = ?
         """, (cep_novo, numero_novo, endereco, lat, lng,
               (data.get("cliente") if data.get("cliente") is not None
@@ -271,7 +289,7 @@ def editar_servico(servico_id):
                else servico.get("modelo") or ""),
               (data.get("numero_os") if data.get("numero_os") is not None
                else servico.get("numero_os") or ""),
-              setor_id, telefone,
+              setor_id, telefone, ordem_servico_id,
               servico_id))
 
         ficha_id = servico["ficha_id"]

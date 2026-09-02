@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v180';
+const VERSAO_PAINEL = 'v181';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6602,6 +6602,72 @@ async function addPuxarDadosDaOS(osId) {
     `<p class="ajuda-texto" style="margin-top:6px;">✓ Dados de OS #${String(o.id).padStart(6, '0')} puxados — este atendimento vai ficar ligado a ela.</p>`;
 }
 
+// Mesma busca do Adicionar, só que pro Editar (pedido de 2026-09-02) — um
+// atendimento pode ter sido criado sem essa busca (ex: alguém digitou tudo
+// na mão), e sem uma forma de ligar depois a OS nunca sabe que o técnico
+// já esteve lá. Ver caso da Maria Cristina que motivou isso.
+let _editBuscaOSTimer = null;
+
+function editBuscarClienteComOS(termo) {
+  clearTimeout(_editBuscaOSTimer);
+  const alvo = document.getElementById('edit-busca-os-resultado');
+  if (!termo || termo.trim().length < 2) {
+    alvo.innerHTML = document.getElementById('edit-ordem-servico-id').value
+      ? `<p class="ajuda-texto" style="margin-top:6px;">✓ Já vinculado à OS #${String(document.getElementById('edit-ordem-servico-id').value).padStart(6, '0')}.</p>`
+      : '';
+    return;
+  }
+  _editBuscaOSTimer = setTimeout(async () => {
+    let r;
+    try {
+      r = await api(`/ordens-servico?busca=${encodeURIComponent(termo.trim())}`);
+    } catch (e) {
+      alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+      return;
+    }
+    if (r.ordens.length === 0) {
+      alvo.innerHTML = `<p class="ajuda-texto" style="margin-top:6px;">Nenhuma OS encontrada com esse nome.</p>`;
+      return;
+    }
+    alvo.innerHTML = r.ordens.map(o => `
+      <div class="os-resultado-item" onclick="editPuxarDadosDaOS(${o.id})">
+        <b>${esc(o.cliente_nome)}</b>
+        <span>OS #${String(o.id).padStart(6, '0')} · ${esc([o.tipo_aparelho, o.modelo].filter(Boolean).join(' ')) || 'sem aparelho'} — ${esc(o.defeito_declarado || '')}</span>
+      </div>`).join('');
+  }, 350);
+}
+
+function editPuxarDadosDaOS(osId) {
+  document.getElementById('edit-ordem-servico-id').value = osId;
+  document.getElementById('edit-busca-os-resultado').innerHTML =
+    `<p class="ajuda-texto" style="margin-top:6px;">✓ Vinculado à OS #${String(osId).padStart(6, '0')} — salve pra confirmar.</p>`;
+}
+
+// Aviso automático (pedido de 2026-09-02): a busca manual acima resolve pra
+// quem lembra de usá-la, mas o caso real que motivou isso foi alguém NÃO
+// usar — cliente já tinha OS aberta e ninguém buscou. Ao sair do campo
+// Cliente, se ainda não tem OS vinculada, procura sozinho por esse nome e
+// avisa; não vincula automático (podia ser homônimo), só sugere.
+async function _sugerirVinculoOS(prefixo) {
+  const campoOsId = document.getElementById(`${prefixo}-ordem-servico-id`);
+  if (campoOsId.value) return;   // já vinculado, nada a sugerir
+  const nome = document.getElementById(`${prefixo}-cliente`).value.trim();
+  if (nome.length < 3) return;
+  let r;
+  try { r = await api(`/ordens-servico?busca=${encodeURIComponent(nome)}`); }
+  catch { return; }
+  const abertas = (r.ordens || []).filter(o => !['finalizada', 'cancelada'].includes(o.status));
+  if (abertas.length !== 1) return;   // nenhuma ou mais de uma -> ambíguo, não incomoda
+  const o = abertas[0];
+  const alvo = document.getElementById(`${prefixo}-busca-os-resultado`);
+  if (alvo.innerHTML) return;   // já tem algo mostrado (resultado de busca manual), não sobrepõe
+  alvo.innerHTML = `
+    <p class="ajuda-texto aviso" style="margin-top:6px;">
+      Existe uma OS aberta pra <b>${esc(o.cliente_nome)}</b> (#${String(o.id).padStart(6, '0')}) —
+      <a href="#" onclick="event.preventDefault(); ${prefixo}PuxarDadosDaOS(${o.id})">vincular esse atendimento a ela?</a>
+    </p>`;
+}
+
 async function abrirModalEditarServico(servicoId) {
   const s = servicosAtuais.find(x => x.id === servicoId);
   if (!s) { toast('Atendimento não encontrado — recarregue a ficha', 'error'); return; }
@@ -6615,6 +6681,14 @@ async function abrirModalEditarServico(servicoId) {
   document.getElementById('edit-tipo-aparelho').value = s.tipo_aparelho || '';
   document.getElementById('edit-modelo').value = s.modelo || '';
   document.getElementById('edit-numero-os').value = s.numero_os || '';
+  document.getElementById('edit-ordem-servico-id').value = s.ordem_servico_id || '';
+  document.getElementById('edit-busca-os').value = '';
+  // Pedido de 2026-09-02 (achado no caso da Maria Cristina): sem isso, um
+  // atendimento criado sem buscar a OS ficava PRA SEMPRE sem jeito de ligar
+  // depois — o técnico dava baixa e a OS nunca sabia disso.
+  document.getElementById('edit-busca-os-resultado').innerHTML = s.ordem_servico_id
+    ? `<p class="ajuda-texto" style="margin-top:6px;">✓ Já vinculado à OS #${String(s.ordem_servico_id).padStart(6, '0')}.</p>`
+    : '';
   if (!setores.length) {
     document.getElementById('edit-setor').innerHTML = '<option value="">Carregando setores...</option>';
   }
@@ -6787,6 +6861,7 @@ async function salvarEdicaoServico() {
         modelo:        document.getElementById('edit-modelo').value,
         numero_os:     document.getElementById('edit-numero-os').value,
         setor_id:      setorEditado,
+        ordem_servico_id: document.getElementById('edit-ordem-servico-id').value || null,
       }),
     });
 
