@@ -2609,7 +2609,12 @@ mark.realce-busca {
   color: var(--text-primary);
 }
 .vcep-tab.active {
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  /* Sólido, não gradiente claro->escuro (pedido de 2026-09-02, "modo
+     escuro impossível de ver"): com fonte pequena (11px), o lado claro do
+     gradiente (--accent) contra o texto quase-branco de --on-accent dava
+     só ~3:1 de contraste — abaixo do mínimo de leitura confortável. Sólido
+     em --accent-deep sobe pra ~4.8:1 sem perder o azul de "selecionado". */
+  background: var(--accent-deep);
   color: var(--on-accent);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.18),
@@ -4012,7 +4017,11 @@ select:focus-visible,
   border-radius: 14px; box-shadow: 0 10px 34px rgba(0,0,0,.55); overflow: hidden;
 }
 .chat-janela.aberto { display: flex; }
-.chat-topo { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 700; }
+.chat-topo {
+  padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 700;
+  cursor: grab; touch-action: none; user-select: none;
+}
+.chat-topo.arrastando { cursor: grabbing; }
 .chat-topo small { display: block; font-weight: 400; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .chat-corpo { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .chat-envio { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--border); }

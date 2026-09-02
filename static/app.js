@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v183';
+const VERSAO_PAINEL = 'v184';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1362,6 +1362,61 @@ function sinalizarDigitandoChat() {
   }
 }
 
+// Arrastar o painel de chat pelo cabeçalho (pedido de 2026-09-02: "quero
+// que ele se mexa, pra eu poder colocar em qualquer lugar da tela") —
+// nasce ancorado no canto (right/bottom, ver CSS), e ao arrastar troca
+// pra left/top absoluto. Posição fica salva por navegador (localStorage),
+// não é dado do negócio — cada pessoa pode preferir um canto diferente.
+function _iniciarArrastoChat(janela) {
+  const topo = document.getElementById('painel-chat-topo');
+  if (!topo) return;
+
+  try {
+    const salva = JSON.parse(localStorage.getItem('portotec-chat-pos') || 'null');
+    if (salva && Number.isFinite(salva.left) && Number.isFinite(salva.top)) {
+      janela.style.left = salva.left + 'px';
+      janela.style.top = salva.top + 'px';
+      janela.style.right = 'auto';
+      janela.style.bottom = 'auto';
+    }
+  } catch { /* posição salva inválida — mantém a ancoragem padrão */ }
+
+  let arrastando = false, offsetX = 0, offsetY = 0;
+
+  topo.addEventListener('pointerdown', (e) => {
+    arrastando = true;
+    topo.setPointerCapture(e.pointerId);
+    const rect = janela.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    topo.classList.add('arrastando');
+  });
+
+  topo.addEventListener('pointermove', (e) => {
+    if (!arrastando) return;
+    const margem = 4;
+    const left = Math.max(margem, Math.min(e.clientX - offsetX, window.innerWidth - janela.offsetWidth - margem));
+    const top = Math.max(margem, Math.min(e.clientY - offsetY, window.innerHeight - janela.offsetHeight - margem));
+    janela.style.left = left + 'px';
+    janela.style.top = top + 'px';
+    janela.style.right = 'auto';
+    janela.style.bottom = 'auto';
+  });
+
+  const soltar = () => {
+    if (!arrastando) return;
+    arrastando = false;
+    topo.classList.remove('arrastando');
+    try {
+      localStorage.setItem('portotec-chat-pos', JSON.stringify({
+        left: parseInt(janela.style.left, 10), top: parseInt(janela.style.top, 10),
+      }));
+    } catch { /* privado/bloqueado — sem persistência, sem quebrar o resto */ }
+  };
+  topo.addEventListener('pointerup', soltar);
+  topo.addEventListener('pointercancel', soltar);
+}
+
 function iniciarChatPainel() {
   const bolha = document.getElementById('painel-chat-bolha');
   const janela = document.getElementById('painel-chat-janela');
@@ -1375,6 +1430,8 @@ function iniciarChatPainel() {
     janela.classList.toggle('aberto', abrindo);
     if (abrindo) carregarConversas();
   });
+
+  _iniciarArrastoChat(janela);
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
