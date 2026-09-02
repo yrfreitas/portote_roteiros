@@ -51,6 +51,13 @@
   --text-secondary: #aebdd6;
   --text-muted:     #8496b3;
   --text-faint:     #64758f;
+  /* Alias — 15 regras no arquivo usam var(--text, ...) ou var(--text) sem
+     nunca ter existido --text de verdade (só sobreviviam pelo fallback fixo
+     '#e6edf7', que só por coincidência combinava com o escuro). Descoberto
+     ao testar o tema claro: viravam texto quase branco em cima de fundo
+     branco. Definir aqui resolve as 15 de uma vez, sem editar regra por
+     regra — e acompanha --text-primary automaticamente em cada tema. */
+  --text: var(--text-primary);
 
   --font-display: 'Syne', sans-serif;
   --font-serif:   'Fraunces', 'Times New Roman', serif;
@@ -86,6 +93,116 @@
   --glow-accent-md: 0 0 0 1px rgba(79,141,251,0.25), 0 0 48px -6px rgba(79,141,251,0.55);
   --glow-gold-sm:   0 0 0 1px rgba(245,181,68,0.22), 0 0 22px -6px rgba(245,181,68,0.45);
   --glow-cyan-sm:   0 0 24px -4px rgba(34,211,238,0.5);
+}
+
+/* ─── TEMA CLARO ──────────────────────────────────────────────────
+   Pedido de 2026-09-01. Repõe TODOS os tokens de cor (nenhuma regra do
+   arquivo usa cor fora de var(--x)), então isso sozinho já troca o site
+   inteiro — sem precisar revisar componente por componente.
+   :root[data-theme] em vez de prefers-color-scheme de propósito: é
+   escolha do usuário (botão no header, guardada em localStorage), não
+   o SO decidindo por ele — o painel é usado em jornada de trabalho, não
+   em navegação eventual. */
+:root[data-theme="light"] {
+  --bg:            #eef1f7;
+  --bg-deep:       #e3e8f2;
+  --bg-panel:      #f8f9fc;
+  --bg-card:       #ffffff;
+  --bg-elevated:   #ffffff;
+  --bg-hover:      #eef2fb;
+  --bg-input:      #ffffff;
+
+  --border:        rgba(30,41,59,0.10);
+  --border-bright: rgba(30,41,59,0.20);
+  --border-focus:  rgba(37,99,235,0.55);
+
+  --accent:        #2f6fe0;
+  --accent-light:  #5b8def;
+  --accent-deep:   #1d4ed8;
+  --accent-2:      #0891b2;
+  --accent-3:      #7c6ff0;
+  --accent-dim:    rgba(47,111,224,0.08);
+  --accent-glow:   rgba(47,111,224,0.18);
+  --accent-text:   #1d4ed8;
+  --on-accent:     #ffffff;
+
+  --gold:          #b8790a;
+  --gold-dim:      rgba(184,121,10,0.10);
+  --gold-text:     #8a5b06;
+
+  --success:       #16a34a;
+  --success-dim:   rgba(22,163,74,0.10);
+  --success-text:  #15803d;
+  --danger:        #dc2626;
+  --danger-dim:    rgba(220,38,38,0.08);
+  --danger-text:   #b91c1c;
+
+  --text-primary:   #101828;
+  --text-secondary: #3f4b63;
+  --text-muted:     #667085;
+  --text-faint:     #98a2b3;
+
+  --glass-fill:      rgba(255,255,255,0.72);
+  --glass-fill-2:    rgba(255,255,255,0.55);
+  --glass-veil:      linear-gradient(180deg, rgba(16,24,40,0.035), rgba(16,24,40,0) 45%);
+  --glass-border:    rgba(16,24,40,0.08);
+  --glass-border-hi: rgba(16,24,40,0.16);
+
+  --shadow-card:
+    0 1px 0 rgba(255,255,255,0.6) inset,
+    0 0 0 1px rgba(16,24,40,0.06),
+    0 12px 28px -18px rgba(16,24,40,0.18);
+  --shadow-card-hi:
+    0 1px 0 rgba(255,255,255,0.7) inset,
+    0 0 0 1px rgba(16,24,40,0.08),
+    0 18px 40px -16px rgba(16,24,40,0.22),
+    0 0 30px -14px rgba(47,111,224,0.18);
+  --shadow-pop:
+    0 30px 70px -24px rgba(16,24,40,0.28),
+    0 0 0 1px rgba(16,24,40,0.05) inset,
+    0 0 40px -18px rgba(47,111,224,0.16);
+
+  --glow-accent-sm: 0 0 0 1px rgba(47,111,224,0.18), 0 0 16px -4px rgba(47,111,224,0.30);
+  --glow-accent-md: 0 0 0 1px rgba(47,111,224,0.22), 0 0 34px -6px rgba(47,111,224,0.38);
+  --glow-gold-sm:   0 0 0 1px rgba(184,121,10,0.20), 0 0 16px -6px rgba(184,121,10,0.30);
+  --glow-cyan-sm:   0 0 16px -4px rgba(8,145,178,0.35);
+}
+
+/* Aurora/starfield e o mapa foram desenhados pensando em fundo escuro —
+   no claro, o mesmo peso vira mancha e o mapa fica invertido/estranho. */
+:root[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 1100px 720px at 8% -10%,  rgba(47,111,224,0.10), transparent 62%),
+    radial-gradient(ellipse 900px 620px at 108% 12%,  rgba(8,145,178,0.08), transparent 58%),
+    radial-gradient(ellipse 900px 620px at 50% 118%,  rgba(124,111,240,0.07), transparent 62%);
+}
+:root[data-theme="light"] body::before { opacity: 0.4; }
+:root[data-theme="light"] body::after  { opacity: 0.012; }
+:root[data-theme="light"] .leaflet-container { background: var(--bg-deep) !important; }
+:root[data-theme="light"] .leaflet-tile-pane { filter: none; }
+
+/* Header tem gradiente de cor FIXA (rgba(6,9,17,...) — quase preto), não
+   var() — mesma classe de bug do --text acima. Sem isso, o header ficava
+   escuro por cima de um site claro, e o texto do status-pill (transparente,
+   herda o que está atrás) ficava ilegível: cor de texto clara do tema
+   escuro nunca mudou porque a regra nem usava token nenhum. */
+:root[data-theme="light"] header {
+  background: linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.68));
+}
+:root[data-theme="light"] .sidebar {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.92), rgba(244,246,251,0.96)),
+    radial-gradient(ellipse 300px 400px at 50% -10%, rgba(47,111,224,0.08), transparent 70%);
+}
+:root[data-theme="light"] .leaflet-control-attribution {
+  background: rgba(255,255,255,0.85) !important;
+}
+/* .modal era o mesmo bug do header/sidebar, só que mais grave: é a
+   superfície de TODO formulário do sistema (Nova OS, desfecho, editar...) —
+   ficava um bloco quase preto opaco em cima de um site claro, com rótulo e
+   campo ilegíveis. */
+:root[data-theme="light"] .modal {
+  background: linear-gradient(160deg, #ffffff, #f3f5fa 96%);
 }
 
 /* ─── RESET ──────────────────────────────────────────────────── */
@@ -2190,6 +2307,60 @@ header::after {
   from { transform: translateX(-100%); }
   to   { transform: translateX(100%); }
 }
+
+/* ─── ESQUELETOS DE CARREGAMENTO ─────────────────────────────────
+   Substituem o spinner central em listas grandes (OS, Clientes) — o
+   formato já lembra o card de verdade, então a troca pro conteúdo real
+   não "salta" a tela. Pedido de 2026-09-01. */
+.skeleton-linha {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 13px; padding: 14px 16px; margin-bottom: 10px;
+}
+.skeleton-bloco {
+  position: relative; overflow: hidden;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+}
+.skeleton-bloco::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(166,200,255,0.10), transparent);
+  animation: shimmer 1.5s linear infinite;
+}
+.skeleton-avatar { width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; }
+.skeleton-linhas { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; }
+.skeleton-linhas .skeleton-bloco:first-child { width: 46%; height: 13px; }
+.skeleton-linhas .skeleton-bloco:last-child  { width: 72%; height: 10px; }
+
+/* ─── DESTAQUE DE BUSCA ──────────────────────────────────────────
+   Trecho que bateu com o texto digitado, dentro de nome/telefone/etc
+   já renderizado. Pedido de 2026-09-01. */
+mark.realce-busca {
+  background: var(--gold-dim);
+  color: var(--gold-text);
+  padding: 0 2px;
+  border-radius: 3px;
+  font-weight: 700;
+}
+
+/* ─── ALTERNAR TEMA ──────────────────────────────────────────────
+   Botão no header — sol/lua conforme o tema atual. */
+.btn-tema {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.btn-tema:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-bright); }
+.btn-tema .icone-lua   { display: none; }
+.btn-tema .icone-sol   { display: block; }
+:root[data-theme="light"] .btn-tema .icone-sol { display: none; }
+:root[data-theme="light"] .btn-tema .icone-lua { display: block; }
 
 /* ─── LEAFLET DARK ──────────────────────────────────────────── */
 .leaflet-container {

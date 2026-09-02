@@ -51,6 +51,18 @@ function escCor(cor, fallback = '#4f8dfb') {
   return (typeof cor === 'string' && /^#[0-9a-fA-F]{6}$/.test(cor)) ? cor : fallback;
 }
 
+// Escapa primeiro (igual esc()) e só DEPOIS grifa o trecho que bateu com a
+// busca — nessa ordem pra não deixar a marcação vulnerável a HTML digitado
+// no próprio termo buscado. Pedido de 2026-09-01.
+function destacar(valor, termo) {
+  const seguro = esc(valor);
+  const termoLimpo = (termo || '').trim();
+  if (!termoLimpo) return seguro;
+  const termoSeguro = esc(termoLimpo).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(termoSeguro, 'ig');
+  return seguro.replace(re, m => `<mark class="realce-busca">${m}</mark>`);
+}
+
 function fmtKm(v) {
   return (v === null || v === undefined || isNaN(v)) ? '—' : Number(v).toFixed(1);
 }
@@ -247,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v171';
+const VERSAO_PAINEL = 'v172';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1283,6 +1295,20 @@ async function carregarStatusAlmocoPainel() {
   _renderBotaoAlmocoPainel();
   clearInterval(_almocoPainelIntervalo);
   if (_almocoPainelDesde) _almocoPainelIntervalo = setInterval(_renderBotaoAlmocoPainel, 30000);
+}
+
+// Tema claro/escuro (pedido de 2026-09-01). O html já nasce com o atributo
+// certo (script inline no <head> de index.html, pra não piscar) — aqui só
+// alterna e salva a escolha.
+function alternarTema() {
+  const claro = document.documentElement.getAttribute('data-theme') === 'light';
+  if (claro) {
+    document.documentElement.removeAttribute('data-theme');
+    try { localStorage.setItem('portotec-tema', 'dark'); } catch (e) {}
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+    try { localStorage.setItem('portotec-tema', 'light'); } catch (e) {}
+  }
 }
 
 async function alternarAlmocoPainel() {
@@ -6288,10 +6314,24 @@ function osBuscar(valor) {
 // sem passar por criar OS nenhuma — "uma aba que a gente consegue ver sem
 // fazer OS e tal". Reaproveita GET /clientes (mesmo que a busca de "Nova
 // OS" usa), só que sem o teto de 50 pensado pra autocomplete.
+// Esqueleto genérico (pedido de 2026-09-01): N linhas do formato "avatar +
+// duas barras" — usado tanto pra Clientes quanto (com wrapper próprio) OS,
+// pra troca pro conteúdo real não saltar a tela.
+function _skeletonLinhas(n = 6) {
+  return Array.from({ length: n }, () => `
+    <div class="skeleton-linha">
+      <div class="skeleton-bloco skeleton-avatar"></div>
+      <div class="skeleton-linhas">
+        <div class="skeleton-bloco"></div>
+        <div class="skeleton-bloco"></div>
+      </div>
+    </div>`).join('');
+}
+
 async function carregarClientesTodos() {
   const mount = document.getElementById('os-conteudo');
   if (!mount) return;
-  mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
+  mount.innerHTML = `<div class="cliente-lista">${_skeletonLinhas(7)}</div>`;
 
   const params = new URLSearchParams({ limite: '5000' });
   if (_osBuscaTexto) params.set('busca', _osBuscaTexto);
@@ -6317,11 +6357,11 @@ async function carregarClientesTodos() {
     <div class="cliente-linha" onclick="abrirClienteDetalhe(${c.id})">
       <div class="cliente-linha-avatar">${esc(iniciais)}</div>
       <div class="cliente-linha-principal">
-        <div class="cliente-linha-nome">${esc(c.nome)}</div>
-        <div class="cliente-linha-doc">${esc(c.cpf_cnpj) || 'sem CPF/CNPJ cadastrado'}</div>
+        <div class="cliente-linha-nome">${destacar(c.nome, _osBuscaTexto)}</div>
+        <div class="cliente-linha-doc">${destacar(c.cpf_cnpj, _osBuscaTexto) || 'sem CPF/CNPJ cadastrado'}</div>
       </div>
       <div class="cliente-linha-lado">
-        <div class="cliente-linha-contato">${esc(c.telefone) || '—'}</div>
+        <div class="cliente-linha-contato">${destacar(c.telefone, _osBuscaTexto) || '—'}</div>
         <div class="cliente-linha-cidade">${esc(cidadeUf) || (c.email ? esc(c.email) : '—')}</div>
       </div>
     </div>`;
@@ -6379,10 +6419,25 @@ async function abrirClienteDetalhe(clienteId) {
     </div>`;
 }
 
+// Esqueleto no formato de .os-linha (mesmo grid de 4 colunas) — só pra
+// carregamento, por isso cursor:default (não é clicável).
+function _skeletonOS(n = 5) {
+  return Array.from({ length: n }, () => `
+    <div class="os-linha" style="cursor:default;">
+      <div class="skeleton-bloco" style="height:32px;"></div>
+      <div class="skeleton-linhas">
+        <div class="skeleton-bloco"></div>
+        <div class="skeleton-bloco"></div>
+      </div>
+      <div class="skeleton-bloco" style="height:13px;width:80%;"></div>
+      <div class="skeleton-bloco" style="height:20px;width:90px;justify-self:end;"></div>
+    </div>`).join('');
+}
+
 async function carregarOS() {
   const mount = document.getElementById('os-conteudo');
   if (!mount) return;
-  mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
+  mount.innerHTML = _skeletonOS();
 
   const params = new URLSearchParams();
   if (_osFiltroStatus) params.set('status', _osFiltroStatus);
@@ -6447,7 +6502,7 @@ async function carregarOS() {
         ${modeloClasse ? `<span class="os-modelo-badge ${modeloClasse}">${esc(MODELOS_OS_ROTULO[o.modelo_os] || '')}</span>` : ''}
       </div>
       <div>
-        <div class="cliente">${esc(o.cliente_nome)}</div>
+        <div class="cliente">${destacar(o.cliente_nome, _osBuscaTexto)}</div>
         <div class="aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || '—'}</div>
       </div>
       <div class="defeito">${esc(o.defeito_declarado || '—')}</div>
@@ -9618,6 +9673,36 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => { if (e.target === overlay) fecharModais(); });
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharModais(); });
+
+// Atalhos de teclado do painel (pedido de 2026-09-01):
+// "/" foca a busca visível na tela atual, e Enter confirma o modal aberto
+// (o botão .btn-primary é sempre a ação de confirmar — nunca uma exclusão,
+// que não usa essa classe). Em campo de texto normal, Enter continua digitando
+// igual sempre — só dispara o confirmar dentro de modal aberto.
+const _BUSCAS_ATALHO = ['os-busca', 'estoque-busca-input', 'venda-busca-input',
+                        'sidebar-busca-cliente', 'substituicao-busca'];
+
+document.addEventListener('keydown', e => {
+  const alvo = e.target;
+  const digitando = alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.isContentEditable);
+
+  if (e.key === '/' && !digitando && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const campo = _BUSCAS_ATALHO.map(id => document.getElementById(id))
+      .find(el => el && el.offsetParent !== null);
+    if (campo) { e.preventDefault(); campo.focus(); campo.select?.(); }
+    return;
+  }
+
+  // hasAttribute('onkeydown'): alguns campos (item de orçamento, cotação de
+  // peça etc) já têm seu PRÓPRIO Enter cuidando de uma ação específica —
+  // não empilhar o confirmar do modal em cima disso.
+  if (e.key === 'Enter' && alvo && alvo.tagName !== 'TEXTAREA' && !alvo.hasAttribute('onkeydown')) {
+    const modalAberto = document.querySelector('.modal-overlay.open');
+    if (!modalAberto) return;
+    const btn = modalAberto.querySelector('.btn-primary');
+    if (btn && !btn.disabled) { e.preventDefault(); btn.click(); }
+  }
+});
 
 function selecionarDia(el, dia) {
   document.querySelectorAll('.dia-pill').forEach(p => p.classList.remove('selected'));

@@ -2,6 +2,14 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <script>
+    // Aplica o tema ANTES do CSS pintar a tela — sem isso a página nasce
+    // escura e "pisca" pro claro um instante depois, em vez de já abrir certa.
+    try {
+      var _tema = localStorage.getItem('portotec-tema');
+      if (_tema === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    } catch (e) {}
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Sistema de roteirização de atendimentos técnicos — Porto Tec">
@@ -90,6 +98,10 @@
       </div>
       <button class="btn-almoco-painel" id="btn-almoco-painel" style="display:none" onclick="alternarAlmocoPainel()">
         🍽 Ir almoçar
+      </button>
+      <button type="button" class="btn-tema" id="btn-tema" onclick="alternarTema()" title="Trocar tema claro/escuro" aria-label="Trocar tema">
+        <svg class="icone-svg icone-16 icone-sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/></svg>
+        <svg class="icone-svg icone-16 icone-lua" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
       <form method="POST" action="/logout">
         <button type="submit" class="btn-sair" title="Sair">
