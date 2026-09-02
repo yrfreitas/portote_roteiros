@@ -1348,8 +1348,8 @@
     <textarea class="form-input" id="pm-descricao" rows="2"></textarea>
 
     <div class="form-group" style="margin-top:10px;">
-      <label class="form-label" for="pm-foto">Foto do comprovante da compra (opcional)</label>
-      <input class="form-input" type="file" accept="image/*" capture="environment" id="pm-foto">
+      <label class="form-label" for="pm-foto">Foto do comprovante da compra <span class="form-obrigatorio">*</span></label>
+      <input class="form-input" type="file" accept="image/*" capture="environment" id="pm-foto" onchange="pedidoManualValidar()">
       <span class="ajuda-texto" id="pm-foto-status"></span>
     </div>
 
