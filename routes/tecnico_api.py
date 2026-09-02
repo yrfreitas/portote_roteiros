@@ -458,6 +458,24 @@ def _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
         except ValueError:
             return None
 
+    # Pedido de 2026-09-02 ("pra não ficarmos bugados"): esse atendimento
+    # não veio de "Agendar Clientes" (senão ordem_servico_id já estaria
+    # preenchido e caía em _fechar_os_existente) — mas se o cliente JÁ tem
+    # uma OS esperando agendamento, "Fazer OS" em campo resolveu ELA, não
+    # abriu um caso novo. Sem isso, a OS velha ficava fantasma na fila pra
+    # sempre. Só reaproveita se houver EXATAMENTE uma — mais de uma (ou
+    # nenhuma) é ambíguo demais pra decidir sozinho; nesse caso segue o
+    # comportamento de sempre (cria OS nova).
+    pendente = fetch_all(conn, sql("""
+        SELECT id FROM ordens_servico WHERE cliente_id = ? AND status = 'aguardando_agendamento'
+    """), (cliente_id,))
+    if len(pendente) == 1:
+        os_id = pendente[0]["id"]
+        resultado = _fechar_os_existente(conn, os_id, desfecho, quem)
+        execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
+               (os_id, servico["id"]))
+        return resultado
+
     agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     tipo_aparelho = (desfecho.get("tipo_aparelho") or servico.get("tipo_aparelho") or "").strip()
     modelo = (desfecho.get("modelo") or servico.get("modelo") or "").strip()
