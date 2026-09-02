@@ -43,7 +43,7 @@ STATUS_OS = [
 # agenda nada.
 STATUS_LOJA = [
     "aprovado", "reprovado", "aguardando_aprovacao", "aguardando_orcamento",
-    "conserto_atrasado", "aguardando_peca", "abandonado",
+    "conserto_atrasado", "aguardando_peca", "abandonado", "finalizado",
 ]
 STATUS_LOJA_ROTULO = {
     "aprovado": "Aprovado",
@@ -53,6 +53,7 @@ STATUS_LOJA_ROTULO = {
     "conserto_atrasado": "Conserto Atrasado",
     "aguardando_peca": "Aguardando peça",
     "abandonado": "Produtos abandonados",
+    "finalizado": "Finalizado",
 }
 
 TERMOS_PADRAO = (

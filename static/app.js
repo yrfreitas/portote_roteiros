@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v187';
+const VERSAO_PAINEL = 'v188';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6990,6 +6990,7 @@ const STATUS_LOJA_ROTULO = {
   conserto_atrasado:     'Conserto Atrasado',
   aguardando_peca:       'Aguardando peça',
   abandonado:            'Produtos abandonados',
+  finalizado:            'Finalizado',
 };
 
 // Mesma lista do <select id="os-tipo"> da Nova OS — cada tipo imprime um
