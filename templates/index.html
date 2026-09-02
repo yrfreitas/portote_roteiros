@@ -1262,6 +1262,20 @@
   </div>
 </div>
 
+<!-- Histórico de almoço dos técnicos (pedido de 2026-09-02): só admin -->
+<div class="modal-overlay" id="modal-almoco-historico" role="dialog" aria-modal="true" aria-label="Histórico de almoço dos técnicos">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title">Histórico de almoço dos técnicos</div>
+    <p class="ajuda-texto" style="margin:0 0 12px;">Últimos 200 registros, mais recente primeiro.</p>
+    <div id="almoco-historico-corpo" style="max-height:60vh;overflow-y:auto;">
+      <div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="fecharModais()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-cliente-detalhe" role="dialog" aria-modal="true" aria-label="Dados do cliente">
   <div class="modal">
     <div class="modal-title" id="cliente-detalhe-nome"></div>

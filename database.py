@@ -1,3 +1,4 @@
+import logging
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -6,6 +7,8 @@ from datetime import datetime, timezone
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
+
+log = logging.getLogger("portotec.database")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 IS_PG = bool(DATABASE_URL)
@@ -1119,6 +1122,12 @@ _MIGRACOES_PG = [
         lng        DOUBLE PRECISION,
         criado_em  TEXT
     )""",
+    # Pedido de peça pra REPOR ESTOQUE, sem cliente nenhum (2026-09-02) — até
+    # aqui todo pedido_peca_os precisava de uma OS (ordem_servico_id NOT
+    # NULL). Afrouxa pra permitir os dois: com OS (pedido de cliente) ou sem
+    # (reposição), diferenciados por qual das duas colunas está preenchida.
+    "ALTER TABLE pedido_peca_os ALTER COLUMN ordem_servico_id DROP NOT NULL",
+    "ALTER TABLE pedido_peca_os ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1362,6 +1371,7 @@ _MIGRACOES_SQLITE = [
         lng        REAL,
         criado_em  TEXT
     )""",
+    "ALTER TABLE pedido_peca_os ADD COLUMN cliente_id INTEGER REFERENCES clientes(id)",
 ]
 
 
@@ -1444,6 +1454,49 @@ def _semear_revisao(conn):
         conn.rollback()  # já existe — é o caso normal a partir do 2º boot
 
 
+def _afrouxar_pedido_peca_os_sqlite(conn):
+    """SQLite não tem "ALTER COLUMN ... DROP NOT NULL" — a única forma de
+    tirar essa trava é recriar a tabela (padrão documentado do próprio
+    SQLite: criar nova, copiar dado, apagar a velha, renomear).
+
+    Só entra em ação se a trava ainda existir (idempotente — não recria a
+    tabela a cada boot). Pedido de 2026-09-02: pedido de peça pra REPOR
+    ESTOQUE não tem OS nenhuma por trás, então ordem_servico_id precisa
+    poder ficar vazio."""
+    info = conn.execute("PRAGMA table_info(pedido_peca_os)").fetchall()
+    coluna = next((c for c in info if c[1] == "ordem_servico_id"), None)
+    if not coluna or not coluna[3]:   # coluna[3] = notnull (0/1)
+        return  # já está solto (ou tabela nem existe ainda) — nada a fazer
+
+    conn.execute("""
+        CREATE TABLE pedido_peca_os_novo (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            ordem_servico_id INTEGER,
+            peca             TEXT,
+            descricao        TEXT,
+            foto             TEXT,
+            criado_em        TEXT,
+            criado_por       TEXT,
+            pedido_em        TEXT,
+            pedido_por       TEXT,
+            pedido_foto      TEXT,
+            cliente_id       INTEGER REFERENCES clientes(id),
+            FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        INSERT INTO pedido_peca_os_novo
+            (id, ordem_servico_id, peca, descricao, foto, criado_em,
+             criado_por, pedido_em, pedido_por, pedido_foto)
+        SELECT id, ordem_servico_id, peca, descricao, foto, criado_em,
+               criado_por, pedido_em, pedido_por, pedido_foto
+          FROM pedido_peca_os
+    """)
+    conn.execute("DROP TABLE pedido_peca_os")
+    conn.execute("ALTER TABLE pedido_peca_os_novo RENAME TO pedido_peca_os")
+    conn.commit()
+
+
 def init_db():
     with db_conn(commit=True) as conn:
         if IS_PG:
@@ -1464,6 +1517,10 @@ def init_db():
                     conn.execute(ddl)
                 except Exception:
                     pass
+            try:
+                _afrouxar_pedido_peca_os_sqlite(conn)
+            except Exception:
+                log.exception("Falha ao afrouxar pedido_peca_os.ordem_servico_id")
 
         for ddl in _INDICES:
             try:

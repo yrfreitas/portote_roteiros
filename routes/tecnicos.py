@@ -635,6 +635,27 @@ def almoco_status_geral():
     return jsonify({"status": status})
 
 
+@tecnicos_bp.route("/tecnicos/almoco/historico", methods=["GET"])
+def almoco_historico():
+    """Painel admin do almoço (pedido de 2026-09-02): antes disso, a única
+    forma de ver quando cada técnico saiu/voltou era abrir o banco direto.
+    Só admin — é dado de controle de jornada, não algo pra atendente ver."""
+    from routes.auth import e_admin
+    if not e_admin():
+        return jsonify({"erro": "Só administrador pode ver isso"}), 403
+
+    with db_conn() as conn:
+        eventos = fetch_all(conn, sql("""
+            SELECT e.id, e.tecnico_id, e.tipo, e.quando, e.duracao_min,
+                   t.nome AS tecnico_nome, t.cor AS tecnico_cor
+              FROM almoco_eventos e
+              JOIN tecnicos t ON t.id = e.tecnico_id
+             ORDER BY e.id DESC
+             LIMIT 200
+        """))
+    return jsonify({"eventos": eventos})
+
+
 @tecnicos_bp.route("/tecnicos/almoco/eventos", methods=["GET"])
 def almoco_eventos_novos():
     """Eventos (início/volta) mais recentes que `desde_id`, pro painel dar o

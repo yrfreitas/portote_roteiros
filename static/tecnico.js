@@ -1417,7 +1417,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v177';
+  const VERSAO_TELA = 'v178';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
@@ -1438,6 +1438,17 @@
   let almocoDesde = null;
   let almocoIntervalo = null;
 
+  // "desde" vem cru do banco em UTC sem sufixo de fuso — new Date(string)
+  // direto faz o navegador ler como horário LOCAL, e o contador saía até 3h
+  // errado (pedido de 2026-09-02: "a data está vindo aleatória").
+  function _parseDataBancoAlmoco(valor) {
+    if (!valor) return null;
+    let s = String(valor).trim().replace(' ', 'T');
+    if (!/(Z|[+-]\d{2}:\d{2})$/.test(s)) s += 'Z';
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
   function _renderBotaoAlmoco() {
     const btn = document.getElementById('btn-almoco');
     if (!btn) return;
@@ -1446,7 +1457,8 @@
       btn.className = 't-btn-almoco';
       return;
     }
-    const minutos = Math.max(0, Math.round((Date.now() - new Date(almocoDesde).getTime()) / 60000));
+    const inicio = _parseDataBancoAlmoco(almocoDesde);
+    const minutos = inicio ? Math.max(0, Math.round((Date.now() - inicio.getTime()) / 60000)) : 0;
     const restante = 60 - minutos;
     const rotulo = restante >= 0 ? `faltam ${restante}min` : `${Math.abs(restante)}min atrasado`;
     btn.textContent = `⏱ Voltar do almoço (${rotulo})`;

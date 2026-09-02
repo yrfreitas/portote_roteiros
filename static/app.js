@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v177';
+const VERSAO_PAINEL = 'v178';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1511,7 +1511,11 @@ function _renderBotaoAlmocoPainel() {
     btn.className = 'btn-almoco-painel';
     return;
   }
-  const minutos = Math.max(0, Math.round((Date.now() - new Date(_almocoPainelDesde).getTime()) / 60000));
+  // parseDataBanco (não new Date direto): "desde" vem cru do banco em UTC
+  // sem sufixo de fuso — o navegador lê isso como horário LOCAL e o
+  // contador saía até 3h errado (pedido de 2026-09-02: "data aleatória").
+  const inicio = parseDataBanco(_almocoPainelDesde);
+  const minutos = inicio ? Math.max(0, Math.round((Date.now() - inicio.getTime()) / 60000)) : 0;
   const restante = 60 - minutos;
   const rotulo = restante >= 0 ? `faltam ${restante}min` : `${Math.abs(restante)}min atrasado`;
   btn.textContent = `⏱ Voltar do almoço (${rotulo})`;
@@ -1527,6 +1531,47 @@ async function carregarStatusAlmocoPainel() {
   _renderBotaoAlmocoPainel();
   clearInterval(_almocoPainelIntervalo);
   if (_almocoPainelDesde) _almocoPainelIntervalo = setInterval(_renderBotaoAlmocoPainel, 30000);
+}
+
+// Histórico de almoço (pedido de 2026-09-02): antes só dava pra ver
+// entrando direto no banco. Painel admin — servidor barra quem não é admin
+// mesmo que alguém force a chamada por fora.
+async function abrirHistoricoAlmoco() {
+  document.getElementById('modal-almoco-historico').classList.add('open');
+  const corpo = document.getElementById('almoco-historico-corpo');
+  corpo.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
+  let r;
+  try {
+    r = await api('/tecnicos/almoco/historico');
+  } catch (e) {
+    corpo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+  const eventos = r.eventos || [];
+  if (!eventos.length) {
+    corpo.innerHTML = `<div class="historico-vazio"><p>Nenhum registro de almoço ainda.</p></div>`;
+    return;
+  }
+  const tdStyle = 'padding:6px 8px;border-bottom:1px solid var(--borda,#3333);text-align:left;';
+  corpo.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr>
+        <th style="${tdStyle}">Técnico</th><th style="${tdStyle}">Tipo</th>
+        <th style="${tdStyle}">Quando</th><th style="${tdStyle}">Duração</th>
+      </tr></thead>
+      <tbody>
+        ${eventos.map(e => {
+          const d = parseDataBanco(e.quando);
+          const quando = d ? `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : '—';
+          return `<tr>
+            <td style="${tdStyle}"><span class="at-ponto-cor" style="background:${escCor(e.tecnico_cor)}"></span>${esc(e.tecnico_nome)}</td>
+            <td style="${tdStyle}">${e.tipo === 'inicio' ? 'Saiu pro almoço' : 'Voltou do almoço'}</td>
+            <td style="${tdStyle}">${quando}</td>
+            <td style="${tdStyle}">${e.duracao_min != null ? formatarTempo(e.duracao_min) : '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
 }
 
 // Tema claro/escuro (pedido de 2026-09-01). O html já nasce com o atributo
@@ -1789,7 +1834,8 @@ async function carregarDiagnostico() {
       <div class="diag-card-op"><div class="n">${totalOS}</div><div class="lbl">OS no total</div>
         <div class="sub">${Object.entries(porStatus).map(([s, n]) => `${esc(OS_STATUS_ROTULO[s] || s)}: ${n}`).join(' · ') || 'nenhuma ainda'}</div></div>
       <div class="diag-card-op ${op.precisa_peca ? 'aviso' : ''}"><div class="n">${op.precisa_peca ?? 0}</div><div class="lbl">peças esperando pedido</div></div>
-      <div class="diag-card-op ${op.tecnicos_em_almoco ? 'aviso' : ''}"><div class="n">${op.tecnicos_em_almoco ?? 0}</div><div class="lbl">técnico(s) em almoço agora</div></div>
+      <div class="diag-card-op ${op.tecnicos_em_almoco ? 'aviso' : ''}"><div class="n">${op.tecnicos_em_almoco ?? 0}</div><div class="lbl">técnico(s) em almoço agora</div>
+        ${usuarioLogado.papel === 'admin' ? `<div class="sub"><a href="#" onclick="event.preventDefault(); abrirHistoricoAlmoco()">Ver histórico completo →</a></div>` : ''}</div>
       <div class="diag-card-op"><div class="n">${(op.vendas_hoje || {}).quantidade ?? 0}</div><div class="lbl">vendas hoje</div>
         <div class="sub">${brlDiag((op.vendas_hoje || {}).total)}</div></div>
     </div>`);
