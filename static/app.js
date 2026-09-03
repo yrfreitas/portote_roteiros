@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v190';
+const VERSAO_PAINEL = 'v191';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4518,11 +4518,16 @@ async function avisarACaminho(servicoId) {
 
   // O link de acompanhamento nasce aqui, no servidor, e entra na mensagem.
   // Se falhar, segue sem ele — avisar sem acompanhamento é melhor que nada.
+  // Mas quem manda precisa SABER que faltou (reclamado em 2026-09-03:
+  // "não aparece o link") — antes só ficava um console.warn que ninguém via.
   let link = null;
   try {
     const r = await api(`/servicos/${servicoId}/rastreio`, { method: 'POST' });
     link = `${location.origin}/acompanhar/${r.token}`;
-  } catch (e) { console.warn('Sem link de acompanhamento:', e.message); }
+  } catch (e) {
+    console.warn('Sem link de acompanhamento:', e.message);
+    toast('Não consegui gerar o link de acompanhamento — a mensagem vai sem ele', 'error');
+  }
 
   const texto = montarMensagemACaminho(s, tecnico?.nome, link);
 

@@ -3048,7 +3048,10 @@ select:focus-visible,
     scrollbar-width: none;
   }
   .main-tabs::-webkit-scrollbar { display: none; }
-  .main-tab { height: 30px; padding: 0 10px; font-size: 11px; flex-shrink: 0; }
+  /* 30px/11px era ilegível no aparelho de um técnico ("está minúscula e não
+     conseguimos ver", 2026-09-03). O header tem 56px de altura reservados;
+     34px de aba com folga de 3px em cada lado ainda cabe folgado. */
+  .main-tab { height: 34px; padding: 0 13px; font-size: 12.5px; flex-shrink: 0; }
   .header-date { display: none; }
   .status-pill #status-texto,
   .status-pill #status-latencia { display: none; }
@@ -3777,7 +3780,7 @@ select:focus-visible,
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 32vh;
+  max-height: 45vh;
   overflow-y: auto;
   margin: 0 0 12px;
   font-family: inherit;

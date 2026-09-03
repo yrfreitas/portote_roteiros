@@ -506,8 +506,13 @@
 
     // O rastreio comeca ANTES de montar a mensagem, porque o link dele entra
     // no texto. Se falhar, segue sem o link — avisar o cliente sem
-    // acompanhamento e melhor que nao avisar.
+    // acompanhamento e melhor que nao avisar. Mas quem manda precisa SABER
+    // que faltou, senao o cliente recebe uma mensagem incompleta e ninguem
+    // percebe (reclamado em 2026-09-03: "nao aparece o link").
     const linkAcompanhar = await criarLinkAcompanhamento(servicoId);
+    if (!linkAcompanhar) {
+      toast('Não consegui gerar o link de acompanhamento — a mensagem vai sem ele');
+    }
 
     const texto = montarAviso(s, linkAcompanhar);
     const ehCelular = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -1455,7 +1460,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v190';
+  const VERSAO_TELA = 'v191';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
