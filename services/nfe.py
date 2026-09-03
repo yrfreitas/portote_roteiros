@@ -160,9 +160,15 @@ def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
                 m = _RE_PEDIDO_EMITIDO.search(assunto)
                 if not m:
                     continue
+                # A própria VTEX trunca a descrição no assunto ("Gaxet...")
+                # -- só limpa os espaços e troca "..."/".." por "…" pra não
+                # parecer um nome de peça pela metade sem indicar que foi
+                # cortado. O código (não truncado) é o identificador de
+                # verdade; a descrição é só apoio visual.
+                descricao = re.sub(r"\.{2,}$", "…", m.group("descricao").strip())
                 resultado.append({
                     "codigo": m.group("codigo").strip(),
-                    "descricao": m.group("descricao").strip(" .").rstrip("."),
+                    "descricao": descricao,
                     "data": msg.get("Date", ""),
                 })
             except Exception as exc:
