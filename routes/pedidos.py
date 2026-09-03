@@ -98,10 +98,132 @@ def diagnostico_planilha():
 def pedidos_emitidos_email():
     """Pedidos feitos na loja da Panasonic, lidos direto do e-mail de
     confirmação -- aparece em Peças Compradas sem esperar o robô da
-    planilha achar a nota fiscal. Pedido de 2026-09-03."""
+    planilha achar a nota fiscal (achado em 2026-09-03: o robô estava
+    parado pra pedidos recentes, dias sem gravar nada na planilha).
+
+    A leitura do e-mail é só isso -- LEITURA, recalculada a cada chamada.
+    O que o usuário PREENCHE aqui (peça/cliente/se já foi mandado pra
+    agendar) mora em `pedidos_email` (ver database.py), casada pela
+    `chave` estável que services/nfe.py calcula a partir de código+data.
+    Pedido de 2026-09-03: "tem que ficar igual fica os faturados, pq eu
+    tenho que anexar pra poder agendar os clientes com essas peças."
+    """
     from services.nfe import pedidos_emitidos_recentes
 
-    return jsonify({"pedidos": pedidos_emitidos_recentes()})
+    pedidos = pedidos_emitidos_recentes()
+    if pedidos:
+        with db_conn() as conn:
+            marcadores = ",".join(["?"] * len(pedidos))
+            vinculos = {
+                l["chave"]: l
+                for l in fetch_all(conn, sql(
+                    f"SELECT chave, peca, cliente_final, ordem_servico_id "
+                    f"FROM pedidos_email WHERE chave IN ({marcadores})"),
+                    tuple(p["chave"] for p in pedidos))
+            }
+        for p in pedidos:
+            v = vinculos.get(p["chave"]) or {}
+            p["peca"] = v.get("peca") or ""
+            p["cliente_final"] = v.get("cliente_final") or ""
+            p["ordem_servico_id"] = v.get("ordem_servico_id")
+
+    return jsonify({"pedidos": pedidos})
+
+
+@pedidos_bp.route("/pedidos/email/<chave>", methods=["PUT"])
+def vincular_pedido_email(chave):
+    """Salva peça/cliente de um pedido emitido lido do e-mail (ver rota
+    acima) -- equivalente ao PUT /pedidos/<linha> da planilha, mas numa
+    tabela própria porque não existe linha de planilha pra esses ainda."""
+    data = request.get_json(silent=True) or {}
+    cliente = (data.get("cliente") or "").strip()
+    peca = (data.get("peca") or "").strip()
+    codigo = (data.get("codigo") or "").strip()
+    descricao = (data.get("descricao") or "").strip()
+    data_email = (data.get("data_email") or "").strip()
+
+    if not cliente:
+        return jsonify({"erro": "Informe o cliente"}), 400
+
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_conn(commit=True) as conn:
+        existe = fetch_one(conn, sql("SELECT chave FROM pedidos_email WHERE chave = ?"), (chave,))
+        if existe:
+            execute(conn, sql(
+                "UPDATE pedidos_email SET peca = ?, cliente_final = ?, atualizado_em = ? "
+                "WHERE chave = ?"), (peca, cliente, agora, chave))
+        else:
+            execute(conn, sql(
+                "INSERT INTO pedidos_email "
+                "(chave, codigo, descricao, data_email, peca, cliente_final, atualizado_em) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)"),
+                (chave, codigo, descricao, data_email, peca, cliente, agora))
+        bump_revisao(conn)
+
+    return jsonify({"mensagem": f"Peça vinculada a {cliente}", "chave": chave})
+
+
+@pedidos_bp.route("/pedidos/email/agendar-cliente", methods=["POST"])
+def agendar_cliente_email():
+    """Mesma ideia de POST /pedidos/<linha>/agendar-cliente, mas pra pedido
+    emitido lido do e-mail: abre a OS em 'aguardando_agendamento' e marca
+    em `pedidos_email.ordem_servico_id` pra não abrir duas pra mesma
+    compra. Não usa `pecas_chegada` de propósito -- aqui o pedido só foi
+    EMITIDO, marcar "chegou" implicitamente (como o fluxo da planilha faz)
+    seria dado falso: a peça claramente ainda não chegou.
+    """
+    from routes.clientes import criar_cliente
+
+    data = request.get_json(silent=True) or {}
+    chave = (data.get("chave") or "").strip()
+    cliente_nome = (data.get("cliente") or "").strip()
+    peca = (data.get("peca") or "").strip()
+    if not chave or not cliente_nome:
+        return jsonify({"erro": "Falta a chave do pedido ou o nome do cliente"}), 400
+
+    with db_conn(commit=True) as conn:
+        registro = fetch_one(conn, sql(
+            "SELECT chave, ordem_servico_id FROM pedidos_email WHERE chave = ?"), (chave,))
+        if registro and registro.get("ordem_servico_id"):
+            return jsonify({
+                "erro": "Essa peça já está na fila de Agendar Clientes",
+                "id": registro["ordem_servico_id"],
+            }), 409
+
+        existente = fetch_one(conn, sql(
+            "SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
+        if existente:
+            cliente_id = existente["id"]
+        else:
+            try:
+                cliente_id = criar_cliente(conn, {"nome": cliente_nome})
+            except ValueError as exc:
+                return jsonify({"erro": str(exc)}), 400
+
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        quem = (session.get("usuario_nome") or "Administrador").strip()[:80]
+        os_id = insert_returning_id(conn, sql("""
+            INSERT INTO ordens_servico
+                (cliente_id, atendente, defeito_declarado, taxa_avaliacao,
+                 status, observacao, criado_em, criado_por)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """), (cliente_id, quem,
+               f"Peça pedida: {peca}" if peca else "Peça pedida — agendar visita",
+               0, "aguardando_agendamento",
+               "Vindo de Peças Compradas (pedido emitido, direto do e-mail).", agora, quem))
+
+        if registro:
+            execute(conn, sql(
+                "UPDATE pedidos_email SET ordem_servico_id = ? WHERE chave = ?"),
+                (os_id, chave))
+        else:
+            execute(conn, sql(
+                "INSERT INTO pedidos_email (chave, peca, cliente_final, ordem_servico_id, atualizado_em) "
+                "VALUES (?, ?, ?, ?, ?)"), (chave, peca, cliente_nome, os_id, agora))
+        bump_revisao(conn)
+
+    return jsonify({"mensagem": f"{cliente_nome} enviado para Agendar Clientes",
+                    "id": os_id, "cliente_id": cliente_id}), 201
 
 
 

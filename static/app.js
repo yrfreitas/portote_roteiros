@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v203';
+const VERSAO_PAINEL = 'v204';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3529,9 +3529,18 @@ async function desfazerPedidoPeca(servicoId, pedidoOsId) {
 
 // Pedidos emitidos direto do e-mail de confirmação da loja (pedido de
 // 2026-09-03) — aparece antes mesmo do robô da planilha achar a nota
-// fiscal. Só a etapa "pedido feito" interessa aqui (ver
-// services/nfe.py:pedidos_emitidos_recentes); faturamento/pagamento/envio
-// ficam de fora de propósito.
+// fiscal (achado: o robô estava dias parado pra pedidos recentes). Só a
+// etapa "pedido feito" interessa aqui (ver services/nfe.py:
+// pedidos_emitidos_recentes); faturamento/pagamento/envio ficam de fora
+// de propósito.
+//
+// Cartão igual ao de "Peças Compradas" (mesmas classes .peca-*) porque o
+// Kalebe pediu pra ficar "igual fica os faturados" — precisa anexar
+// peça/cliente pra poder agendar a visita com essa peça em mãos, sem
+// esperar a etapa seguinte (pagamento/nota/envio). Duas diferenças de
+// propósito: sem "Registrar no estoque" (não existe custo/nota ainda pra
+// registrar) e sem botão de "chegou" (marcar chegada aqui seria dado
+// falso — a peça claramente ainda não chegou).
 async function carregarPedidosEmitidosEmail() {
   const alvo = document.getElementById('pecas-emitidos-lista');
   if (!alvo) return;
@@ -3544,12 +3553,113 @@ async function carregarPedidosEmitidosEmail() {
       return;
     }
     alvo.innerHTML = pedidos.map(p => `
-      <div class="pe-item">
-        <span><span class="pe-item-codigo">${esc(p.codigo)}</span><span class="pe-item-desc">${esc(p.descricao)}</span></span>
-        <span class="pe-item-data">${esc((p.data || '').split(' ').slice(0, 4).join(' '))}</span>
+      <div class="peca-linha" id="peca-email-${p.chave}"
+           data-chave="${esc(p.chave)}" data-codigo="${esc(p.codigo)}"
+           data-descricao="${esc(p.descricao)}" data-data-email="${esc(p.data)}">
+        <div class="peca-ident">
+          <span class="peca-valor">${esc(p.codigo)}</span>
+          <span class="peca-meta">Emitido · ${esc((p.data || '').split(' ').slice(0, 4).join(' '))}</span>
+          <span class="peca-estagio e-criado">aguardando pagamento</span>
+        </div>
+
+        <div class="peca-campo">
+          <label class="peca-rot" for="peca-email-desc-${p.chave}">Peça</label>
+          <input class="form-input peca-input" id="peca-email-desc-${p.chave}"
+                 value="${esc(p.peca || p.descricao)}" title="${esc(p.descricao)}"
+                 onchange="salvarPecaEmailInline('${p.chave}')">
+        </div>
+
+        <div class="peca-campo">
+          <label class="peca-rot" for="peca-email-cliente-${p.chave}">Cliente</label>
+          <div class="peca-cliente-linha">
+            <input class="form-input peca-input" list="lista-clientes"
+                   id="peca-email-cliente-${p.chave}" value="${esc(p.cliente_final)}"
+                   placeholder="Escolha ou digite..."
+                   onchange="salvarPecaEmailInline('${p.chave}')">
+          </div>
+        </div>
+
+        <div class="peca-acoes">
+          <span class="peca-estado" id="peca-email-estado-${p.chave}">${
+            p.cliente_final ? '<span class="ok">✓ vinculado</span>' : ''}</span>
+          ${botaoAgendarPecaEmail(p)}
+        </div>
       </div>`).join('');
   } catch (e) {
     alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+  }
+}
+
+async function salvarPecaEmailInline(chave) {
+  const linhaEl = document.getElementById(`peca-email-${chave}`);
+  const peca = document.getElementById(`peca-email-desc-${chave}`)?.value.trim() || '';
+  const cliente = document.getElementById(`peca-email-cliente-${chave}`)?.value.trim() || '';
+  const estado = document.getElementById(`peca-email-estado-${chave}`);
+  if (!cliente || !linhaEl) return; // salva só quando tiver cliente, igual ao fluxo da planilha
+  if (estado) estado.innerHTML = '<span class="salvando">salvando...</span>';
+  try {
+    await api(`/pedidos/email/${chave}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        cliente, peca,
+        codigo: linhaEl.dataset.codigo,
+        descricao: linhaEl.dataset.descricao,
+        data_email: linhaEl.dataset.dataEmail,
+      }),
+    });
+    if (estado) estado.innerHTML = '<span class="ok">✓ vinculado</span>';
+  } catch (e) {
+    if (estado) estado.innerHTML = '';
+    toast(e.message, 'error');
+  }
+}
+
+// Classe própria (.peca-agendar-email), não .peca-agendar: aquela fica
+// escondida até a linha ganhar .chegou (só faz sentido agendar depois que
+// a peça chegou, na planilha) — aqui é o oposto de propósito, o Kalebe
+// quer agendar ANTES da peça chegar, assim que o pedido é emitido.
+function botaoAgendarPecaEmail(p) {
+  if (p.ordem_servico_id) {
+    return `
+      <button class="peca-agendar-email enviado" onclick="abrirOSDetalhe(${p.ordem_servico_id})"
+              title="Já está na fila de Agendar Clientes — clique pra abrir a OS">
+        ✓ enviado p/ agendar
+      </button>`;
+  }
+  return `
+    <button class="peca-agendar-email" id="peca-email-agendar-${p.chave}"
+            title="Manda este cliente pra fila de Agendar Clientes já, sem esperar a peça chegar"
+            onclick="enviarParaAgendarEmail('${p.chave}')">
+      Agendar cliente
+    </button>`;
+}
+
+async function enviarParaAgendarEmail(chave) {
+  const linhaEl = document.getElementById(`peca-email-${chave}`);
+  const cliente = document.getElementById(`peca-email-cliente-${chave}`)?.value.trim();
+  const peca = document.getElementById(`peca-email-desc-${chave}`)?.value.trim() || '';
+  if (!cliente) {
+    toast('Preencha o cliente antes de mandar pra Agendar Clientes.', 'error');
+    return;
+  }
+  const btn = document.getElementById(`peca-email-agendar-${chave}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+
+  try {
+    const r = await api('/pedidos/email/agendar-cliente', {
+      method: 'POST',
+      body: JSON.stringify({ chave, cliente, peca }),
+    });
+    toast(r.mensagem, 'success');
+    if (btn) {
+      btn.outerHTML = `
+        <button class="peca-agendar enviado" onclick="abrirOSDetalhe(${r.id})">
+          ✓ enviado p/ agendar
+        </button>`;
+    }
+  } catch (e) {
+    toast(e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Agendar cliente'; }
   }
 }
 

@@ -408,6 +408,28 @@ _SCHEMA_PG = [
         registrado_por TEXT
     )""",
 
+    # PEDIDO EMITIDO, LIDO DIRETO DO E-MAIL — não confundir com a planilha.
+    #
+    # O robô externo que grava a aba "Pedidos" da planilha ficou obsoleto pra
+    # pedidos recentes (achado em 2026-09-03: pedidos de 01-03/09 não tinham
+    # linha nenhuma lá, nem em CRIADO). services/nfe.py:pedidos_emitidos_recentes
+    # lê o e-mail de confirmação da loja (VTEX) direto, sem depender do robô —
+    # mas isso é só LEITURA, recalculada a cada chamada; o vínculo com
+    # cliente e o agendamento (que o usuário PREENCHE) precisam de algum
+    # lugar pra morar entre uma consulta e outra. Tabela própria, e não a
+    # planilha, pelo mesmo motivo do comentário de pecas_chegada acima:
+    # escrever ali um dado que não veio do robô misturaria as duas origens.
+    """CREATE TABLE IF NOT EXISTS pedidos_email (
+        chave            TEXT PRIMARY KEY,
+        codigo           TEXT,
+        descricao        TEXT,
+        data_email       TEXT,
+        peca             TEXT,
+        cliente_final    TEXT,
+        ordem_servico_id INTEGER REFERENCES ordens_servico(id) ON DELETE SET NULL,
+        atualizado_em    TEXT
+    )""",
+
     # O QUE ACONTECEU NO ATENDIMENTO.
     #
     # Até aqui o técnico só podia dizer "concluído" — e "concluído" tanto
@@ -654,6 +676,16 @@ _SCHEMA_SQLITE = """
         chegou_em    TEXT,
         observacao   TEXT,
         registrado_por TEXT
+    );
+    CREATE TABLE IF NOT EXISTS pedidos_email (
+        chave            TEXT PRIMARY KEY,
+        codigo           TEXT,
+        descricao        TEXT,
+        data_email       TEXT,
+        peca             TEXT,
+        cliente_final    TEXT,
+        ordem_servico_id INTEGER,
+        atualizado_em    TEXT
     );
     CREATE TABLE IF NOT EXISTS servico_desfecho (
         servico_id      INTEGER PRIMARY KEY,

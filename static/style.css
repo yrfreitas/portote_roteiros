@@ -3478,20 +3478,6 @@ select:focus-visible,
 }
 .pp-cartao.pp-chegou { border-color: rgba(52,211,153,.4); background: linear-gradient(160deg, rgba(52,211,153,.08), var(--glass-fill-2)); }
 
-/* Pedidos emitidos direto do e-mail (pedido de 2026-09-03) — lista simples,
-   sem campo de vínculo cliente/estoque: esses pedidos ainda não passaram
-   pelo robô da planilha, aqui só confirma "o pedido saiu da loja". */
-.pe-item {
-  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-  background: var(--glass-fill);
-  padding: 10px 14px; margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-.pe-item-codigo { font-weight: 700; font-size: 13.5px; color: var(--text-primary); }
-.pe-item-desc { font-size: 12.5px; color: var(--text-secondary); margin-left: 8px; }
-.pe-item-data { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 .pp-btn-chegou {
   background: transparent; border: 1px solid var(--border-bright); color: var(--text-secondary);
 }
@@ -5070,6 +5056,22 @@ select:focus-visible,
 .peca-agendar:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-dim); }
 .peca-agendar:disabled { opacity: .6; cursor: default; }
 .peca-agendar.enviado {
+  border-style: solid; border-color: var(--accent-2, #22d3ee);
+  background: rgba(34,211,238,.12); color: var(--cyan-text);
+}
+
+/* Igual ao .peca-agendar acima, mas SEM a trava ":not(.chegou)" -- pedidos
+   emitidos (pedido de 2026-09-03) precisam agendar o cliente ANTES da peça
+   chegar, não depois. */
+.peca-agendar-email {
+  font-size: 10px; font-weight: 600; cursor: pointer;
+  color: var(--accent-text); background: transparent;
+  border: 1px solid var(--border-bright); border-radius: 7px; padding: 4px 9px;
+  max-width: 132px; white-space: normal; line-height: 1.3; text-align: center;
+}
+.peca-agendar-email:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-dim); }
+.peca-agendar-email:disabled { opacity: .6; cursor: default; }
+.peca-agendar-email.enviado {
   border-style: solid; border-color: var(--accent-2, #22d3ee);
   background: rgba(34,211,238,.12); color: var(--cyan-text);
 }

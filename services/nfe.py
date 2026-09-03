@@ -11,6 +11,7 @@ descrição, quantidade e valor — e a voltagem correta vem escrita na descriç
 (127V / 220V), que é exatamente o que não se pode errar.
 """
 import email
+import hashlib
 import imaplib
 import logging
 import os
@@ -166,10 +167,19 @@ def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
                 # cortado. O código (não truncado) é o identificador de
                 # verdade; a descrição é só apoio visual.
                 descricao = re.sub(r"\.{2,}$", "…", m.group("descricao").strip())
+                codigo = m.group("codigo").strip()
+                data_email = msg.get("Date", "")
                 resultado.append({
-                    "codigo": m.group("codigo").strip(),
+                    # Identidade estável entre uma consulta e outra -- o
+                    # mesmo código pode ser comprado de novo em outro dia,
+                    # então o hash usa código+data (não só o código) pra não
+                    # colidir duas compras diferentes na mesma "chave"
+                    # (ver routes/pedidos.py: é essa chave que guarda o
+                    # vínculo com cliente na tabela pedidos_email).
+                    "chave": "em" + hashlib.sha1(f"{codigo}|{data_email}".encode()).hexdigest()[:14],
+                    "codigo": codigo,
                     "descricao": descricao,
-                    "data": msg.get("Date", ""),
+                    "data": data_email,
                 })
             except Exception as exc:
                 log.warning("Falha lendo e-mail de pedido emitido %s: %s", mid, exc)
