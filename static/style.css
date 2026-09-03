@@ -3059,6 +3059,10 @@ select:focus-visible,
      conseguimos ver", 2026-09-03). O header tem 56px de altura reservados;
      34px de aba com folga de 3px em cada lado ainda cabe folgado. */
   .main-tab { height: 34px; padding: 0 13px; font-size: 12.5px; flex-shrink: 0; }
+  /* Torre de Controle e Painel de TV são ferramentas de tela grande (mapa,
+     dashboard) — no celular a aba nem cabia direito no cabeçalho e ficava
+     inacessível ("não conseguimos ver a aba", 2026-09-03). Só de computador. */
+  #btn-torre-controle, #btn-tv-painel { display: none !important; }
   .header-date { display: none; }
   .status-pill #status-texto,
   .status-pill #status-latencia { display: none; }

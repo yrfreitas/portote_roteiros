@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v196';
+const VERSAO_PAINEL = 'v197';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8532,7 +8532,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       <label class="form-label">Outras seções da impressão</label>
       <div class="imprimir-opcoes">
         ${incluirGarantia ? `<label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="garantia"${(oc || []).includes('garantia') ? '' : ' checked'}> Garantia</label>` : ''}
-        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="termos"${(oc || []).includes('termos') ? '' : ' checked'}> Termos de garantia</label>
+        <label class="imp-check"><input type="checkbox" class="os-imp-campo" data-campo="termos"${(oc || []).includes('termos') ? '' : ' checked'}> Termos</label>
       </div>
     </div>`;
 
@@ -8604,10 +8604,12 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${camposComuns}
       ${observacao}
       ${outrasSecoes(true)}
-      <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoOrcamento(${o.id})">Salvar alterações</button>
     </div>
     ${itensSecao}
-    ${aprovacaoOrcamento}`;
+    ${aprovacaoOrcamento}
+    <div class="os-detalhe-secao">
+      <button class="btn btn-primary btn-sm" onclick="osSalvarEdicaoOrcamento(${o.id})">Salvar alterações</button>
+    </div>`;
   }
 
   return `
@@ -8642,9 +8644,11 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       </div>
       ${observacao}
       ${outrasSecoes(true)}
-      <button class="btn btn-primary btn-sm" onclick="osSalvarEdicao(${o.id})">Salvar alterações</button>
     </div>
-    ${itensSecao}`;
+    ${itensSecao}
+    <div class="os-detalhe-secao">
+      <button class="btn btn-primary btn-sm" onclick="osSalvarEdicao(${o.id})">Salvar alterações</button>
+    </div>`;
 }
 
 function osRenderItensOrcamento(itens) {
