@@ -17,6 +17,7 @@ import os
 import re
 import socket
 import xml.etree.ElementTree as ET
+from email.header import decode_header
 from typing import Dict, List
 
 log = logging.getLogger("portotec.nfe")
@@ -98,6 +99,84 @@ def _cabecalhos_recentes(conn, limite: int) -> List[dict]:
         except Exception as exc:
             log.warning("Falha lendo cabeçalho do e-mail %s: %s", mid, exc)
     return resultado
+
+
+def _decodificar_assunto(bruto: str) -> str:
+    """`Message.get('Subject')` devolve o cabeçalho cru — se vier em
+    'encoded-word' (=?UTF-8?Q?...?=) tem que decodificar antes de dar match
+    em regex, senão nunca casa. Alguns remetentes (VTEX, neste arquivo) não
+    chegam a codificar; `decode_header` lida com os dois casos igual.
+    Espaços/quebras de linha de dobra de cabeçalho viram um espaço só.
+    """
+    partes = decode_header(bruto or "")
+    texto = "".join(
+        p.decode(enc or "utf-8", errors="replace") if isinstance(p, bytes) else p
+        for p, enc in partes
+    )
+    return re.sub(r"\s+", " ", texto).strip()
+
+
+# "Seu pedido de ARADGC606120 - Gaxeta... e mais 1 item(ns) foi realizado
+# com sucesso!" -- é o e-mail que a loja (VTEX) manda na hora em que o
+# PEDIDO é feito, bem antes da nota fiscal existir. A mesma loja manda um
+# e-mail parecido pra cada etapa seguinte (pagamento aprovado, faturado,
+# enviado) -- aqui só interessa esta primeira, "foi feito o pedido", pedido
+# de 2026-09-03: "puxa só os pedidos que foram feito" / "tire os faturados,
+# deixe só os emitidos".
+_RE_PEDIDO_EMITIDO = re.compile(
+    r"seu pedido de\s+(?P<codigo>\S+)\s*-\s*(?P<descricao>.+?)"
+    r"(?:\s+e mais\s+\d+\s+item\(ns\))?\s+foi realizado com sucesso!?\s*$",
+    re.IGNORECASE,
+)
+
+
+def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
+    """Pedidos feitos na loja da Panasonic, direto do e-mail de confirmação
+    -- não espera o robô da planilha achar a nota fiscal (que só chega bem
+    depois, e às vezes nem chega se o pedido for cancelado no meio).
+    """
+    if not imap_configurado():
+        return []
+
+    conn = None
+    try:
+        conn = _conectar()
+        status, data = conn.search(None, "ALL")
+        if status != "OK" or not data or not data[0]:
+            return []
+
+        ids = sorted(data[0].split(), key=lambda x: -int(x))[:limite]
+        resultado = []
+        for mid in ids:
+            try:
+                status, d = conn.fetch(mid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+                if status != "OK" or not d or not d[0]:
+                    continue
+                msg = email.message_from_bytes(d[0][1])
+                remetente = msg.get("From", "")
+                if "vtex" not in remetente.lower():
+                    continue
+                assunto = _decodificar_assunto(msg.get("Subject", ""))
+                m = _RE_PEDIDO_EMITIDO.search(assunto)
+                if not m:
+                    continue
+                resultado.append({
+                    "codigo": m.group("codigo").strip(),
+                    "descricao": m.group("descricao").strip(" .").rstrip("."),
+                    "data": msg.get("Date", ""),
+                })
+            except Exception as exc:
+                log.warning("Falha lendo e-mail de pedido emitido %s: %s", mid, exc)
+        return resultado
+    except Exception:
+        log.exception("Falha ao buscar pedidos emitidos por e-mail")
+        return []
+    finally:
+        if conn is not None:
+            try:
+                conn.logout()
+            except Exception:
+                pass
 
 
 def _conectar():

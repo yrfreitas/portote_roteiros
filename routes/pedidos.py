@@ -94,6 +94,16 @@ def diagnostico_planilha():
     })
 
 
+@pedidos_bp.route("/pedidos/emitidos-email", methods=["GET"])
+def pedidos_emitidos_email():
+    """Pedidos feitos na loja da Panasonic, lidos direto do e-mail de
+    confirmação -- aparece em Peças Compradas sem esperar o robô da
+    planilha achar a nota fiscal. Pedido de 2026-09-03."""
+    from services.nfe import pedidos_emitidos_recentes
+
+    return jsonify({"pedidos": pedidos_emitidos_recentes()})
+
+
 
 # ─── Casamento entre a compra e quem pediu a peça ──────────────────────
 #

@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v200';
+const VERSAO_PAINEL = 'v201';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -352,6 +352,7 @@ async function recarregarViewAtual() {
       await carregarHistorico();
     } else if (ativa === 'pecas') {
       await carregarPecas();
+      if (_pecasTab === 'compradas') await carregarPedidosEmitidosEmail();
     }
     // A aba "cep" não mostra dado compartilhado — é uma consulta pontual do
     // usuário e recarregar apagaria o resultado que ele está lendo.
@@ -662,6 +663,7 @@ function switchMainTab(tab) {
   }
   if (isPecas) {
     carregarPecas();
+    if (_pecasTab === 'compradas') carregarPedidosEmitidosEmail();
   }
   if (isAtend) {
     carregarDesfechos();
@@ -3418,6 +3420,7 @@ function pecasSwitchTab(tab) {
   document.getElementById('pecas-aba-compradas').style.display = tab === 'compradas' ? 'block' : 'none';
   document.getElementById('pecas-aba-pedidos').style.display = tab === 'pedidos' ? 'block' : 'none';
   document.getElementById('pecas-aba-cotacao').style.display = tab === 'cotacao' ? 'block' : 'none';
+  if (tab === 'compradas') carregarPedidosEmitidosEmail();
   if (tab === 'pedidos') carregarPedidosComComprovante();
   if (tab === 'cotacao') { carregarCotacoes(); carregarStatusSubstituicao(); }
 }
@@ -3521,6 +3524,32 @@ async function desfazerPedidoPeca(servicoId, pedidoOsId) {
     carregarPedidosComComprovante();
   } catch (e) {
     toast(e.message, 'error');
+  }
+}
+
+// Pedidos emitidos direto do e-mail de confirmação da loja (pedido de
+// 2026-09-03) — aparece antes mesmo do robô da planilha achar a nota
+// fiscal. Só a etapa "pedido feito" interessa aqui (ver
+// services/nfe.py:pedidos_emitidos_recentes); faturamento/pagamento/envio
+// ficam de fora de propósito.
+async function carregarPedidosEmitidosEmail() {
+  const alvo = document.getElementById('pecas-emitidos-lista');
+  if (!alvo) return;
+  alvo.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:14px;"><div class="spinner"></div> Lendo e-mail...</div>`;
+  try {
+    const r = await api('/pedidos/emitidos-email');
+    const pedidos = r.pedidos || [];
+    if (!pedidos.length) {
+      alvo.innerHTML = `<p class="pecas-nota-cotacao" style="margin:0;">Nenhum pedido emitido encontrado no e-mail recente.</p>`;
+      return;
+    }
+    alvo.innerHTML = pedidos.map(p => `
+      <div class="pe-item">
+        <span><span class="pe-item-codigo">${esc(p.codigo)}</span><span class="pe-item-desc">${esc(p.descricao)}</span></span>
+        <span class="pe-item-data">${esc((p.data || '').split(' ').slice(0, 4).join(' '))}</span>
+      </div>`).join('');
+  } catch (e) {
+    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
   }
 }
 
