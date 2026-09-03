@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v188';
+const VERSAO_PAINEL = 'v189';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6168,6 +6168,7 @@ const DF_MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                     'Aparelho sem defeito', 'Sem acesso ao local'];
 
 let _dfServico = null, _dfFicha = null, _dfTipo = null, _dfFoto = null;
+let _dfOrcamentoModoLocal = false;
 
 // Reduz mantendo a imagem INTEIRA — sem recorte.
 //
@@ -6433,8 +6434,23 @@ function escolherDesfecho(tipo) {
     // orçamento nem foi montado) — quem monta o valor é o escritório depois,
     // na mesma tela de Itens/Valores de qualquer orçamento.
     const s = servicosAtuais.find(x => x.id === _dfServico) || {};
+    _dfOrcamentoModoLocal = false;
     extra.innerHTML = `
-      <label class="form-label" for="df-orc-nome">Nome do cliente</label>
+      <label class="form-label">Onde vai ser feito o orçamento? <span class="df-obrigatorio">*</span></label>
+      <div class="df-motivos">
+        <button type="button" class="df-motivo ativa" data-modo="base"
+                onclick="_dfEscolherModoOrcamento(this)">Mandar pro escritório montar</button>
+        <button type="button" class="df-motivo" data-modo="local"
+                onclick="_dfEscolherModoOrcamento(this)">Orçamento feito em campo</button>
+      </div>
+      <div id="df-orc-valor-bloco" style="display:none;">
+        <label class="form-label" style="margin-top:10px;" for="df-orc-valor">Valor combinado com o cliente (R$)</label>
+        <input class="form-input" type="number" step="0.01" min="0.01" inputmode="decimal"
+               id="df-orc-valor" oninput="validarConfirmarDesfecho()">
+        <label class="form-label" for="df-orc-item">O que foi orçado</label>
+        <input class="form-input" id="df-orc-item" placeholder="Ex: Troca do compressor">
+      </div>
+      <label class="form-label" style="margin-top:10px;" for="df-orc-nome">Nome do cliente</label>
       <input class="form-input" id="df-orc-nome" value="${esc(s.cliente || '')}" oninput="validarConfirmarDesfecho()">
       <label class="form-label" style="margin-top:10px;" for="df-orc-telefone">Telefone</label>
       <input class="form-input" id="df-orc-telefone" value="${esc(s.telefone || '')}" oninput="formatarTelefone(this)">
@@ -6484,7 +6500,8 @@ function validarConfirmarDesfecho() {
     ok = !!(nome && _dfAssinaturaTemTraco && checklistOk);
   } else if (_dfTipo === 'orcamento') {
     const nome = document.getElementById('df-orc-nome')?.value.trim();
-    ok = !!(nome && _dfAssinaturaTemTraco);
+    const valorLocal = Number(document.getElementById('df-orc-valor')?.value);
+    ok = !!(nome && _dfAssinaturaTemTraco && (!_dfOrcamentoModoLocal || valorLocal > 0));
   } else if (_dfTipo === 'nao_atendido') {
     // Foto obrigatória — comprovante de que o técnico foi até o cliente.
     // Pedido de 2026-09-01, depois de reclamação sem comprovação.
@@ -6496,6 +6513,14 @@ function validarConfirmarDesfecho() {
 function escolherMotivoDesfecho(botao) {
   document.querySelectorAll('.df-motivo').forEach(b => b.classList.remove('ativa'));
   botao.classList.add('ativa');
+}
+
+function _dfEscolherModoOrcamento(botao) {
+  document.querySelectorAll('#df-extra .df-motivo').forEach(b => b.classList.toggle('ativa', b === botao));
+  _dfOrcamentoModoLocal = botao.dataset.modo === 'local';
+  const bloco = document.getElementById('df-orc-valor-bloco');
+  if (bloco) bloco.style.display = _dfOrcamentoModoLocal ? '' : 'none';
+  validarConfirmarDesfecho();
 }
 
 async function confirmarDesfecho() {
@@ -6523,6 +6548,11 @@ async function confirmarDesfecho() {
     if (_dfAssinaturaTemTraco && _dfAssinaturaCanvas) desfecho.assinatura = _dfAssinaturaCanvas.toDataURL('image/png');
   }
   if (_dfTipo === 'orcamento') {
+    desfecho.orcamento_local = _dfOrcamentoModoLocal;
+    if (_dfOrcamentoModoLocal) {
+      desfecho.valor_local = Number(document.getElementById('df-orc-valor')?.value) || 0;
+      desfecho.item_local = document.getElementById('df-orc-item')?.value.trim() || '';
+    }
     desfecho.cliente_nome = document.getElementById('df-orc-nome')?.value.trim() || '';
     desfecho.cliente_telefone = document.getElementById('df-orc-telefone')?.value.trim() || '';
     desfecho.tipo_aparelho = document.getElementById('df-orc-aparelho')?.value.trim() || '';
@@ -6565,7 +6595,13 @@ async function alternarStatusServico(servicoId, novoStatus, fichaId, desfecho) {
     toast(novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto', 'success');
     // Fazer OS gerou um documento com link público — oferece mandar pro
     // cliente na hora, sem esperar alguém abrir a OS depois (2026-08-28).
-    if (desfecho?.tipo === 'fazer_os' && resp?.desfecho?.token_cliente) {
+    // Mesma ideia pro orçamento feito em campo (2026-09-03): se o técnico já
+    // combinou o valor com o cliente na hora, a OS já nasce pronta pra
+    // aprovação (ver _status_orcamento) — não faz sentido esperar. Orçamento
+    // "pra escritório montar" não entra aqui: ainda não tem preço nenhum
+    // pra mandar.
+    const orcamentoProntoNaHora = desfecho?.tipo === 'orcamento' && desfecho.orcamento_local;
+    if ((desfecho?.tipo === 'fazer_os' || orcamentoProntoNaHora) && resp?.desfecho?.token_cliente) {
       const link = `${location.origin}/os/cliente/${resp.desfecho.token_cliente}`;
       mostrarEnvioClienteDesfecho(link, (desfecho.cliente_telefone || '').replace(/\D/g, ''));
     }

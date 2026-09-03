@@ -1210,7 +1210,11 @@
       toast(novoStatus === 'concluido' ? 'Atendimento marcado como feito' : 'Atendimento reaberto');
       // Fazer OS gerou um documento com link público — oferece mandar pro
       // cliente ali mesmo, sem passar pelo escritório (pedido de 2026-08-28).
-      if (desfecho?.tipo === 'fazer_os' && resp?.desfecho?.token_cliente) {
+      // Orçamento feito no local (2026-09-03): já nasce com preço combinado
+      // e pronto pra aprovação (ver _status_orcamento no servidor) — mesma
+      // lógica. Orçamento "pra base montar" fica de fora, ainda sem preço.
+      const orcamentoProntoNaHora = desfecho?.tipo === 'orcamento' && desfecho.orcamento_local;
+      if ((desfecho?.tipo === 'fazer_os' || orcamentoProntoNaHora) && resp?.desfecho?.token_cliente) {
         const link = `${location.origin}/os/cliente/${resp.desfecho.token_cliente}`;
         _tMostrarEnvioCliente(link, (desfecho.cliente_telefone || '').replace(/\D/g, ''));
       }
@@ -1451,7 +1455,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v188';
+  const VERSAO_TELA = 'v189';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
