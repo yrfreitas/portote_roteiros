@@ -326,13 +326,19 @@ def conciliar(ficha: dict, servicos: list, tecnico_nome: str,
     return resumo
 
 
-def listar_pedidos(apenas_pendentes: bool = True) -> list:
+def listar_pedidos(apenas_pendentes: bool = True, incluir_criado: bool = False) -> list:
     """Lista as compras de peça da aba Pedidos, pra vincular a um cliente
     pelo site em vez de digitar direto na planilha.
 
     Cada compra vira 2 linhas na planilha (CRIADO e APROVADO) porque o robô
     registra os dois eventos da CrediPay. Agrupa por nota fiscal e devolve
     uma entrada só, apontando pra linha que deve ser editada.
+
+    `incluir_criado`: CRIADO ficava sempre fora (ver comentário mais abaixo)
+    até o Kalebe pedir o contrário em 2026-09-03 -- precisa vincular
+    cliente/agendar visita já no pedido EMITIDO, sem esperar o pagamento
+    aprovar, pra não perder tempo de agenda. Continua False por padrão pra
+    não mudar comportamento de quem chama sem saber desse parâmetro.
     """
     if not planilha_configurada():
         return []
@@ -449,7 +455,9 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
     # nunca virar compra de verdade (cliente desiste, cartão recusa). Peça
     # que ninguém pagou ainda não deveria aparecer pra vincular cliente de
     # qualquer jeito: mostrar antes de pagar é oferecer algo que pode nunca
-    # chegar.
+    # chegar. (2026-09-03: o Kalebe decidiu assumir esse risco de propósito
+    # — ver `incluir_criado` acima — porque o ganho de agendar cedo pesa
+    # mais que o risco ocasional de um pedido cancelado.)
     #
     # O filtro de "só ENVIADO" (a caminho) fica em routes/pedidos.py:listar,
     # não aqui — tentei fazer aqui em 2026-08-29 e quebrou as peças que já
@@ -458,7 +466,9 @@ def listar_pedidos(apenas_pendentes: bool = True) -> list:
     # lado dela) sem que isso tenha nada a ver com o site já ter recebido a
     # caixa. Filtrar por ENVIADO aqui, ANTES de saber se já chegou, sumia com
     # peça que a pessoa já tinha fisicamente na mão.
-    pedidos = [p for p in por_nota.values() if p["status_compra"].strip().upper() != "CRIADO"]
+    pedidos = list(por_nota.values())
+    if not incluir_criado:
+        pedidos = [p for p in pedidos if p["status_compra"].strip().upper() != "CRIADO"]
     if apenas_pendentes:
         pedidos = [p for p in pedidos if not p["cliente_final"]]
 

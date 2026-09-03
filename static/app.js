@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v202';
+const VERSAO_PAINEL = 'v203';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3596,6 +3596,7 @@ async function carregarPecas() {
          ['chegou', 'Chegou', porEstagio.chegou],
          ['ENVIADO', 'A caminho', porEstagio.ENVIADO],
          ['FATURADO', 'Faturada', porEstagio.FATURADO],
+         ['CRIADO', 'Emitido', porEstagio.CRIADO],
          ['pendente', 'Sem cliente', pedidos.filter(p => !p.cliente_final).length]]
         .map(([v, rot, n]) => `
           <button class="pecas-filtro${v === '' ? ' ativo' : ''}" data-estagio="${v}"

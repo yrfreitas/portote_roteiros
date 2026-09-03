@@ -194,7 +194,11 @@ def listar():
     todos = str(request.args.get("todos", "")).lower() in ("1", "true", "sim")
 
     try:
-        pedidos = listar_pedidos(apenas_pendentes=not todos)
+        # incluir_criado=True: pedido de 2026-09-03 -- precisa vincular
+        # cliente/agendar visita já no pedido EMITIDO (status CRIADO), sem
+        # esperar o pagamento aprovar ou a nota faturar, senão a agenda
+        # perde tempo esperando um dado que a loja já deu.
+        pedidos = listar_pedidos(apenas_pendentes=not todos, incluir_criado=True)
     except Exception as exc:
         log.exception("Falha ao listar pedidos da planilha")
         return jsonify({"erro": f"Falha ao ler a planilha: {exc}"}), 502
@@ -235,16 +239,21 @@ def listar():
     if not todos:
         # Pedido de 2026-08-29: só entra na lista padrão quem está A CAMINHO
         # (status_compra ENVIADO) OU já foi marcado "chegou" no site — nessa
-        # ordem, DEPOIS da chegada estar juntada acima. CRIADO/APROVADO/
-        # FATURADO (comprado mas ainda sem despacho) ficavam misturados com o
-        # que já saiu de fato, confundindo quem vincula cliente. A condição
-        # do chegou_em é o que a primeira tentativa (filtrar isso dentro de
+        # ordem, DEPOIS da chegada estar juntada acima. APROVADO/FATURADO
+        # (comprado mas ainda sem despacho) ficavam misturados com o que já
+        # saiu de fato, confundindo quem vincula cliente. A condição do
+        # chegou_em é o que a primeira tentativa (filtrar isso dentro de
         # listar_pedidos, sem saber de chegada) esqueceu: o status da
         # planilha pode avançar por conta própria além de ENVIADO sem
         # relação nenhuma com o site já ter recebido a peça — sem essa
         # condição, peça já em mãos sumia da tela.
+        #
+        # CRIADO entra também (2026-09-03): é o pedido recém EMITIDO — antes
+        # ficava escondido até a nota faturar, e o Kalebe precisa vincular
+        # cliente e agendar a visita assim que o pedido sai, não só quando
+        # a caixa está a caminho.
         pedidos = [p for p in pedidos
-                  if p["chegou_em"] or p["status_compra"].strip().upper() == "ENVIADO"]
+                  if p["chegou_em"] or p["status_compra"].strip().upper() in ("ENVIADO", "CRIADO")]
         # Já foi mandado pra fila de Agendar Clientes? some da lista padrão
         # desta aba. O trabalho daqui (vincular a peça a um cliente) está
         # feito, e o que falta (marcar visita) já mora na outra tela — a
