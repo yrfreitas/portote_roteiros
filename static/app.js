@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v189';
+const VERSAO_PAINEL = 'v190';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2406,7 +2406,15 @@ function _lerRecolhidos() {
 }
 
 function tecnicoRecolhido(id) {
-  return _lerRecolhidos().has(String(id));
+  if (_lerRecolhidos().has(String(id))) return true;
+  // No celular, comeca recolhido por padrao -- sem isso, cada tecnico
+  // expandido soma varias fichas de varios dias e a tela vira uma parede
+  // de +5000px antes mesmo de chegar na Visao Geral (reclamado em
+  // 2026-09-03). So vale enquanto a chave nunca foi tocada: no primeiro
+  // toque em qualquer tecnico (alternarTecnico/alternarTodosTecnicos) a
+  // preferencia de sempre (lembrar por tecnico) assume de vez.
+  if (window.innerWidth <= 760 && localStorage.getItem(CHAVE_RECOLHIDOS) === null) return true;
+  return false;
 }
 
 function alternarTecnico(id) {
