@@ -518,6 +518,16 @@ def limpar_chat_diagnostico():
     return jsonify({"mensagem": "Conversa limpa"})
 
 
+@app.route("/torre-controle")
+def torre_controle_pagina():
+    """Mapa ao vivo com todos os técnicos — pedido de 2026-09-03. Fica atrás
+    do login normal (não está em _CAMINHOS_PUBLICOS); quem não tem a
+    permissão `torre_controle` chega até a página, mas a chamada à API
+    embaixo devolve 403 e a tela mostra a mensagem, mesmo padrão do resto do
+    painel (o servidor barra, a tela só explica)."""
+    return render_template("torre_controle.html")
+
+
 @app.route("/acompanhar/<token>")
 def acompanhar(token):
     """Página pública onde o cliente vê o técnico a caminho.

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Torre de Controle · Porto Tec</title>
+  <link rel="icon" href="/static/assets/favicon-32x32.png">
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; background: #060911; color: #eaf0fb;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    .layout { display: grid; grid-template-columns: 300px 1fr; height: 100%; }
+    aside {
+      border-right: 1px solid rgba(148,178,220,.12); overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+    header {
+      padding: 16px 18px 14px; border-bottom: 1px solid rgba(148,178,220,.12);
+      flex: none;
+    }
+    .marca { font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: #5a6d8a; }
+    h1 { font-size: 16px; margin: 4px 0 0; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .ao-vivo-selo {
+      font-size: 10px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+      background: rgba(52,211,153,.14); color: #86efac; border-radius: 99px;
+      padding: 3px 8px; display: inline-flex; align-items: center; gap: 5px;
+    }
+    .ao-vivo-selo::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #34d399; animation: pulsa 1.6s ease-in-out infinite; }
+    @keyframes pulsa { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+    .voltar {
+      display: inline-block; margin-top: 10px; font-size: 12px; color: #9aacc6;
+      text-decoration: none;
+    }
+    .voltar:hover { color: #eaf0fb; }
+    .lista { flex: 1; overflow-y: auto; padding: 8px; }
+    .tec-card {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 10px; border-radius: 10px; margin-bottom: 6px;
+      cursor: pointer; transition: background .12s;
+    }
+    .tec-card:hover { background: rgba(148,178,220,.08); }
+    .tec-card.selecionado { background: rgba(79,141,251,.14); }
+    .tec-bolinha { width: 11px; height: 11px; border-radius: 50%; flex: none; margin-top: 4px; }
+    .tec-bolinha.ao-vivo { box-shadow: 0 0 0 3px rgba(52,211,153,.18); }
+    .tec-bolinha.parado { opacity: .35; }
+    .tec-nome { font-size: 13.5px; font-weight: 700; }
+    .tec-status { font-size: 11.5px; color: #9aacc6; margin-top: 2px; line-height: 1.4; }
+    .tec-status .destaque { color: #86efac; font-weight: 600; }
+    .vazio {
+      padding: 30px 18px; text-align: center; color: #5a6d8a; font-size: 12.5px; line-height: 1.6;
+    }
+    main { position: relative; }
+    #mapa { position: absolute; inset: 0; background: #11161b; }
+    .leaflet-tile { filter: brightness(.85) saturate(.9); }
+    .sem-permissao {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 10px; text-align: center; padding: 20px;
+    }
+    .sem-permissao h2 { font-size: 18px; margin: 0; }
+    .sem-permissao p { color: #9aacc6; font-size: 13.5px; max-width: 360px; margin: 0; }
+    .contador {
+      position: absolute; top: 14px; right: 14px; z-index: 500;
+      background: rgba(10,14,22,.88); border: 1px solid rgba(148,178,220,.18);
+      border-radius: 10px; padding: 8px 14px; font-size: 12px; color: #9aacc6;
+      backdrop-filter: blur(6px);
+    }
+    .contador b { color: #eaf0fb; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <header>
+        <div class="marca">Porto Tec Assistência Técnica</div>
+        <h1>Torre de Controle <span class="ao-vivo-selo">ao vivo</span></h1>
+        <a class="voltar" href="/">&larr; Voltar pro painel</a>
+      </header>
+      <div class="lista" id="lista"></div>
+    </aside>
+    <main>
+      <div id="mapa"></div>
+      <div class="contador" id="contador" style="display:none;"></div>
+      <div class="sem-permissao" id="sem-permissao" style="display:none;">
+        <h2>Sem acesso</h2>
+        <p id="sem-permissao-msg">Você não tem permissão pra ver a Torre de Controle. Peça pra quem administra o sistema liberar em Acessos.</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
+  <script>
+    (function () {
+      const INTERVALO = 12000;
+      let mapa = null;
+      const marcadores = {};   // tecnico_id -> L.marker
+      let selecionadoId = null;
+      let jaEnquadrouAlguma = false;
+
+      function iniciarMapa() {
+        mapa = L.map('mapa', { attributionControl: false, zoomControl: true })
+                .setView([-23.55, -46.63], 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 })
+         .addTo(mapa);
+      }
+
+      function esc(s) {
+        return String(s ?? '').replace(/[<>&"]/g, c => (
+          { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+      }
+
+      function iniciais(nome) {
+        return (nome || '?').trim().charAt(0).toUpperCase();
+      }
+
+      function iconePara(t) {
+        const opacidade = t.ao_vivo ? 1 : .55;
+        return L.divIcon({
+          className: '',
+          html: `<div style="width:38px;height:38px;border-radius:50%;background:${esc(t.cor || '#4f8dfb')};
+                 border:3px solid ${t.ao_vivo ? '#fff' : 'rgba(255,255,255,.5)'};
+                 box-shadow:0 2px 10px rgba(0,0,0,.5);opacity:${opacidade};
+                 display:flex;align-items:center;justify-content:center;
+                 color:#fff;font-weight:700;font-size:14px;font-family:inherit;">
+                 ${iniciais(t.nome)}</div>`,
+          iconSize: [38, 38], iconAnchor: [19, 19],
+        });
+      }
+
+      function atualizarMarcador(t) {
+        if (!t.lat || !t.lng) {
+          if (marcadores[t.tecnico_id]) {
+            mapa.removeLayer(marcadores[t.tecnico_id]);
+            delete marcadores[t.tecnico_id];
+          }
+          return;
+        }
+        const ponto = [t.lat, t.lng];
+        const popup = `<div style="min-width:170px;font-family:inherit;">
+            <div style="font-weight:700;margin-bottom:3px;">${esc(t.nome)}</div>
+            ${t.cliente ? `<div style="font-size:12px;color:#555;">Indo até ${esc(t.cliente)}</div>` : ''}
+            ${t.endereco ? `<div style="font-size:11.5px;color:#777;">${esc(t.endereco)}</div>` : ''}
+            ${t.eta_minutos != null ? `<div style="font-size:11.5px;color:#777;margin-top:3px;">ETA ~${t.eta_minutos} min</div>` : ''}
+          </div>`;
+
+        if (marcadores[t.tecnico_id]) {
+          marcadores[t.tecnico_id].setLatLng(ponto).setIcon(iconePara(t)).setPopupContent(popup);
+        } else {
+          marcadores[t.tecnico_id] = L.marker(ponto, { icon: iconePara(t) })
+            .addTo(mapa).bindPopup(popup);
+        }
+      }
+
+      function statusTexto(t) {
+        if (t.ao_vivo) {
+          const partes = [];
+          if (t.cliente) partes.push(`indo até <b>${esc(t.cliente)}</b>`);
+          if (t.eta_minutos != null) partes.push(`ETA ~${t.eta_minutos} min`);
+          return `<span class="destaque">${partes.join(' · ') || 'em atendimento'}</span>`;
+        }
+        return 'sem atendimento rastreado agora';
+      }
+
+      function renderizarLista(tecnicos) {
+        const alvo = document.getElementById('lista');
+        if (!tecnicos.length) {
+          alvo.innerHTML = '<div class="vazio">Nenhum técnico cadastrado.</div>';
+          return;
+        }
+        alvo.innerHTML = tecnicos.map(t => `
+          <div class="tec-card ${t.tecnico_id === selecionadoId ? 'selecionado' : ''}" data-id="${t.tecnico_id}">
+            <span class="tec-bolinha ${t.ao_vivo ? 'ao-vivo' : 'parado'}" style="background:${esc(t.cor || '#4f8dfb')}"></span>
+            <div>
+              <div class="tec-nome">${esc(t.nome)}</div>
+              <div class="tec-status">${statusTexto(t)}</div>
+            </div>
+          </div>`).join('');
+
+        alvo.querySelectorAll('.tec-card').forEach(el => {
+          el.addEventListener('click', () => {
+            const id = Number(el.dataset.id);
+            selecionadoId = id;
+            renderizarLista(tecnicos);
+            const m = marcadores[id];
+            if (m) { mapa.setView(m.getLatLng(), 15); m.openPopup(); }
+          });
+        });
+      }
+
+      async function atualizar() {
+        let d;
+        try {
+          const resp = await fetch('/api/torre-controle', { cache: 'no-store' });
+          if (resp.status === 403) {
+            document.getElementById('sem-permissao').style.display = 'flex';
+            return;
+          }
+          d = await resp.json();
+          if (!resp.ok) throw new Error(d.erro || 'Falha ao carregar');
+        } catch (e) {
+          console.warn('Torre de controle:', e.message);
+          return;
+        }
+
+        const tecnicos = d.tecnicos || [];
+        renderizarLista(tecnicos);
+
+        if (!mapa) iniciarMapa();
+        tecnicos.forEach(atualizarMarcador);
+
+        const comPosicao = tecnicos.filter(t => t.lat && t.lng);
+        const contador = document.getElementById('contador');
+        contador.style.display = 'block';
+        contador.innerHTML = `<b>${comPosicao.length}</b> de ${tecnicos.length} técnico${tecnicos.length === 1 ? '' : 's'} ao vivo`;
+
+        if (!jaEnquadrouAlguma && comPosicao.length) {
+          const pontos = comPosicao.map(t => [t.lat, t.lng]);
+          if (pontos.length === 1) mapa.setView(pontos[0], 14);
+          else mapa.fitBounds(pontos, { padding: [60, 60] });
+          jaEnquadrouAlguma = true;
+        }
+      }
+
+      atualizar();
+      setInterval(atualizar, INTERVALO);
+    })();
+  </script>
+</body>
+</html>

@@ -724,6 +724,66 @@ def limpar_posicao(rastreio_id):
                                             "apagada; o link segue válido."})
 
 
+@rastreio_bp.route("/torre-controle", methods=["GET"])
+def torre_controle():
+    """Posição ao vivo de TODOS os técnicos com rastreio ativo, numa visão só.
+
+    Pedido de 2026-09-03 ("torre de controle ao vivo"): hoje cada rastreio é
+    um link por CLIENTE (ver docstring do topo do arquivo) — o cliente A não
+    vê o técnico indo pro cliente B. Esta rota não cria nenhuma coleta de
+    posição nova nem muda esse recorte por atendimento: só agrega, pro lado
+    do escritório, os rastreios que já existem numa lista com todo mundo de
+    uma vez, tipo central de despacho.
+
+    Devolve TODOS os técnicos ativos, com ou sem posição — quem não está em
+    atendimento rastreado aparece sem `lat`/`lng` (front decide se lista à
+    parte ou esconde do mapa), em vez de simplesmente sumir da lista e
+    parecer que o técnico não existe.
+    """
+    tecnico_ativo = "t.ativo IS TRUE" if IS_PG else "t.ativo = 1"
+    with db_conn() as conn:
+        tecnicos = fetch_all(conn, f"""
+            SELECT id, nome, cor FROM tecnicos t WHERE {tecnico_ativo} ORDER BY nome
+        """)
+
+        linhas = fetch_all(conn, f"""
+            SELECT ra.id, ra.tecnico_id, ra.lat, ra.lng, ra.precisao,
+                   ra.eta_minutos, ra.criado_em, ra.atualizado_em,
+                   sv.cliente, sv.endereco_completo
+              FROM rastreios ra
+              JOIN servicos sv ON sv.id = ra.servico_id
+             WHERE {_ATIVO_RA} AND sv.status <> 'concluido'
+             ORDER BY ra.id DESC
+        """)
+
+    # Um técnico pode ter mais de um rastreio "ativo" na tabela por instantes
+    # (o próprio POST /rastreio encerra os outros, mas leituras concorrentes
+    # existem) — fica só o mais recente de cada um, na mesma lógica de
+    # _encerrar_outros_do_tecnico: ninguém está a caminho de dois lugares.
+    por_tecnico = {}
+    for l in linhas:
+        if l["tecnico_id"] not in por_tecnico and not _expirado(l.get("criado_em")):
+            por_tecnico[l["tecnico_id"]] = l
+
+    resultado = []
+    for t in tecnicos:
+        r = por_tecnico.get(t["id"])
+        tem_posicao = bool(r and r.get("lat") is not None)
+        resultado.append({
+            "tecnico_id": t["id"], "nome": t["nome"], "cor": t["cor"],
+            "lat": r.get("lat") if tem_posicao else None,
+            "lng": r.get("lng") if tem_posicao else None,
+            "precisao": r.get("precisao") if tem_posicao else None,
+            "cliente": (r or {}).get("cliente"),
+            "endereco": (r or {}).get("endereco_completo"),
+            "eta_minutos": (r or {}).get("eta_minutos"),
+            "atualizado_em": (r or {}).get("atualizado_em"),
+            "ao_vivo": tem_posicao,
+        })
+
+    return jsonify({"tecnicos": resultado})
+
+
 @rastreio_bp.route("/rastreios/diagnostico", methods=["GET"])
 def diagnostico():
     """Rastreios recentes, para saber o que de fato aconteceu no celular.

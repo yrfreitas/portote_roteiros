@@ -36,6 +36,7 @@ CATALOGO = [
     {"chave": "cep_ver",            "area": "Roteiros",    "rotulo": "Ver e usar o Verificador de CEP"},
     {"chave": "desfechos_ver",      "area": "Roteiros",    "rotulo": "Ver a aba Atendimentos (o que o técnico registrou em campo)"},
     {"chave": "almoco_ver",         "area": "Roteiros",    "rotulo": "Ver o horário de almoço dos técnicos (aviso e selo no painel)"},
+    {"chave": "torre_controle",     "area": "Roteiros",    "rotulo": "Ver a Torre de Controle (mapa ao vivo com a posição de todos os técnicos)"},
     # Peças e estoque
     {"chave": "pecas",              "area": "Peças",       "rotulo": "Ver a aba Peças (compras / nota fiscal)"},
     {"chave": "cotacao",            "area": "Peças",       "rotulo": "Ver e usar a aba Cotação (peças aguardando preço / substituição)"},
@@ -99,6 +100,9 @@ REGRAS = [
     # Ponto de almoço: mais específico que a regra genérica de /api/tecnicos
     # logo abaixo, por isso vem antes — senão nunca seria alcançada.
     ("/api/tecnicos/almoco",       None,                     "almoco_ver"),
+    # Torre de Controle: mais específica que a regra genérica de /api/tecnicos
+    # logo abaixo, por isso vem antes — senão nunca seria alcançada.
+    ("/api/torre-controle",        None,                     "torre_controle"),
     # Cadastros de sistema (GET fica livre — os selects do painel precisam dele).
     ("/api/tecnicos",              ("POST", "PUT", "DELETE"), "gerenciar_tecnicos"),
     ("/api/setores",               ("POST", "PUT", "DELETE"), "gerenciar_setores"),
