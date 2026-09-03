@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v192';
+const VERSAO_PAINEL = 'v193';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -10828,6 +10828,11 @@ const AT_TIPOS = [
 // antigo, ou o /desfechos é usado por outra tela) — filtrados da lista aqui,
 // não lá, porque só ESTA tela (Atendimentos) não quer mais mostrá-los.
 const AT_TIPOS_OCULTOS = ['volto_depois', 'nao_atendido'];
+// Tipos com "✕ remover esta linha" + checkbox de seleção em lote. Pedido de
+// 2026-09-03: "Cotação de peça" também precisa disso — a mesma reclamação
+// de "entrou coisa errada, não tem como tirar" que já valeu pra "Precisa de
+// peça" em 2026-09-02.
+const AT_TIPOS_REMOVIVEIS = ['precisa_peca', 'cotacao_peca'];
 
 let _atDias = 30;
 let _atTipo = '';
@@ -10912,10 +10917,13 @@ function _atRenderizarDesfechos(r) {
     ? r.atendimentos.filter(a => (a.cliente || '').toLowerCase().includes(_atBusca))
     : r.atendimentos;
 
-  // Seleção em lote (pedido de 2026-09-02) é só pra "Precisa de peça" — é o
-  // único tipo com remoção possível hoje. Seleção zera a cada recarga da
-  // lista de propósito: um item some/muda de posição, manter marcado o que
-  // já não está mais na tela na mesma linha vira confusão.
+  // Seleção em lote (pedido de 2026-09-02, ampliado em 2026-09-03 pra
+  // "Cotação de peça" também) — remoção via DELETE /desfechos/<id> é
+  // genérica (apaga a linha de servico_desfecho por id, não olha o tipo),
+  // então qualquer desfecho listado aqui pode entrar em AT_TIPOS_REMOVIVEIS.
+  // Seleção zera a cada recarga da lista de propósito: um item some/muda de
+  // posição, manter marcado o que já não está mais na tela na mesma linha
+  // vira confusão.
   _atSelecionados.clear();
   const barraSelecaoHtml = `
     <div class="at-barra-selecao" id="at-barra-selecao" style="display:none;">
@@ -10940,7 +10948,7 @@ function _atRenderizarDesfechos(r) {
     return `
       <div class="at-linha ${t.classe}${a.pedido_em ? ' pedida' : ''}" id="at-linha-${a.chave}">
         <div class="at-quando">
-          ${a.desfecho === 'precisa_peca' ? `
+          ${AT_TIPOS_REMOVIVEIS.includes(a.desfecho) ? `
             <input type="checkbox" class="at-check" data-chave="${a.chave}"
                    ${_atSelecionados.has(a.chave) ? 'checked' : ''}
                    onchange="atToggleSelecao('${a.chave}', this.checked)">` : ''}
@@ -10969,11 +10977,11 @@ function _atRenderizarDesfechos(r) {
         </div>
         <div class="at-baixa" id="at-baixa-${a.chave}">
           ${a.desfecho === 'precisa_peca' ? botaoBaixa(a) : ''}
-          ${a.desfecho === 'precisa_peca' ? `
-            <button class="at-btn-remover" title="Remover esta linha — entrou errado"
-                    onclick="removerAtendimento('${a.chave}')">✕</button>` : ''}
           ${a.desfecho === 'cotacao_peca' ? `
             <button class="btn btn-primary btn-sm" onclick="abrirConfirmarCotacao(${a.servico_id})">Confirmar cotação</button>` : ''}
+          ${AT_TIPOS_REMOVIVEIS.includes(a.desfecho) ? `
+            <button class="at-btn-remover" title="Remover esta linha — entrou errado"
+                    onclick="removerAtendimento('${a.chave}')">✕</button>` : ''}
           ${(a.desfecho === 'fazer_os' || a.origem === 'os') && a.ordem_servico_id ? `
             <button class="btn btn-ghost btn-sm" onclick="abrirOSDetalhe(${a.ordem_servico_id})">Abrir OS</button>` : ''}
         </div>
