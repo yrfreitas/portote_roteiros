@@ -1918,7 +1918,8 @@ def agendar(os_id):
         os_row = fetch_one(conn, """
             SELECT os.*, c.nome AS cliente_nome, c.cep AS cliente_cep,
                    c.endereco AS cliente_endereco, c.numero AS cliente_numero,
-                   c.bairro AS cliente_bairro, c.cidade AS cliente_cidade
+                   c.bairro AS cliente_bairro, c.cidade AS cliente_cidade,
+                   c.telefone AS cliente_telefone
               FROM ordens_servico os JOIN clientes c ON c.id = os.cliente_id
              WHERE os.id = ?
         """, (os_id,))
@@ -1966,12 +1967,13 @@ def agendar(os_id):
                            (ficha_id,))
         servico_id = insert_returning_id(conn, """
             INSERT INTO servicos (ficha_id, cep, numero, endereco_completo, lat, lng,
-                                  cliente, descricao, ordem, status, tipo_aparelho,
-                                  modelo, ordem_servico_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  cliente, telefone, descricao, ordem, status,
+                                  tipo_aparelho, modelo, ordem_servico_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (ficha_id, cep, os_row.get("cliente_numero") or "", endereco_completo,
               geo.lat if geo else None, geo.lng if geo else None,
-              os_row.get("cliente_nome"), os_row.get("defeito_declarado"),
+              os_row.get("cliente_nome"), os_row.get("cliente_telefone"),
+              os_row.get("defeito_declarado"),
               ((ultima or {}).get("m") or 0) + 1, "pendente",
               os_row.get("tipo_aparelho"), os_row.get("modelo"), os_id))
 
