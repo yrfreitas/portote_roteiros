@@ -1530,6 +1530,13 @@ header::after {
 }
 .visao-geral-stats .vg-stat:hover { background: var(--bg-elevated); transform: translateY(-1px); }
 
+.vg-resumo-dia {
+  margin: 12px 18px 0; padding: 11px 14px; border-radius: 10px;
+  background: var(--accent-dim); border: 1px solid rgba(79,141,251,.28);
+}
+.vg-resumo-dia:empty { display: none; }
+.vg-resumo-dia-titulo { font-size: 12.5px; font-weight: 700; color: var(--accent-text); margin-bottom: 6px; }
+.vg-resumo-dia-lista { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-secondary); line-height: 1.7; }
 .vg-alertas { display: flex; flex-direction: column; gap: 6px; padding: 12px 18px 0; }
 .vg-alerta {
   display: flex; align-items: center; gap: 10px;
@@ -3415,6 +3422,20 @@ select:focus-visible,
 .substituicao-preco { font-size: 11px; color: var(--text-muted); }
 .substituicao-preco-pendente { font-style: italic; }
 .substituicao-preco-indisponivel { font-style: italic; opacity: .7; }
+.comparador-caixa {
+  background: var(--bg-panel); border: 1px solid var(--border-bright);
+  border-radius: 9px; padding: 10px 12px; margin-top: 4px;
+}
+.comparador-linha {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 10px;
+  align-items: center; padding: 6px 4px; font-size: 12.5px;
+  border-bottom: 1px solid var(--border);
+}
+.comparador-linha:last-child { border-bottom: none; }
+.comparador-melhor { background: var(--success-dim, rgba(52,211,153,.1)); border-radius: 6px; }
+.comparador-fornecedor { color: var(--text-primary); font-weight: 600; }
+.comparador-valor { font-family: 'JetBrains Mono', monospace; color: var(--accent-text); font-weight: 700; }
+.comparador-data { color: var(--text-muted); font-size: 11px; }
 .substituicao-progresso {
   height: 6px; border-radius: 4px; overflow: hidden;
   background: var(--bg-panel); margin: 10px 2px 4px; border: 1px solid var(--border);

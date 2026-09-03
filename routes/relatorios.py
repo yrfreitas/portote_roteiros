@@ -589,6 +589,179 @@ def criar_pedido_peca_manual():
     return jsonify({"mensagem": "Pedido criado", "id": pedido_id}), 201
 
 
+@relatorios_bp.route("/relatorios/sugestao-preco", methods=["GET"])
+def sugestao_preco():
+    """Preço médio já APROVADO pelo cliente pra esse tipo de aparelho —
+    pedido de 2026-09-03: "precificação inteligente do orçamento".
+
+    NÃO é machine learning nem IA — é média/mediana em cima do histórico
+    real de `ordem_servico_itens` de OS cujo orçamento já foi aprovado
+    (orcamento_aprovado_em preenchido). Sem histórico nenhum daquele
+    aparelho, devolve `n: 0` e quem chama decide não mostrar nada — um
+    valor sozinho, de UM caso, não é sugestão confiável, é ruído.
+    """
+    aparelho = (request.args.get("aparelho") or "").strip()
+    if not aparelho:
+        return jsonify({"erro": "Informe o aparelho"}), 400
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, sql("""
+            SELECT i.valor FROM ordem_servico_itens i
+              JOIN ordens_servico os ON os.id = i.ordem_servico_id
+             WHERE os.orcamento_aprovado_em IS NOT NULL
+                   AND LOWER(os.tipo_aparelho) = LOWER(?)
+        """), (aparelho,))
+
+    valores = sorted(float(l["valor"]) for l in linhas if l.get("valor"))
+    if len(valores) < 3:   # menos que isso não é padrão, é coincidência
+        return jsonify({"n": len(valores)})
+
+    media = sum(valores) / len(valores)
+    mediana = valores[len(valores) // 2]
+    return jsonify({
+        "n": len(valores), "media": round(media, 2), "mediana": round(mediana, 2),
+        "minimo": round(valores[0], 2), "maximo": round(valores[-1], 2),
+    })
+
+
+@relatorios_bp.route("/backup", methods=["GET"])
+def baixar_backup():
+    """Backup sob demanda, baixado na hora — pedido de 2026-09-02: "backup
+    automático diário do banco, com botão de restaurar um ponto no tempo".
+
+    Escopo reduzido de propósito: o AGENDAMENTO diário e o RESTORE por um
+    clique ficam de fora desta rodada — restaurar sozinho numa ferramenta
+    de auto-serviço é perigoso demais num sistema de produção (um clique
+    errado sobrescreveria dados reais de cliente/OS sem confirmação
+    nenhuma no meio). O que entra é a parte segura e imediatamente útil:
+    baixar um retrato completo do banco agora, em JSON, pra guardar antes
+    de mexer em algo arriscado ou só por precaução. Restaurar, se um dia
+    precisar, é o Kalebe rodando um script à parte com o arquivo — não um
+    botão que qualquer sessão logada pode apertar sem querer.
+
+    Tabelas de sistema descobertas pelo próprio catálogo do banco
+    (pg_tables/sqlite_master), não uma lista fixa no código — uma tabela
+    nova de amanhã já entra no backup de amanhã sem precisar editar isto.
+    """
+    from permissoes import pode
+
+    if not pode("gerenciar_usuarios"):
+        return jsonify({"erro": "Sem permissão"}), 403
+
+    import json
+
+    from database import IS_PG
+
+    with db_conn() as conn:
+        if IS_PG:
+            tabelas = fetch_all(conn, sql(
+                "SELECT tablename AS nome FROM pg_tables WHERE schemaname = 'public'"))
+        else:
+            tabelas = fetch_all(conn, sql(
+                "SELECT name AS nome FROM sqlite_master WHERE type = 'table'"))
+
+        dump = {}
+        for t in tabelas:
+            nome = t["nome"]
+            if nome.startswith("sqlite_"):
+                continue
+            try:
+                dump[nome] = fetch_all(conn, f"SELECT * FROM {nome}")
+            except Exception as exc:
+                log.warning("Backup: falha lendo tabela %s: %s", nome, exc)
+                dump[nome] = {"erro_ao_ler": str(exc)}
+
+    conteudo = json.dumps(dump, default=str, ensure_ascii=False, indent=2).encode("utf-8")
+    nome_arquivo = f"backup_portotec_{datetime.now().strftime('%Y-%m-%d_%H%M')}.json"
+    return send_file(io.BytesIO(conteudo), mimetype="application/json",
+                     as_attachment=True, download_name=nome_arquivo)
+
+
+@relatorios_bp.route("/relatorios/resumo-dia", methods=["GET"])
+def resumo_dia():
+    """Resumo do dia em frases prontas — pedido de 2026-09-03: "resumo
+    automático do dia... visão do dia sem precisar caçar em várias abas".
+
+    NÃO é gerado por IA (a ANTHROPIC_API_KEY do servidor está com a chave
+    inválida agora — 401 authentication_error, achado ao investigar este
+    mesmo pedido; consertar isso é decisão de fora do código, precisa de
+    chave nova). É montado por regra, com número de verdade de cada
+    consulta — funciona hoje, sem depender de nada externo, e dá pra trocar
+    por um resumo redigido pela IA depois sem mudar o formato que o front
+    espera (lista de frases).
+    """
+    hoje = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    tres_dias_atras = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_conn() as conn:
+        fechadas_hoje = fetch_one(conn, sql("""
+            SELECT COUNT(*) AS n FROM ordens_servico
+             WHERE finalizada_em IS NOT NULL AND finalizada_em >= ?
+        """), (f"{hoje} 00:00:00",))
+
+        orcamentos_parados = fetch_one(conn, sql("""
+            SELECT COUNT(*) AS n FROM ordens_servico
+             WHERE status IN ('aguardando_orcamento', 'aguardando_aprovacao')
+                   AND COALESCE(atualizado_em, criado_em) <= ?
+        """), (tres_dias_atras,))
+
+        precisam_peca = fetch_one(conn, sql("""
+            SELECT COUNT(*) AS n FROM servico_desfecho
+             WHERE desfecho = 'precisa_peca' AND pedido_em IS NULL
+        """))
+
+        abaixo_minimo = fetch_one(conn, sql("""
+            SELECT COUNT(*) AS n FROM estoque_itens WHERE minimo > 0 AND saldo <= minimo
+        """))
+
+        cotacoes_pendentes = fetch_one(conn, sql(
+            "SELECT COUNT(*) AS n FROM cotacoes WHERE status = 'pendente'"))
+
+    n_fechadas = fechadas_hoje["n"] or 0
+    n_parados = orcamentos_parados["n"] or 0
+    n_peca = precisam_peca["n"] or 0
+    n_minimo = abaixo_minimo["n"] or 0
+    n_cotacao = cotacoes_pendentes["n"] or 0
+
+    frases = []
+    frases.append(f"{n_fechadas} OS fechada{'s' if n_fechadas != 1 else ''} hoje."
+                  if n_fechadas else "Nenhuma OS fechada hoje ainda.")
+    if n_parados:
+        frases.append(f"{n_parados} orçamento{'s' if n_parados != 1 else ''} parado{'s' if n_parados != 1 else ''} "
+                      f"há 3+ dias sem aprovação nem preço.")
+    if n_peca:
+        frases.append(f"{n_peca} atendimento{'s' if n_peca != 1 else ''} esperando comprar peça.")
+    if n_cotacao:
+        frases.append(f"{n_cotacao} peça{'s' if n_cotacao != 1 else ''} na fila de cotação sem preço ainda.")
+    if n_minimo:
+        frases.append(f"{n_minimo} peça{'s' if n_minimo != 1 else ''} no estoque abaixo do mínimo.")
+    if len(frases) == 1 and not (n_parados or n_peca or n_cotacao or n_minimo):
+        frases.append("Sem pendência parada nas filas de orçamento, peça ou estoque agora.")
+
+    return jsonify({"frases": frases})
+
+
+@relatorios_bp.route("/relatorios/mapa-calor", methods=["GET"])
+def mapa_calor():
+    """Pontos (lat/lng) dos atendimentos mais recentes, pra plotar como
+    mancha de densidade no mapa — pedido de 2026-09-02/03: "de onde vêm
+    mais chamados, por bairro/região", complementando o ranking em texto
+    de /relatorios/negocio com a visão geográfica de verdade.
+
+    `servicos` não tem coluna de data própria (só o dia da FICHA) — em vez
+    de complicar com join e período, pega os N mais recentes por id, que na
+    prática é "atendimentos recentes" sem depender de fichas antigas terem
+    ou não `data_referencia` preenchida.
+    """
+    with db_conn() as conn:
+        linhas = fetch_all(conn, sql("""
+            SELECT lat, lng FROM servicos
+             WHERE lat IS NOT NULL AND lng IS NOT NULL
+             ORDER BY id DESC LIMIT 3000
+        """))
+    return jsonify({"pontos": linhas})
+
+
 @relatorios_bp.route("/relatorios/negocio", methods=["GET"])
 def relatorios_negocio():
     """Três números de negócio pedidos em 2026-09-02: previsão de

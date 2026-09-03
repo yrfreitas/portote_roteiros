@@ -259,7 +259,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v195';
+const VERSAO_PAINEL = 'v196';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1537,6 +1537,7 @@ async function carregarUsuarioLogado() {
   mostra('mtab-historico', podeUsuario('relatorios'));
   mostra('mtab-atendimentos', podeUsuario('desfechos_ver'));
   mostra('btn-torre-controle', podeUsuario('torre_controle'));
+  mostra('btn-tv-painel', podeUsuario('relatorios'));
 
   const marca = document.getElementById('usuario-logado');
   if (marca) {
@@ -2063,19 +2064,43 @@ function abrirChangelogPopup() {
 
 // Central de ajuda (pedido de 2026-09-02) — FAQ curto, direto no painel, sem
 // precisar perguntar pra alguém ou procurar em outro lugar.
+// `contexto` liga a pergunta à aba onde ela importa — usado só pra ORDENAR
+// (pedido de 2026-09-03: "FAQ contextual, o '?' abre a dúvida certa DAQUELA
+// tela"), nunca pra esconder: quem quiser ver tudo, tudo continua na lista.
 const AJUDA_FAQ = [
-  { p: 'Como crio uma Ordem de Serviço?', r: 'Aba "OS" → botão "+ Nova OS". Escolha o modelo (OS, Orçamento ou Chamado Técnico), o cliente (existente ou novo) e preencha o aparelho/defeito.' },
-  { p: 'Como sei se uma peça está esperando pedido?', r: 'Sino de notificações no topo, ou aba Atendimentos → cartão "Precisam de peça". De lá dá pra marcar "Já pedi" e anexar o comprovante.' },
-  { p: 'Como classifico um atendimento sem setor?', r: 'A Visão Geral (aba Roteiros, sem ficha aberta) mostra um alerta "atendimentos sem setor" — clique nele pra classificar em lote.' },
-  { p: 'Onde vejo o histórico de um cliente?', r: 'Aba OS → sub-aba "Clientes" → clique no cliente. Mostra cadastro, aparelhos já atendidos e permite editar telefone/observação na hora.' },
-  { p: 'Como troco entre tema claro e escuro?', r: 'Botão de sol/lua no canto superior direito do header.' },
-  { p: 'Um atendimento entrou errado em "Precisam de peça", como removo?', r: 'Passe o mouse na linha e clique no ✕. Dá pra desfazer por alguns segundos antes de apagar de vez, e também dá pra selecionar vários de uma vez.' },
+  { p: 'Como crio uma Ordem de Serviço?', r: 'Aba "OS" → botão "+ Nova OS". Escolha o modelo (OS, Orçamento ou Chamado Técnico), o cliente (existente ou novo) e preencha o aparelho/defeito.', contexto: 'os' },
+  { p: 'Como sei se uma peça está esperando pedido?', r: 'Sino de notificações no topo, ou aba Atendimentos → cartão "Precisam de peça". De lá dá pra marcar "Já pedi" e anexar o comprovante.', contexto: 'atendimentos' },
+  { p: 'Como classifico um atendimento sem setor?', r: 'A Visão Geral (aba Roteiros, sem ficha aberta) mostra um alerta "atendimentos sem setor" — clique nele pra classificar em lote.', contexto: 'roteiros' },
+  { p: 'Onde vejo o histórico de um cliente?', r: 'Aba OS → sub-aba "Clientes" → clique no cliente. Mostra cadastro, aparelhos já atendidos e permite editar telefone/observação na hora.', contexto: 'os' },
+  { p: 'Como troco entre tema claro e escuro?', r: 'Botão de sol/lua no canto superior direito do header.', contexto: '' },
+  { p: 'Um atendimento entrou errado em "Precisam de peça", como removo?', r: 'Passe o mouse na linha e clique no ✕. Dá pra desfazer por alguns segundos antes de apagar de vez, e também dá pra selecionar vários de uma vez.', contexto: 'atendimentos' },
+  { p: 'Como vejo o que mais sai do estoque?', r: 'Aba Estoque → "Repor peça" → aba "Mais vendidos" no topo do modal.', contexto: 'estoque' },
+  { p: 'Como comparo o preço de uma peça entre fornecedores?', r: 'Aba Peças → Cotação → busque o código: se já foi cotado antes com mais de um fornecedor, aparece um comparativo logo abaixo do resultado.', contexto: 'pecas' },
+  { p: 'Onde vejo os técnicos no mapa, todos de uma vez?', r: 'Ícone de radar no cabeçalho (ao lado do sino) — abre a Torre de Controle numa aba nova.', contexto: 'roteiros' },
 ];
+
+// Qual aba está ativa AGORA, pra saber que pergunta priorizar — reaproveita
+// as mesmas classes .main-tab.active que a navegação já mantém, então não
+// precisa duplicar estado nenhum aqui.
+function _abaAtualParaAjuda() {
+  const ativa = document.querySelector('.main-tab.active');
+  const id = ativa?.id || '';
+  if (id === 'mtab-os' || id === 'mtab-agendar') return 'os';
+  if (id === 'mtab-atendimentos') return 'atendimentos';
+  if (id === 'mtab-pecas') return 'pecas';
+  if (id === 'mtab-estoque') return 'estoque';
+  if (id === 'mtab-roteiros') return 'roteiros';
+  return '';
+}
 
 function abrirAjuda() {
   const corpo = document.getElementById('ajuda-corpo');
   if (corpo) {
-    corpo.innerHTML = AJUDA_FAQ.map(f => `
+    const contextoAtual = _abaAtualParaAjuda();
+    const lista = contextoAtual
+      ? [...AJUDA_FAQ].sort((a, b) => (b.contexto === contextoAtual) - (a.contexto === contextoAtual))
+      : AJUDA_FAQ;
+    corpo.innerHTML = lista.map(f => `
       <div class="ajuda-item">
         <div class="ajuda-pergunta">${esc(f.p)}</div>
         <div class="ajuda-resposta">${esc(f.r)}</div>
@@ -2885,6 +2910,23 @@ async function carregarVisaoGeral() {
   }
 
   carregarResumoSetores();
+  carregarResumoDia();
+}
+
+// Resumo do dia (pedido de 2026-09-02/03: "resumo automático do dia, sem
+// precisar caçar em várias abas") — regra, não IA (ver comentário no
+// servidor). Fica no topo da Visão Geral, antes de qualquer número.
+async function carregarResumoDia() {
+  const alvo = document.getElementById('vg-resumo-dia');
+  if (!alvo) return;
+  try {
+    const r = await api('/relatorios/resumo-dia');
+    alvo.innerHTML = `
+      <div class="vg-resumo-dia-titulo">📋 Resumo do dia</div>
+      <ul class="vg-resumo-dia-lista">${(r.frases || []).map(f => `<li>${esc(f)}</li>`).join('')}</ul>`;
+  } catch {
+    alvo.innerHTML = '';
+  }
 }
 
 // Rola até o detalhe por técnico — pedido de 2026-09-02 ("números
@@ -3075,8 +3117,104 @@ async function carregarRelatoriosNegocio() {
     </div>
     <div class="rel-neg-titulo">Atendimentos por setor (6 meses)</div>
     ${tabelaSetores}
-    <div class="rel-neg-titulo" style="margin-top:14px;">De onde vêm os chamados</div>
+    <div class="rel-neg-titulo" style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <span>De onde vêm os chamados</span>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="abrirMapaCalor()">🗺 Ver no mapa</button>
+    </div>
     ${listaBairros}`;
+}
+
+// Detector de cliente duplicado (pedido de 2026-09-02: "nome parecido +
+// mesmo telefone/CEP, com sugestão de mesclar") — ver /clientes/duplicados
+// no servidor pro critério exato (telefone normalizado igual).
+async function abrirClientesDuplicados() {
+  document.getElementById('modal-clientes-duplicados').classList.add('open');
+  const corpo = document.getElementById('clientes-duplicados-corpo');
+  corpo.innerHTML = '<div class="loading-row" style="justify-content:center;padding:20px;"><div class="spinner"></div> Procurando...</div>';
+  try {
+    const r = await api('/clientes/duplicados');
+    _renderClientesDuplicados(r.grupos || []);
+  } catch (e) {
+    corpo.innerHTML = `<div class="vcep-erro">${esc(e.message)}</div>`;
+  }
+}
+
+function _renderClientesDuplicados(grupos) {
+  const corpo = document.getElementById('clientes-duplicados-corpo');
+  if (!grupos.length) {
+    corpo.innerHTML = '<p class="ajuda-texto">Nenhum telefone repetido entre cadastros diferentes — nada pra mesclar.</p>';
+    return;
+  }
+  corpo.innerHTML = grupos.map((g, gi) => `
+    <div class="cliente-detalhe-secao" style="margin-top:${gi === 0 ? 0 : 16}px;">${esc(g.telefone)}</div>
+    ${g.clientes.map(c => `
+      <div class="os-visita-linha">
+        <span><b>${esc(c.nome)}</b>
+          <span class="ajuda-texto" style="display:block;">Cadastrado em ${esc(parseDataBanco(c.criado_em)?.toLocaleDateString('pt-BR') || '')}${c.cidade ? ' · ' + esc(c.cidade) : ''}</span>
+        </span>
+        <div style="display:flex;gap:6px;">
+          ${g.clientes.filter(x => x.id !== c.id).map(outro => `
+            <button type="button" class="btn btn-ghost btn-sm" onclick="_confirmarMesclarClientes(${c.id}, ${outro.id}, '${esc(c.nome).replace(/'/g, "\\'")}', '${esc(outro.nome).replace(/'/g, "\\'")}')">
+              Manter este, apagar "${esc(outro.nome)}"</button>`).join('')}
+        </div>
+      </div>`).join('')}
+  `).join('');
+}
+
+async function _confirmarMesclarClientes(manterId, removerId, nomeManter, nomeRemover) {
+  if (!confirm(`Manter "${nomeManter}" e apagar o cadastro "${nomeRemover}"?\n\nTodas as OS e pedidos de peça de "${nomeRemover}" passam a pertencer a "${nomeManter}". Não dá pra desfazer.`)) return;
+  try {
+    await api('/clientes/mesclar', { method: 'POST', body: JSON.stringify({ manter_id: manterId, remover_id: removerId }) });
+    toast('Cadastros mesclados', 'success');
+    abrirClientesDuplicados();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// Mapa de calor de chamados (pedido de 2026-09-02: "de onde vêm mais
+// chamados, por bairro/região"). O ranking de bairro acima já existe como
+// lista/barra; isto complementa com a visão GEOGRÁFICA — sem vendorizar
+// plugin de heatmap novo, muitos círculos vermelhos translúcidos
+// sobrepostos (baixa opacidade, raio largo) já criam o efeito de mancha
+// quente onde os atendimentos se concentram, com Leaflet puro.
+let _mapaCalorLeaflet = null;
+async function abrirMapaCalor() {
+  document.getElementById('modal-mapa-calor').classList.add('open');
+  const status = document.getElementById('mapa-calor-status');
+  status.textContent = 'Carregando pontos...';
+
+  let r;
+  try {
+    r = await api('/relatorios/mapa-calor');
+  } catch (e) {
+    status.textContent = e.message;
+    return;
+  }
+
+  const pontos = r.pontos || [];
+  status.textContent = pontos.length
+    ? `${pontos.length} atendimento${pontos.length !== 1 ? 's' : ''} mais recentes com localização.`
+    : 'Nenhum atendimento com localização registrada ainda.';
+
+  setTimeout(() => {
+    if (_mapaCalorLeaflet) { _mapaCalorLeaflet.remove(); _mapaCalorLeaflet = null; }
+    const el = document.getElementById('mapa-calor-leaflet');
+    if (!el || !pontos.length) return;
+
+    _mapaCalorLeaflet = L.map(el, { attributionControl: false }).setView([-23.55, -46.63], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 })
+     .addTo(_mapaCalorLeaflet);
+
+    pontos.forEach(p => {
+      L.circleMarker([p.lat, p.lng], {
+        radius: 22, stroke: false, fillColor: '#ff3b30', fillOpacity: 0.055,
+      }).addTo(_mapaCalorLeaflet);
+    });
+
+    _mapaCalorLeaflet.fitBounds(pontos.map(p => [p.lat, p.lng]), { padding: [30, 30] });
+    setTimeout(() => _mapaCalorLeaflet && _mapaCalorLeaflet.invalidateSize(), 80);
+  }, 60);
 }
 
 async function carregarHistorico() {
@@ -6172,12 +6310,60 @@ const DF_OPCOES = [
 ];
 
 // Mesma lista de static/tecnico.js — checklist obrigatório antes de fechar
-// OS em campo, pedido de 2026-09-02.
-const CHECKLIST_ITENS = [
+// OS em campo, pedido de 2026-09-02, especializado por aparelho em 2026-09-03
+// (ver comentário completo na cópia de tecnico.js).
+const CHECKLIST_PADRAO = [
   'Testei o aparelho antes de sair',
   'Expliquei pro cliente o que foi feito',
   'Conferi a voltagem (127V — nunca arredondar pra 110V)',
 ];
+const CHECKLIST_POR_APARELHO = [
+  { chaves: ['geladeira', 'refrigerador', 'freezer', 'frost free'], itens: [
+    'Testei o compressor ligando e mantendo o ciclo',
+    'Verifiquei vazamento de gás/água',
+    'Conferi a vedação da borracha da porta',
+    'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+    'Expliquei pro cliente o que foi feito',
+  ]},
+  { chaves: ['ar condicionado', 'ar-condicionado', 'split', 'climatizador'], itens: [
+    'Testei o resfriamento por pelo menos 5 minutos',
+    'Verifiquei vazamento de gás/água na unidade interna e externa',
+    'Limpei o filtro',
+    'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+    'Expliquei pro cliente o que foi feito',
+  ]},
+  { chaves: ['lava e seca', 'lavadora', 'máquina de lavar', 'maquina de lavar', 'tanquinho'], itens: [
+    'Testei um ciclo completo de lavagem',
+    'Verifiquei vazamento de água nas mangueiras',
+    'Conferi a centrifugação',
+    'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+    'Expliquei pro cliente o que foi feito',
+  ]},
+  { chaves: ['micro-ondas', 'microondas', 'micro ondas'], itens: [
+    'Testei o aquecimento',
+    'Conferi o giro do prato',
+    'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+    'Expliquei pro cliente o que foi feito',
+  ]},
+  { chaves: ['lava-louça', 'lava louça', 'lava loucas'], itens: [
+    'Testei um ciclo completo',
+    'Verifiquei vazamento de água',
+    'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+    'Expliquei pro cliente o que foi feito',
+  ]},
+  { chaves: ['fogão', 'fogao', 'cooktop'], itens: [
+    'Testei todas as bocas',
+    'Verifiquei vazamento de gás',
+    'Conferi o acendimento automático',
+    'Expliquei pro cliente o que foi feito',
+  ]},
+];
+function checklistParaAparelho(tipoAparelho) {
+  const alvo = (tipoAparelho || '').toLowerCase();
+  const grupo = CHECKLIST_POR_APARELHO.find(g => g.chaves.some(c => alvo.includes(c)));
+  return grupo ? grupo.itens : CHECKLIST_PADRAO;
+}
+let _checklistAtual = CHECKLIST_PADRAO;
 const DF_MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                     'Aparelho sem defeito', 'Sem acesso ao local'];
 
@@ -6395,6 +6581,7 @@ function escolherDesfecho(tipo) {
     // tacada, pra quem dá baixa por AQUI (painel) também conseguir fechar a
     // OS em campo sem depender do /t/<token>. Pedido de 2026-08-28.
     const s = servicosAtuais.find(x => x.id === _dfServico) || {};
+    _checklistAtual = checklistParaAparelho(s.tipo_aparelho);
     extra.innerHTML = `
       <label class="form-label" for="df-fos-nome">Nome do cliente</label>
       <input class="form-input" id="df-fos-nome" value="${esc(s.cliente || '')}" oninput="validarConfirmarDesfecho()">
@@ -6425,7 +6612,7 @@ function escolherDesfecho(tipo) {
       ${blocoFotoPainel('Foto do produto', 'Opcional — registra o estado do aparelho na hora do fechamento.')}
       <label class="form-label" style="margin-top:14px;">Checklist antes de fechar <span class="df-obrigatorio">*</span></label>
       <div class="t-df-checklist">
-        ${CHECKLIST_ITENS.map((item, i) => `
+        ${_checklistAtual.map((item, i) => `
           <label class="t-df-checklist-item">
             <input type="checkbox" data-checklist-painel="${i}" onchange="validarConfirmarDesfecho()">
             ${esc(item)}
@@ -6461,6 +6648,7 @@ function escolherDesfecho(tipo) {
         <label class="form-label" style="margin-top:10px;" for="df-orc-valor">Valor combinado com o cliente (R$)</label>
         <input class="form-input" type="number" step="0.01" min="0.01" inputmode="decimal"
                id="df-orc-valor" oninput="validarConfirmarDesfecho()">
+        <p class="ajuda-texto" id="df-orc-sugestao" style="margin:4px 0 0;"></p>
         <label class="form-label" for="df-orc-item">O que foi orçado</label>
         <input class="form-input" id="df-orc-item" placeholder="Ex: Troca do compressor">
       </div>
@@ -6534,7 +6722,24 @@ function _dfEscolherModoOrcamento(botao) {
   _dfOrcamentoModoLocal = botao.dataset.modo === 'local';
   const bloco = document.getElementById('df-orc-valor-bloco');
   if (bloco) bloco.style.display = _dfOrcamentoModoLocal ? '' : 'none';
+  if (_dfOrcamentoModoLocal) _dfCarregarSugestaoPreco();
   validarConfirmarDesfecho();
+}
+
+// Precificação inteligente (pedido de 2026-09-03) — mesma lógica da tela
+// do técnico (ver comentário lá): média/mediana do que já foi aprovado
+// pelo cliente pra esse aparelho, não chute nem IA.
+async function _dfCarregarSugestaoPreco() {
+  const alvo = document.getElementById('df-orc-sugestao');
+  if (!alvo) return;
+  const s = servicosAtuais.find(x => x.id === _dfServico) || {};
+  if (!s.tipo_aparelho) { alvo.textContent = ''; return; }
+  try {
+    const r = await api(`/relatorios/sugestao-preco?aparelho=${encodeURIComponent(s.tipo_aparelho)}`);
+    alvo.textContent = r.n >= 3
+      ? `💡 Histórico de ${r.n} orçamentos aprovados pra ${s.tipo_aparelho}: média ${_brlCotacao(r.media)} (de ${_brlCotacao(r.minimo)} a ${_brlCotacao(r.maximo)})`
+      : '';
+  } catch { alvo.textContent = ''; }
 }
 
 async function confirmarDesfecho() {
@@ -6555,7 +6760,7 @@ async function confirmarDesfecho() {
     desfecho.solucao_os = document.getElementById('df-fos-solucao')?.value.trim() || '';
     desfecho.forma_pagamento = document.getElementById('df-fos-pagamento')?.value || '';
     desfecho.tipo_os = document.getElementById('df-fos-tipo-os')?.value || '';
-    desfecho.checklist = JSON.stringify(CHECKLIST_ITENS.map((item, i) => ({
+    desfecho.checklist = JSON.stringify(_checklistAtual.map((item, i) => ({
       item, marcado: !!document.querySelector(`[data-checklist-painel="${i}"]`)?.checked,
     })));
     if (_dfFoto) desfecho.foto_produto = _dfFoto;
@@ -7104,6 +7309,8 @@ function osSwitchOrigemTab(tab) {
   document.getElementById('os-busca').placeholder = ehClientes
     ? 'Buscar cliente por nome, CPF/CNPJ ou telefone...'
     : 'Buscar por número da OS ou nome do cliente...';
+  const btnDup = document.getElementById('btn-clientes-duplicados');
+  if (btnDup) btnDup.style.display = ehClientes ? '' : 'none';
 
   if (ehClientes) {
     carregarClientesTodos();
@@ -8851,11 +9058,50 @@ async function osAprovarOrcamento(id) {
   try {
     await api(`/ordens-servico/${id}/aprovar-orcamento`, { method: 'PUT' });
     toast('Orçamento marcado como aprovado', 'success');
+    _confeteRapido();
     carregarOS();
     abrirOSDetalhe(id);
   } catch (e) {
     toast(e.message, 'error');
   }
+}
+
+// Confete discreto ao fechar uma venda (pedido de 2026-09-03: "faz o
+// painel parecer premium") — canvas puro, sem lib nenhuma pra baixar.
+// Reduced-motion desliga sozinho: quem pediu menos animação no sistema
+// operacional não pediu papel picado voando na tela.
+function _confeteRapido() {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;z-index:9999;pointer-events:none;';
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const cores = ['#4f8dfb', '#34d399', '#f5b544', '#e04c4c', '#a78bfa'];
+  const particulas = Array.from({ length: 60 }, () => ({
+    x: Math.random() * canvas.width, y: -20 - Math.random() * 200,
+    vx: (Math.random() - 0.5) * 3, vy: 2 + Math.random() * 3,
+    tam: 5 + Math.random() * 5, cor: cores[Math.floor(Math.random() * cores.length)],
+    rot: Math.random() * Math.PI, vrot: (Math.random() - 0.5) * 0.3,
+  }));
+  const inicio = performance.now();
+  function quadro(agora) {
+    const t = agora - inicio;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particulas.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vrot;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.cor;
+      ctx.fillRect(-p.tam / 2, -p.tam / 2, p.tam, p.tam * 0.6);
+      ctx.restore();
+    });
+    if (t < 2200) requestAnimationFrame(quadro);
+    else canvas.remove();
+  }
+  requestAnimationFrame(quadro);
 }
 
 function _osRenderReservas(reservas) {
@@ -9279,8 +9525,10 @@ async function buscarSubstituicao() {
   const input = document.getElementById('substituicao-busca');
   const codigo = input.value.trim();
   const alvo = document.getElementById('substituicao-resultado');
-  if (!codigo) { alvo.innerHTML = ''; return; }
+  const alvoComparador = document.getElementById('comparador-fornecedores');
+  if (!codigo) { alvo.innerHTML = ''; if (alvoComparador) alvoComparador.innerHTML = ''; return; }
   alvo.innerHTML = '<p class="ajuda-texto">Buscando...</p>';
+  buscarComparadorFornecedores(codigo);
 
   // Invalida qualquer polling de uma busca anterior ainda rodando -- só o
   // token mais recente pode continuar atualizando a tela.
@@ -9317,6 +9565,38 @@ async function buscarSubstituicao() {
   };
 
   await passo();
+}
+
+// Comparador de fornecedores (pedido de 2026-09-02: "não só Panasonic") —
+// aproveita o histórico que a própria fila de Cotação acumula (ver
+// GET /cotacoes/comparar no servidor): toda vez que alguém cota um código
+// com um fornecedor, aquilo vira ponto de comparação da próxima vez, sem
+// cadastro de fornecedor nenhum pra manter.
+let _comparadorToken = 0;
+async function buscarComparadorFornecedores(codigo) {
+  const alvo = document.getElementById('comparador-fornecedores');
+  if (!alvo) return;
+  const meuToken = ++_comparadorToken;
+  try {
+    const r = await api(`/cotacoes/comparar?codigo=${encodeURIComponent(codigo)}`);
+    if (meuToken !== _comparadorToken) return;
+    if (!r.fornecedores || !r.fornecedores.length) { alvo.innerHTML = ''; return; }
+
+    const linhas = r.fornecedores.map((f, i) => `
+      <div class="comparador-linha ${i === 0 ? 'comparador-melhor' : ''}">
+        <span class="comparador-fornecedor">${esc(f.fornecedor)}${i === 0 ? ' 🏆' : ''}</span>
+        <span class="comparador-valor">${_brlCotacao(f.valor_cotado)}</span>
+        <span class="comparador-data">${esc(parseDataBanco(f.atualizado_em || f.criado_em)?.toLocaleDateString('pt-BR') || '')}</span>
+      </div>`).join('');
+
+    alvo.innerHTML = `
+      <div class="comparador-caixa">
+        <p class="form-separador" style="margin-top:14px;">Comparativo entre fornecedores já cotados</p>
+        ${linhas}
+      </div>`;
+  } catch {
+    if (meuToken === _comparadorToken) alvo.innerHTML = '';
+  }
 }
 
 async function importarSubstituicao(botao) {
@@ -9537,11 +9817,17 @@ async function marcarCotado(id) {
     return;
   }
   try {
-    await api(`/cotacoes/${id}`, {
+    const r = await api(`/cotacoes/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ status: 'cotado', valor_cotado: valorEl.value, fornecedor: fornecedorEl?.value || '' }),
     });
     toast('Peça marcada como cotada', 'success');
+    // Alerta de alta de preço (pedido de 2026-09-02/03): o servidor já
+    // calculou a variação contra a última cotação deste código — só mostra.
+    if (r.aviso_alta) {
+      const a = r.aviso_alta;
+      toast(`Preço subiu ${a.variacao_pct}% desde a última vez (${_brlCotacao(a.valor_anterior)} → ${_brlCotacao(a.valor_novo)})`, 'error');
+    }
     carregarCotacoes();
   } catch (e) {
     toast(e.message, 'error');
@@ -10278,27 +10564,50 @@ let _biparCamera = null; // stream da câmera, para poder desligar
 // ─── Repor peça: saldo vs consumo real dos últimos 90 dias ──────────────
 // Pedido de 2026-08-31. Não é preço de fornecedor (o site não tem essa
 // informação hoje) — é "no ritmo de agora, em quanto tempo isso acaba".
+// "Mais vendidos" (pedido de 2026-09-02: "ranking de giro por peça, pra
+// decidir o que vale manter em estoque") reaproveita a MESMA rota e o
+// MESMO cálculo de consumo de /estoque/reposicao (ver comentário no
+// servidor) — só muda a ordenação (?ordenar=giro) e o que a legenda diz.
+let _reposicaoOrdem = 'urgencia';
+
 async function abrirReposicaoEstoque() {
+  _reposicaoOrdem = 'urgencia';
+  await _carregarReposicao();
+}
+
+function alternarOrdemReposicao(ordem) {
+  _reposicaoOrdem = ordem;
+  document.getElementById('reposicao-tab-urgencia').classList.toggle('active', ordem === 'urgencia');
+  document.getElementById('reposicao-tab-giro').classList.toggle('active', ordem === 'giro');
+  document.getElementById('reposicao-legenda').textContent = ordem === 'giro'
+    ? 'O que mais saiu do estoque nos últimos 90 dias primeiro — ajuda a decidir o que vale sempre ter, não só o que está acabando.'
+    : 'Saldo atual comparado com o que saiu do estoque nos últimos 90 dias — quem vai faltar primeiro no ritmo de agora aparece no topo. Peça sem saída no período fica de fora: sem consumo não dá pra estimar nada.';
+  _carregarReposicao();
+}
+
+async function _carregarReposicao() {
   const corpo = document.getElementById('reposicao-corpo');
   corpo.innerHTML = '<div class="loading-row" style="justify-content:center;padding:20px;"><div class="spinner"></div> Calculando...</div>';
   document.getElementById('modal-reposicao').classList.add('open');
   try {
-    const r = await api('/estoque/reposicao');
+    const r = await api(`/estoque/reposicao?ordenar=${_reposicaoOrdem}`);
     const itens = r.itens || [];
     if (!itens.length) {
       corpo.innerHTML = '<p class="ajuda-texto">Nenhuma peça com saída registrada nos últimos 90 dias — sem consumo pra comparar com o saldo.</p>';
       return;
     }
-    corpo.innerHTML = itens.map(i => {
+    corpo.innerHTML = itens.map((i, idx) => {
       const critico = i.dias_restantes !== null && i.dias_restantes <= 15;
       const atencao = i.dias_restantes !== null && i.dias_restantes > 15 && i.dias_restantes <= 30;
       const cor = critico ? 'var(--danger-text)' : (atencao ? 'var(--gold-text)' : 'var(--text-secondary)');
-      const rotulo = i.dias_restantes === null ? 'sem estimativa'
-        : i.dias_restantes <= 0 ? 'já deveria ter acabado'
-        : `acaba em ~${i.dias_restantes}d`;
+      const rotulo = _reposicaoOrdem === 'giro'
+        ? `${g2(i.consumo_periodo)} saídas`
+        : (i.dias_restantes === null ? 'sem estimativa'
+          : i.dias_restantes <= 0 ? 'já deveria ter acabado'
+          : `acaba em ~${i.dias_restantes}d`);
       return `
         <div class="os-visita-linha">
-          <span><b>${esc(i.codigo)}</b>${i.descricao ? ' — ' + esc(i.descricao) : ''}
+          <span>${_reposicaoOrdem === 'giro' ? `<b>${idx + 1}º</b> ` : ''}<b>${esc(i.codigo)}</b>${i.descricao ? ' — ' + esc(i.descricao) : ''}
             <span class="ajuda-texto" style="display:block;">${g2(i.saldo)} em estoque · saiu ${g2(i.consumo_periodo)} nos últimos ${r.dias_periodo} dias</span>
           </span>
           <span style="color:${cor};font-weight:700;white-space:nowrap;">${rotulo}</span>

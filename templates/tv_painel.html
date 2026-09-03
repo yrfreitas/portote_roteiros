@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painel · Porto Tec</title>
+  <link rel="icon" href="/static/assets/favicon-32x32.png">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; background: #060911; color: #eaf0fb;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    .wrap { padding: 28px 40px; height: 100%; display: flex; flex-direction: column; gap: 22px; }
+    header { display: flex; align-items: center; justify-content: space-between; }
+    .marca { font-size: 15px; letter-spacing: 2px; text-transform: uppercase; color: #5a6d8a; }
+    .relogio { font-family: 'JetBrains Mono', monospace; font-size: 22px; color: #9aacc6; }
+    .grid-topo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+    .stat {
+      background: linear-gradient(160deg, rgba(79,141,251,.10), rgba(79,141,251,.02));
+      border: 1px solid rgba(148,178,220,.14); border-radius: 16px; padding: 22px 26px;
+    }
+    .stat-valor { font-size: 46px; font-weight: 800; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+    .stat-label { font-size: 13px; color: #9aacc6; margin-top: 8px; text-transform: uppercase; letter-spacing: .8px; }
+    .corpo { flex: 1; display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; min-height: 0; }
+    .painel {
+      background: rgba(148,178,220,.04); border: 1px solid rgba(148,178,220,.12);
+      border-radius: 16px; padding: 20px 24px; overflow-y: auto;
+    }
+    .painel-titulo { font-size: 14px; font-weight: 700; color: #9aacc6; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+    .rank-linha {
+      display: flex; align-items: center; gap: 14px; padding: 10px 0;
+      border-bottom: 1px solid rgba(148,178,220,.08);
+    }
+    .rank-pos { font-size: 20px; font-weight: 800; color: #5a6d8a; width: 28px; }
+    .rank-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .rank-nome { flex: 1; font-size: 16px; font-weight: 700; }
+    .rank-meta { font-size: 13px; color: #9aacc6; font-family: 'JetBrains Mono', monospace; }
+    .resumo-item { font-size: 15px; padding: 8px 0; color: #d5deeb; border-bottom: 1px solid rgba(148,178,220,.08); }
+    .resumo-item::before { content: '● '; color: #4f8dfb; }
+    .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #86efac; }
+    .live::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #34d399; animation: p 1.6s ease-in-out infinite; }
+    @keyframes p { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="marca">Porto Tec Assistência Técnica</div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <span class="live">ao vivo</span>
+        <div class="relogio" id="relogio">--:--:--</div>
+      </div>
+    </header>
+
+    <div class="grid-topo" id="stats-topo"></div>
+
+    <div class="corpo">
+      <div class="painel">
+        <div class="painel-titulo">Ranking do dia — por km rodado</div>
+        <div id="ranking-tecnicos"></div>
+      </div>
+      <div class="painel">
+        <div class="painel-titulo">Resumo do dia</div>
+        <div id="resumo-lista"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function relogio() {
+      const el = document.getElementById('relogio');
+      const t = () => { el.textContent = new Date().toLocaleTimeString('pt-BR'); };
+      t(); setInterval(t, 1000);
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+    }
+
+    async function atualizar() {
+      try {
+        const [fichasResp, tecnicosResp, resumoResp] = await Promise.all([
+          fetch('/api/fichas', { cache: 'no-store' }).then(r => r.json()),
+          fetch('/api/tecnicos', { cache: 'no-store' }).then(r => r.json()),
+          fetch('/api/relatorios/resumo-dia', { cache: 'no-store' }).then(r => r.json()).catch(() => ({ frases: [] })),
+        ]);
+
+        const ativas = fichasResp.filter(f => f.status !== 'concluida');
+        const totalRotas = ativas.length;
+        const totalPontos = ativas.reduce((s, f) => s + (f.total_servicos || 0), 0);
+        const totalKm = ativas.reduce((s, f) => s + (f.distancia_total || 0), 0);
+
+        document.getElementById('stats-topo').innerHTML = `
+          <div class="stat"><div class="stat-valor">${tecnicosResp.length}</div><div class="stat-label">Técnicos</div></div>
+          <div class="stat"><div class="stat-valor">${totalRotas}</div><div class="stat-label">Rotas ativas</div></div>
+          <div class="stat"><div class="stat-valor">${totalPontos}</div><div class="stat-label">Atendimentos hoje</div></div>
+          <div class="stat"><div class="stat-valor">${totalKm.toFixed(0)}</div><div class="stat-label">Km planejados</div></div>`;
+
+        const porTecnico = new Map();
+        ativas.forEach(f => {
+          const atual = porTecnico.get(f.tecnico_id) || { nome: f.tecnico_nome, cor: f.tecnico_cor, km: 0, pontos: 0 };
+          atual.km += f.distancia_total || 0;
+          atual.pontos += f.total_servicos || 0;
+          porTecnico.set(f.tecnico_id, atual);
+        });
+        const ranking = Array.from(porTecnico.values()).sort((a, b) => b.km - a.km);
+        document.getElementById('ranking-tecnicos').innerHTML = ranking.length
+          ? ranking.map((t, i) => `
+              <div class="rank-linha">
+                <span class="rank-pos">${i + 1}º</span>
+                <span class="rank-dot" style="background:${esc(t.cor || '#4f8dfb')}"></span>
+                <span class="rank-nome">${esc(t.nome)}</span>
+                <span class="rank-meta">${t.pontos} pts · ${t.km.toFixed(1)} km</span>
+              </div>`).join('')
+          : '<p style="color:#5a6d8a;">Nenhuma rota ativa agora.</p>';
+
+        document.getElementById('resumo-lista').innerHTML = (resumoResp.frases || [])
+          .map(f => `<div class="resumo-item">${esc(f)}</div>`).join('') || '<p style="color:#5a6d8a;">Sem dados ainda.</p>';
+      } catch (e) {
+        console.warn('Falha ao atualizar painel de TV:', e);
+      }
+    }
+
+    relogio();
+    atualizar();
+    setInterval(atualizar, 20000);
+  </script>
+</body>
+</html>

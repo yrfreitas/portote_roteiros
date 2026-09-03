@@ -63,6 +63,46 @@ def listar():
     })
 
 
+@cotacoes_bp.route("/cotacoes/comparar", methods=["GET"])
+def comparar_fornecedores():
+    """Comparador de preço entre fornecedores pra um código (pedido de
+    2026-09-02/03: "não só Panasonic").
+
+    Não é cadastro de fornecedor novo nem cotação simultânea de verdade —
+    aproveita o que a fila de Cotação JÁ acumula com o tempo: toda vez que
+    alguém marca `valor_cotado` + `fornecedor` aqui (rota PUT acima), a linha
+    fica gravada com `status='cotado'` (não é apagada — só o atalho de
+    "Cotação de peça" indo direto pro orçamento apaga a dele, um caso à
+    parte). Juntando isso por código, dá pra ver "da última vez, a Casa X
+    cobrou R$40 e a Y cobrou R$55" sem ter cadastrado fornecedor nenhum antes.
+
+    Um fornecedor pode aparecer mais de uma vez cotado ao longo do tempo —
+    fica só o mais RECENTE dele (preço antigo não ajuda a decidir hoje).
+    """
+    codigo = (request.args.get("codigo") or "").strip()
+    if not codigo:
+        return jsonify({"erro": "Informe o código da peça"}), 400
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT fornecedor, valor_cotado, criado_em, atualizado_em
+              FROM cotacoes
+             WHERE LOWER(codigo) = LOWER(?) AND valor_cotado IS NOT NULL
+                   AND fornecedor IS NOT NULL AND fornecedor <> ''
+             ORDER BY id DESC
+        """, (codigo,))
+
+    mais_recente_por_fornecedor = {}
+    for l in linhas:
+        chave = l["fornecedor"].strip().lower()
+        if chave not in mais_recente_por_fornecedor:
+            mais_recente_por_fornecedor[chave] = l
+
+    resultado = sorted(mais_recente_por_fornecedor.values(),
+                       key=lambda l: l["valor_cotado"])
+    return jsonify({"codigo": codigo, "fornecedores": resultado})
+
+
 @cotacoes_bp.route("/cotacoes", methods=["POST"])
 def criar():
     d = request.get_json(silent=True) or {}
@@ -94,9 +134,37 @@ def atualizar(item_id):
     d = request.get_json(silent=True) or {}
 
     with db_conn(commit=True) as conn:
-        item = fetch_one(conn, "SELECT id FROM cotacoes WHERE id = ?", (item_id,))
+        item = fetch_one(conn, "SELECT id, codigo FROM cotacoes WHERE id = ?", (item_id,))
         if not item:
             return jsonify({"erro": "Item não encontrado"}), 404
+
+        # Alerta de alta de preço (pedido de 2026-09-02/03: "quando o preço de
+        # uma peça sobe mais de X% desde a última compra") — compara com o
+        # último valor_cotado registrado pra ESTE código, de qualquer
+        # fornecedor, antes de gravar o novo. Calculado ANTES do UPDATE, óbvio,
+        # senão "o último" seria o que está prestes a virar agora mesmo.
+        aviso_alta = None
+        codigo_atual = (d.get("codigo") or item.get("codigo") or "").strip()
+        if "valor_cotado" in d and d.get("valor_cotado") not in (None, "") and codigo_atual:
+            try:
+                novo_valor = float(d["valor_cotado"])
+            except (TypeError, ValueError):
+                novo_valor = None
+            if novo_valor:
+                anterior = fetch_one(conn, """
+                    SELECT valor_cotado, atualizado_em FROM cotacoes
+                     WHERE LOWER(codigo) = LOWER(?) AND valor_cotado IS NOT NULL AND id <> ?
+                     ORDER BY id DESC LIMIT 1
+                """, (codigo_atual, item_id))
+                if anterior and anterior.get("valor_cotado"):
+                    valor_antigo = float(anterior["valor_cotado"])
+                    if valor_antigo > 0:
+                        variacao = (novo_valor - valor_antigo) / valor_antigo
+                        if variacao >= 0.20:   # 20% pra cima já vale avisar
+                            aviso_alta = {
+                                "valor_anterior": valor_antigo, "valor_novo": novo_valor,
+                                "variacao_pct": round(variacao * 100, 1),
+                            }
 
         campos, valores = [], []
         if "codigo" in d:
@@ -131,7 +199,10 @@ def atualizar(item_id):
         valores.append(item_id)
         execute(conn, f"UPDATE cotacoes SET {', '.join(campos)} WHERE id = ?", valores)
 
-    return jsonify({"mensagem": "Item atualizado"})
+    resposta = {"mensagem": "Item atualizado"}
+    if aviso_alta:
+        resposta["aviso_alta"] = aviso_alta
+    return jsonify(resposta)
 
 
 @cotacoes_bp.route("/cotacoes/<int:item_id>", methods=["DELETE"])

@@ -557,7 +557,14 @@ def reposicao():
         })
 
     # Quem vai faltar primeiro no topo — é o que precisa de decisão AGORA.
-    resultado.sort(key=lambda x: x["dias_restantes"] if x["dias_restantes"] is not None else 9e9)
+    # `?ordenar=giro` inverte pra "o que mais sai" (pedido de 2026-09-02:
+    # "ranking de giro por peça, pra decidir o que vale manter em
+    # estoque") — mesmo dado (consumo_periodo já calculado acima), outra
+    # pergunta: não "vai faltar quando" e sim "o que gira mais".
+    if request.args.get("ordenar") == "giro":
+        resultado.sort(key=lambda x: x["consumo_periodo"], reverse=True)
+    else:
+        resultado.sort(key=lambda x: x["dias_restantes"] if x["dias_restantes"] is not None else 9e9)
 
     return jsonify({"itens": resultado, "dias_periodo": DIAS_CONSUMO_REPOSICAO})
 

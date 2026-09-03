@@ -613,14 +613,113 @@
   const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                    'Aparelho sem defeito', 'Sem acesso ao local'];
 
-  // Checklist obrigatório antes de fechar OS em campo (pedido de 2026-09-02)
-  // — genérico pra qualquer aparelho, não por tipo (evitaria manter uma
-  // lista própria por categoria sem necessidade agora).
-  const CHECKLIST_ITENS = [
+  // Checklist obrigatório antes de fechar OS em campo (pedido de 2026-09-02,
+  // especializado por tipo de aparelho em 2026-09-03 — a lista genérica não
+  // cobria o que de fato importa checar em cada categoria antes de sair).
+  //
+  // Casamento por PALAVRA-CHAVE dentro de tipo_aparelho (campo livre, sem
+  // enum fixo no banco) — "Geladeira Brastemp Frost Free" bate em
+  // "geladeira" do mesmo jeito que "GELADEIRA" bate. A ORDEM importa: a
+  // primeira chave que aparecer dentro do texto decide, por isso "ar
+  // condicionado" vem antes de qualquer coisa que pudesse conter "ar" solto.
+  const CHECKLIST_PADRAO = [
     'Testei o aparelho antes de sair',
     'Expliquei pro cliente o que foi feito',
     'Conferi a voltagem (127V — nunca arredondar pra 110V)',
   ];
+  const CHECKLIST_POR_APARELHO = [
+    { chaves: ['geladeira', 'refrigerador', 'freezer', 'frost free'], itens: [
+      'Testei o compressor ligando e mantendo o ciclo',
+      'Verifiquei vazamento de gás/água',
+      'Conferi a vedação da borracha da porta',
+      'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+      'Expliquei pro cliente o que foi feito',
+    ]},
+    { chaves: ['ar condicionado', 'ar-condicionado', 'split', 'climatizador'], itens: [
+      'Testei o resfriamento por pelo menos 5 minutos',
+      'Verifiquei vazamento de gás/água na unidade interna e externa',
+      'Limpei o filtro',
+      'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+      'Expliquei pro cliente o que foi feito',
+    ]},
+    { chaves: ['lava e seca', 'lavadora', 'máquina de lavar', 'maquina de lavar', 'tanquinho'], itens: [
+      'Testei um ciclo completo de lavagem',
+      'Verifiquei vazamento de água nas mangueiras',
+      'Conferi a centrifugação',
+      'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+      'Expliquei pro cliente o que foi feito',
+    ]},
+    { chaves: ['micro-ondas', 'microondas', 'micro ondas'], itens: [
+      'Testei o aquecimento',
+      'Conferi o giro do prato',
+      'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+      'Expliquei pro cliente o que foi feito',
+    ]},
+    { chaves: ['lava-louça', 'lava louça', 'lava loucas'], itens: [
+      'Testei um ciclo completo',
+      'Verifiquei vazamento de água',
+      'Conferi a voltagem (127V — nunca arredondar pra 110V)',
+      'Expliquei pro cliente o que foi feito',
+    ]},
+    { chaves: ['fogão', 'fogao', 'cooktop'], itens: [
+      'Testei todas as bocas',
+      'Verifiquei vazamento de gás',
+      'Conferi o acendimento automático',
+      'Expliquei pro cliente o que foi feito',
+    ]},
+  ];
+  function checklistParaAparelho(tipoAparelho) {
+    const alvo = (tipoAparelho || '').toLowerCase();
+    const grupo = CHECKLIST_POR_APARELHO.find(g => g.chaves.some(c => alvo.includes(c)));
+    return grupo ? grupo.itens : CHECKLIST_PADRAO;
+  }
+  // Guarda o checklist que está de fato na tela agora — calculado uma vez ao
+  // montar a folha (a partir do aparelho do atendimento) e reaproveitado ao
+  // confirmar, pra nunca desalinhar item mostrado x item gravado.
+  let _checklistAtual = CHECKLIST_PADRAO;
+
+  // Ditado por voz (pedido de 2026-09-03: "mão suja de graxa, luva no
+  // dedo — ditar em vez de digitar"). Web Speech API nativa do navegador,
+  // sem custo nenhum de API — só existe de verdade no Chrome/Android hoje
+  // (Safari/iOS não implementa), por isso o botão só aparece quando
+  // `webkitSpeechRecognition` existe: não oferece o que não vai funcionar.
+  const _SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  function _botaoDitado(idCampo) {
+    if (!_SpeechRecognitionCtor) return '';
+    return `<button type="button" class="t-df-ditado-btn" data-campo="${idCampo}"
+              onclick="window._tAlternarDitado(this)" title="Ditar por voz">🎤 Ditar</button>`;
+  }
+
+  let _reconhecimentoAtivo = null;
+  window._tAlternarDitado = function (botao) {
+    if (_reconhecimentoAtivo) { _reconhecimentoAtivo.stop(); return; }
+
+    const campo = document.getElementById(botao.dataset.campo);
+    if (!campo) return;
+    const rec = new _SpeechRecognitionCtor();
+    rec.lang = 'pt-BR';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    botao.classList.add('gravando');
+    botao.textContent = '🔴 Ouvindo... (toque pra parar)';
+
+    rec.onresult = (ev) => {
+      const texto = ev.results[0][0].transcript;
+      campo.value = campo.value ? `${campo.value} ${texto}` : texto;
+      campo.dispatchEvent(new Event('input'));
+    };
+    rec.onerror = () => toast('Não consegui ouvir — tente de novo');
+    rec.onend = () => {
+      botao.classList.remove('gravando');
+      botao.textContent = '🎤 Ditar';
+      _reconhecimentoAtivo = null;
+    };
+
+    _reconhecimentoAtivo = rec;
+    rec.start();
+  };
 
   // Mesma lista de static/app.js e routes/ordens_servico.py:TIPOS_OS_ROTULO —
   // pedido de 2026-08-28: o técnico escolhe o termo jurídico da OS que ele
@@ -925,6 +1024,7 @@
       // cliente, defeito, solução, forma de pagamento — e colhe a
       // assinatura na hora, sem depender do escritório abrir a OS depois.
       const s = (servicosAbertos || []).find(x => x.id === _desfechoServicoId) || {};
+      _checklistAtual = checklistParaAparelho(s.tipo_aparelho);
       extra.innerHTML = `
         <label class="t-df-rotulo" for="t-df-fos-nome">Nome do cliente</label>
         <input class="t-df-input" id="t-df-fos-nome" value="${esc(s.cliente || '')}">
@@ -940,6 +1040,7 @@
         <textarea class="t-df-input" id="t-df-fos-defeito" rows="2">${esc(s.descricao || '')}</textarea>
         <label class="t-df-rotulo" for="t-df-fos-solucao">Nossa solução</label>
         <textarea class="t-df-input" id="t-df-fos-solucao" rows="3" placeholder="O que foi feito"></textarea>
+        ${_botaoDitado('t-df-fos-solucao')}
         <label class="t-df-rotulo" for="t-df-fos-pagamento">Forma de pagamento</label>
         <select class="t-df-input" id="t-df-fos-pagamento">
           <option value="">Selecione...</option>
@@ -955,7 +1056,7 @@
         ${blocoFoto(false)}
         <label class="t-df-rotulo">Checklist antes de fechar <span class="t-df-obrigatorio">*</span></label>
         <div class="t-df-checklist">
-          ${CHECKLIST_ITENS.map((item, i) => `
+          ${_checklistAtual.map((item, i) => `
             <label class="t-df-checklist-item">
               <input type="checkbox" data-checklist="${i}" onchange="window._tValidarConfirmar()">
               ${esc(item)}
@@ -991,6 +1092,7 @@
           <label class="t-df-rotulo" for="t-df-orc-valor">Valor combinado com o cliente (R$)</label>
           <input class="t-df-input" type="number" step="0.01" min="0.01" inputmode="decimal"
                  id="t-df-orc-valor" oninput="window._tValidarConfirmar()">
+          <p class="t-df-ajuda" id="t-df-orc-sugestao"></p>
           <label class="t-df-rotulo" for="t-df-orc-item">O que foi orçado</label>
           <input class="t-df-input" id="t-df-orc-item" placeholder="Ex: Troca do compressor">
         </div>
@@ -1020,7 +1122,8 @@
     extra.insertAdjacentHTML('beforeend', `
       <label class="t-df-rotulo" for="t-df-obs">Observação</label>
       <textarea class="t-df-input t-df-obs" id="t-df-obs" rows="3"
-                placeholder="Algo que a equipe precisa saber (opcional)"></textarea>`);
+                placeholder="Algo que a equipe precisa saber (opcional)"></textarea>
+      ${_botaoDitado('t-df-obs')}`);
     window._tValidarConfirmar();
   };
 
@@ -1115,8 +1218,25 @@
     _orcamentoModoLocal = botao.dataset.modo === 'local';
     const bloco = document.getElementById('t-df-orc-valor-bloco');
     if (bloco) bloco.style.display = _orcamentoModoLocal ? '' : 'none';
+    if (_orcamentoModoLocal) _tCarregarSugestaoPreco();
     window._tValidarConfirmar();
   };
+
+  // Precificação inteligente (pedido de 2026-09-03) — média/mediana do que
+  // JÁ foi aprovado pelo cliente pra esse mesmo tipo de aparelho, não
+  // chute nem IA. Ver /relatorios/sugestao-preco no servidor.
+  async function _tCarregarSugestaoPreco() {
+    const alvo = document.getElementById('t-df-orc-sugestao');
+    if (!alvo) return;
+    const s = (servicosAbertos || []).find(x => x.id === _desfechoServicoId) || {};
+    if (!s.tipo_aparelho) { alvo.textContent = ''; return; }
+    try {
+      const r = await api(`/relatorios/sugestao-preco?aparelho=${encodeURIComponent(s.tipo_aparelho)}`);
+      alvo.textContent = r.n >= 3
+        ? `💡 Histórico de ${r.n} orçamentos aprovados pra ${s.tipo_aparelho}: média R$ ${r.media.toFixed(2)} (de R$ ${r.minimo.toFixed(2)} a R$ ${r.maximo.toFixed(2)})`
+        : '';
+    } catch { alvo.textContent = ''; }
+  }
 
   window._tEscolherMotivo = function (botao) {
     document.querySelectorAll('.t-df-motivo').forEach(b => b.classList.remove('ativa'));
@@ -1145,7 +1265,7 @@
       desfecho.solucao_os = document.getElementById('t-df-fos-solucao')?.value.trim() || '';
       desfecho.forma_pagamento = document.getElementById('t-df-fos-pagamento')?.value || '';
       desfecho.tipo_os = document.getElementById('t-df-fos-tipo-os')?.value || '';
-      desfecho.checklist = JSON.stringify(CHECKLIST_ITENS.map((item, i) => ({
+      desfecho.checklist = JSON.stringify(_checklistAtual.map((item, i) => ({
         item, marcado: !!document.querySelector(`[data-checklist="${i}"]`)?.checked,
       })));
       if (_desfechoFoto) desfecho.foto_produto = _desfechoFoto;
@@ -1460,7 +1580,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v195';
+  const VERSAO_TELA = 'v196';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

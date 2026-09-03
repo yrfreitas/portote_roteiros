@@ -518,6 +518,16 @@ def limpar_chat_diagnostico():
     return jsonify({"mensagem": "Conversa limpa"})
 
 
+@app.route("/tv")
+def tv_painel_pagina():
+    """Painel em tela cheia pra rodar numa TV do escritório — pedido de
+    2026-09-03 ("modo TV da parede"). Reaproveita as MESMAS rotas que o
+    painel principal já usa (/api/fichas, /api/tecnicos,
+    /api/relatorios/resumo-dia); atrás do login normal como qualquer outra
+    página do site."""
+    return render_template("tv_painel.html")
+
+
 @app.route("/torre-controle")
 def torre_controle_pagina():
     """Mapa ao vivo com todos os técnicos — pedido de 2026-09-03. Fica atrás

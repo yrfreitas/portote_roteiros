@@ -48,8 +48,8 @@ body {
   z-index: 10;
 }
 .t-header-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 10px currentColor; }
-.t-header-nome { font-family: var(--font-display); font-weight: 700; font-size: 15px; }
-.t-header-sub { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+.t-header-nome { font-family: var(--font-display); font-weight: 700; font-size: 16.5px; }
+.t-header-sub { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
 .t-btn-sino {
   margin-left: auto;
   background: var(--bg-elevated);
@@ -89,20 +89,20 @@ body {
 
 .t-main { padding: 14px 14px 60px; max-width: 560px; margin: 0 auto; }
 
-.t-fichas { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+.t-fichas { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; }
 .t-ficha-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 14px 16px;
+  padding: 16px 18px;
   cursor: pointer;
   transition: border-color 0.15s;
 }
 .t-ficha-card.selecionada { border-color: var(--accent); background: var(--accent-dim); }
 .t-ficha-card.concluida { opacity: 0.6; }
-.t-ficha-titulo { font-family: var(--font-display); font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-.t-ficha-meta { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 4px; }
-.t-tag-ok { color: var(--success-text); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+.t-ficha-titulo { font-family: var(--font-display); font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.t-ficha-meta { font-size: 12.5px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 5px; }
+.t-tag-ok { color: var(--success-text); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 
 .t-vazio { padding: 60px 20px; text-align: center; color: var(--text-muted); }
 .t-vazio h1 { font-family: var(--font-display); color: var(--text-primary); font-size: 20px; }
@@ -144,10 +144,10 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 14px 16px;
-  margin-bottom: 10px;
+  padding: 17px 18px;
+  margin-bottom: 12px;
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: flex-start;
 }
 .t-ponto.concluido { opacity: 0.55; }
@@ -173,14 +173,18 @@ body {
   background: rgba(52,211,153,.16); color: #86efac;
 }
 .t-ponto-info { flex: 1; min-width: 0; }
-.t-ponto-cliente { font-weight: 600; font-size: 13px; }
-.t-ponto-endereco { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-.t-ponto-aparelho { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-.t-ponto-acoes { display: flex; gap: 8px; margin-top: 10px; }
+/* Aumentado (pedido de 2026-09-03: "tudo muito junto e pequeno, feio pro
+   técnico") — 13/12/11px é confortável olhando de perto numa mesa, mas
+   este cartão é lido de pé, na rua, muitas vezes sob sol, com o celular
+   mais longe do rosto do que a distância normal de leitura. */
+.t-ponto-cliente { font-weight: 700; font-size: 15.5px; }
+.t-ponto-endereco { font-size: 13.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4; }
+.t-ponto-aparelho { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+.t-ponto-acoes { display: flex; gap: 10px; margin-top: 13px; flex-wrap: wrap; }
 .t-ponto-link {
-  font-size: 11px; color: var(--accent-text); text-decoration: none;
-  border: 1px solid var(--border-bright); border-radius: 999px; padding: 5px 11px;
-  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 13px; color: var(--accent-text); text-decoration: none;
+  border: 1px solid var(--border-bright); border-radius: 999px; padding: 8px 14px;
+  display: inline-flex; align-items: center; gap: 6px;
 }
 .t-ponto-link-waze { color: #a6e0ff; border-color: rgba(166,224,255,0.3); }
 .t-ponto-check {
@@ -188,10 +192,11 @@ body {
   background: var(--bg-elevated);
   color: var(--text-secondary);
   border-radius: 999px;
-  padding: 5px 11px;
-  font-size: 11px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 6px;
 }
 .t-ponto-check.concluido { background: var(--success-dim); border-color: rgba(52,211,153,0.35); color: var(--success-text); }
 
@@ -519,6 +524,14 @@ button.t-ponto-link-waze {
   background: transparent; border: 1px solid rgba(255,255,255,.18);
   color: #cfdaea; font-size: 12.5px; font-family: inherit; cursor: pointer;
 }
+
+/* Ditado por voz (pedido de 2026-09-03) */
+.t-df-ditado-btn {
+  display: block; margin-top: 6px; padding: 7px 12px; border-radius: 9px;
+  background: transparent; border: 1px solid rgba(255,255,255,.18);
+  color: #a6c8ff; font-size: 12.5px; font-family: inherit; cursor: pointer;
+}
+.t-df-ditado-btn.gravando { background: rgba(224,32,32,.16); border-color: #e02020; color: #ff8a8a; }
 
 /* Ler código pela câmera (pedido de 2026-09-02) */
 .t-campo-com-scan { display: flex; gap: 6px; align-items: stretch; }

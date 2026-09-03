@@ -106,6 +106,66 @@ def criar_cliente(conn, dados: dict) -> int:
           campos["obs"], _quem(), agora))
 
 
+@clientes_bp.route("/clientes/duplicados", methods=["GET"])
+def duplicados():
+    """Grupos de clientes que parecem ser a MESMA pessoa cadastrada mais de
+    uma vez — pedido de 2026-09-02: "detector de cliente duplicado (nome
+    parecido + mesmo telefone/CEP) com sugestão de mesclar".
+
+    Casamento por TELEFONE normalizado (só dígitos) é o critério — nome
+    "parecido" de verdade exigiria uma métrica de similaridade que este
+    banco não tem pronta, e telefone igual já é um sinal muito forte
+    sozinho (duas pessoas reais quase nunca compartilham o mesmo celular).
+    Cliente sem telefone cadastrado fica de fora — nada pra comparar.
+    """
+    with db_conn() as conn:
+        linhas = fetch_all(conn, "SELECT id, nome, telefone, cidade, bairro, criado_em FROM clientes")
+
+    grupos = {}
+    for c in linhas:
+        digitos = re.sub(r"\D", "", c.get("telefone") or "")
+        if len(digitos) < 8:   # curto demais pra ser um telefone de verdade
+            continue
+        grupos.setdefault(digitos, []).append(c)
+
+    resultado = [
+        {"telefone": tel, "clientes": sorted(cs, key=lambda c: c["id"])}
+        for tel, cs in grupos.items() if len(cs) > 1
+    ]
+    resultado.sort(key=lambda g: len(g["clientes"]), reverse=True)
+    return jsonify({"grupos": resultado})
+
+
+@clientes_bp.route("/clientes/mesclar", methods=["POST"])
+def mesclar():
+    """Junta dois cadastros do mesmo cliente num só. Body: {manter_id,
+    remover_id}. Tudo que apontava pro removido (OS, pedido de peça sem
+    visita) passa a apontar pro mantido; o removido só é apagado DEPOIS
+    disso, numa transação só — nunca sobra referência solta nem OS órfã."""
+    d = request.get_json(silent=True) or {}
+    try:
+        manter_id = int(d.get("manter_id"))
+        remover_id = int(d.get("remover_id"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Informe manter_id e remover_id"}), 400
+    if manter_id == remover_id:
+        return jsonify({"erro": "Escolha dois cadastros diferentes"}), 400
+
+    with db_conn(commit=True) as conn:
+        mantido = fetch_one(conn, "SELECT id FROM clientes WHERE id = ?", (manter_id,))
+        removido = fetch_one(conn, "SELECT id FROM clientes WHERE id = ?", (remover_id,))
+        if not mantido or not removido:
+            return jsonify({"erro": "Um dos cadastros não existe mais"}), 404
+
+        execute(conn, "UPDATE ordens_servico SET cliente_id = ? WHERE cliente_id = ?",
+               (manter_id, remover_id))
+        execute(conn, "UPDATE pedido_peca_os SET cliente_id = ? WHERE cliente_id = ?",
+               (manter_id, remover_id))
+        execute(conn, "DELETE FROM clientes WHERE id = ?", (remover_id,))
+
+    return jsonify({"mensagem": "Cadastros mesclados"})
+
+
 @clientes_bp.route("/clientes/cep/<cep>", methods=["GET"])
 def buscar_cep(cep):
     endereco = consultar_cep(cep)
