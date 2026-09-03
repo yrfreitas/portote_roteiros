@@ -743,13 +743,19 @@ def torre_controle():
     tecnico_ativo = "t.ativo IS TRUE" if IS_PG else "t.ativo = 1"
     with db_conn() as conn:
         tecnicos = fetch_all(conn, f"""
-            SELECT id, nome, cor FROM tecnicos t WHERE {tecnico_ativo} ORDER BY nome
+            SELECT id, nome, cor,
+                   CASE WHEN foto IS NULL THEN 0 ELSE 1 END AS tem_foto
+              FROM tecnicos t WHERE {tecnico_ativo} ORDER BY nome
         """)
 
+        # sv.lat/lng do DESTINO (não é a posição do técnico, é onde o cliente
+        # está) — pedido de 2026-09-03: desenhar a linha até o destino no
+        # mapa, mesma ideia que /acompanhar/<token> já faz pro cliente ver.
         linhas = fetch_all(conn, f"""
             SELECT ra.id, ra.tecnico_id, ra.lat, ra.lng, ra.precisao,
                    ra.eta_minutos, ra.criado_em, ra.atualizado_em,
-                   sv.cliente, sv.endereco_completo
+                   sv.cliente, sv.endereco_completo,
+                   sv.lat AS destino_lat, sv.lng AS destino_lng
               FROM rastreios ra
               JOIN servicos sv ON sv.id = ra.servico_id
              WHERE {_ATIVO_RA} AND sv.status <> 'concluido'
@@ -771,6 +777,7 @@ def torre_controle():
         tem_posicao = bool(r and r.get("lat") is not None)
         resultado.append({
             "tecnico_id": t["id"], "nome": t["nome"], "cor": t["cor"],
+            "tem_foto": bool(t.get("tem_foto")),
             "lat": r.get("lat") if tem_posicao else None,
             "lng": r.get("lng") if tem_posicao else None,
             "precisao": r.get("precisao") if tem_posicao else None,
@@ -778,6 +785,8 @@ def torre_controle():
             "endereco": (r or {}).get("endereco_completo"),
             "eta_minutos": (r or {}).get("eta_minutos"),
             "atualizado_em": (r or {}).get("atualizado_em"),
+            "destino_lat": (r or {}).get("destino_lat"),
+            "destino_lng": (r or {}).get("destino_lng"),
             "ao_vivo": tem_posicao,
         })
 

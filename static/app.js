@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v198';
+const VERSAO_PAINEL = 'v199';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3431,8 +3431,9 @@ async function carregarPedidosComComprovante() {
   alvo.innerHTML = botaoNovo + pedidos.map(p => {
     const aparelho = [p.tipo_aparelho, p.modelo].filter(Boolean).join(' · ');
     const quando = parseDataBanco(p.pedido_em)?.toLocaleDateString('pt-BR') || '';
+    const chegou = !!p.chegou_em;
     return `
-      <div class="pp-cartao">
+      <div class="pp-cartao ${chegou ? 'pp-chegou' : ''}">
         <div class="pp-lado-dados">
           <div class="pp-cliente">${p.cliente ? esc(p.cliente) : '📦 Reposição de estoque'}</div>
           ${p.endereco_completo ? `<div class="pp-sub">${esc(p.endereco_completo)}</div>` : ''}
@@ -3444,11 +3445,18 @@ async function carregarPedidosComComprovante() {
             pedida ${esc(quando)}${p.pedido_por ? ' por ' + esc(p.pedido_por) : ''}
             ${p.numero_os ? ` · OS ${esc(p.numero_os)}` : ''}
           </div>
-          <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;"
-                  onclick="desfazerPedidoPeca(${p.servico_id ?? 'null'}, ${p.pedido_os_id ?? 'null'})"
-                  title="Volta pra Atendimentos como 'Precisa de peça', sem comprovante — pra corrigir e pedir de novo">
-            Desfazer pedido
-          </button>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm pp-btn-chegou ${chegou ? 'ativo' : ''}"
+                    onclick="alternarPecaChegou('${p.chave_chegada}', ${!chegou}, this)"
+                    title="${chegou ? 'Peça já marcada como chegada — clique pra desmarcar' : 'Marcar que a peça chegou fisicamente'}">
+              ${chegou ? `✓ Chegou${p.chegou_em ? ' em ' + esc(parseDataBanco(p.chegou_em)?.toLocaleDateString('pt-BR') || '') : ''}` : 'Chegou?'}
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm"
+                    onclick="desfazerPedidoPeca(${p.servico_id ?? 'null'}, ${p.pedido_os_id ?? 'null'})"
+                    title="Volta pra Atendimentos como 'Precisa de peça', sem comprovante — pra corrigir e pedir de novo">
+              Desfazer pedido
+            </button>
+          </div>
         </div>
         <div class="pp-lado-imagem">
           ${p.pedido_foto
@@ -3457,6 +3465,22 @@ async function carregarPedidosComComprovante() {
         </div>
       </div>`;
   }).join('');
+}
+
+// "Chegou?" pra Pedidos com comprovante (pedido de 2026-09-03) — mesma
+// pergunta e mesma tabela (pecas_chegada) que a Panasonic já usa pra
+// "chegada física da peça na bancada", só com uma chave sintética
+// (t<servico_id>/o<pedido_os_id>) porque aqui não tem nota fiscal.
+async function alternarPecaChegou(chave, chegou, botao) {
+  botao.disabled = true;
+  try {
+    await api('/pedidos/chegada', { method: 'POST', body: JSON.stringify({ chave, chegou }) });
+    toast(chegou ? 'Marcado como chegou' : 'Desmarcado', 'success');
+    carregarPedidosComComprovante();
+  } catch (e) {
+    toast(e.message, 'error');
+    botao.disabled = false;
+  }
 }
 
 // Desfaz uma baixa feita sem querer ou com o comprovante errado — pedido de

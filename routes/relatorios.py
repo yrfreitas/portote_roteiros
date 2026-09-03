@@ -911,6 +911,7 @@ def listar_pedidos_de_peca():
         """))
         for l in linhas:
             l["pedido_os_id"] = None
+            l["chave_chegada"] = f"t{l['servico_id']}"
 
         # LEFT JOIN em tudo (pedido de 2026-09-02, revisão): pedido manual
         # pode não ter OS nenhuma por trás (cliente_id direto na própria
@@ -934,7 +935,24 @@ def listar_pedidos_de_peca():
             p["numero_os"] = None
             p["tecnico"] = None
             p["tecnico_cor"] = None
+            p["chave_chegada"] = f"o{p['pedido_os_id']}"
             linhas.append(p)
         linhas.sort(key=lambda l: l["pedido_em"] or "", reverse=True)
+
+        # "Chegou?" (pedido de 2026-09-03, pra Pedidos com comprovante — a
+        # mesma pergunta que /pedidos/chegada já resolve pra Panasonic, só
+        # que sem nota fiscal aqui, por isso a chave sintética t<servico_id>/
+        # o<pedido_os_id> em vez da chave de 44 dígitos da NF-e. Reaproveita
+        # a MESMA tabela pecas_chegada e a MESMA rota de marcar/desmarcar —
+        # zero schema novo.
+        if linhas:
+            chaves = [l["chave_chegada"] for l in linhas]
+            marcadores = ",".join("?" * len(chaves))
+            chegadas = fetch_all(conn, sql(
+                f"SELECT chave, chegou_em FROM pecas_chegada WHERE chave IN ({marcadores})"),
+                chaves)
+            chegou_por_chave = {c["chave"]: c["chegou_em"] for c in chegadas}
+            for l in linhas:
+                l["chegou_em"] = chegou_por_chave.get(l["chave_chegada"]) or None
 
     return jsonify({"pedidos": linhas})

@@ -117,22 +117,50 @@
     .lista::-webkit-scrollbar-thumb { background: rgba(148,178,220,.2); border-radius: 3px; }
 
     .tec-card {
-      display: flex; align-items: flex-start; gap: 11px;
-      padding: 12px 12px; border-radius: 11px; margin-bottom: 7px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; border-radius: 13px; margin-bottom: 8px;
       cursor: pointer; transition: background .12s, border-color .12s, transform .12s;
-      border: 1px solid transparent; position: relative; overflow: hidden;
+      border: 1px solid transparent; position: relative; overflow: visible;
       animation: subir .35s ease-out backwards;
+      background: linear-gradient(135deg, rgba(255,255,255,.025), transparent);
     }
     .tec-card:hover { background: rgba(148,178,220,.08); transform: translateX(2px); }
     .tec-card.selecionado { background: rgba(79,141,251,.14); border-color: rgba(79,141,251,.4); }
-    .tec-card.ao-vivo::before {
-      content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-      background: var(--verde); box-shadow: 0 0 10px var(--verde);
+
+    /* Avatar: foto de verdade quando existe (mesmo padrão de /acompanhar —
+       "o pino É o rosto do técnico"), senão iniciais sobre gradiente na cor
+       dele. O aro pulsa em verde só pra quem está em atendimento agora. */
+    .tec-avatar-wrap { position: relative; flex: none; }
+    .tec-avatar {
+      width: 44px; height: 44px; border-radius: 50%; object-fit: cover; display: block;
+      border: 2px solid rgba(255,255,255,.14);
+      box-shadow: 0 3px 10px rgba(0,0,0,.4);
     }
-    .tec-medalha { font-size: 15px; width: 20px; flex: none; text-align: center; margin-top: 1px; }
-    .tec-bolinha { width: 10px; height: 10px; border-radius: 50%; flex: none; margin-top: 5px; position: relative; }
-    .tec-bolinha.ao-vivo { box-shadow: 0 0 0 4px rgba(52,211,153,.18), 0 0 10px rgba(52,211,153,.7); }
-    .tec-bolinha.parado { opacity: .35; }
+    .tec-avatar.ao-vivo { border-color: rgba(52,211,153,.55); box-shadow: 0 0 0 3px rgba(52,211,153,.14), 0 3px 14px rgba(0,0,0,.45); }
+    .tec-avatar-inicial {
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 800; font-size: 16px; font-family: var(--sans);
+    }
+    .tec-vivo-dot {
+      position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%;
+      background: var(--verde); border: 2px solid #0d1220; box-shadow: 0 0 6px var(--verde);
+    }
+
+    /* Selo de posição — substitui o emoji de medalha (pedido de 2026-09-03:
+       "esses emotes estão com cara de ia, quero algo mais evoluído"): um
+       distintivo com gradiente metálico de verdade só pros 3 primeiros,
+       numeral discreto pros demais. */
+    .tec-selo {
+      position: absolute; left: -6px; top: -6px; width: 20px; height: 20px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 10px; font-weight: 800; color: #2a2110;
+      border: 1.5px solid rgba(0,0,0,.25); z-index: 2;
+    }
+    .tec-selo.p1 { background: linear-gradient(145deg, #fff3b0, #e8b930 55%, #a9781a); box-shadow: 0 0 10px rgba(232,185,48,.55); }
+    .tec-selo.p2 { background: linear-gradient(145deg, #f4f7fb, #c2cbd6 55%, #8b95a3); box-shadow: 0 0 8px rgba(194,203,214,.4); }
+    .tec-selo.p3 { background: linear-gradient(145deg, #f0b487, #c1723f 55%, #8a4c27); color: #2a1608; box-shadow: 0 0 8px rgba(193,114,63,.4); }
+    .tec-selo.pn { background: rgba(148,178,220,.16); color: #9aacc6; border-color: var(--borda); font-size: 9px; }
+
     .tec-corpo { flex: 1; min-width: 0; }
     .tec-nome-linha { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
     .tec-nome { font-size: 14px; font-weight: 700; }

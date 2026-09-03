@@ -3464,6 +3464,14 @@ select:focus-visible,
   font-size: 11px; color: var(--text-faint); text-align: center;
   border: 1px dashed var(--border); border-radius: 10px; padding: 10px;
 }
+.pp-cartao.pp-chegou { border-color: rgba(52,211,153,.4); background: linear-gradient(160deg, rgba(52,211,153,.08), var(--glass-fill-2)); }
+.pp-btn-chegou {
+  background: transparent; border: 1px solid var(--border-bright); color: var(--text-secondary);
+}
+.pp-btn-chegou.ativo {
+  background: var(--success-dim, rgba(52,211,153,.16)); border-color: rgba(52,211,153,.5);
+  color: var(--success-text, #34d399); font-weight: 700;
+}
 @media (max-width: 560px) {
   .pp-cartao { grid-template-columns: 1fr; }
 }
