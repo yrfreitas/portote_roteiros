@@ -163,6 +163,24 @@ def vincular_pedido_email(chave):
     return jsonify({"mensagem": f"Peça vinculada a {cliente}", "chave": chave})
 
 
+@pedidos_bp.route("/pedidos/email/<chave>", methods=["DELETE"])
+def desvincular_pedido_email(chave):
+    """Desfaz o vínculo peça/cliente de um pedido emitido (ver PUT acima) --
+    pra quem digitou errado e o pedido ainda não foi mandado pra agendar.
+    Não mexe em ordem_servico_id: uma OS já criada não se desfaz sozinha
+    apagando a linha, tem que cancelar a OS de verdade primeiro.
+    """
+    with db_conn(commit=True) as conn:
+        registro = fetch_one(conn, sql(
+            "SELECT ordem_servico_id FROM pedidos_email WHERE chave = ?"), (chave,))
+        if registro and registro.get("ordem_servico_id"):
+            return jsonify({"erro": "Já foi mandado pra Agendar Clientes -- "
+                                     "cancele a OS antes de desvincular."}), 409
+        execute(conn, sql("DELETE FROM pedidos_email WHERE chave = ?"), (chave,))
+        bump_revisao(conn)
+    return jsonify({"mensagem": "Vínculo desfeito"})
+
+
 @pedidos_bp.route("/pedidos/email/agendar-cliente", methods=["POST"])
 def agendar_cliente_email():
     """Mesma ideia de POST /pedidos/<linha>/agendar-cliente, mas pra pedido

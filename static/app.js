@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v204';
+const VERSAO_PAINEL = 'v205';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3581,7 +3581,9 @@ async function carregarPedidosEmitidosEmail() {
 
         <div class="peca-acoes">
           <span class="peca-estado" id="peca-email-estado-${p.chave}">${
-            p.cliente_final ? '<span class="ok">✓ vinculado</span>' : ''}</span>
+            p.cliente_final && !p.ordem_servico_id
+              ? `<span class="ok">✓ vinculado</span> <button type="button" class="peca-desvincular" onclick="desvincularPecaEmail('${p.chave}')" title="Desfazer, digitei errado">desfazer</button>`
+              : p.cliente_final ? '<span class="ok">✓ vinculado</span>' : ''}</span>
           ${botaoAgendarPecaEmail(p)}
         </div>
       </div>`).join('');
@@ -3610,6 +3612,22 @@ async function salvarPecaEmailInline(chave) {
     if (estado) estado.innerHTML = '<span class="ok">✓ vinculado</span>';
   } catch (e) {
     if (estado) estado.innerHTML = '';
+    toast(e.message, 'error');
+  }
+}
+
+async function desvincularPecaEmail(chave) {
+  const linhaEl = document.getElementById(`peca-email-${chave}`);
+  try {
+    await api(`/pedidos/email/${chave}`, { method: 'DELETE' });
+    const peca = document.getElementById(`peca-email-desc-${chave}`);
+    const cliente = document.getElementById(`peca-email-cliente-${chave}`);
+    if (peca && linhaEl) peca.value = linhaEl.dataset.descricao;
+    if (cliente) cliente.value = '';
+    const estado = document.getElementById(`peca-email-estado-${chave}`);
+    if (estado) estado.innerHTML = '';
+    toast('Vínculo desfeito', 'success');
+  } catch (e) {
     toast(e.message, 'error');
   }
 }

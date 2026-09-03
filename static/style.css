@@ -468,6 +468,11 @@ header {
 .peca-estado .ok { color: var(--success-text, #86efac); }
 .peca-estado .salvando { color: var(--text-muted, #8fa3bf); }
 .peca-estado .falhou { color: var(--danger-text, #fca5a5); cursor: help; }
+.peca-desvincular {
+  background: none; border: none; color: var(--text-muted, #8fa3bf);
+  font-size: 10px; text-decoration: underline; cursor: pointer; padding: 0 0 0 4px;
+}
+.peca-desvincular:hover { color: var(--text-primary); }
 .peca-sugestao-slot:empty { display: none; }
 .peca-sugestao-slot { grid-column: 1 / -1; }
 
