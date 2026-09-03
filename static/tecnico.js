@@ -222,6 +222,7 @@
             <div class="t-ponto-acoes">
               <a class="t-ponto-link" target="_blank" rel="noopener" href="${urlMaps}">Google Maps</a>
               <button class="t-ponto-link t-ponto-link-waze" onclick="window._tAvisarACaminho(${s.id})">Waze</button>
+              ${!feito ? _botaoComandoVoz(s.id) : ''}
               <!-- Mesma ação do número, com o rótulo escrito: o círculo sozinho
                    pode não ser óbvio na primeira vez, e este texto ensina.
                    Os dois abrem a mesma folha — dois caminhos para a mesma
@@ -571,7 +572,14 @@
 
   window._tVoltar = function () {
     fichaAbertaId = null;
-    document.getElementById('lista-fichas').style.display = '';
+    const lista = document.getElementById('lista-fichas');
+    lista.style.display = '';
+    // Reforça a animação de entrada mesmo se a classe já estivesse lá:
+    // remove, força reflow (offsetWidth) e adiciona de novo — sem isso o
+    // navegador acha que "nada mudou" e não toca a transição de novo.
+    lista.classList.remove('t-tela-entrando');
+    void lista.offsetWidth;
+    lista.classList.add('t-tela-entrando');
     document.getElementById('detalhe-ficha').classList.remove('aberto');
     carregarFichas();
   };
@@ -720,6 +728,120 @@
     _reconhecimentoAtivo = rec;
     rec.start();
   };
+
+  // ===== COMANDO DE VOZ (fecha a ficha sozinha, sem tocar na tela) =====
+  // Pedido de 2026-09-03, corrigindo o que foi entregue antes: o "🎤 Ditar"
+  // acima só TRANSCREVE pra dentro de um campo — o técnico ainda tinha que
+  // escolher o tipo na tela e apertar Confirmar, o que não serve pra mão
+  // suja de graxa/luva. Isto aqui ouve a frase inteira ("resolvido, motor
+  // queimado"), reconhece o TIPO pela palavra-chave e fecha o atendimento
+  // sozinho — sem nenhum toque a mais depois do toque que liga o microfone.
+  //
+  // Esse primeiro toque é inevitável: navegador nenhum deixa ligar o
+  // microfone sem gesto direto do usuário (política de permissão, não
+  // limitação nossa), e não existe "palavra de ativação" tipo "Hey Siri"
+  // de graça em JS de navegador — só com um motor de wake-word dedicado,
+  // que custa e teria que rodar sempre em segundo plano.
+  //
+  // Só RESOLVIDO, FAZER PEDIDO DE PEÇA e REAGENDAR fecham sozinhos: nenhum
+  // dos três exige foto nem assinatura do cliente (ver window._tValidarConfirmar).
+  // Os outros (orçamento, fazer OS, cotação, não atendido) sempre vão exigir
+  // colher assinatura ou foto na tela — voz sozinha nunca vai bastar pra eles,
+  // então o comando de voz só ADIANTA a escolha do tipo e abre a folha certa.
+  const COMANDOS_VOZ = [
+    { chaves: ['precisa de peça', 'precisa peça', 'falta a peça', 'falta peça', 'pedido de peça'], tipo: 'precisa_peca' },
+    { chaves: ['reagendar', 'volto depois', 'vou voltar depois', 'remarcar'], tipo: 'volto_depois' },
+    { chaves: ['cotação de peça', 'cotação', 'cotacao'], tipo: 'cotacao_peca' },
+    { chaves: ['fazer ordem de serviço', 'fazer os', 'ordem de serviço'], tipo: 'fazer_os' },
+    { chaves: ['orçamento', 'orcamento'], tipo: 'orcamento' },
+    { chaves: ['não atendido', 'nao atendido', 'cliente ausente', 'não deu pra atender', 'não consegui atender'], tipo: 'nao_atendido' },
+    // "resolvido" por último: é a chave mais curta e mais comum dentro de
+    // outras frases ("resolvido depois que troquei a peça" também bate em
+    // "peça"), então as mais específicas têm prioridade de checagem.
+    { chaves: ['resolvido', 'resolvi', 'consertado', 'concertado'], tipo: 'resolvido' },
+  ];
+  const TIPOS_VOZ_FECHAM_SOZINHOS = new Set(['resolvido', 'precisa_peca', 'volto_depois']);
+
+  function _botaoComandoVoz(servicoId) {
+    if (!_SpeechRecognitionCtor) return '';
+    return `<button type="button" class="t-ponto-link t-ponto-voz" data-servico="${servicoId}"
+              onclick="window._tComandoVoz(${servicoId}, this)"
+              title="Fale o que aconteceu, ex: 'resolvido, motor queimado' — fecha sozinho">
+              🎤 Comando de voz</button>`;
+  }
+
+  let _reconhecimentoComandoAtivo = null;
+  window._tComandoVoz = function (servicoId, botao) {
+    if (_reconhecimentoComandoAtivo) { _reconhecimentoComandoAtivo.stop(); return; }
+
+    const rec = new _SpeechRecognitionCtor();
+    rec.lang = 'pt-BR';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    const textoOriginal = botao.textContent;
+    botao.classList.add('gravando');
+    botao.textContent = '🔴 Ouvindo... fale o comando';
+
+    rec.onresult = (ev) => {
+      const transcript = (ev.results[0][0].transcript || '').trim();
+      if (transcript) _tProcessarComandoVoz(servicoId, transcript);
+    };
+    rec.onerror = () => toast('Não consegui ouvir — tente de novo');
+    rec.onend = () => {
+      botao.classList.remove('gravando');
+      botao.textContent = textoOriginal;
+      _reconhecimentoComandoAtivo = null;
+    };
+
+    _reconhecimentoComandoAtivo = rec;
+    rec.start();
+  };
+
+  function _tProcessarComandoVoz(servicoId, transcript) {
+    const alvo = transcript.toLowerCase();
+    let achado = null, resto = '';
+    for (const c of COMANDOS_VOZ) {
+      for (const chave of c.chaves) {
+        const i = alvo.indexOf(chave);
+        if (i === -1) continue;
+        achado = c;
+        // O que vem DEPOIS da palavra-chave vira observação/nome da peça —
+        // "resolvido, motor queimado" → observação "motor queimado".
+        resto = transcript.slice(i + chave.length).replace(/^[\s,.:;-]+/, '').trim();
+        break;
+      }
+      if (achado) break;
+    }
+
+    if (!achado) {
+      toast(`Não entendi um comando pra fechar sozinha ("${transcript}") — abrindo a ficha pra revisar`);
+      window._tAbrirDesfecho(servicoId);
+      const obs = document.getElementById('t-df-obs');
+      if (obs) obs.value = transcript;
+      return;
+    }
+
+    if (!TIPOS_VOZ_FECHAM_SOZINHOS.has(achado.tipo)) {
+      const rotulo = DESFECHOS.find(d => d.tipo === achado.tipo)?.rotulo || achado.tipo;
+      toast(`"${rotulo}" pede foto ou assinatura do cliente — completando na tela`);
+      window._tAbrirDesfecho(servicoId);
+      window._tEscolherDesfecho(achado.tipo);
+      if (resto) {
+        const obs = document.getElementById('t-df-obs');
+        if (obs) obs.value = resto;
+      }
+      return;
+    }
+
+    const desfecho = { tipo: achado.tipo };
+    if (achado.tipo === 'precisa_peca') desfecho.peca = resto || '';
+    else if (resto) desfecho.observacao = resto;
+
+    const rotulo = DESFECHOS.find(d => d.tipo === achado.tipo)?.rotulo || achado.tipo;
+    toast(`Comando reconhecido: ${rotulo} — fechando sozinho…`, 'success');
+    window._tConcluirPonto(servicoId, 'concluido', desfecho);
+  }
 
   // Mesma lista de static/app.js e routes/ordens_servico.py:TIPOS_OS_ROTULO —
   // pedido de 2026-08-28: o técnico escolhe o termo jurídico da OS que ele
@@ -1580,7 +1702,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v199';
+  const VERSAO_TELA = 'v200';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

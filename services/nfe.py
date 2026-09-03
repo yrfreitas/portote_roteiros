@@ -64,12 +64,40 @@ def diagnostico_imap(testar_conexao: bool = False) -> dict:
             status, data = conn.search(None, "FROM", REMETENTE_NFE)
             info["conexao"] = "ok"
             info["emails_de_nfe"] = len(data[0].split()) if status == "OK" else 0
+            # Assunto/remetente dos mais recentes da caixa inteira (não só
+            # NF-e) — pedido de 2026-09-03: "puxa os pedidos que foram
+            # feitos" precisa primeiro saber que CARA tem o e-mail de
+            # confirmação de pedido da Panasonic (assunto/remetente), que
+            # é diferente do e-mail de nota fiscal que este arquivo já lê.
+            # Só cabeçalho (rápido, sem baixar anexo nenhum).
+            info["emails_recentes"] = _cabecalhos_recentes(conn, 20)
             conn.logout()
         except Exception as exc:
             info["conexao"] = "falhou"
             info["erro"] = str(exc)[:200]
 
     return info
+
+
+def _cabecalhos_recentes(conn, limite: int) -> List[dict]:
+    status, data = conn.search(None, "ALL")
+    if status != "OK" or not data or not data[0]:
+        return []
+    ids = sorted(data[0].split(), key=lambda x: -int(x))[:limite]
+    resultado = []
+    for mid in ids:
+        try:
+            status, d = conn.fetch(mid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+            if status != "OK" or not d or not d[0]:
+                continue
+            msg = email.message_from_bytes(d[0][1])
+            resultado.append({
+                "de": msg.get("From", ""), "assunto": msg.get("Subject", ""),
+                "data": msg.get("Date", ""),
+            })
+        except Exception as exc:
+            log.warning("Falha lendo cabeçalho do e-mail %s: %s", mid, exc)
+    return resultado
 
 
 def _conectar():

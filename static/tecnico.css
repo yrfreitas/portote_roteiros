@@ -116,6 +116,25 @@ body {
 .t-detalhe { display: none; padding-bottom: 90px; }
 .t-detalhe.aberto { display: block; }
 #lista-fichas { padding-bottom: 90px; }
+
+/* Polimento de transições (pedido de 2026-09-03): trocar de tela "seco"
+   (display:none -> block direto) parece quebrado mesmo funcionando certo.
+   Um fade + leve deslize de baixo pra cima é barato (CSS puro, sem lib) e
+   já tira a sensação de tela travando. Reduced-motion sempre pode desligar. */
+@keyframes tTelaEntrar {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.t-detalhe.aberto,
+#lista-fichas.t-tela-entrando {
+  animation: tTelaEntrar .24s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-detalhe.aberto,
+  #lista-fichas.t-tela-entrando {
+    animation: none;
+  }
+}
 .t-voltar {
   background: none; border: none; color: var(--accent-text);
   font-size: 12px; padding: 8px 0; margin-bottom: 8px; cursor: pointer;
@@ -187,6 +206,22 @@ body {
   display: inline-flex; align-items: center; gap: 6px;
 }
 .t-ponto-link-waze { color: #a6e0ff; border-color: rgba(166,224,255,0.3); }
+.t-ponto-voz {
+  font: inherit; cursor: pointer;
+  color: var(--success-text); border-color: rgba(52,211,153,0.35);
+  background: var(--success-dim);
+}
+.t-ponto-voz.gravando {
+  background: rgba(224,32,32,.16); border-color: #e02020; color: #ff8a8a;
+  animation: tVozPulso 1.1s ease-in-out infinite;
+}
+@keyframes tVozPulso {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224,32,32,.35); }
+  50%      { box-shadow: 0 0 0 6px rgba(224,32,32,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-ponto-voz.gravando { animation: none; }
+}
 .t-ponto-check {
   border: 1px solid var(--border-bright);
   background: var(--bg-elevated);

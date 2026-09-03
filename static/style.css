@@ -400,6 +400,18 @@ header {
   .aviso-atualizacao { animation: none; }
 }
 
+/* Polimento de transições entre abas do painel (pedido de 2026-09-03: "as
+   telas trocam seco") — fade + leve deslize de baixo pra cima, CSS puro,
+   sem lib. Ver switchMainTab()/_mostrarPainelPrincipal() em app.js. */
+@keyframes painelPrincipalEntrar {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.painel-entrando { animation: painelPrincipalEntrar .22s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .painel-entrando { animation: none; }
+}
+
 /* ─── Assinatura do autor ──────────────────────────────────────────
    Discreta, fixa no canto, e com pointer-events:none para nunca roubar um
    clique de quem está trabalhando. */

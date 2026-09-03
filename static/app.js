@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v199';
+const VERSAO_PAINEL = 'v200';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -590,6 +590,26 @@ if ('serviceWorker' in navigator) {
 // navegador desfaz a entidade antes de interpretar o JavaScript.
 const argJs = (v) => JSON.stringify(String(v ?? '')).replace(/"/g, '&quot;');
 
+// Troca de painel com animação (pedido de 2026-09-03: "as telas trocam
+// seco" — display:none -> block direto não dá nenhum feedback visual de
+// que algo mudou). classList.remove + reflow forçado (offsetWidth) +
+// classList.add é o truque pra reiniciar a animação CSS mesmo trocando
+// repetidamente entre as mesmas duas abas — sem o reflow o navegador vê
+// que a classe "já estava lá" e não toca a animação de novo.
+function _mostrarPainelPrincipal(id, mostrar, comoFlex) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (mostrar) {
+    el.style.display = comoFlex ? 'flex' : 'block';
+    el.classList.remove('painel-entrando');
+    void el.offsetWidth;
+    el.classList.add('painel-entrando');
+  } else {
+    el.style.display = 'none';
+    el.classList.remove('painel-entrando');
+  }
+}
+
 function switchMainTab(tab) {
   const isRoteiros  = tab === 'roteiros';
   const isCep       = tab === 'cep';
@@ -602,17 +622,17 @@ function switchMainTab(tab) {
   const isAgendar   = tab === 'agendar';
   const isVendas    = tab === 'vendas';
 
-  document.getElementById('panel-roteiros-sidebar').style.display = isRoteiros ? 'flex' : 'none';
-  document.getElementById('panel-roteiros-main').style.display = isRoteiros ? 'block' : 'none';
-  document.getElementById('panel-cep').style.display = isCep ? 'block' : 'none';
-  document.getElementById('panel-historico').style.display = isHistorico ? 'block' : 'none';
-  document.getElementById('panel-pecas').style.display = isPecas ? 'block' : 'none';
-  document.getElementById('panel-diagnostico').style.display = isDiag ? 'block' : 'none';
-  document.getElementById('panel-atendimentos').style.display = isAtend ? 'block' : 'none';
-  document.getElementById('panel-estoque').style.display = isEstoque ? 'block' : 'none';
-  document.getElementById('panel-os').style.display = isOS ? 'block' : 'none';
-  document.getElementById('panel-agendar').style.display = isAgendar ? 'block' : 'none';
-  document.getElementById('panel-vendas').style.display = isVendas ? 'block' : 'none';
+  _mostrarPainelPrincipal('panel-roteiros-sidebar', isRoteiros, true);
+  _mostrarPainelPrincipal('panel-roteiros-main', isRoteiros);
+  _mostrarPainelPrincipal('panel-cep', isCep);
+  _mostrarPainelPrincipal('panel-historico', isHistorico);
+  _mostrarPainelPrincipal('panel-pecas', isPecas);
+  _mostrarPainelPrincipal('panel-diagnostico', isDiag);
+  _mostrarPainelPrincipal('panel-atendimentos', isAtend);
+  _mostrarPainelPrincipal('panel-estoque', isEstoque);
+  _mostrarPainelPrincipal('panel-os', isOS);
+  _mostrarPainelPrincipal('panel-agendar', isAgendar);
+  _mostrarPainelPrincipal('panel-vendas', isVendas);
   if (isVendas) carregarVendas();
 
   document.getElementById('mtab-roteiros').classList.toggle('active', isRoteiros);
