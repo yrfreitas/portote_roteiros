@@ -107,8 +107,15 @@ body {
 .t-vazio { padding: 60px 20px; text-align: center; color: var(--text-muted); }
 .t-vazio h1 { font-family: var(--font-display); color: var(--text-primary); font-size: 20px; }
 
-.t-detalhe { display: none; }
+/* Espaço reservado embaixo pro selo de GPS (.t-gps-selo, position:fixed,
+   bottom:10px) nunca ficar POR CIMA do botão "Concluir" do último cartão
+   visível na rolagem — sem essa folga o toque nem chega no botão, só no
+   selo por baixo dele. Mesma lição já aplicada no painel do escritório
+   (.main/.historico-wrap, ver style.css) pros avisos fixos de lá; faltava
+   aqui. Suspeita de 2026-09-03: "o técnico não está conseguindo dar baixa". */
+.t-detalhe { display: none; padding-bottom: 90px; }
 .t-detalhe.aberto { display: block; }
+#lista-fichas { padding-bottom: 90px; }
 .t-voltar {
   background: none; border: none; color: var(--accent-text);
   font-size: 12px; padding: 8px 0; margin-bottom: 8px; cursor: pointer;
