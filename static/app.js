@@ -192,23 +192,6 @@ function animarTracadoRota() {
   }, 1180);
 }
 
-// Relógio vivo no cabeçalho, atualizado a cada segundo — reforça a
-// sensação de painel operacional em tempo real, não uma tela estática.
-function iniciarRelogio() {
-  const el = document.getElementById('current-date');
-  if (!el) return;
-
-  function atualizar() {
-    const agora = new Date();
-    const dia = agora.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase();
-    const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    el.textContent = `${dia} · ${hora}`;
-  }
-
-  atualizar();
-  setInterval(atualizar, 1000);
-}
-
 // Monitor de saúde real da API — o indicador do cabeçalho não é mais um
 // ponto verde decorativo fixo: ele de fato bate no /api/health a cada
 // 15s, mede o tempo de resposta e mostra offline se a chamada falhar.
@@ -259,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v197';
+const VERSAO_PAINEL = 'v198';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -550,7 +533,6 @@ function iniciarArrastarAbas() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  iniciarRelogio();
   iniciarMonitorSaude();
   iniciarAutoRefresh();
   iniciarFiltroHistorico();
@@ -1537,7 +1519,6 @@ async function carregarUsuarioLogado() {
   mostra('mtab-historico', podeUsuario('relatorios'));
   mostra('mtab-atendimentos', podeUsuario('desfechos_ver'));
   mostra('btn-torre-controle', podeUsuario('torre_controle'));
-  mostra('btn-tv-painel', podeUsuario('relatorios'));
 
   const marca = document.getElementById('usuario-logado');
   if (marca) {

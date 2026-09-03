@@ -520,18 +520,21 @@ def limpar_chat_diagnostico():
 
 @app.route("/tv")
 def tv_painel_pagina():
-    """Painel em tela cheia pra rodar numa TV do escritório — pedido de
-    2026-09-03 ("modo TV da parede"). Reaproveita as MESMAS rotas que o
-    painel principal já usa (/api/fichas, /api/tecnicos,
-    /api/relatorios/resumo-dia); atrás do login normal como qualquer outra
-    página do site."""
-    return render_template("tv_painel.html")
+    """Pedido de 2026-09-03: Torre de Controle e Painel de TV (as duas
+    telas de tela cheia que nasceram em dias diferentes) viraram UMA só —
+    "Central de Comando" — porque eram basicamente a mesma ideia (mapa,
+    ranking, resumo do dia) em duas páginas separadas. /tv continua
+    existindo só pra quem já tinha o link/atalho salvo não cair em 404."""
+    return redirect("/torre-controle")
 
 
 @app.route("/torre-controle")
 def torre_controle_pagina():
-    """Mapa ao vivo com todos os técnicos — pedido de 2026-09-03. Fica atrás
-    do login normal (não está em _CAMINHOS_PUBLICOS); quem não tem a
+    """Central de Comando: mapa ao vivo com todos os técnicos + KPIs +
+    ranking por km + resumo do dia, tudo numa página só (pedido de
+    2026-09-03: "junte esses dois painel em um só" — Torre de Controle e
+    Painel de TV nasceram como duas telas separadas e viraram uma). Fica
+    atrás do login normal (não está em _CAMINHOS_PUBLICOS); quem não tem a
     permissão `torre_controle` chega até a página, mas a chamada à API
     embaixo devolve 403 e a tela mostra a mensagem, mesmo padrão do resto do
     painel (o servidor barra, a tela só explica)."""

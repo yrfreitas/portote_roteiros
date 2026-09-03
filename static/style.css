@@ -870,17 +870,6 @@ header::after {
 
 .header-meta { margin-left: auto; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
 
-.header-date {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0.6px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid var(--border);
-}
-
 .status-dot {
   width: 8px; height: 8px;
   background: var(--success);
@@ -3062,8 +3051,7 @@ select:focus-visible,
   /* Torre de Controle e Painel de TV são ferramentas de tela grande (mapa,
      dashboard) — no celular a aba nem cabia direito no cabeçalho e ficava
      inacessível ("não conseguimos ver a aba", 2026-09-03). Só de computador. */
-  #btn-torre-controle, #btn-tv-painel { display: none !important; }
-  .header-date { display: none; }
+  #btn-torre-controle { display: none !important; }
   .status-pill #status-texto,
   .status-pill #status-latencia { display: none; }
   .status-pill { padding: 6px; gap: 0; }
