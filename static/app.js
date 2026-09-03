@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v205';
+const VERSAO_PAINEL = 'v206';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3552,41 +3552,52 @@ async function carregarPedidosEmitidosEmail() {
       alvo.innerHTML = `<p class="pecas-nota-cotacao" style="margin:0;">Nenhum pedido emitido encontrado no e-mail recente.</p>`;
       return;
     }
-    alvo.innerHTML = pedidos.map(p => `
-      <div class="peca-linha" id="peca-email-${p.chave}"
+    alvo.innerHTML = pedidos.map(p => {
+      // A descrição vem TRUNCADA pelo próprio e-mail da VTEX -- às vezes
+      // sobra só 1-2 letras ("P…", "CO…"), que mais atrapalha que ajuda.
+      // Só pré-preenche o campo Peça com ela quando sobrou coisa legível o
+      // bastante pra valer (4+ caracteres); do contrário deixa em branco
+      // com um placeholder, sem "P…" bagunçando o campo de digitação.
+      const descUtil = (p.descricao || '').replace(/…$/, '').trim().length >= 4;
+      return `
+      <div class="peca-linha peca-linha-email" id="peca-email-${p.chave}"
            data-chave="${esc(p.chave)}" data-codigo="${esc(p.codigo)}"
            data-descricao="${esc(p.descricao)}" data-data-email="${esc(p.data)}">
-        <div class="peca-ident">
-          <span class="peca-valor">${esc(p.codigo)}</span>
-          <span class="peca-meta">Emitido · ${esc((p.data || '').split(' ').slice(0, 4).join(' '))}</span>
+        <div class="pel-topo">
+          <span class="pel-codigo" title="${esc(p.descricao)}">${esc(p.codigo)}</span>
           <span class="peca-estagio e-criado">aguardando pagamento</span>
+          <span class="pel-data">${esc((p.data || '').split(' ').slice(0, 4).join(' '))}</span>
         </div>
-
-        <div class="peca-campo">
-          <label class="peca-rot" for="peca-email-desc-${p.chave}">Peça</label>
-          <input class="form-input peca-input" id="peca-email-desc-${p.chave}"
-                 value="${esc(p.peca || p.descricao)}" title="${esc(p.descricao)}"
-                 onchange="salvarPecaEmailInline('${p.chave}')">
-        </div>
-
-        <div class="peca-campo">
-          <label class="peca-rot" for="peca-email-cliente-${p.chave}">Cliente</label>
-          <div class="peca-cliente-linha">
-            <input class="form-input peca-input" list="lista-clientes"
-                   id="peca-email-cliente-${p.chave}" value="${esc(p.cliente_final)}"
-                   placeholder="Escolha ou digite..."
+        <div class="pel-corpo">
+          <div class="peca-campo">
+            <label class="peca-rot" for="peca-email-desc-${p.chave}">Peça</label>
+            <input class="form-input peca-input" id="peca-email-desc-${p.chave}"
+                   value="${esc(p.peca || (descUtil ? p.descricao : ''))}"
+                   placeholder="${descUtil ? '' : 'Digite o nome da peça'}"
+                   title="${esc(p.descricao)}"
                    onchange="salvarPecaEmailInline('${p.chave}')">
           </div>
-        </div>
 
-        <div class="peca-acoes">
-          <span class="peca-estado" id="peca-email-estado-${p.chave}">${
-            p.cliente_final && !p.ordem_servico_id
-              ? `<span class="ok">✓ vinculado</span> <button type="button" class="peca-desvincular" onclick="desvincularPecaEmail('${p.chave}')" title="Desfazer, digitei errado">desfazer</button>`
-              : p.cliente_final ? '<span class="ok">✓ vinculado</span>' : ''}</span>
-          ${botaoAgendarPecaEmail(p)}
+          <div class="peca-campo">
+            <label class="peca-rot" for="peca-email-cliente-${p.chave}">Cliente</label>
+            <div class="peca-cliente-linha">
+              <input class="form-input peca-input" list="lista-clientes"
+                     id="peca-email-cliente-${p.chave}" value="${esc(p.cliente_final)}"
+                     placeholder="Escolha ou digite..."
+                     onchange="salvarPecaEmailInline('${p.chave}')">
+            </div>
+          </div>
+
+          <div class="peca-acoes">
+            <span class="peca-estado" id="peca-email-estado-${p.chave}">${
+              p.cliente_final && !p.ordem_servico_id
+                ? `<span class="ok">✓ vinculado</span> <button type="button" class="peca-desvincular" onclick="desvincularPecaEmail('${p.chave}')" title="Desfazer, digitei errado">desfazer</button>`
+                : p.cliente_final ? '<span class="ok">✓ vinculado</span>' : ''}</span>
+            ${botaoAgendarPecaEmail(p)}
+          </div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
     alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
   }

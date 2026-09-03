@@ -5081,6 +5081,41 @@ select:focus-visible,
   background: rgba(34,211,238,.12); color: var(--cyan-text);
 }
 
+/* Cartão de pedido EMITIDO (e-mail) — layout próprio, não o grid de 4
+   colunas do .peca-linha comum. Motivo (pedido de 2026-09-03: "está
+   horrível pra visualizar"): o código de peça da loja é um SKU longo
+   (14-18 caracteres, ex: "AWW027PACYA0-2J0"), bem maior que o "NF ...12345678"
+   /"Pedido 12345" que o grid original foi desenhado pra caber numa coluna
+   estreita de ~200px — o código quebrava linha, brigava com a data e o
+   selo no mesmo espaço apertado. Aqui o código ganha uma linha própria,
+   de largura total, em fonte monoespaçada maior — e só embaixo vêm os
+   campos editáveis, num grid de 3 colunas com mais fôlego. */
+.peca-linha-email { display: block; }
+.pel-topo {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px 14px;
+  margin-bottom: 12px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.pel-codigo {
+  font-family: var(--font-mono); font-weight: 700; font-size: 16.5px;
+  letter-spacing: .3px; color: var(--text, #e6edf7);
+  word-break: break-all;
+}
+.pel-data { margin-left: auto; font-size: 11.5px; color: var(--text-muted, #8fa3bf); white-space: nowrap; }
+.pel-corpo {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 148px;
+  gap: 12px; align-items: end;
+}
+@media (max-width: 720px) {
+  .pel-corpo { grid-template-columns: 1fr 1fr; }
+  .peca-linha-email .peca-acoes { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }
+}
+@media (max-width: 460px) {
+  .pel-topo { gap: 6px 12px; }
+  .pel-data { margin-left: 0; }
+  .pel-corpo { grid-template-columns: 1fr; }
+}
+
 /* Estados auxiliares reutilizados pela aba */
 .carregando { padding: 30px; text-align: center; color: var(--text-muted); font-size: 13px; }
 .vazio-box {
