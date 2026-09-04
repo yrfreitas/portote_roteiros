@@ -420,6 +420,7 @@ header {
    rolagem sem fim. Em linha, cabem seis na mesma altura e dá para
    comparar as peças de relance. */
 .peca-linha {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(190px, 240px) minmax(0, 1.4fr) minmax(0, 1fr) 148px;
   gap: 12px; align-items: end;
@@ -430,6 +431,20 @@ header {
 }
 .peca-linha:hover { background: var(--bg-elevated); }
 .peca-linha.tem-cliente { border-left-color: var(--success); }
+
+/* Fica FORA do grid (position:absolute) de propósito -- .peca-linha tem 4
+   colunas fixas definidas pra 4 filhos; um 5º filho normal empurraria tudo
+   uma coluna adiante. Pedido de 2026-09-04: "coloque um x pra eu poder
+   remover" -- limpa peça/cliente da linha (POST /pedidos/<linha>/limpar),
+   sem mexer no status_compra (é do robô da planilha). */
+.peca-remover {
+  position: absolute; top: 8px; right: 10px;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1px solid var(--border-bright); background: var(--bg-card);
+  color: var(--text-muted, #8fa3bf); font-size: 11px; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.peca-remover:hover { border-color: var(--danger-text, #fca5a5); color: var(--danger-text, #fca5a5); background: rgba(248,113,113,.1); }
 
 .peca-ident { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .peca-valor {
@@ -468,11 +483,6 @@ header {
 .peca-estado .ok { color: var(--success-text, #86efac); }
 .peca-estado .salvando { color: var(--text-muted, #8fa3bf); }
 .peca-estado .falhou { color: var(--danger-text, #fca5a5); cursor: help; }
-.peca-desvincular {
-  background: none; border: none; color: var(--text-muted, #8fa3bf);
-  font-size: 10px; text-decoration: underline; cursor: pointer; padding: 0 0 0 4px;
-}
-.peca-desvincular:hover { color: var(--text-primary); }
 .peca-sugestao-slot:empty { display: none; }
 .peca-sugestao-slot { grid-column: 1 / -1; }
 
@@ -5102,6 +5112,13 @@ select:focus-visible,
   word-break: break-all;
 }
 .pel-data { margin-left: auto; font-size: 11.5px; color: var(--text-muted, #8fa3bf); white-space: nowrap; }
+.pel-remover {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid var(--border-bright); background: transparent;
+  color: var(--text-muted, #8fa3bf); font-size: 12px; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.pel-remover:hover { border-color: var(--danger-text, #fca5a5); color: var(--danger-text, #fca5a5); background: rgba(248,113,113,.1); }
 .pel-corpo {
   display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 148px;
   gap: 12px; align-items: end;

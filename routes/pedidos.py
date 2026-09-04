@@ -572,6 +572,31 @@ def vincular(linha):
     return jsonify(resposta)
 
 
+@pedidos_bp.route("/pedidos/<int:linha>/limpar", methods=["POST"])
+def limpar_pedido(linha):
+    """Esvazia peça/cliente de uma linha da planilha -- pedido de
+    2026-09-04: "coloque um x pra eu poder remover". Rota separada do PUT
+    normal (que exige cliente preenchido, pra um blur acidental de campo
+    vazio nunca apagar um vínculo sem querer) -- só o clique explícito no X
+    chega aqui. Não mexe em status_compra (é do robô) nem desfaz
+    lançamento já feito no AgoraOS.
+    """
+    from services.planilha import atualizar_pedido, planilha_configurada
+
+    if not planilha_configurada():
+        return jsonify({"erro": "Integração com a planilha não está configurada."}), 503
+    if linha < 2:
+        return jsonify({"erro": "Linha inválida (a 1 é o cabeçalho)"}), 400
+
+    try:
+        atualizar_pedido(linha, "", "", "")
+    except Exception as exc:
+        log.exception("Falha ao limpar pedido na linha %s", linha)
+        return jsonify({"erro": f"Falha ao gravar na planilha: {exc}"}), 502
+
+    return jsonify({"mensagem": "Limpo", "linha": linha})
+
+
 def _tentar_lancar(linha, cliente, peca, numero_os, modelo="", qtd=1):
     """Lança a peça no AgoraOS quando — e só quando — não há ambiguidade.
 

@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v209';
+const VERSAO_PAINEL = 'v210';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3357,12 +3357,23 @@ let clientesConhecidos = [];
 // de técnico — mas quem comprou a peça pode nunca ter tido atendimento
 // nenhum ainda. Sem isso, a única saída era digitar um nome solto no campo
 // (que grava na planilha, mas não vira cliente de verdade em lugar nenhum).
-let _clienteRapidoLinha = null;
+// _clienteRapidoAlvoId guarda o ID do CAMPO (não mais "a linha") -- pedido
+// de 2026-09-04: os cartões de pedido emitido (e-mail) também precisam
+// desse "+", e eles não têm "linha" de planilha nenhuma, só uma chave.
+let _clienteRapidoAlvoId = null;
 
 function abrirClienteRapido(linha) {
-  _clienteRapidoLinha = linha;
+  _abrirClienteRapidoParaCampo(`peca-cliente-${linha}`);
+}
+
+function abrirClienteRapidoEmail(chave) {
+  _abrirClienteRapidoParaCampo(`peca-email-cliente-${chave}`);
+}
+
+function _abrirClienteRapidoParaCampo(campoId) {
+  _clienteRapidoAlvoId = campoId;
   document.getElementById('cliente-rapido-nome').value =
-    document.getElementById(`peca-cliente-${linha}`)?.value.trim() || '';
+    document.getElementById(campoId)?.value.trim() || '';
   document.getElementById('cliente-rapido-telefone').value = '';
   document.getElementById('modal-cliente-rapido').classList.add('open');
   setTimeout(() => document.getElementById('cliente-rapido-nome').focus(), 80);
@@ -3388,10 +3399,10 @@ async function salvarClienteRapido() {
       if (datalist) datalist.insertAdjacentHTML('beforeend', `<option value="${esc(nome)}"></option>`);
     }
 
-    const campo = document.getElementById(`peca-cliente-${_clienteRapidoLinha}`);
+    const campo = document.getElementById(_clienteRapidoAlvoId);
     if (campo) {
       campo.value = nome;
-      campo.dispatchEvent(new Event('change')); // grava na planilha (salvarPecaInline)
+      campo.dispatchEvent(new Event('change')); // grava (salvarPecaInline ou salvarPecaEmailInline)
     }
     fecharModais();
   } catch (e) {
@@ -3574,6 +3585,9 @@ function _htmlPedidosEmitidosEmail(pedidos) {
           <span class="pel-codigo" title="${esc(p.descricao)}">${esc(p.codigo)}</span>
           <span class="peca-estagio e-criado">aguardando pagamento</span>
           <span class="pel-data">${esc((p.data || '').split(' ').slice(0, 4).join(' '))}</span>
+          ${p.ordem_servico_id ? '' : `
+          <button type="button" class="pel-remover" title="Limpar peça/cliente deste pedido"
+                  onclick="desvincularPecaEmail('${p.chave}')">✕</button>`}
         </div>
         <div class="pel-corpo">
           <div class="peca-campo">
@@ -3593,14 +3607,14 @@ function _htmlPedidosEmitidosEmail(pedidos) {
                      id="peca-email-cliente-${p.chave}" value="${esc(p.cliente_final)}"
                      placeholder="Escolha ou digite..."
                      onchange="salvarPecaEmailInline('${p.chave}')">
+              <button type="button" class="peca-cliente-add" title="Cadastrar cliente novo (nome + telefone)"
+                      onclick="abrirClienteRapidoEmail('${p.chave}')">+</button>
             </div>
           </div>
 
           <div class="peca-acoes">
             <span class="peca-estado" id="peca-email-estado-${p.chave}">${
-              p.cliente_final && !p.ordem_servico_id
-                ? `<span class="ok">✓ vinculado</span> <button type="button" class="peca-desvincular" onclick="desvincularPecaEmail('${p.chave}')" title="Desfazer, digitei errado">desfazer</button>`
-                : p.cliente_final ? '<span class="ok">✓ vinculado</span>' : ''}</span>
+              p.cliente_final ? '<span class="ok">✓ vinculado</span>' : ''}</span>
             ${botaoAgendarPecaEmail(p)}
           </div>
         </div>
@@ -3638,11 +3652,22 @@ async function desvincularPecaEmail(chave) {
     await api(`/pedidos/email/${chave}`, { method: 'DELETE' });
     const peca = document.getElementById(`peca-email-desc-${chave}`);
     const cliente = document.getElementById(`peca-email-cliente-${chave}`);
-    if (peca && linhaEl) peca.value = linhaEl.dataset.descricao;
+    const descricao = linhaEl?.dataset.descricao || '';
+    const descUtil = descricao.replace(/…$/, '').trim().length >= 4;
+    if (peca) {
+      peca.value = descUtil ? descricao : '';
+      peca.placeholder = descUtil ? '' : 'Digite o nome da peça';
+      peca.dataset.auto = descUtil ? descricao : '';
+    }
     if (cliente) cliente.value = '';
+    if (linhaEl) {
+      linhaEl.classList.remove('tem-cliente');
+      linhaEl.dataset.pendente = '1';
+      linhaEl.dataset.busca = ((linhaEl.dataset.codigo || '') + ' ' + descricao).toLowerCase();
+    }
     const estado = document.getElementById(`peca-email-estado-${chave}`);
     if (estado) estado.innerHTML = '';
-    toast('Vínculo desfeito', 'success');
+    toast('Limpo', 'success');
   } catch (e) {
     toast(e.message, 'error');
   }
@@ -3788,6 +3813,9 @@ async function carregarPecas() {
          data-pendente="${p.cliente_final ? '0' : '1'}"
          data-busca="${esc(((p.peca || '') + ' ' + (p.cliente_final || '') + ' ' + (p.pedido || '') + ' ' + (p.nota_fiscal || '')).toLowerCase())}">
 
+      ${p.agendamento_os_id ? '' : `
+      <button type="button" class="peca-remover" title="Limpar peça/cliente deste pedido"
+              onclick="limparPedidoPlanilha(${p.linha})">✕</button>`}
       <div class="peca-ident">
         <span class="peca-valor">${esc(formatarValorPeca(p.valor))}</span>
         <span class="peca-meta">${p.nota_fiscal
@@ -4351,6 +4379,36 @@ function estagioPeca(p) {
   }
   const e = ESTAGIOS[(p.status_compra || '').toUpperCase()] || ESTAGIOS.CRIADO;
   return `<span class="peca-estagio ${e.classe}">${e.rotulo}</span>`;
+}
+
+// Limpa peça/cliente de uma linha da planilha (o X no canto do cartão) --
+// pedido de 2026-09-04. Confirma antes: ao contrário do "desfazer" dos
+// pedidos emitidos (uma tabela só nossa), aqui é a PLANILHA de verdade
+// sendo apagada, sem histórico de desfazer.
+async function limparPedidoPlanilha(linha) {
+  const el = document.getElementById(`peca-${linha}`);
+  const peca = document.getElementById(`peca-desc-${linha}`)?.value.trim();
+  const cliente = document.getElementById(`peca-cliente-${linha}`)?.value.trim();
+  if (!peca && !cliente) return; // nada pra limpar
+  if (!confirm('Limpar peça e cliente desta linha da planilha?')) return;
+
+  try {
+    await api(`/pedidos/${linha}/limpar`, { method: 'POST' });
+    const campoPeca = document.getElementById(`peca-desc-${linha}`);
+    const campoCliente = document.getElementById(`peca-cliente-${linha}`);
+    if (campoPeca) campoPeca.value = '';
+    if (campoCliente) campoCliente.value = '';
+    const estado = document.getElementById(`peca-estado-${linha}`);
+    if (estado) estado.innerHTML = '';
+    if (el) {
+      el.classList.remove('tem-cliente');
+      el.dataset.pendente = '1';
+      el.dataset.busca = ((el.dataset.nota || '') + ' ' + (el.dataset.valor || '')).toLowerCase();
+    }
+    toast('Limpo', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
 }
 
 // Registra que a peça chegou na bancada. É o elo que faltava: a planilha
