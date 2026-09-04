@@ -11,7 +11,8 @@ conciliação ao finalizar a rota casa exato em vez de aproximado.
 """
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 from flask import Blueprint, jsonify, request, session
 
@@ -96,31 +97,42 @@ def diagnostico_planilha():
 
 @pedidos_bp.route("/pedidos/emitidos-email", methods=["GET"])
 def pedidos_emitidos_email():
-    """Pedidos feitos na loja da Panasonic, lidos direto do e-mail de
-    confirmação -- aparece em Peças Compradas sem esperar o robô da
-    planilha achar a nota fiscal (achado em 2026-09-03: o robô estava
-    parado pra pedidos recentes, dias sem gravar nada na planilha).
+    """Pedidos feitos na loja da Panasonic, lidos do CACHE local
+    (`pedidos_email`), não do e-mail na hora -- pedido de 2026-09-04: "não
+    quero que toda vez que eu entro o negócio fica buscando". Quem
+    atualiza esse cache é `services/nfe.py:iniciar_sincronizacao_em_
+    segundo_plano`, rodando sozinho a cada 10 minutos desde a subida do
+    app; esta rota só LÊ, instantâneo, igual qualquer outra tabela.
 
-    A leitura do e-mail é só isso -- LEITURA, recalculada a cada chamada.
-    O que o usuário PREENCHE aqui (peça/cliente/se já foi mandado pra
-    agendar) mora em `pedidos_email` (ver database.py), casada pela
-    `chave` estável que services/nfe.py calcula a partir de código+data.
-    Pedido de 2026-09-03: "tem que ficar igual fica os faturados, pq eu
-    tenho que anexar pra poder agendar os clientes com essas peças."
+    `pedidos_email` guarda tanto o que veio do e-mail (codigo/descricao/
+    data_email, escritos pelo ciclo de sincronização) quanto o que o
+    usuário preenche (peca/cliente_final) -- tudo na mesma linha, casada
+    pela `chave` estável que services/nfe.py calcula a partir de
+    código+data. `codigo IS NOT NULL` filtra fora linhas antigas que só
+    tinham peça/cliente sem nunca ter passado pela sincronização (não
+    deveria mais acontecer, mas não custa a defesa).
     """
-    from services.nfe import pedidos_emitidos_recentes
+    with db_conn() as conn:
+        linhas = fetch_all(conn, sql(
+            "SELECT chave, codigo, descricao, data_email, peca, cliente_final "
+            "FROM pedidos_email WHERE codigo IS NOT NULL AND codigo <> ''"))
 
-    pedidos = pedidos_emitidos_recentes()
+    def _chave_ordenacao(l):
+        try:
+            return parsedate_to_datetime(l["data_email"] or "")
+        except Exception:
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+    linhas = sorted(linhas, key=_chave_ordenacao, reverse=True)[:60]
+    pedidos = [{
+        "chave": l["chave"], "codigo": l["codigo"], "descricao": l["descricao"] or "",
+        "data": l["data_email"] or "", "peca": l["peca"] or "", "cliente_final": l["cliente_final"] or "",
+    } for l in linhas]
+
     if pedidos:
         with db_conn(commit=True) as conn:
             marcadores = ",".join(["?"] * len(pedidos))
             chaves = tuple(p["chave"] for p in pedidos)
-            vinculos = {
-                l["chave"]: l
-                for l in fetch_all(conn, sql(
-                    f"SELECT chave, peca, cliente_final FROM pedidos_email WHERE chave IN ({marcadores})"),
-                    chaves)
-            }
             agendados = {
                 l["chave"]: l["ordem_servico_id"]
                 for l in fetch_all(conn, sql(
@@ -151,9 +163,6 @@ def pedidos_emitidos_email():
                         (l["chave"], agora, l["ordem_servico_id"]))
                 agendados[l["chave"]] = l["ordem_servico_id"]
         for p in pedidos:
-            v = vinculos.get(p["chave"]) or {}
-            p["peca"] = v.get("peca") or ""
-            p["cliente_final"] = v.get("cliente_final") or ""
             p["ordem_servico_id"] = agendados.get(p["chave"])
 
     return jsonify({"pedidos": pedidos})

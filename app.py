@@ -87,6 +87,12 @@ limiter.init_app(app)
 
 init_db()
 
+# Pedidos emitidos (peça comprada, lida do e-mail): pedido de 2026-09-04,
+# "não quero que fique buscando toda vez" -- roda em segundo plano em vez
+# de na hora que alguém abre a aba de Peças (ver services/nfe.py).
+from services.nfe import iniciar_sincronizacao_em_segundo_plano
+iniciar_sincronizacao_em_segundo_plano()
+
 app.register_blueprint(auth_bp)
 app.register_blueprint(fichas_bp, url_prefix="/api")
 app.register_blueprint(servicos_bp, url_prefix="/api")

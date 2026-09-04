@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import socket
+import threading
 import time
 import xml.etree.ElementTree as ET
 from email.header import decode_header
@@ -153,7 +154,7 @@ def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
 
     ids = sorted(data[0].split(), key=lambda x: -int(x))[:limite]
     candidatos = []
-    prazo = time.monotonic() + 15
+    prazo = time.monotonic() + 60
     for mid in ids:
         if time.monotonic() > prazo:
             log.warning("Varredura de pedidos emitidos cortada por tempo (%d/%d e-mails vistos)",
@@ -194,21 +195,24 @@ def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
     return candidatos
 
 
-def pedidos_emitidos_recentes(limite: int = 40, limite_nome_completo: int = 8) -> List[dict]:
+def pedidos_emitidos_recentes(limite: int = 40, limite_nome_completo: int = 20) -> List[dict]:
     """Pedidos feitos na loja da Panasonic, direto do e-mail de confirmação
     -- não espera o robô da planilha achar a nota fiscal (que só chega bem
     depois, e às vezes nem chega se o pedido for cancelado no meio).
 
-    O nome completo (do CORPO do e-mail) já vem pronto AQUI pros mais
-    recentes -- pedido de 2026-09-04: "quero que venha... igual era antes",
-    sem essa tela mostrando o nome cortado da VTEX e corrigindo sozinha
-    depois (tentativa anterior, v209-v213, que criou uma chamada separada
-    em segundo plano). Só os `limite_nome_completo` mais recentes buscam o
-    corpo (é lento, um fetch do e-mail INTEIRO por pedido); o resto usa a
-    descrição truncada do assunto -- pedido antigo raramente é o que
-    importa ver primeiro. Prazo total de ~24s: se não der tempo de buscar
-    o corpo de todos dentro do limite, os que sobrarem ficam com a
-    descrição truncada em vez de arriscar a resposta inteira estourar.
+    2026-09-04: deixou de ser chamada na hora que o usuário abre a tela
+    ("não quero que fique buscando toda vez") -- roda sozinha em segundo
+    plano (ver `iniciar_sincronizacao_em_segundo_plano`), que grava o
+    resultado em `pedidos_email` (cache); GET /pedidos/emitidos-email só
+    lê essa tabela, instantâneo. Por isso o prazo aqui pode ser mais
+    generoso que quando isso respondia direto uma requisição web -- não
+    tem Railway cortando em ~30s no meio de um job de fundo.
+
+    O nome completo (do CORPO do e-mail) já vem pronto pros mais
+    recentes, sem a tela mostrar truncado e corrigir depois (tentativa
+    anterior, v209-v213). Só os `limite_nome_completo` mais recentes
+    buscam o corpo (lento, um fetch do e-mail INTEIRO por pedido); o
+    resto usa a descrição truncada do assunto.
     """
     if not imap_configurado():
         return []
@@ -218,7 +222,7 @@ def pedidos_emitidos_recentes(limite: int = 40, limite_nome_completo: int = 8) -
         conn = _conectar()
         candidatos = _candidatos_pedidos_emitidos(conn, limite)
 
-        prazo = time.monotonic() + 24
+        prazo = time.monotonic() + 90
         for i, c in enumerate(candidatos):
             if i >= limite_nome_completo or time.monotonic() > prazo:
                 break
@@ -477,3 +481,61 @@ def pecas_por_nota(chaves: List[str]) -> Dict[str, dict]:
                 pass
 
     return achadas
+
+
+# ─── SINCRONIZAÇÃO DE PEDIDOS EMITIDOS EM SEGUNDO PLANO ────────────────────
+#
+# Pedido de 2026-09-04: "não quero que toda vez que eu entro o negócio fica
+# buscando... quero que fique automático". Até aqui, GET /pedidos/emitidos-
+# email chamava pedidos_emitidos_recentes() NA HORA -- abrir a aba de Peças
+# significava esperar o IMAP responder (8-20s num dia bom, mais que isso
+# num dia ruim). Agora isso roda sozinho, de tempos em tempos, num processo
+# em segundo plano; a rota só LÊ o resultado já pronto de `pedidos_email`
+# (cache), instantâneo, igual qualquer outra tabela do banco.
+_INTERVALO_SYNC_SEGUNDOS = 10 * 60  # a cada 10 minutos é frequente o
+# bastante pra um pedido novo aparecer rápido sem martelar o IMAP à toa --
+# pedido chega de hora em hora, não de minuto em minuto.
+
+
+def _salvar_cache_pedidos_email(pedidos: List[dict]) -> None:
+    """Grava/atualiza o resultado da varredura em `pedidos_email`, sem
+    mexer em peça/cliente/agendamento que o usuário já tenha preenchido --
+    só os campos que vêm do e-mail (codigo/descricao/data_email) que essa
+    função manda."""
+    from database import db_conn, execute, fetch_one, sql
+
+    with db_conn(commit=True) as conn:
+        for p in pedidos:
+            existe = fetch_one(conn, sql("SELECT chave FROM pedidos_email WHERE chave = ?"), (p["chave"],))
+            if existe:
+                execute(conn, sql(
+                    "UPDATE pedidos_email SET codigo = ?, descricao = ?, data_email = ? WHERE chave = ?"),
+                    (p["codigo"], p["descricao"], p["data"], p["chave"]))
+            else:
+                execute(conn, sql(
+                    "INSERT INTO pedidos_email (chave, codigo, descricao, data_email) VALUES (?, ?, ?, ?)"),
+                    (p["chave"], p["codigo"], p["descricao"], p["data"]))
+
+
+def _ciclo_sync_pedidos_email() -> None:
+    if not imap_configurado():
+        return
+    try:
+        pedidos = pedidos_emitidos_recentes()
+        _salvar_cache_pedidos_email(pedidos)
+        log.info("Cache de pedidos emitidos atualizado: %d pedidos", len(pedidos))
+    except Exception:
+        log.exception("Falha ao atualizar cache de pedidos emitidos por e-mail")
+
+
+def iniciar_sincronizacao_em_segundo_plano() -> None:
+    """Chamado UMA VEZ na subida do app (ver app.py). Thread daemon: não
+    impede o processo de encerrar, e uma falha num ciclo não derruba o
+    site -- só aquele ciclo fica sem atualizar, o próximo tenta de novo.
+    """
+    def loop():
+        while True:
+            _ciclo_sync_pedidos_email()
+            time.sleep(_INTERVALO_SYNC_SEGUNDOS)
+
+    threading.Thread(target=loop, daemon=True, name="sync-pedidos-emitidos").start()
