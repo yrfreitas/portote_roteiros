@@ -1655,8 +1655,16 @@
   }
 
   async function verificarRevisao() {
-    if (document.hidden) return;
-
+    // ATÉ 2026-09-04 tinha um "if (document.hidden) return" aqui -- pra
+    // economizar rede quando a aba não está em primeiro plano. Só que essa
+    // é EXATAMENTE a situação em que o técnico passa a maior parte do dia
+    // de trabalho: aba do app em segundo plano, Waze/WhatsApp em cima, tela
+    // do celular apagada no bolso. Achado investigando "sem atualização do
+    // técnico" na Central de Comando: Igor rodava v191 (dezenas de versões
+    // atrás) e Pedro v223 -- o auto-update nunca disparava porque a aba
+    // deles nunca voltava a ficar "visível" de verdade. O custo de checar
+    // em segundo plano é um GET pequeno a cada 20s, muito menor que o gasto
+    // de bateria do GPS que já roda o dia inteiro -- vale a troca.
     let revisao;
     try {
       revisao = await lerRevisao();
@@ -1718,7 +1726,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v224';
+  const VERSAO_TELA = 'v225';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
