@@ -216,6 +216,34 @@ def _osrm(origem_lat, origem_lng, destino_lat, destino_lng):
         return None
 
 
+def geometria_rota(origem_lat, origem_lng, destino_lat, destino_lng):
+    """Pontos [[lat, lng], ...] do trajeto de carro de VERDADE (por rua)
+    entre origem e destino -- pedido de 2026-09-04: "quero o trajeto
+    certinho que ele tem que fazer, em vez de só uma reta pontilhada" (a
+    Central de Comando desenhava uma linha reta do técnico até o destino,
+    que corta rio/quadra que nenhum carro atravessa).
+
+    Mesmo endpoint OSRM de `_osrm()`, só que pedindo a geometria completa
+    (`overview=full`) em vez de só a duração. Devolve None se o OSRM não
+    responder -- quem chama decide a rede de segurança (reta, como antes).
+    """
+    try:
+        r = _sessao.get(
+            URL_OSRM.format(o_lat=origem_lat, o_lng=origem_lng,
+                            d_lat=destino_lat, d_lng=destino_lng),
+            params={"overview": "full", "geometries": "geojson"}, timeout=TIMEOUT_OSRM)
+        r.raise_for_status()
+        dados = r.json()
+        if dados.get("code") != "Ok" or not dados.get("routes"):
+            return None
+        # GeoJSON vem [lng, lat] -- o contrário do que Leaflet espera.
+        coords = dados["routes"][0]["geometry"]["coordinates"]
+        return [[c[1], c[0]] for c in coords]
+    except Exception as exc:
+        log.warning("Falha ao buscar geometria da rota: %s", exc)
+        return None
+
+
 def matriz_osrm(pontos):
     """Distância (km) e duração (min) por RUA entre TODOS os pares de
     `pontos` ([{lat, lng}, ...]), numa chamada só via OSRM Table API.

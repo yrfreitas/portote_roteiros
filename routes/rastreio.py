@@ -797,9 +797,15 @@ def torre_controle():
             referencia = r.get("atualizado_em") or r.get("criado_em")
             if referencia and eta:
                 try:
-                    base = datetime.strptime(str(referencia)[:19], "%Y-%m-%d %H:%M:%S")
+                    # BUG (2026-09-04): comparava com datetime.now() (hora
+                    # LOCAL do servidor, "imprecisa" era exatamente isso) contra
+                    # `referencia`, que é gravada em UTC (_agora()). Se o
+                    # servidor não roda em UTC, todo atraso saía errado pelo
+                    # fuso inteiro. datetime.now(timezone.utc) compara igual
+                    # com igual.
+                    base = datetime.strptime(str(referencia)[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                     chegada = base + timedelta(minutes=int(eta))
-                    atrasado = datetime.now() > chegada
+                    atrasado = datetime.now(timezone.utc) > chegada
                 except ValueError:
                     pass
 
@@ -857,6 +863,28 @@ def trajeto_hoje(tecnico_id):
              ORDER BY rp.criado_em ASC
         """, (tecnico_id, f"{hoje} 00:00:00"))
     return jsonify({"pontos": [dict(p) for p in pontos]})
+
+
+@rastreio_bp.route("/tecnicos/<int:tecnico_id>/rota-ate-destino", methods=["GET"])
+def rota_ate_destino(tecnico_id):
+    """Geometria REAL (por rua) do trajeto do técnico até o destino do
+    atendimento ativo -- pedido de 2026-09-04: "quero o trajeto certinho
+    que ele tem que fazer, em vez de só uma reta pontilhada". Gatekeeping
+    em permissoes.py, mesma permissão de torre_controle.
+    """
+    with db_conn() as conn:
+        r = fetch_one(conn, f"""
+            SELECT ra.lat, ra.lng, sv.lat AS destino_lat, sv.lng AS destino_lng
+              FROM rastreios ra JOIN servicos sv ON sv.id = ra.servico_id
+             WHERE ra.tecnico_id = ? AND {_ATIVO} AND sv.status <> 'concluido'
+             ORDER BY ra.id DESC LIMIT 1
+        """, (tecnico_id,))
+    if not r or r.get("lat") is None or r.get("destino_lat") is None:
+        return jsonify({"pontos": []})
+
+    from services.rota_tempo import geometria_rota
+    pontos = geometria_rota(r["lat"], r["lng"], r["destino_lat"], r["destino_lng"])
+    return jsonify({"pontos": pontos or []})
 
 
 @rastreio_bp.route("/rastreios/diagnostico", methods=["GET"])

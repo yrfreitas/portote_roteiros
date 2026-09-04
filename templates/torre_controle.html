@@ -51,13 +51,16 @@
     @keyframes varrer { from { left: -140px; } to { left: 110%; } }
 
     .marca-bloco { display: flex; align-items: center; gap: 14px; }
+    /* Logo de verdade em vez do selo "PT" -- pedido de 2026-09-04. Fundo
+       branco arredondado porque static/logo.png é colorida/com fundo
+       transparente e sumia no fundo escuro sem um contraste por trás. */
     .logo-selo {
       width: 40px; height: 40px; border-radius: 11px; flex: none;
-      background: linear-gradient(145deg, var(--accent), #2563eb);
+      background: #fff; padding: 5px;
       display: flex; align-items: center; justify-content: center;
-      font-family: var(--font-display, var(--sans)); font-weight: 800; font-size: 17px; color: #fff;
-      box-shadow: 0 0 22px rgba(79,141,251,.45), inset 0 1px 0 rgba(255,255,255,.25);
+      box-shadow: 0 0 22px rgba(79,141,251,.35), inset 0 1px 0 rgba(255,255,255,.25);
     }
+    .logo-selo img { width: 100%; height: 100%; object-fit: contain; }
     .marca { font-size: 10.5px; letter-spacing: 2.2px; text-transform: uppercase; color: #5a6d8a; font-family: var(--mono); }
     h1 { font-size: 19px; margin: 3px 0 0; font-weight: 800; letter-spacing: .2px; }
 
@@ -339,7 +342,7 @@
     <header>
       <div class="varredura"></div>
       <div class="marca-bloco">
-        <div class="logo-selo">PT</div>
+        <div class="logo-selo"><img src="/static/logo.png" alt="Porto Tec"></div>
         <div>
           <div class="marca">Porto Tec Assistência Técnica</div>
           <h1>Central de Comando</h1>
@@ -549,14 +552,47 @@
           marcadores[t.tecnico_id] = L.marker(ponto, { icon: iconePara(t) }).addTo(mapa).bindPopup(popup);
         }
 
-        // Linha pontilhada até o destino -- os dados (destino_lat/lng) já
-        // vinham do servidor desde 2026-09-03 mas nunca tinham sido
-        // desenhados; só o pino do técnico aparecia, sem contexto de PRA
-        // ONDE ele está indo.
+        atualizarLinhaDestino(t, ponto);
+      }
+
+      // Trajeto até o destino pela RUA de verdade, não a reta -- pedido de
+      // 2026-09-04: "quero o trajeto certinho que ele tem que fazer, em
+      // vez de só uma reta pontilhada" (a reta cortava rio, quadra e prédio
+      // que nenhum carro atravessa). Cache por técnico: só busca de novo no
+      // OSRM se ele andou o bastante (~150m) ou trocou de destino -- sem
+      // isso martelaria a mesma consulta a cada 12s à toa.
+      const _rotaRealCache = {};
+      async function atualizarLinhaDestino(t, ponto) {
+        if (!t.destino_lat || !t.destino_lng) {
+          if (linhasDestino[t.tecnico_id]) { mapa.removeLayer(linhasDestino[t.tecnico_id]); delete linhasDestino[t.tecnico_id]; }
+          delete _rotaRealCache[t.tecnico_id];
+          return;
+        }
+        const cache = _rotaRealCache[t.tecnico_id];
+        const mudouMuito = !cache
+          || Math.abs(cache.lat - t.lat) > 0.0013 || Math.abs(cache.lng - t.lng) > 0.0013
+          || cache.destino_lat !== t.destino_lat || cache.destino_lng !== t.destino_lng;
+        if (!mudouMuito) return;
+        _rotaRealCache[t.tecnico_id] = { lat: t.lat, lng: t.lng, destino_lat: t.destino_lat, destino_lng: t.destino_lng };
+
+        let pontos = [];
+        try {
+          const r = await fetch(`/api/tecnicos/${t.tecnico_id}/rota-ate-destino`, { cache: 'no-store' }).then(r => r.json());
+          pontos = r.pontos || [];
+        } catch (e) {
+          console.warn('Falha ao buscar trajeto real:', e.message);
+        }
+
         if (linhasDestino[t.tecnico_id]) mapa.removeLayer(linhasDestino[t.tecnico_id]);
-        if (t.destino_lat && t.destino_lng) {
+        if (pontos.length >= 2) {
+          linhasDestino[t.tecnico_id] = L.polyline(pontos, {
+            color: esc(t.cor || '#4f8dfb'), weight: 3, opacity: .65,
+          }).addTo(mapa);
+        } else {
+          // OSRM não respondeu -- reta pontilhada como rede de segurança,
+          // mas mais apagada, pra não passar a impressão de ser o trajeto real.
           linhasDestino[t.tecnico_id] = L.polyline([ponto, [t.destino_lat, t.destino_lng]], {
-            color: esc(t.cor || '#4f8dfb'), weight: 2, opacity: .55, dashArray: '2,8',
+            color: esc(t.cor || '#4f8dfb'), weight: 2, opacity: .35, dashArray: '2,8',
           }).addTo(mapa);
         }
       }

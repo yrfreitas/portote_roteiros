@@ -224,6 +224,11 @@ def checar_acesso(path: str, metodo: str):
     if path.startswith("/api/tecnicos/") and path.endswith("/trajeto-hoje") and metodo.upper() == "GET":
         return None if pode("torre_controle") else "torre_controle"
 
+    # Trajeto real até o destino (/api/tecnicos/<id>/rota-ate-destino) --
+    # mesma sensibilidade e mesmo problema de id no meio do path.
+    if path.startswith("/api/tecnicos/") and path.endswith("/rota-ate-destino") and metodo.upper() == "GET":
+        return None if pode("torre_controle") else "torre_controle"
+
     for prefixo, metodos, acao in REGRAS:
         if not path.startswith(prefixo):
             continue
