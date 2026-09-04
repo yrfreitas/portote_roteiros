@@ -130,6 +130,21 @@ def pedidos_emitidos_email():
     return jsonify({"pedidos": pedidos})
 
 
+@pedidos_bp.route("/pedidos/email/descricoes", methods=["GET"])
+def descricoes_pedidos_email():
+    """Nome completo da peça, lido do CORPO do e-mail (o assunto vem
+    truncado pela VTEX). Chamada SEPARADA da lista de cima de propósito
+    -- mesma ideia de GET /pedidos/sugestoes pra nota fiscal: baixar o
+    e-mail inteiro é lento, juntar isso na lista principal estourou o
+    timeout do Railway (achado em 2026-09-04). O front chama isso DEPOIS
+    de já mostrar a lista rápida, em lotes pequenos de chave (?chaves=a,b,c).
+    """
+    from services.nfe import descricoes_emitidos_por_chave
+
+    chaves = [c.strip() for c in (request.args.get("chaves") or "").split(",") if c.strip()]
+    return jsonify({"descricoes": descricoes_emitidos_por_chave(chaves)})
+
+
 @pedidos_bp.route("/pedidos/email/<chave>", methods=["PUT"])
 def vincular_pedido_email(chave):
     """Salva peça/cliente de um pedido emitido lido do e-mail (ver rota

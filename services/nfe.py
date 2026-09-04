@@ -131,10 +131,68 @@ _RE_PEDIDO_EMITIDO = re.compile(
 )
 
 
+def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
+    """Escaneia só CABEÇALHOS (rápido) e devolve os que batem no assunto de
+    'pedido emitido', com o `mid` (id IMAP) junto. Compartilhado por
+    `pedidos_emitidos_recentes` (lista rápida) e
+    `descricoes_emitidos_por_chave` (busca o corpo, lenta, só do que foi
+    pedido) -- ver o porquê da separação nesta última.
+    """
+    status, data = conn.search(None, "ALL")
+    if status != "OK" or not data or not data[0]:
+        return []
+
+    ids = sorted(data[0].split(), key=lambda x: -int(x))[:limite]
+    candidatos = []
+    for mid in ids:
+        try:
+            status, d = conn.fetch(mid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+            if status != "OK" or not d or not d[0]:
+                continue
+            msg = email.message_from_bytes(d[0][1])
+            remetente = msg.get("From", "")
+            if "vtex" not in remetente.lower():
+                continue
+            assunto = _decodificar_assunto(msg.get("Subject", ""))
+            m = _RE_PEDIDO_EMITIDO.search(assunto)
+            if not m:
+                continue
+            # A própria VTEX trunca a descrição no assunto ("Gaxet...")
+            # -- só limpa os espaços e troca "..."/".." por "…" pra não
+            # parecer um nome de peça pela metade sem indicar que foi
+            # cortado. Serve de descrição PROVISÓRIA até
+            # descricoes_emitidos_por_chave trazer a completa.
+            descricao = re.sub(r"\.{2,}$", "…", m.group("descricao").strip())
+            codigo = m.group("codigo").strip()
+            data_email = msg.get("Date", "")
+            candidatos.append({
+                "mid": mid,
+                # Identidade estável entre uma consulta e outra -- o mesmo
+                # código pode ser comprado de novo em outro dia, então o
+                # hash usa código+data (não só o código) pra não colidir
+                # duas compras diferentes na mesma "chave" (ver
+                # routes/pedidos.py: é essa chave que guarda o vínculo com
+                # cliente na tabela pedidos_email).
+                "chave": "em" + hashlib.sha1(f"{codigo}|{data_email}".encode()).hexdigest()[:14],
+                "codigo": codigo,
+                "descricao": descricao,
+                "data": data_email,
+            })
+        except Exception as exc:
+            log.warning("Falha lendo e-mail de pedido emitido %s: %s", mid, exc)
+    return candidatos
+
+
 def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
     """Pedidos feitos na loja da Panasonic, direto do e-mail de confirmação
     -- não espera o robô da planilha achar a nota fiscal (que só chega bem
     depois, e às vezes nem chega se o pedido for cancelado no meio).
+
+    Só cabeçalho (rápido): a descrição vem truncada pela VTEX ("Gaxet...").
+    O nome completo é buscado à parte, por `descricoes_emitidos_por_chave`
+    -- juntar os dois numa chamada só chegou a estourar 30s pra ~8 pedidos
+    (Railway corta em ~30s, achado em 2026-09-04) porque cada nome completo
+    exige baixar o e-mail INTEIRO (RFC822), não só o cabeçalho.
     """
     if not imap_configurado():
         return []
@@ -142,59 +200,48 @@ def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
     conn = None
     try:
         conn = _conectar()
-        status, data = conn.search(None, "ALL")
-        if status != "OK" or not data or not data[0]:
-            return []
-
-        ids = sorted(data[0].split(), key=lambda x: -int(x))[:limite]
-        resultado = []
-        for mid in ids:
-            try:
-                status, d = conn.fetch(mid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
-                if status != "OK" or not d or not d[0]:
-                    continue
-                msg = email.message_from_bytes(d[0][1])
-                remetente = msg.get("From", "")
-                if "vtex" not in remetente.lower():
-                    continue
-                assunto = _decodificar_assunto(msg.get("Subject", ""))
-                m = _RE_PEDIDO_EMITIDO.search(assunto)
-                if not m:
-                    continue
-                # A própria VTEX trunca a descrição no assunto ("Gaxet...")
-                # -- só limpa os espaços e troca "..."/".." por "…" pra não
-                # parecer um nome de peça pela metade sem indicar que foi
-                # cortado. O código (não truncado) é o identificador de
-                # verdade; a descrição é só apoio visual.
-                descricao = re.sub(r"\.{2,}$", "…", m.group("descricao").strip())
-                codigo = m.group("codigo").strip()
-                data_email = msg.get("Date", "")
-
-                # O assunto vem truncado pela VTEX ("Gaxet...") -- o corpo
-                # do e-mail tem o nome completo (achado em 2026-09-04, ver
-                # _descricao_completa_do_corpo). Busca só pros que já
-                # bateram no assunto: 1 fetch extra por PEDIDO, não por
-                # e-mail da caixa toda.
-                descricao_longa = _descricao_completa_do_corpo(conn, mid, codigo)
-
-                resultado.append({
-                    # Identidade estável entre uma consulta e outra -- o
-                    # mesmo código pode ser comprado de novo em outro dia,
-                    # então o hash usa código+data (não só o código) pra não
-                    # colidir duas compras diferentes na mesma "chave"
-                    # (ver routes/pedidos.py: é essa chave que guarda o
-                    # vínculo com cliente na tabela pedidos_email).
-                    "chave": "em" + hashlib.sha1(f"{codigo}|{data_email}".encode()).hexdigest()[:14],
-                    "codigo": codigo,
-                    "descricao": descricao_longa or descricao,
-                    "data": data_email,
-                })
-            except Exception as exc:
-                log.warning("Falha lendo e-mail de pedido emitido %s: %s", mid, exc)
-        return resultado
+        candidatos = _candidatos_pedidos_emitidos(conn, limite)
+        for c in candidatos:
+            c.pop("mid", None)
+        return candidatos
     except Exception:
         log.exception("Falha ao buscar pedidos emitidos por e-mail")
         return []
+    finally:
+        if conn is not None:
+            try:
+                conn.logout()
+            except Exception:
+                pass
+
+
+def descricoes_emitidos_por_chave(chaves: List[str], limite: int = 80) -> Dict[str, str]:
+    """Nome completo da peça (do CORPO do e-mail) só pras chaves pedidas.
+
+    Endpoint/chamada separada de propósito, em lotes pequenos do lado do
+    front (mesma ideia de GET /pedidos/sugestoes pra nota fiscal): buscar o
+    corpo INTEIRO de cada e-mail é lento o bastante pra estourar o timeout
+    do Railway se feito pra todos de uma vez (ver pedidos_emitidos_recentes).
+    """
+    if not chaves or not imap_configurado():
+        return {}
+
+    procuradas = set(chaves)
+    conn = None
+    try:
+        conn = _conectar()
+        candidatos = _candidatos_pedidos_emitidos(conn, limite)
+        resultado = {}
+        for c in candidatos:
+            if c["chave"] not in procuradas:
+                continue
+            descricao_longa = _descricao_completa_do_corpo(conn, c["mid"], c["codigo"])
+            if descricao_longa:
+                resultado[c["chave"]] = descricao_longa
+        return resultado
+    except Exception:
+        log.exception("Falha ao buscar descrição completa dos pedidos emitidos")
+        return {}
     finally:
         if conn is not None:
             try:

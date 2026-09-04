@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v208';
+const VERSAO_PAINEL = 'v209';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3582,6 +3582,7 @@ function _htmlPedidosEmitidosEmail(pedidos) {
                    value="${esc(p.peca || (descUtil ? p.descricao : ''))}"
                    placeholder="${descUtil ? '' : 'Digite o nome da peça'}"
                    title="${esc(p.descricao)}"
+                   ${p.peca ? '' : `data-auto="${esc(descUtil ? p.descricao : '')}"`}
                    onchange="salvarPecaEmailInline('${p.chave}')">
           </div>
 
@@ -3862,6 +3863,7 @@ async function carregarPecas() {
 
   // Sugestões vêm depois, sem travar a tela (ler os XMLs das notas é lento).
   if (r.sugestao_peca_ativa) buscarSugestoesPecas(pedidos);
+  buscarDescricoesEmitidosEmail(emitidosEmail);
 
   // Escolheu um cliente que o site conhece? já sugere o modelo dele.
   pedidos.forEach(p => {
@@ -4009,6 +4011,52 @@ async function enviarParaAgendar(linha) {
 // Busca as peças no XML das notas fiscais e injeta nos cards já renderizados.
 // Em blocos pequenos, pra as primeiras sugestões aparecerem rápido em vez de
 // tudo de uma vez no fim.
+// Nome completo dos pedidos emitidos (e-mail) -- vem numa chamada
+// separada e em lotes pequenos, igual buscarSugestoesPecas logo abaixo faz
+// pra nota fiscal: baixar o corpo inteiro do e-mail é lento, juntar isso
+// na lista principal chegou a estourar o timeout do Railway (achado em
+// 2026-09-04, ver services/nfe.py:descricoes_emitidos_por_chave).
+async function buscarDescricoesEmitidosEmail(pedidos) {
+  if (!pedidos.length) return;
+
+  const TAMANHO = 4;
+  for (let i = 0; i < pedidos.length; i += TAMANHO) {
+    const bloco = pedidos.slice(i, i + TAMANHO);
+    let r;
+    try {
+      r = await api(`/pedidos/email/descricoes?chaves=${bloco.map(p => p.chave).join(',')}`);
+    } catch (e) {
+      console.warn('descrição completa de pedido emitido falhou:', e.message);
+      break;
+    }
+
+    Object.entries(r.descricoes || {}).forEach(([chave, descricaoCompleta]) => {
+      if (!descricaoCompleta) return;
+      const linhaEl = document.getElementById(`peca-email-${chave}`);
+      const campo = document.getElementById(`peca-email-desc-${chave}`);
+      const codigoEl = linhaEl?.querySelector('.pel-codigo');
+      const clienteEl = document.getElementById(`peca-email-cliente-${chave}`);
+      if (!linhaEl) return;
+
+      linhaEl.dataset.descricao = descricaoCompleta;
+      linhaEl.dataset.busca = ((linhaEl.dataset.codigo || '') + ' '
+        + descricaoCompleta + ' ' + (clienteEl?.value || '')).toLowerCase();
+      if (codigoEl) codigoEl.title = descricaoCompleta;
+      if (campo) {
+        campo.title = descricaoCompleta;
+        // Só substitui o que estava lá se for o preenchimento AUTOMÁTICO
+        // de antes (guardado em data-auto) -- nunca sobrescreve o que a
+        // pessoa já digitou por cima.
+        if (campo.value === (campo.dataset.auto || '')) {
+          campo.value = descricaoCompleta;
+          campo.placeholder = '';
+          campo.dataset.auto = descricaoCompleta;
+        }
+      }
+    });
+  }
+}
+
 async function buscarSugestoesPecas(pedidos) {
   const alvos = pedidos.filter(p => !p.peca && p.nota_fiscal);
   if (alvos.length === 0) return;
