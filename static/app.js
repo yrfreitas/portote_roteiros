@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v211';
+const VERSAO_PAINEL = 'v212';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4063,15 +4063,19 @@ async function enviarParaAgendar(linha) {
 async function buscarDescricoesEmitidosEmail(pedidos) {
   if (!pedidos.length) return;
 
-  const TAMANHO = 4;
+  // Lote pequeno (2) e CONTINUA pro próximo lote se um falhar (2026-09-04:
+  // achado um 502 num lote de 4 -- o `break` de antes abandonava TODOS os
+  // lotes seguintes por causa de UM que deu timeout, deixando o resto
+  // preso no nome truncado pra sempre).
+  const TAMANHO = 2;
   for (let i = 0; i < pedidos.length; i += TAMANHO) {
     const bloco = pedidos.slice(i, i + TAMANHO);
     let r;
     try {
       r = await api(`/pedidos/email/descricoes?chaves=${bloco.map(p => p.chave).join(',')}`);
     } catch (e) {
-      console.warn('descrição completa de pedido emitido falhou:', e.message);
-      break;
+      console.warn('descrição completa de pedido emitido falhou (lote seguinte continua):', e.message);
+      continue;
     }
 
     Object.entries(r.descricoes || {}).forEach(([chave, descricaoCompleta]) => {

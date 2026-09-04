@@ -112,20 +112,49 @@ def pedidos_emitidos_email():
 
     pedidos = pedidos_emitidos_recentes()
     if pedidos:
-        with db_conn() as conn:
+        with db_conn(commit=True) as conn:
             marcadores = ",".join(["?"] * len(pedidos))
+            chaves = tuple(p["chave"] for p in pedidos)
             vinculos = {
                 l["chave"]: l
                 for l in fetch_all(conn, sql(
-                    f"SELECT chave, peca, cliente_final, ordem_servico_id "
-                    f"FROM pedidos_email WHERE chave IN ({marcadores})"),
-                    tuple(p["chave"] for p in pedidos))
+                    f"SELECT chave, peca, cliente_final FROM pedidos_email WHERE chave IN ({marcadores})"),
+                    chaves)
             }
+            agendados = {
+                l["chave"]: l["ordem_servico_id"]
+                for l in fetch_all(conn, sql(
+                    f"SELECT chave, ordem_servico_id FROM pecas_chegada "
+                    f"WHERE chave IN ({marcadores}) AND ordem_servico_id IS NOT NULL"),
+                    chaves)
+            }
+            # Autocorreção (2026-09-04): antes da correção desta rota, agendar
+            # gravava o id da OS só em pedidos_email -- essa OS nunca aparecia
+            # no lado certo da fila de Agendar Clientes (ver EXISTS em
+            # pecas_chegada, routes/ordens_servico.py:listar). Sem coluna nova
+            # pra marcar "já migrado": se achar um caso desses agora, escreve
+            # em pecas_chegada na hora, pra próxima vez já vir corrigido.
+            for l in fetch_all(conn, sql(
+                f"SELECT chave, ordem_servico_id FROM pedidos_email "
+                f"WHERE chave IN ({marcadores}) AND ordem_servico_id IS NOT NULL"),
+                chaves):
+                if l["chave"] in agendados:
+                    continue
+                agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                existe = fetch_one(conn, sql("SELECT chave FROM pecas_chegada WHERE chave = ?"), (l["chave"],))
+                if existe:
+                    execute(conn, sql("UPDATE pecas_chegada SET ordem_servico_id = ? WHERE chave = ?"),
+                            (l["ordem_servico_id"], l["chave"]))
+                else:
+                    execute(conn, sql(
+                        "INSERT INTO pecas_chegada (chave, chegou_em, ordem_servico_id) VALUES (?, ?, ?)"),
+                        (l["chave"], agora, l["ordem_servico_id"]))
+                agendados[l["chave"]] = l["ordem_servico_id"]
         for p in pedidos:
             v = vinculos.get(p["chave"]) or {}
             p["peca"] = v.get("peca") or ""
             p["cliente_final"] = v.get("cliente_final") or ""
-            p["ordem_servico_id"] = v.get("ordem_servico_id")
+            p["ordem_servico_id"] = agendados.get(p["chave"])
 
     return jsonify({"pedidos": pedidos})
 
@@ -187,7 +216,7 @@ def desvincular_pedido_email(chave):
     """
     with db_conn(commit=True) as conn:
         registro = fetch_one(conn, sql(
-            "SELECT ordem_servico_id FROM pedidos_email WHERE chave = ?"), (chave,))
+            "SELECT ordem_servico_id FROM pecas_chegada WHERE chave = ?"), (chave,))
         if registro and registro.get("ordem_servico_id"):
             return jsonify({"erro": "Já foi mandado pra Agendar Clientes -- "
                                      "cancele a OS antes de desvincular."}), 409
@@ -198,12 +227,15 @@ def desvincular_pedido_email(chave):
 
 @pedidos_bp.route("/pedidos/email/agendar-cliente", methods=["POST"])
 def agendar_cliente_email():
-    """Mesma ideia de POST /pedidos/<linha>/agendar-cliente, mas pra pedido
-    emitido lido do e-mail: abre a OS em 'aguardando_agendamento' e marca
-    em `pedidos_email.ordem_servico_id` pra não abrir duas pra mesma
-    compra. Não usa `pecas_chegada` de propósito -- aqui o pedido só foi
-    EMITIDO, marcar "chegou" implicitamente (como o fluxo da planilha faz)
-    seria dado falso: a peça claramente ainda não chegou.
+    """Mesma ideia de POST /pedidos/<linha>/agendar-cliente (planilha) --
+    E O MESMO MECANISMO, de propósito: a fila de Agendar Clientes separa
+    o lado "peça chegou" checando `EXISTS (... FROM pecas_chegada WHERE
+    ordem_servico_id = os.id)` (ver GET /ordens-servico). Corrigido em
+    2026-09-04: a primeira versão gravava em `pedidos_email.ordem_servico_id`
+    (tabela só nossa) em vez de `pecas_chegada`, então a OS nascia sem
+    bater nesse EXISTS e caía no lado errado da fila (José Airton, OS 125).
+    `pedidos_email` continua guardando só peça/cliente (texto digitado);
+    `pecas_chegada` é quem manda a partir de agora pra "já foi agendado".
     """
     from routes.clientes import criar_cliente
 
@@ -216,7 +248,7 @@ def agendar_cliente_email():
 
     with db_conn(commit=True) as conn:
         registro = fetch_one(conn, sql(
-            "SELECT chave, ordem_servico_id FROM pedidos_email WHERE chave = ?"), (chave,))
+            "SELECT chave, ordem_servico_id FROM pecas_chegada WHERE chave = ?"), (chave,))
         if registro and registro.get("ordem_servico_id"):
             return jsonify({
                 "erro": "Essa peça já está na fila de Agendar Clientes",
@@ -247,12 +279,24 @@ def agendar_cliente_email():
 
         if registro:
             execute(conn, sql(
-                "UPDATE pedidos_email SET ordem_servico_id = ? WHERE chave = ?"),
+                "UPDATE pecas_chegada SET ordem_servico_id = ? WHERE chave = ?"),
                 (os_id, chave))
         else:
             execute(conn, sql(
-                "INSERT INTO pedidos_email (chave, peca, cliente_final, ordem_servico_id, atualizado_em) "
-                "VALUES (?, ?, ?, ?, ?)"), (chave, peca, cliente_nome, os_id, agora))
+                "INSERT INTO pecas_chegada (chave, chegou_em, ordem_servico_id) "
+                "VALUES (?, ?, ?)"), (chave, agora, os_id))
+
+        # Salva peça/cliente em pedidos_email também (texto exibido na tela),
+        # sem mais guardar ordem_servico_id lá -- pecas_chegada é quem manda.
+        existe_email = fetch_one(conn, sql("SELECT chave FROM pedidos_email WHERE chave = ?"), (chave,))
+        if existe_email:
+            execute(conn, sql(
+                "UPDATE pedidos_email SET peca = ?, cliente_final = ?, atualizado_em = ? WHERE chave = ?"),
+                (peca, cliente_nome, agora, chave))
+        else:
+            execute(conn, sql(
+                "INSERT INTO pedidos_email (chave, peca, cliente_final, atualizado_em) "
+                "VALUES (?, ?, ?, ?)"), (chave, peca, cliente_nome, agora))
         bump_revisao(conn)
 
     return jsonify({"mensagem": f"{cliente_nome} enviado para Agendar Clientes",
