@@ -69,6 +69,11 @@ URL_OSRM = "https://router.project-osrm.org/route/v1/driving/{o_lng},{o_lat};{d_
 URL_OSRM_TABLE = "https://router.project-osrm.org/table/v1/driving/{coords}"
 TIMEOUT_OSRM_TABLE = 10
 
+# Mesmo serviço de rota do URL_OSRM, só que aceitando N waypoints em vez de
+# só origem/destino -- usado por geometria_multipla() pro mapa de rotas com
+# várias paradas.
+URL_OSRM_ROTA_MULTIPLA = "https://router.project-osrm.org/route/v1/driving/{coords}"
+
 # Fator de trânsito aplicado sobre o tempo de via livre do OSRM.
 #
 # É calibração, não medida — e por isso fica configurável. 1.45 corresponde a
@@ -241,6 +246,39 @@ def geometria_rota(origem_lat, origem_lng, destino_lat, destino_lng):
         return [[c[1], c[0]] for c in coords]
     except Exception as exc:
         log.warning("Falha ao buscar geometria da rota: %s", exc)
+        return None
+
+
+def geometria_multipla(pontos):
+    """Pontos [[lat, lng], ...] do trajeto de carro de VERDADE passando por
+    TODAS as paradas em `pontos` ([{lat, lng}, ...]), na ordem dada -- pedido
+    de 2026-09-04: o mesmo tratamento que a Central de Comando já ganhou
+    (trajeto até o destino por rua, não reta) agora também no mapa de rotas
+    da ficha, que ainda ligava parada a parada com reta pontilhada.
+
+    Uma chamada só ao OSRM com todos os waypoints -- não uma por trecho --
+    porque o OSRM já devolve a rota inteira concatenada (`overview=full`
+    soma a geometria de todas as pernas). Devolve None se o OSRM não
+    responder ou faltar coordenada; quem chama cai na reta, como antes.
+    """
+    if not pontos or len(pontos) < 2:
+        return None
+    if any(p.get("lat") is None or p.get("lng") is None for p in pontos):
+        return None
+
+    coords = ";".join(f"{p['lng']},{p['lat']}" for p in pontos)
+    try:
+        r = _sessao.get(
+            URL_OSRM_ROTA_MULTIPLA.format(coords=coords),
+            params={"overview": "full", "geometries": "geojson"}, timeout=TIMEOUT_OSRM)
+        r.raise_for_status()
+        dados = r.json()
+        if dados.get("code") != "Ok" or not dados.get("routes"):
+            return None
+        coords_geo = dados["routes"][0]["geometry"]["coordinates"]
+        return [[c[1], c[0]] for c in coords_geo]
+    except Exception as exc:
+        log.warning("Falha ao buscar geometria de rota com %d pontos: %s", len(pontos), exc)
         return None
 
 

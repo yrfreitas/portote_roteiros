@@ -99,7 +99,8 @@
       content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--cor, var(--accent));
       box-shadow: 0 0 10px var(--cor, var(--accent));
     }
-    .kpi-icone { font-size: 15px; opacity: .85; }
+    .kpi-icone { width: 20px; height: 20px; opacity: .9; color: var(--cor, var(--accent)); }
+    .kpi-icone svg { width: 100%; height: 100%; display: block; }
     .kpi-valor { font-family: var(--mono); font-size: 28px; font-weight: 800; margin-top: 6px; color: #f2f6ff; }
     .kpi-label { font-size: 10.5px; color: #8fa3bf; text-transform: uppercase; letter-spacing: .8px; margin-top: 2px; }
 
@@ -317,9 +318,14 @@
     .btn-replay:disabled { opacity: .5; cursor: default; }
 
     .btn-imprimir {
-      background: none; border: none; color: #7d8ea3; cursor: pointer; font-size: 13px;
+      background: none; border: none; color: #7d8ea3; cursor: pointer; padding: 0;
+      width: 16px; height: 16px;
     }
+    .btn-imprimir svg { width: 100%; height: 100%; display: block; }
     .btn-imprimir:hover { color: #eaf0fb; }
+    .titulo-com-icone { display: flex; align-items: center; gap: 6px; }
+    .titulo-icone { width: 13px; height: 13px; color: var(--accent); flex: none; }
+    .titulo-icone svg { width: 100%; height: 100%; display: block; }
     @media print {
       header, .kpis, main, .painel-lateral > .painel-titulo, .lista { display: none !important; }
       body { overflow: visible; background: #fff; color: #000; }
@@ -371,8 +377,8 @@
         <div class="lista" id="lista"></div>
         <div class="resumo-dia">
           <div class="painel-titulo" style="padding:0 0 8px;border:0;">
-            <span>⚡ Atividade recente</span>
-            <button type="button" class="btn-imprimir" id="btn-imprimir" title="Imprimir/exportar o resumo do dia">🖨️</button>
+            <span class="titulo-com-icone"><span class="titulo-icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>Atividade recente</span>
+            <button type="button" class="btn-imprimir" id="btn-imprimir" title="Imprimir/exportar o resumo do dia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>
           </div>
           <div id="resumo-lista"><span class="vazio" style="padding:6px 0;">Carregando...</span></div>
         </div>
@@ -413,6 +419,22 @@
           { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
       }
       function iniciais(nome) { return (nome || '?').trim().charAt(0).toUpperCase(); }
+
+      // Ícones de linha (estilo Feather), não emoji -- mesma razão já
+      // documentada em app.js: emoji de sistema é o maior sinal visual de
+      // "feito às pressas por IA", e aqui a tela nunca tinha recebido esse
+      // tratamento (pedido de 2026-09-04: "continua feio").
+      const SVG = {
+        pessoa:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+        mapa:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>',
+        pin:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+        carro:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.6-4.8A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.2L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>',
+        check:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+        ampulheta:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12"/><path d="M6 22h12"/><path d="M6 2v3a6 6 0 0 0 6 6 6 6 0 0 0-6 6v3"/><path d="M18 2v3a6 6 0 0 1-6 6 6 6 0 0 1 6 6v3"/></svg>',
+        chave:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.42l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.94 7.94l-6.9 6.9a2.12 2.12 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.94-7.94z"/></svg>',
+        raio:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+        impressora:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
+      };
 
       // ─── Relógio ao vivo ──────────────────────────────────────────
       function relogio() {
@@ -618,11 +640,26 @@
         return `<span class="tec-selo pn">${i + 1}</span>`;
       }
 
+      // Se a foto falhar (arquivo apagado, id sem foto cadastrada mas
+      // tem_foto desatualizado etc.), o navegador mostra o alt TEXT no
+      // lugar da imagem quebrada -- nome inteiro espremido/vazando pra fora
+      // do círculo de 38px, achado em 2026-09-04 (Igor e Pedro apareciam
+      // assim). Cai pro mesmo avatar de iniciais que quem não tem foto já usa.
+      function _avatarErro(img) {
+        const div = document.createElement('div');
+        div.className = 'tec-avatar-inicial' + (img.dataset.vivo === '1' ? ' ao-vivo' : '');
+        div.style.background = `linear-gradient(145deg, ${img.dataset.cor}, #0d1220)`;
+        div.textContent = iniciais(img.dataset.nome);
+        img.replaceWith(div);
+      }
+
       function avatarTecnico(t, posicao) {
         const cor = esc(t.cor || '#4f8dfb');
         const vivo = t.ao_vivo ? ' ao-vivo' : '';
         const foto = t.tem_foto
-          ? `<img class="tec-avatar${vivo}" src="/api/tecnicos/${t.tecnico_id}/foto" alt="${esc(t.nome)}">`
+          ? `<img class="tec-avatar${vivo}" src="/api/tecnicos/${t.tecnico_id}/foto" alt="${esc(t.nome)}"
+               data-nome="${esc(t.nome)}" data-cor="${cor}" data-vivo="${t.ao_vivo ? '1' : '0'}"
+               onerror="_avatarErro(this)">`
           : `<div class="tec-avatar-inicial${vivo}" style="background:linear-gradient(145deg, ${cor}, #0d1220);">${iniciais(t.nome)}</div>`;
         return `
           <div class="tec-avatar-wrap">
@@ -721,16 +758,16 @@
       }
 
       document.getElementById('kpis').innerHTML = [
-        iconeKpi('#4f8dfb', 'kpi-tecnicos', 'Técnicos', '👷'),
-        iconeKpi('#22d3ee', 'kpi-rotas', 'Rotas ativas', '🗺️'),
-        iconeKpi('#34d399', 'kpi-pontos', 'Atendimentos hoje', '📍'),
-        iconeKpi('#f5b544', 'kpi-km', 'Km planejados', '🚗'),
-        iconeKpi('#a78bfa', 'kpi-fechadas', 'OS fechadas hoje', '✅'),
+        iconeKpi('#4f8dfb', 'kpi-tecnicos', 'Técnicos', SVG.pessoa),
+        iconeKpi('#22d3ee', 'kpi-rotas', 'Rotas ativas', SVG.mapa),
+        iconeKpi('#34d399', 'kpi-pontos', 'Atendimentos hoje', SVG.pin),
+        iconeKpi('#f5b544', 'kpi-km', 'Km planejados', SVG.carro),
+        iconeKpi('#a78bfa', 'kpi-fechadas', 'OS fechadas hoje', SVG.check),
         // Dois novos (pedido de 2026-09-04: "quero estatísticas") --
         // reaproveitam a mesma contagem que já existia em texto no resumo
         // do dia, só que como número em destaque em vez de frase corrida.
-        iconeKpi('#f87171', 'kpi-parados', 'Orçamentos parados', '⏳'),
-        iconeKpi('#fb923c', 'kpi-peca', 'Aguardando peça', '🔧'),
+        iconeKpi('#f87171', 'kpi-parados', 'Orçamentos parados', SVG.ampulheta),
+        iconeKpi('#fb923c', 'kpi-peca', 'Aguardando peça', SVG.chave),
       ].join('');
 
       async function atualizarKpisEResumo() {

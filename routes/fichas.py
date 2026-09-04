@@ -11,6 +11,7 @@ from services.otimizador import (
     MINUTOS_PARADA, calcular_rota_fixa, calcular_tempo, haversine, otimizar_rota,
 )
 from services.push import notificar_tecnico
+from services.rota_tempo import geometria_multipla
 
 log = logging.getLogger("portotec.fichas")
 
@@ -900,3 +901,34 @@ def km_real_ficha(ficha_id):
     if not tem_ping:
         return jsonify({"km_real": None, "motivo": "sem posição suficiente registrada"})
     return jsonify({"km_real": round(total_km, 1)})
+
+
+@fichas_bp.route("/fichas/<int:ficha_id>/rota-geometria", methods=["GET"])
+def rota_geometria_ficha(ficha_id):
+    """Pontos [[lat,lng], ...] do trajeto real por rua ligando a partida às
+    paradas na ordem exibida -- pedido de 2026-09-04: "o mesmo mecanismo
+    [OSRM] que fez a rota do técnico, faça isso no mapa das rotas também"
+    (o mapa da ficha ligava parada a parada com reta pontilhada).
+
+    Devolve {"pontos": []} quando faltar partida/coordenada ou o OSRM não
+    responder -- o front já sabe cair na reta nesse caso, mesma rede de
+    segurança de sempre.
+    """
+    with db_conn() as conn:
+        ficha = fetch_one(conn, "SELECT ponto_partida_lat, ponto_partida_lng FROM fichas WHERE id = ?",
+                           (ficha_id,))
+        if not ficha or ficha.get("ponto_partida_lat") is None:
+            return jsonify({"pontos": []})
+
+        servicos = fetch_all(
+            conn, "SELECT lat, lng FROM servicos WHERE ficha_id = ? ORDER BY ordem, id",
+            (ficha_id,))
+        validos = [s for s in servicos if s.get("lat") is not None and s.get("lng") is not None]
+        if not validos:
+            return jsonify({"pontos": []})
+
+        pontos = [{"lat": ficha["ponto_partida_lat"], "lng": ficha["ponto_partida_lng"]}] + [
+            {"lat": s["lat"], "lng": s["lng"]} for s in validos
+        ]
+
+    return jsonify({"pontos": geometria_multipla(pontos) or []})

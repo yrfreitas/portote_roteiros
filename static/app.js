@@ -79,6 +79,7 @@ function parseDataBanco(valor) {
 let mapaLeaflet  = null;
 let mapaMarkers  = [];
 let mapaPolyline = null;
+let _mapaRotaToken = 0;
 
 function inicializarMapa(containerId) {
   if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
@@ -165,6 +166,24 @@ function renderizarMapaPontos(ficha, servicos, corTecnico = '#4f8dfb') {
     mapaLeaflet && mapaLeaflet.invalidateSize();
     animarTracadoRota();
   }, 120);
+
+  // Traçado real por rua (mesmo mecanismo da Central de Comando, pedido de
+  // 2026-09-04) -- a reta pontilhada acima entra na hora, sem esperar rede;
+  // se o OSRM responder, ela vira o trajeto de verdade por cima.
+  if (pontos.length >= 2 && ficha?.id) {
+    const token = ++_mapaRotaToken;
+    fetch(`${BASE}/api/fichas/${ficha.id}/rota-geometria`)
+      .then(r => r.ok ? r.json() : null)
+      .then(dados => {
+        if (token !== _mapaRotaToken || !mapaPolyline || !mapaLeaflet) return; // roteiro trocou antes da resposta
+        const reais = dados?.pontos;
+        if (!Array.isArray(reais) || reais.length < 2) return; // OSRM fora do ar: fica a reta mesmo
+        mapaPolyline.setLatLngs(reais);
+        mapaPolyline.setStyle({ dashArray: null });
+        animarTracadoRota();
+      })
+      .catch(() => {});
+  }
 }
 
 // Efeito de "traçar a rota": a linha nasce invisível e se revela até virar
@@ -242,7 +261,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v225';
+const VERSAO_PAINEL = 'v226';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
