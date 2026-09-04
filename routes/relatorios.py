@@ -751,6 +751,33 @@ def resumo_dia():
     })
 
 
+@relatorios_bp.route("/relatorios/comparativo-dia", methods=["GET"])
+def comparativo_dia():
+    """Hoje vs ontem, pra Central de Comando mostrar seta pra cima/baixo
+    nos KPIs em vez de só o número seco -- pedido de 2026-09-04.
+    """
+    hoje = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    ontem = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    with db_conn() as conn:
+        fechadas_hoje = fetch_one(conn, sql(
+            "SELECT COUNT(*) AS n FROM ordens_servico WHERE finalizada_em >= ?"), (f"{hoje} 00:00:00",))
+        fechadas_ontem = fetch_one(conn, sql(
+            "SELECT COUNT(*) AS n FROM ordens_servico WHERE finalizada_em >= ? AND finalizada_em < ?"),
+            (f"{ontem} 00:00:00", f"{hoje} 00:00:00"))
+        atendimentos_hoje = fetch_one(conn, sql("""
+            SELECT COUNT(*) AS n FROM servicos sv JOIN fichas f ON f.id = sv.ficha_id
+             WHERE f.data_referencia = ?"""), (hoje,))
+        atendimentos_ontem = fetch_one(conn, sql("""
+            SELECT COUNT(*) AS n FROM servicos sv JOIN fichas f ON f.id = sv.ficha_id
+             WHERE f.data_referencia = ?"""), (ontem,))
+
+    return jsonify({
+        "fechadas": {"hoje": fechadas_hoje["n"] or 0, "ontem": fechadas_ontem["n"] or 0},
+        "atendimentos": {"hoje": atendimentos_hoje["n"] or 0, "ontem": atendimentos_ontem["n"] or 0},
+    })
+
+
 _DESFECHO_ROTULO_FEED = {
     "resolvido": "resolveu o atendimento",
     "orcamento": "levantou orçamento",

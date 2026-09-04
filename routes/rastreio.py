@@ -751,13 +751,19 @@ def torre_controle():
         # sv.lat/lng do DESTINO (não é a posição do técnico, é onde o cliente
         # está) — pedido de 2026-09-03: desenhar a linha até o destino no
         # mapa, mesma ideia que /acompanhar/<token> já faz pro cliente ver.
+        #
+        # ra.token, sv.tipo_aparelho e o setor (2026-09-04): "filtro por
+        # setor" e "ícone do aparelho no pino" precisam dessas colunas, que
+        # antes nem chegavam até o front.
         linhas = fetch_all(conn, f"""
-            SELECT ra.id, ra.tecnico_id, ra.lat, ra.lng, ra.precisao,
+            SELECT ra.id, ra.tecnico_id, ra.token, ra.lat, ra.lng, ra.precisao,
                    ra.eta_minutos, ra.criado_em, ra.atualizado_em,
-                   sv.cliente, sv.endereco_completo,
-                   sv.lat AS destino_lat, sv.lng AS destino_lng
+                   sv.cliente, sv.endereco_completo, sv.tipo_aparelho,
+                   sv.lat AS destino_lat, sv.lng AS destino_lng,
+                   se.id AS setor_id, se.nome AS setor_nome
               FROM rastreios ra
               JOIN servicos sv ON sv.id = ra.servico_id
+              LEFT JOIN setores se ON se.id = sv.setor_id
              WHERE {_ATIVO_RA} AND sv.status <> 'concluido'
              ORDER BY ra.id DESC
         """)
@@ -775,6 +781,42 @@ def torre_controle():
     for t in tecnicos:
         r = por_tecnico.get(t["id"])
         tem_posicao = bool(r and r.get("lat") is not None)
+
+        # Atrasado: já passou da chegada prevista e ainda não chegou --
+        # mesmo cálculo de GET /rastreio/<token> (routes/rastreio.py:consultar),
+        # aqui pro lado do escritório em vez do cliente. Pedido de
+        # 2026-09-04: "alerta de atraso" no mapa da Central de Comando.
+        atrasado = False
+        # Parado há muito: mesma posição (raio pequeno) de ~10 minutos atrás
+        # até agora, apesar do rastreio continuar "ao vivo" -- pode ser
+        # trânsito parado, pode ser problema; quem decide é a pessoa vendo
+        # o alerta, o sistema só avisa. Pedido de 2026-09-04.
+        parado_ha_muito = False
+        if tem_posicao:
+            eta = r.get("eta_minutos")
+            referencia = r.get("atualizado_em") or r.get("criado_em")
+            if referencia and eta:
+                try:
+                    base = datetime.strptime(str(referencia)[:19], "%Y-%m-%d %H:%M:%S")
+                    chegada = base + timedelta(minutes=int(eta))
+                    atrasado = datetime.now() > chegada
+                except ValueError:
+                    pass
+
+            corte_10min = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+            with db_conn() as conn:
+                ping_antigo = fetch_one(conn, """
+                    SELECT lat, lng FROM rastreio_pings
+                     WHERE token = ? AND criado_em <= ?
+                     ORDER BY criado_em DESC LIMIT 1
+                """, (r.get("token"), corte_10min))
+            if ping_antigo and ping_antigo.get("lat") is not None:
+                # ~0.0009 grau ~= 100m no equador -- não precisa de haversine
+                # exato pra decidir "moveu ou não moveu" nessa escala.
+                moveu = (abs(ping_antigo["lat"] - r["lat"]) > 0.0009
+                        or abs(ping_antigo["lng"] - r["lng"]) > 0.0009)
+                parado_ha_muito = not moveu
+
         resultado.append({
             "tecnico_id": t["id"], "nome": t["nome"], "cor": t["cor"],
             "tem_foto": bool(t.get("tem_foto")),
@@ -783,14 +825,38 @@ def torre_controle():
             "precisao": r.get("precisao") if tem_posicao else None,
             "cliente": (r or {}).get("cliente"),
             "endereco": (r or {}).get("endereco_completo"),
+            "tipo_aparelho": (r or {}).get("tipo_aparelho"),
+            "setor_id": (r or {}).get("setor_id"),
+            "setor_nome": (r or {}).get("setor_nome"),
             "eta_minutos": (r or {}).get("eta_minutos"),
             "atualizado_em": (r or {}).get("atualizado_em"),
             "destino_lat": (r or {}).get("destino_lat"),
             "destino_lng": (r or {}).get("destino_lng"),
             "ao_vivo": tem_posicao,
+            "atrasado": atrasado,
+            "parado_ha_muito": parado_ha_muito,
         })
 
     return jsonify({"tecnicos": resultado})
+
+
+@rastreio_bp.route("/tecnicos/<int:tecnico_id>/trajeto-hoje", methods=["GET"])
+def trajeto_hoje(tecnico_id):
+    """Todos os pontos de GPS do técnico HOJE, juntando os vários rastreios
+    (um por cliente) numa trilha só, em ordem -- pedido de 2026-09-04:
+    "replay do dia" na Central de Comando. Gatekeeping em permissoes.py
+    (mesma permissão de torre_controle, é o mesmo tipo de dado sensível).
+    """
+    hoje = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with db_conn() as conn:
+        pontos = fetch_all(conn, """
+            SELECT rp.lat, rp.lng, rp.criado_em
+              FROM rastreio_pings rp
+              JOIN rastreios ra ON ra.token = rp.token
+             WHERE ra.tecnico_id = ? AND rp.criado_em >= ?
+             ORDER BY rp.criado_em ASC
+        """, (tecnico_id, f"{hoje} 00:00:00"))
+    return jsonify({"pontos": [dict(p) for p in pontos]})
 
 
 @rastreio_bp.route("/rastreios/diagnostico", methods=["GET"])

@@ -217,6 +217,13 @@ def checar_acesso(path: str, metodo: str):
     if path.startswith("/api/tecnicos/") and path.endswith("/carro") and metodo.upper() == "POST":
         return None if pode("estoque_editar") else "estoque_editar"
 
+    # Trajeto do dia (/api/tecnicos/<id>/trajeto-hoje) é histórico de GPS --
+    # mesma sensibilidade da Torre de Controle, mas o id no meio do path
+    # também impede casar por prefixo simples (mesmo problema do /carro
+    # acima). Pedido de 2026-09-04 ("replay do dia").
+    if path.startswith("/api/tecnicos/") and path.endswith("/trajeto-hoje") and metodo.upper() == "GET":
+        return None if pode("torre_controle") else "torre_controle"
+
     for prefixo, metodos, acao in REGRAS:
         if not path.startswith(prefixo):
             continue

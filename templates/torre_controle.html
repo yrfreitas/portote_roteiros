@@ -247,6 +247,83 @@
     }
     .contador b { color: var(--accent-text); font-size: 14px; }
 
+    /* ─── Extras de 2026-09-04: seta comparativa, filtro de setor, modo TV,
+       alerta de atraso/parado, painel de foco (replay do dia) ──────────── */
+    .kpi-seta { font-size: 11px; font-family: var(--mono); margin-left: 6px; }
+    .kpi-seta.subiu { color: var(--verde-texto); }
+    .kpi-seta.desceu { color: var(--vermelho); }
+    .kpi-seta.igual { color: #5a6d8a; }
+
+    .filtro-setor {
+      background: rgba(255,255,255,.04); border: 1px solid var(--borda); color: #9aacc6;
+      font-size: 10.5px; font-family: var(--mono); border-radius: 7px; padding: 3px 6px;
+      max-width: 110px;
+    }
+
+    /* Fica ACIMA do .contador (que também mora no canto superior direito),
+       sempre -- não só quando os dois aparecem juntos: os dois ficam
+       visíveis o tempo todo, então a posição relativa tem que ser fixa,
+       não condicional (achado testando: sobrepunham um no outro). */
+    .btn-modo-tv {
+      position: absolute; top: 16px; right: 16px; z-index: 500;
+      background: rgba(6,9,17,.9); border: 1px solid var(--borda);
+      border-radius: 10px; padding: 8px 14px; font-size: 12px; color: #9aacc6;
+      backdrop-filter: blur(6px); font-family: var(--mono); cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    .btn-modo-tv:hover { color: #eaf0fb; border-color: rgba(79,141,251,.4); }
+    .btn-modo-tv.ativo { color: var(--accent-text); border-color: rgba(79,141,251,.5); background: rgba(79,141,251,.1); }
+    .contador { top: 60px; }
+
+    .tec-card.atrasado { border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.06); }
+    .tec-alerta { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; margin-left: 6px; font-family: var(--mono); }
+    .tec-alerta.atraso { background: rgba(248,113,113,.16); color: #fca5a5; }
+    .tec-alerta.parado { background: rgba(245,181,68,.16); color: var(--ambar); }
+    .tec-foco-btn {
+      flex: none; width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--borda);
+      background: transparent; color: #7d8ea3; cursor: pointer; font-size: 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .tec-foco-btn:hover { border-color: var(--accent-text); color: var(--accent-text); }
+
+    /* Painel de foco -- desliza da direita, cobre parte do mapa */
+    .painel-foco {
+      position: absolute; top: 0; right: -380px; bottom: 0; width: 360px; z-index: 700;
+      background: rgba(8,11,20,.96); border-left: 1px solid var(--borda);
+      backdrop-filter: blur(10px); transition: right .25s ease-out;
+      display: flex; flex-direction: column;
+    }
+    .painel-foco.aberto { right: 0; }
+    .painel-foco-topo {
+      flex: none; padding: 16px; border-bottom: 1px solid var(--borda);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .painel-foco-fechar { background: none; border: none; color: #7d8ea3; font-size: 18px; cursor: pointer; }
+    .painel-foco-corpo { flex: 1; overflow-y: auto; padding: 14px 16px; }
+    .foco-atendimento {
+      padding: 9px 0; border-bottom: 1px solid rgba(148,178,220,.08); font-size: 12.5px;
+    }
+    .foco-atendimento b { display: block; font-size: 13px; }
+    .foco-atendimento .foco-meta { color: #7d8ea3; font-size: 11px; margin-top: 2px; font-family: var(--mono); }
+    .btn-replay {
+      width: 100%; margin-top: 4px; padding: 9px; border-radius: 9px; border: 1px solid var(--accent-text);
+      background: rgba(79,141,251,.12); color: var(--accent-text); font-family: var(--mono); font-size: 12px;
+      cursor: pointer; font-weight: 700;
+    }
+    .btn-replay:hover { background: rgba(79,141,251,.22); }
+    .btn-replay:disabled { opacity: .5; cursor: default; }
+
+    .btn-imprimir {
+      background: none; border: none; color: #7d8ea3; cursor: pointer; font-size: 13px;
+    }
+    .btn-imprimir:hover { color: #eaf0fb; }
+    @media print {
+      header, .kpis, main, .painel-lateral > .painel-titulo, .lista { display: none !important; }
+      body { overflow: visible; background: #fff; color: #000; }
+      .resumo-dia { max-height: none; border: none; }
+      .atividade-item { color: #000; }
+    }
+
     @media (max-width: 1400px) {
       .kpis { grid-template-columns: repeat(4, 1fr); }
     }
@@ -279,17 +356,36 @@
 
     <div class="corpo">
       <div class="painel-lateral">
-        <div class="painel-titulo"><span>Técnicos</span><span id="contagem-tecnicos"></span></div>
+        <div class="painel-titulo">
+          <span>Técnicos</span>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <select class="filtro-setor" id="filtro-setor" title="Filtrar por setor">
+              <option value="">Todos os setores</option>
+            </select>
+            <span id="contagem-tecnicos"></span>
+          </span>
+        </div>
         <div class="lista" id="lista"></div>
         <div class="resumo-dia">
-          <div class="painel-titulo" style="padding:0 0 8px;border:0;">⚡ Atividade recente</div>
+          <div class="painel-titulo" style="padding:0 0 8px;border:0;">
+            <span>⚡ Atividade recente</span>
+            <button type="button" class="btn-imprimir" id="btn-imprimir" title="Imprimir/exportar o resumo do dia">🖨️</button>
+          </div>
           <div id="resumo-lista"><span class="vazio" style="padding:6px 0;">Carregando...</span></div>
         </div>
       </div>
       <main>
         <div id="mapa"></div>
         <button type="button" class="btn-calor" id="btn-calor" title="Mostrar de onde vêm mais chamados (histórico)">🔥 Mapa de calor</button>
+        <button type="button" class="btn-modo-tv" id="btn-modo-tv" title="Foca automaticamente em cada técnico ao vivo, um de cada vez">📺 Modo TV</button>
         <div class="contador" id="contador" style="display:none;"></div>
+        <div class="painel-foco" id="painel-foco">
+          <div class="painel-foco-topo">
+            <strong id="foco-nome">Técnico</strong>
+            <button type="button" class="painel-foco-fechar" id="foco-fechar">✕</button>
+          </div>
+          <div class="painel-foco-corpo" id="foco-corpo"></div>
+        </div>
         <div class="sem-permissao" id="sem-permissao" style="display:none;">
           <h2>Sem acesso</h2>
           <p id="sem-permissao-msg">Você não tem permissão pra ver a Central de Comando. Peça pra quem administra o sistema liberar em Acessos.</p>
@@ -341,22 +437,48 @@
         requestAnimationFrame(passo);
       }
 
+      // Ícone do aparelho no pino, em vez de só a inicial -- pedido de
+      // 2026-09-04: dá contexto de o que está sendo atendido sem precisar
+      // clicar no pino pra abrir o popup.
+      const ICONE_APARELHO = [
+        [['geladeira', 'refrigerador', 'freezer'], '🧊'],
+        [['ar condicionado', 'ar-condicionado', 'split', 'climatizador'], '❄️'],
+        [['lava e seca', 'lavadora', 'máquina de lavar', 'maquina de lavar', 'tanquinho'], '🌀'],
+        [['micro-ondas', 'microondas', 'micro ondas'], '📡'],
+        [['lava-louça', 'lava louça', 'lava loucas'], '🍽️'],
+        [['fogão', 'fogao', 'cooktop'], '🔥'],
+      ];
+      function iconeAparelho(tipoAparelho) {
+        const alvo = (tipoAparelho || '').toLowerCase();
+        const grupo = ICONE_APARELHO.find(([chaves]) => chaves.some(c => alvo.includes(c)));
+        return grupo ? grupo[1] : null;
+      }
+
       function iconePara(t) {
         const opacidade = t.ao_vivo ? 1 : .55;
         const cor = esc(t.cor || '#4f8dfb');
+        // Atrasado (pedido de 2026-09-04): já passou da chegada prevista e
+        // ainda está a caminho -- anel vermelho pulsando MAIS rápido que o
+        // "ao vivo" normal, pra chamar atenção sem precisar abrir a lista.
+        const corAnel = t.atrasado ? '#f87171' : cor;
+        const duracaoAnel = t.atrasado ? '.9s' : '1.8s';
         const anel = t.ao_vivo
-          ? `<div style="position:absolute;inset:-9px;border-radius:50%;border:2px solid ${cor};opacity:.55;animation:anelPulso 1.8s ease-out infinite;"></div>`
+          ? `<div style="position:absolute;inset:-9px;border-radius:50%;border:2px solid ${corAnel};opacity:.55;animation:anelPulso ${duracaoAnel} ease-out infinite;"></div>`
           : '';
+        const emoji = iconeAparelho(t.tipo_aparelho);
+        const conteudo = emoji
+          ? `<span style="font-size:16px;">${emoji}</span>`
+          : iniciais(t.nome);
         return L.divIcon({
           className: '',
           html: `<div style="position:relative;width:38px;height:38px;">
                  ${anel}
                  <div style="width:38px;height:38px;border-radius:50%;background:${cor};
-                   border:3px solid ${t.ao_vivo ? '#fff' : 'rgba(255,255,255,.5)'};
-                   box-shadow:0 2px 14px rgba(0,0,0,.55)${t.ao_vivo ? `, 0 0 16px ${cor}` : ''};opacity:${opacidade};
+                   border:3px solid ${t.atrasado ? '#f87171' : (t.ao_vivo ? '#fff' : 'rgba(255,255,255,.5)')};
+                   box-shadow:0 2px 14px rgba(0,0,0,.55)${t.ao_vivo ? `, 0 0 16px ${corAnel}` : ''};opacity:${opacidade};
                    display:flex;align-items:center;justify-content:center;
                    color:#fff;font-weight:700;font-size:14px;font-family:inherit;">
-                   ${iniciais(t.nome)}</div></div>`,
+                   ${conteudo}</div></div>`,
           iconSize: [38, 38], iconAnchor: [19, 19],
         });
       }
@@ -411,11 +533,15 @@
           return;
         }
         const ponto = [t.lat, t.lng];
+        const emoji = iconeAparelho(t.tipo_aparelho);
         const popup = `<div style="min-width:170px;font-family:inherit;">
             <div style="font-weight:700;margin-bottom:3px;">${esc(t.nome)}</div>
             ${t.cliente ? `<div style="font-size:12px;color:#555;">Indo até ${esc(t.cliente)}</div>` : ''}
             ${t.endereco ? `<div style="font-size:11.5px;color:#777;">${esc(t.endereco)}</div>` : ''}
+            ${emoji || t.tipo_aparelho ? `<div style="font-size:11.5px;color:#777;">${emoji || ''} ${esc(t.tipo_aparelho || '')}</div>` : ''}
             ${t.eta_minutos != null ? `<div style="font-size:11.5px;color:#777;margin-top:3px;">ETA ~${t.eta_minutos} min</div>` : ''}
+            ${t.atrasado ? `<div style="font-size:11.5px;color:#c0392b;font-weight:700;margin-top:3px;">⚠ atrasado</div>` : ''}
+            ${t.parado_ha_muito && !t.atrasado ? `<div style="font-size:11.5px;color:#a06a10;font-weight:700;margin-top:3px;">⏸ parado há um tempo</div>` : ''}
           </div>`;
         if (marcadores[t.tecnico_id]) {
           marcadores[t.tecnico_id].setLatLng(ponto).setIcon(iconePara(t)).setPopupContent(popup);
@@ -470,20 +596,45 @@
           </div>`;
       }
 
+      // Guarda o último resultado pra reaplicar o filtro de setor sem
+      // esperar o próximo /api/torre-controle (troca de setor é instantânea).
+      let _ultimosTecnicos = [];
+      let _ultimoKm = {};
+      let _setorAtivo = '';
+
+      function popularFiltroSetor(tecnicos) {
+        const sel = document.getElementById('filtro-setor');
+        const atual = sel.value;
+        const setores = [...new Map(
+          tecnicos.filter(t => t.setor_id).map(t => [t.setor_id, t.setor_nome])
+        ).entries()];
+        sel.innerHTML = '<option value="">Todos os setores</option>'
+          + setores.map(([id, nome]) => `<option value="${id}">${esc(nome)}</option>`).join('');
+        sel.value = setores.some(([id]) => String(id) === atual) ? atual : '';
+      }
+
       function renderizarLista(tecnicos, kmPorTecnico) {
+        _ultimosTecnicos = tecnicos;
+        _ultimoKm = kmPorTecnico;
+        popularFiltroSetor(tecnicos);
+
+        const filtrados = _setorAtivo
+          ? tecnicos.filter(t => String(t.setor_id) === _setorAtivo)
+          : tecnicos;
+
         const alvo = document.getElementById('lista');
         document.getElementById('contagem-tecnicos').textContent = tecnicos.length ? `${tecnicos.length} cadastrados` : '';
-        if (!tecnicos.length) {
-          alvo.innerHTML = '<div class="vazio">Nenhum técnico cadastrado.</div>';
+        if (!filtrados.length) {
+          alvo.innerHTML = `<div class="vazio">${tecnicos.length ? 'Nenhum técnico nesse setor agora.' : 'Nenhum técnico cadastrado.'}</div>`;
           return;
         }
         // Ordena por km rodado hoje (maior primeiro) — mesma ideia do ranking
         // que existia no Painel de TV separado, agora junto com o status ao
         // vivo de cada um, num cartão só em vez de duas telas.
-        const ordenados = [...tecnicos].sort((a, b) => (kmPorTecnico[b.tecnico_id] || 0) - (kmPorTecnico[a.tecnico_id] || 0));
+        const ordenados = [...filtrados].sort((a, b) => (kmPorTecnico[b.tecnico_id] || 0) - (kmPorTecnico[a.tecnico_id] || 0));
 
         alvo.innerHTML = ordenados.map((t, i) => `
-          <div class="tec-card ${t.tecnico_id === selecionadoId ? 'selecionado' : ''} ${t.ao_vivo ? 'ao-vivo' : ''}"
+          <div class="tec-card ${t.tecnico_id === selecionadoId ? 'selecionado' : ''} ${t.ao_vivo ? 'ao-vivo' : ''} ${t.atrasado ? 'atrasado' : ''}"
                data-id="${t.tecnico_id}" style="animation-delay:${i * 35}ms;">
             ${avatarTecnico(t, i)}
             <div class="tec-corpo">
@@ -491,24 +642,44 @@
                 <span class="tec-nome">${esc(t.nome)}</span>
                 ${kmPorTecnico[t.tecnico_id] ? `<span class="tec-km">${kmPorTecnico[t.tecnico_id].toFixed(1)} km</span>` : ''}
               </div>
-              <div class="tec-status">${statusTexto(t)}</div>
+              <div class="tec-status">
+                ${statusTexto(t)}
+                ${t.atrasado ? '<span class="tec-alerta atraso">atrasado</span>' : ''}
+                ${t.parado_ha_muito && !t.atrasado ? '<span class="tec-alerta parado">parado</span>' : ''}
+              </div>
             </div>
+            <button type="button" class="tec-foco-btn" data-foco-id="${t.tecnico_id}" title="Ver a rota do dia">📋</button>
           </div>`).join('');
 
         alvo.querySelectorAll('.tec-card').forEach(el => {
-          el.addEventListener('click', () => {
+          el.addEventListener('click', (ev) => {
+            if (ev.target.closest('.tec-foco-btn')) return; // trata à parte, abaixo
             selecionadoId = Number(el.dataset.id);
             renderizarLista(tecnicos, kmPorTecnico);
             const m = marcadores[selecionadoId];
             if (m) { mapa.setView(m.getLatLng(), 15); m.openPopup(); }
           });
         });
+        alvo.querySelectorAll('.tec-foco-btn').forEach(btn => {
+          btn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            abrirPainelFoco(Number(btn.dataset.focoId));
+          });
+        });
+
+        if (window._modoTvAtivo) atualizarAlvosModoTv(filtrados.filter(t => t.ao_vivo));
       }
 
       function iconeKpi(cor, valorId, label, icone) {
+        // kpi-seta é um irmão do valor, não filho -- animarNumero() faz
+        // el.textContent = novo a cada ciclo, que apagaria qualquer filho
+        // (a setinha) se ela estivesse dentro do mesmo elemento.
         return `<div class="kpi" style="--cor:${cor};">
           <div class="kpi-icone">${icone}</div>
-          <div class="kpi-valor" id="${valorId}">0</div>
+          <div style="display:flex;align-items:baseline;">
+            <div class="kpi-valor" id="${valorId}">0</div>
+            <span id="${valorId}-seta"></span>
+          </div>
           <div class="kpi-label">${label}</div>
         </div>`;
       }
@@ -552,6 +723,8 @@
           animarNumero(document.getElementById('kpi-parados'), n.orcamentos_parados || 0);
           animarNumero(document.getElementById('kpi-peca'), n.precisa_peca || 0);
 
+          atualizarComparativo(totalPontos);
+
           return kmPorTecnico;
         } catch (e) {
           console.warn('KPIs/resumo:', e.message);
@@ -559,12 +732,50 @@
         }
       }
 
+      // ─── Comparativo com ontem (seta nos KPIs) ──────────────────────
+      // Pedido de 2026-09-04: "seta pra cima/baixo mostrando se hoje está
+      // melhor ou pior". Só busca 1x por carregamento de página (não muda
+      // durante o dia de um jeito que valha reconsultar a cada 12s) --
+      // guardado em módulo pra não repetir a chamada em todo atualizar().
+      let _comparativoCarregado = false;
+      function seta(hoje, ontem) {
+        if (hoje > ontem) return '<span class="kpi-seta subiu">▲</span>';
+        if (hoje < ontem) return '<span class="kpi-seta desceu">▼</span>';
+        return '<span class="kpi-seta igual">＝</span>';
+      }
+      async function atualizarComparativo(totalPontosHoje) {
+        if (_comparativoCarregado) return;
+        try {
+          const r = await fetch('/api/relatorios/comparativo-dia', { cache: 'no-store' }).then(r => r.json());
+          _comparativoCarregado = true;
+          const elFechadas = document.getElementById('kpi-fechadas-seta');
+          const elPontos = document.getElementById('kpi-pontos-seta');
+          if (elFechadas && r.fechadas) elFechadas.innerHTML = seta(r.fechadas.hoje, r.fechadas.ontem);
+          if (elPontos && r.atendimentos) elPontos.innerHTML = seta(totalPontosHoje, r.atendimentos.ontem);
+        } catch (e) {
+          console.warn('Comparativo:', e.message);
+        }
+      }
+
       // ─── Atividade recente (feed de eventos) ────────────────────────
+      let _ultimoEventoVisto = null;
       async function atualizarAtividade() {
         const alvo = document.getElementById('resumo-lista');
         try {
           const r = await fetch('/api/relatorios/atividade-recente', { cache: 'no-store' }).then(r => r.json());
           const eventos = r.eventos || [];
+
+          // Confete quando um orçamento aprovado NOVO aparece (pedido de
+          // 2026-09-04) -- "novo" é comparado contra o evento mais recente
+          // já visto no carregamento anterior, pra não confetizar de novo
+          // toda hora nos mesmos eventos antigos.
+          if (eventos.length && _ultimoEventoVisto) {
+            const idx = eventos.findIndex(e => e.quando === _ultimoEventoVisto);
+            const novos = idx === -1 ? [] : eventos.slice(0, idx);
+            if (novos.some(e => e.tipo === 'orcamento_aprovado')) confeteRapido();
+          }
+          if (eventos.length) _ultimoEventoVisto = eventos[0].quando;
+
           alvo.innerHTML = eventos.length
             ? eventos.map(e => `
                 <div class="atividade-item tipo-${esc(e.tipo)}">
@@ -575,6 +786,39 @@
         } catch (e) {
           console.warn('Atividade recente:', e.message);
         }
+      }
+
+      // Confete em canvas puro, sem lib -- mesma técnica do painel principal
+      // (app.js:_confeteRapido), reescrita aqui porque esta página é
+      // standalone (não carrega app.js). Desliga com prefers-reduced-motion.
+      function confeteRapido() {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const canvas = document.createElement('canvas');
+        canvas.style.cssText = 'position:fixed;inset:0;z-index:9999;pointer-events:none;';
+        canvas.width = innerWidth; canvas.height = innerHeight;
+        document.body.appendChild(canvas);
+        const ctx = canvas.getContext('2d');
+        const cores = ['#4f8dfb', '#22d3ee', '#34d399', '#f5b544', '#f87171'];
+        const pecas = Array.from({ length: 90 }, () => ({
+          x: Math.random() * canvas.width, y: -20 - Math.random() * canvas.height * .3,
+          vx: (Math.random() - .5) * 3, vy: 2 + Math.random() * 3.5,
+          rot: Math.random() * Math.PI, vr: (Math.random() - .5) * .3,
+          tam: 5 + Math.random() * 5, cor: cores[Math.floor(Math.random() * cores.length)],
+        }));
+        const inicio = performance.now();
+        (function passo(agora) {
+          const t = agora - inicio;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          pecas.forEach(p => {
+            p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+            ctx.save();
+            ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+            ctx.fillStyle = p.cor;
+            ctx.fillRect(-p.tam / 2, -p.tam / 2, p.tam, p.tam * .6);
+            ctx.restore();
+          });
+          if (t < 3200) requestAnimationFrame(passo); else canvas.remove();
+        })(inicio);
       }
       function _horaCurta(quando) {
         if (!quando) return '';
@@ -621,6 +865,136 @@
           if (pontos.length === 1) mapa.setView(pontos[0], 14);
           else mapa.fitBounds(pontos, { padding: [60, 60] });
           jaEnquadrouAlguma = true;
+        }
+      }
+
+      // ─── Filtro por setor ────────────────────────────────────────────
+      document.getElementById('filtro-setor').addEventListener('change', (ev) => {
+        _setorAtivo = ev.target.value;
+        renderizarLista(_ultimosTecnicos, _ultimoKm);
+      });
+
+      // ─── Imprimir/exportar o resumo do dia ─────────────────────────
+      // Pedido de 2026-09-04: "exportar o resumo do dia". Sem gerar PDF de
+      // verdade (exigiria lib nova) -- @media print já deixado no CSS
+      // esconde mapa/header/lista de técnicos e imprime só os KPIs +
+      // atividade; "salvar como PDF" na caixa de impressão do navegador
+      // resolve o "exportar" sem dependência nenhuma.
+      document.getElementById('btn-imprimir').addEventListener('click', () => window.print());
+
+      // ─── Modo TV: foca automaticamente em cada técnico ao vivo ──────
+      // Pedido de 2026-09-04: pensado pra tela fixa na parede, sem
+      // ninguém mexendo o mouse -- alterna sozinho pra cada técnico em
+      // atendimento, dando um "tour" da operação.
+      window._modoTvAtivo = false;
+      let _modoTvIndice = 0;
+      let _modoTvTimer = null;
+      let _modoTvAlvos = [];
+      function atualizarAlvosModoTv(aoVivo) { _modoTvAlvos = aoVivo; }
+      function passoModoTv() {
+        if (!_modoTvAlvos.length || !mapa) return;
+        _modoTvIndice = (_modoTvIndice + 1) % _modoTvAlvos.length;
+        const t = _modoTvAlvos[_modoTvIndice];
+        const m = marcadores[t.tecnico_id];
+        if (m) { mapa.setView(m.getLatLng(), 15); m.openPopup(); }
+        selecionadoId = t.tecnico_id;
+        renderizarLista(_ultimosTecnicos, _ultimoKm);
+      }
+      document.getElementById('btn-modo-tv').addEventListener('click', () => {
+        const btn = document.getElementById('btn-modo-tv');
+        window._modoTvAtivo = !window._modoTvAtivo;
+        btn.classList.toggle('ativo', window._modoTvAtivo);
+        if (window._modoTvAtivo) {
+          btn.textContent = '📺 Modo TV (ativo)';
+          _modoTvIndice = -1;
+          passoModoTv();
+          _modoTvTimer = setInterval(passoModoTv, 8000);
+        } else {
+          btn.textContent = '📺 Modo TV';
+          clearInterval(_modoTvTimer);
+        }
+      });
+
+      // ─── Painel de foco: rota do dia de um técnico + replay ─────────
+      // Pedido de 2026-09-04: clicar num técnico e ver TUDO que ele fez
+      // hoje, não só o ponto onde está agora.
+      let _marcadorReplay = null;
+      let _replayTimer = null;
+      async function abrirPainelFoco(tecnicoId) {
+        const painel = document.getElementById('painel-foco');
+        const corpo = document.getElementById('foco-corpo');
+        const t = _ultimosTecnicos.find(x => x.tecnico_id === tecnicoId);
+        document.getElementById('foco-nome').textContent = t ? t.nome : 'Técnico';
+        painel.classList.add('aberto');
+        corpo.innerHTML = '<div class="vazio">Carregando rota do dia...</div>';
+
+        try {
+          const fichas = await fetch(`/api/fichas?tecnico_id=${tecnicoId}`, { cache: 'no-store' }).then(r => r.json());
+          const hojeISO = new Date().toISOString().slice(0, 10);
+          const fichaHoje = (Array.isArray(fichas) ? fichas : []).find(f => f.data_referencia === hojeISO);
+          if (!fichaHoje) {
+            corpo.innerHTML = '<div class="vazio">Sem ficha de hoje pra esse técnico.</div>';
+            return;
+          }
+          const detalhe = await fetch(`/api/fichas/${fichaHoje.id}`, { cache: 'no-store' }).then(r => r.json());
+          const servicos = detalhe.servicos || [];
+          corpo.innerHTML = (servicos.length
+            ? servicos.map(s => `
+                <div class="foco-atendimento">
+                  <b>${esc(s.cliente || 'Cliente sem nome')}</b>
+                  <div class="foco-meta">${esc(s.status === 'concluido' ? '✓ concluído' : 'pendente')}
+                    ${s.tipo_aparelho ? ' · ' + esc(s.tipo_aparelho) : ''}</div>
+                </div>`).join('')
+            : '<div class="vazio">Nenhum atendimento na ficha de hoje.</div>')
+            + `<button type="button" class="btn-replay" id="btn-replay-agora">▶ Replay do trajeto de hoje</button>`;
+
+          document.getElementById('btn-replay-agora').addEventListener('click', () => iniciarReplay(tecnicoId));
+        } catch (e) {
+          corpo.innerHTML = `<div class="vazio">Falha ao carregar: ${esc(e.message)}</div>`;
+        }
+      }
+      document.getElementById('foco-fechar').addEventListener('click', () => {
+        document.getElementById('painel-foco').classList.remove('aberto');
+        pararReplay();
+      });
+
+      function pararReplay() {
+        if (_replayTimer) { clearInterval(_replayTimer); _replayTimer = null; }
+        if (_marcadorReplay) { mapa.removeLayer(_marcadorReplay); _marcadorReplay = null; }
+      }
+
+      async function iniciarReplay(tecnicoId) {
+        const btn = document.getElementById('btn-replay-agora');
+        pararReplay();
+        btn.disabled = true;
+        btn.textContent = 'Carregando trajeto...';
+        try {
+          const r = await fetch(`/api/tecnicos/${tecnicoId}/trajeto-hoje`, { cache: 'no-store' }).then(r => r.json());
+          const pontos = r.pontos || [];
+          if (pontos.length < 2) {
+            btn.textContent = 'Sem trajeto suficiente hoje ainda';
+            return;
+          }
+          btn.textContent = '⏸ Reproduzindo...';
+          _marcadorReplay = L.circleMarker([pontos[0].lat, pontos[0].lng], {
+            radius: 9, color: '#fff', weight: 2, fillColor: '#22d3ee', fillOpacity: 1,
+          }).addTo(mapa);
+          mapa.setView([pontos[0].lat, pontos[0].lng], 14);
+
+          // Comprime o dia inteiro em ~20s de animação, não em tempo real
+          // (um dia de trabalho levaria horas pra "assistir").
+          let i = 0;
+          const passoMs = Math.max(60, Math.floor(20000 / pontos.length));
+          _replayTimer = setInterval(() => {
+            i++;
+            if (i >= pontos.length) { pararReplay(); btn.disabled = false; btn.textContent = '▶ Replay do trajeto de hoje'; return; }
+            _marcadorReplay.setLatLng([pontos[i].lat, pontos[i].lng]);
+            mapa.panTo([pontos[i].lat, pontos[i].lng], { animate: true, duration: .3 });
+          }, passoMs);
+        } catch (e) {
+          btn.textContent = 'Falha ao carregar trajeto';
+        } finally {
+          setTimeout(() => { btn.disabled = false; }, 500);
         }
       }
 
