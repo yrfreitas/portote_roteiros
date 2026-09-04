@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import socket
+import time
 import xml.etree.ElementTree as ET
 from email.header import decode_header
 from typing import Dict, List, Optional
@@ -137,6 +138,12 @@ def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
     `pedidos_emitidos_recentes` (lista rápida) e
     `descricoes_emitidos_por_chave` (busca o corpo, lenta, só do que foi
     pedido) -- ver o porquê da separação nesta última.
+
+    Prazo próprio (2026-09-04): mesmo só cabeçalho, 80 fetches sequenciais
+    por IMAP pode passar de 30s num dia de servidor lento -- o Railway corta
+    a resposta (corpo vazio) e a tela inteira quebra. Corta a varredura em
+    ~18s e devolve o que já achou até ali (os mais recentes primeiro, então
+    o que sobra é o que menos importa) em vez de arriscar voltar vazio.
     """
     status, data = conn.search(None, "ALL")
     if status != "OK" or not data or not data[0]:
@@ -144,7 +151,12 @@ def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
 
     ids = sorted(data[0].split(), key=lambda x: -int(x))[:limite]
     candidatos = []
+    prazo = time.monotonic() + 12
     for mid in ids:
+        if time.monotonic() > prazo:
+            log.warning("Varredura de pedidos emitidos cortada por tempo (%d/%d e-mails vistos)",
+                        len(candidatos), len(ids))
+            break
         try:
             status, d = conn.fetch(mid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
             if status != "OK" or not d or not d[0]:
@@ -232,9 +244,18 @@ def descricoes_emitidos_por_chave(chaves: List[str], limite: int = 80) -> Dict[s
         conn = _conectar()
         candidatos = _candidatos_pedidos_emitidos(conn, limite)
         resultado = {}
+        # Prazo próprio pra essa parte, à parte do prazo da varredura de
+        # cabeçalho -- as duas juntas não podem passar do limite do Railway.
+        # O front já manda em lotes pequenos (2), então isso raramente
+        # deveria disparar; é rede de segurança, não o caminho normal.
+        prazo = time.monotonic() + 12
         for c in candidatos:
             if c["chave"] not in procuradas:
                 continue
+            if time.monotonic() > prazo:
+                log.warning("Busca de descrição completa cortada por tempo (%d/%d)",
+                            len(resultado), len(procuradas))
+                break
             descricao_longa = _descricao_completa_do_corpo(conn, c["mid"], c["codigo"])
             if descricao_longa:
                 resultado[c["chave"]] = descricao_longa
