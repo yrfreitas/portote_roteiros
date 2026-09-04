@@ -169,7 +169,16 @@ def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
                 descricao = re.sub(r"\.{2,}$", "…", m.group("descricao").strip())
                 codigo = m.group("codigo").strip()
                 data_email = msg.get("Date", "")
-                resultado.append({
+
+                # INVESTIGAÇÃO 2026-09-04: o assunto vem truncado pela VTEX
+                # ("Gaxet...") -- pedido do Kalebe é ver o nome COMPLETO da
+                # peça. Busca o corpo do e-mail (só pros que já bateram no
+                # assunto, então é 1 fetch extra por pedido, não por e-mail
+                # da caixa toda) atrás de uma descrição mais completa perto
+                # do código do produto.
+                descricao_longa, debug_corpo = _descricao_completa_do_corpo(conn, mid, codigo)
+
+                item = {
                     # Identidade estável entre uma consulta e outra -- o
                     # mesmo código pode ser comprado de novo em outro dia,
                     # então o hash usa código+data (não só o código) pra não
@@ -178,9 +187,12 @@ def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
                     # vínculo com cliente na tabela pedidos_email).
                     "chave": "em" + hashlib.sha1(f"{codigo}|{data_email}".encode()).hexdigest()[:14],
                     "codigo": codigo,
-                    "descricao": descricao,
+                    "descricao": descricao_longa or descricao,
                     "data": data_email,
-                })
+                }
+                if debug_corpo:
+                    item["_debug_corpo"] = debug_corpo
+                resultado.append(item)
             except Exception as exc:
                 log.warning("Falha lendo e-mail de pedido emitido %s: %s", mid, exc)
         return resultado
@@ -193,6 +205,64 @@ def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
                 conn.logout()
             except Exception:
                 pass
+
+
+def _corpo_texto(msg) -> str:
+    """Corpo do e-mail em texto simples, espaço colapsado -- prefere
+    text/plain; se só houver text/html, tira as tags na marra (sem lib de
+    parsing de HTML, que este projeto não usa em nenhum outro lugar)."""
+    corpo_html = None
+    partes = msg.walk() if msg.is_multipart() else [msg]
+    for parte in partes:
+        if parte.is_multipart():
+            continue
+        ctype = parte.get_content_type()
+        if ctype not in ("text/plain", "text/html"):
+            continue
+        try:
+            bruto = parte.get_payload(decode=True)
+            if bruto is None:
+                continue
+            texto = bruto.decode(parte.get_content_charset() or "utf-8", errors="replace")
+        except Exception:
+            continue
+        if ctype == "text/plain":
+            return re.sub(r"\s+", " ", texto).strip()
+        if corpo_html is None:
+            corpo_html = texto
+
+    if corpo_html:
+        texto = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", corpo_html, flags=re.DOTALL | re.IGNORECASE)
+        texto = re.sub(r"<[^>]+>", " ", texto)
+        texto = re.sub(r"&nbsp;", " ", texto)
+        return re.sub(r"\s+", " ", texto).strip()
+    return ""
+
+
+def _descricao_completa_do_corpo(conn, mid, codigo: str):
+    """Tenta achar, no corpo do e-mail, uma descrição mais completa da peça
+    do que a do assunto (que a VTEX trunca). Devolve (descricao_ou_None,
+    trecho_de_depuração) -- o segundo item é temporário, pra validar o
+    formato real do corpo antes de fechar a extração de vez.
+    """
+    try:
+        status, d = conn.fetch(mid, "(RFC822)")
+        if status != "OK" or not d or not d[0]:
+            return None, None
+        msg = email.message_from_bytes(d[0][1])
+        corpo = _corpo_texto(msg)
+    except Exception as exc:
+        log.warning("Falha lendo corpo do e-mail %s: %s", mid, exc)
+        return None, None
+
+    if not corpo:
+        return None, None
+
+    # Recorte ao redor do código do produto -- é o que interessa validar,
+    # sem devolver o e-mail inteiro (pode ter HTML de rodapé/propaganda).
+    pos = corpo.find(codigo)
+    trecho = corpo[max(0, pos - 30):pos + 250] if pos != -1 else corpo[:400]
+    return None, trecho
 
 
 def _conectar():
