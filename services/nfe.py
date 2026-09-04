@@ -134,10 +134,9 @@ _RE_PEDIDO_EMITIDO = re.compile(
 
 def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
     """Escaneia só CABEÇALHOS (rápido) e devolve os que batem no assunto de
-    'pedido emitido', com o `mid` (id IMAP) junto. Compartilhado por
-    `pedidos_emitidos_recentes` (lista rápida) e
-    `descricoes_emitidos_por_chave` (busca o corpo, lenta, só do que foi
-    pedido) -- ver o porquê da separação nesta última.
+    'pedido emitido', com o `mid` (id IMAP) junto -- usado por
+    `pedidos_emitidos_recentes`, que depois busca o corpo (lento) só dos
+    mais recentes pra completar o nome da peça.
 
     Busca por remetente NO SERVIDOR (2026-09-04, achado hoje: buscar "ALL" e
     filtrar VTEX no cliente, um fetch de cabeçalho por e-mail da caixa
@@ -172,8 +171,8 @@ def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
             # A própria VTEX trunca a descrição no assunto ("Gaxet...")
             # -- só limpa os espaços e troca "..."/".." por "…" pra não
             # parecer um nome de peça pela metade sem indicar que foi
-            # cortado. Serve de descrição PROVISÓRIA até
-            # descricoes_emitidos_por_chave trazer a completa.
+            # cortado. Serve de descrição PROVISÓRIA -- pedidos_emitidos_recentes
+            # troca pela completa (do corpo) pros mais recentes.
             descricao = re.sub(r"\.{2,}$", "…", m.group("descricao").strip())
             codigo = m.group("codigo").strip()
             data_email = msg.get("Date", "")
@@ -195,16 +194,21 @@ def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
     return candidatos
 
 
-def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
+def pedidos_emitidos_recentes(limite: int = 40, limite_nome_completo: int = 8) -> List[dict]:
     """Pedidos feitos na loja da Panasonic, direto do e-mail de confirmação
     -- não espera o robô da planilha achar a nota fiscal (que só chega bem
     depois, e às vezes nem chega se o pedido for cancelado no meio).
 
-    Só cabeçalho (rápido): a descrição vem truncada pela VTEX ("Gaxet...").
-    O nome completo é buscado à parte, por `descricoes_emitidos_por_chave`
-    -- juntar os dois numa chamada só chegou a estourar 30s pra ~8 pedidos
-    (Railway corta em ~30s, achado em 2026-09-04) porque cada nome completo
-    exige baixar o e-mail INTEIRO (RFC822), não só o cabeçalho.
+    O nome completo (do CORPO do e-mail) já vem pronto AQUI pros mais
+    recentes -- pedido de 2026-09-04: "quero que venha... igual era antes",
+    sem essa tela mostrando o nome cortado da VTEX e corrigindo sozinha
+    depois (tentativa anterior, v209-v213, que criou uma chamada separada
+    em segundo plano). Só os `limite_nome_completo` mais recentes buscam o
+    corpo (é lento, um fetch do e-mail INTEIRO por pedido); o resto usa a
+    descrição truncada do assunto -- pedido antigo raramente é o que
+    importa ver primeiro. Prazo total de ~24s: se não der tempo de buscar
+    o corpo de todos dentro do limite, os que sobrarem ficam com a
+    descrição truncada em vez de arriscar a resposta inteira estourar.
     """
     if not imap_configurado():
         return []
@@ -213,56 +217,21 @@ def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
     try:
         conn = _conectar()
         candidatos = _candidatos_pedidos_emitidos(conn, limite)
+
+        prazo = time.monotonic() + 24
+        for i, c in enumerate(candidatos):
+            if i >= limite_nome_completo or time.monotonic() > prazo:
+                break
+            descricao_longa = _descricao_completa_do_corpo(conn, c["mid"], c["codigo"])
+            if descricao_longa:
+                c["descricao"] = descricao_longa
+
         for c in candidatos:
             c.pop("mid", None)
         return candidatos
     except Exception:
         log.exception("Falha ao buscar pedidos emitidos por e-mail")
         return []
-    finally:
-        if conn is not None:
-            try:
-                conn.logout()
-            except Exception:
-                pass
-
-
-def descricoes_emitidos_por_chave(chaves: List[str], limite: int = 80) -> Dict[str, str]:
-    """Nome completo da peça (do CORPO do e-mail) só pras chaves pedidas.
-
-    Endpoint/chamada separada de propósito, em lotes pequenos do lado do
-    front (mesma ideia de GET /pedidos/sugestoes pra nota fiscal): buscar o
-    corpo INTEIRO de cada e-mail é lento o bastante pra estourar o timeout
-    do Railway se feito pra todos de uma vez (ver pedidos_emitidos_recentes).
-    """
-    if not chaves or not imap_configurado():
-        return {}
-
-    procuradas = set(chaves)
-    conn = None
-    try:
-        conn = _conectar()
-        candidatos = _candidatos_pedidos_emitidos(conn, limite)
-        resultado = {}
-        # Prazo próprio pra essa parte, à parte do prazo da varredura de
-        # cabeçalho -- as duas juntas não podem passar do limite do Railway.
-        # O front já manda em lotes pequenos (2), então isso raramente
-        # deveria disparar; é rede de segurança, não o caminho normal.
-        prazo = time.monotonic() + 12
-        for c in candidatos:
-            if c["chave"] not in procuradas:
-                continue
-            if time.monotonic() > prazo:
-                log.warning("Busca de descrição completa cortada por tempo (%d/%d)",
-                            len(resultado), len(procuradas))
-                break
-            descricao_longa = _descricao_completa_do_corpo(conn, c["mid"], c["codigo"])
-            if descricao_longa:
-                resultado[c["chave"]] = descricao_longa
-        return resultado
-    except Exception:
-        log.exception("Falha ao buscar descrição completa dos pedidos emitidos")
-        return {}
     finally:
         if conn is not None:
             try:
