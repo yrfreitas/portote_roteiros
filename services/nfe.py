@@ -139,19 +139,22 @@ def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
     `descricoes_emitidos_por_chave` (busca o corpo, lenta, só do que foi
     pedido) -- ver o porquê da separação nesta última.
 
-    Prazo próprio (2026-09-04): mesmo só cabeçalho, 80 fetches sequenciais
-    por IMAP pode passar de 30s num dia de servidor lento -- o Railway corta
-    a resposta (corpo vazio) e a tela inteira quebra. Corta a varredura em
-    ~18s e devolve o que já achou até ali (os mais recentes primeiro, então
-    o que sobra é o que menos importa) em vez de arriscar voltar vazio.
+    Busca por remetente NO SERVIDOR (2026-09-04, achado hoje: buscar "ALL" e
+    filtrar VTEX no cliente, um fetch de cabeçalho por e-mail da caixa
+    inteira, era rápido o bastante ontem mas passou de 30s hoje com o IMAP
+    mais lento -- Railway cortava a resposta e a tela quebrava. "FROM vtex"
+    faz o próprio Gmail filtrar antes de mandar qualquer coisa: só busca
+    cabeçalho de quem já é candidato de verdade, não de todo e-mail recente
+    (nota fiscal, Zendesk, código de acesso...). Prazo por tempo continua
+    como rede de segurança, não como estratégia principal.
     """
-    status, data = conn.search(None, "ALL")
+    status, data = conn.search(None, "FROM", "vtex")
     if status != "OK" or not data or not data[0]:
         return []
 
     ids = sorted(data[0].split(), key=lambda x: -int(x))[:limite]
     candidatos = []
-    prazo = time.monotonic() + 12
+    prazo = time.monotonic() + 15
     for mid in ids:
         if time.monotonic() > prazo:
             log.warning("Varredura de pedidos emitidos cortada por tempo (%d/%d e-mails vistos)",
@@ -162,9 +165,6 @@ def _candidatos_pedidos_emitidos(conn, limite: int) -> List[dict]:
             if status != "OK" or not d or not d[0]:
                 continue
             msg = email.message_from_bytes(d[0][1])
-            remetente = msg.get("From", "")
-            if "vtex" not in remetente.lower():
-                continue
             assunto = _decodificar_assunto(msg.get("Subject", ""))
             m = _RE_PEDIDO_EMITIDO.search(assunto)
             if not m:
