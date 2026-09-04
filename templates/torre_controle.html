@@ -84,7 +84,7 @@
 
     /* ─── Tiras de KPI ─────────────────────────────────────────────── */
     .kpis {
-      flex: none; display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+      flex: none; display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px;
       padding: 16px 26px 4px;
     }
     .kpi {
@@ -138,9 +138,12 @@
     }
     .tec-avatar.ao-vivo { border-color: rgba(52,211,153,.55); box-shadow: 0 0 0 3px rgba(52,211,153,.14), 0 3px 14px rgba(0,0,0,.45); }
     .tec-avatar-inicial {
+      width: 44px; height: 44px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
       color: #fff; font-weight: 800; font-size: 16px; font-family: var(--sans);
+      border: 2px solid rgba(255,255,255,.14); box-shadow: 0 3px 10px rgba(0,0,0,.4);
     }
+    .tec-avatar-inicial.ao-vivo { border-color: rgba(52,211,153,.55); box-shadow: 0 0 0 3px rgba(52,211,153,.14), 0 3px 14px rgba(0,0,0,.45); }
     .tec-vivo-dot {
       position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%;
       background: var(--verde); border: 2px solid #0d1220; box-shadow: 0 0 6px var(--verde);
@@ -169,17 +172,49 @@
     .tec-status .destaque { color: var(--verde-texto); font-weight: 600; }
     .vazio { padding: 30px 18px; text-align: center; color: #5a6d8a; font-size: 12.5px; line-height: 1.6; }
 
-    /* Resumo do dia — dentro do mesmo painel lateral, embaixo da lista */
+    /* Atividade recente — dentro do mesmo painel lateral, embaixo da lista.
+       Pedido de 2026-09-04: "quero coisas acontecendo" -- troca o resumo
+       estático (só contagens) por um feed de eventos de verdade (quem fez
+       o quê, e quando), que é o que dá a sensação de "central viva". */
     .resumo-dia { flex: none; border-top: 1px solid var(--borda); padding: 12px 16px 14px; max-height: 34%; overflow-y: auto; }
-    .resumo-item {
-      font-size: 12px; color: #c7d2e3; line-height: 1.5; padding: 5px 0 5px 16px; position: relative;
+    .atividade-item {
+      font-size: 12px; color: #c7d2e3; line-height: 1.4; padding: 7px 0 7px 16px; position: relative;
+      border-bottom: 1px solid rgba(148,178,220,.06);
     }
-    .resumo-item::before { content: '▸'; position: absolute; left: 0; color: var(--accent-text); }
+    .atividade-item:last-child { border-bottom: none; }
+    .atividade-item::before {
+      content: ''; position: absolute; left: 1px; top: 13px; width: 6px; height: 6px;
+      border-radius: 50%; background: var(--accent-text); box-shadow: 0 0 6px var(--accent-text);
+    }
+    .atividade-item.tipo-orcamento_aprovado::before { background: var(--verde); box-shadow: 0 0 6px var(--verde); }
+    .atividade-item.tipo-nao_atendido::before { background: var(--vermelho); box-shadow: 0 0 6px var(--vermelho); }
+    .atividade-hora { display: block; font-family: var(--mono); font-size: 10px; color: #5a6d8a; margin-top: 2px; }
 
     /* ─── Mapa ───────────────────────────────────────────────────── */
     main { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--borda); }
     #mapa { position: absolute; inset: 0; background: #0b0f17; }
-    .leaflet-tile { filter: brightness(.8) saturate(.85) hue-rotate(-3deg); }
+    /* Tiles escuros de verdade (CartoDB dark_all) -- pedido de 2026-09-04:
+       "tá muito feio" era, em boa parte, mapa CLARO com filtro CSS por
+       cima fingindo ser escuro (brightness/saturate/hue-rotate no OSM
+       padrão). Isso troca pelo provedor certo, sem filtro nenhum. */
+    .leaflet-control-attribution { display: none; }
+    .leaflet-control-zoom a {
+      background: rgba(13,18,30,.85) !important; color: #9aacc6 !important;
+      border-color: var(--borda) !important;
+    }
+    .leaflet-control-zoom a:hover { background: rgba(79,141,251,.2) !important; color: #fff !important; }
+
+    /* Botão de mapa de calor, sobre o canto do mapa */
+    .btn-calor {
+      position: absolute; top: 16px; left: 16px; z-index: 500;
+      background: rgba(6,9,17,.9); border: 1px solid var(--borda);
+      border-radius: 10px; padding: 8px 14px; font-size: 12px; color: #9aacc6;
+      backdrop-filter: blur(6px); font-family: var(--mono); cursor: pointer;
+      display: flex; align-items: center; gap: 7px; transition: border-color .15s, color .15s;
+    }
+    .btn-calor:hover { color: #eaf0fb; border-color: rgba(248,113,113,.4); }
+    .btn-calor.ativo { color: #fca5a5; border-color: rgba(248,113,113,.5); background: rgba(248,113,113,.1); }
+
     main::after {
       content: ''; position: absolute; inset: 12px; pointer-events: none; z-index: 500;
       background:
@@ -208,6 +243,9 @@
     }
     .contador b { color: var(--accent-text); font-size: 14px; }
 
+    @media (max-width: 1400px) {
+      .kpis { grid-template-columns: repeat(4, 1fr); }
+    }
     @media (max-width: 980px) {
       .kpis { grid-template-columns: repeat(2, 1fr); }
       .corpo { grid-template-columns: 1fr; }
@@ -240,12 +278,13 @@
         <div class="painel-titulo"><span>Técnicos</span><span id="contagem-tecnicos"></span></div>
         <div class="lista" id="lista"></div>
         <div class="resumo-dia">
-          <div class="painel-titulo" style="padding:0 0 8px;border:0;">📋 Resumo do dia</div>
+          <div class="painel-titulo" style="padding:0 0 8px;border:0;">⚡ Atividade recente</div>
           <div id="resumo-lista"><span class="vazio" style="padding:6px 0;">Carregando...</span></div>
         </div>
       </div>
       <main>
         <div id="mapa"></div>
+        <button type="button" class="btn-calor" id="btn-calor" title="Mostrar de onde vêm mais chamados (histórico)">🔥 Mapa de calor</button>
         <div class="contador" id="contador" style="display:none;"></div>
         <div class="sem-permissao" id="sem-permissao" style="display:none;">
           <h2>Sem acesso</h2>
@@ -261,6 +300,7 @@
       const INTERVALO = 12000;
       let mapa = null;
       const marcadores = {};   // tecnico_id -> L.marker
+      const linhasDestino = {}; // tecnico_id -> L.polyline até o destino
       let selecionadoId = null;
       let jaEnquadrouAlguma = false;
       const valoresAnteriores = {};
@@ -319,12 +359,50 @@
 
       function iniciarMapa() {
         mapa = L.map('mapa', { attributionControl: false, zoomControl: true }).setView([-23.55, -46.63], 11);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
+        // CartoDB dark_all: tile ESCURO de verdade, sem precisar de filtro
+        // CSS por cima fingindo (era o que tinha antes -- pedido de
+        // 2026-09-04, "tá muito feio").
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+          maxZoom: 20, subdomains: 'abcd',
+        }).addTo(mapa);
       }
+
+      // ─── Mapa de calor (histórico de onde vêm os chamados) ──────────
+      // Pedido de 2026-09-04: "mapa de calor nas regiões". Mesma técnica já
+      // usada na aba Peças (círculos translúcidos empilhados, sem lib
+      // externa) -- aqui num toggle, pra não brigar visualmente com os
+      // pinos dos técnicos ao vivo o tempo todo.
+      let _camadaCalor = null;
+      let _pontosCalor = null;
+      async function alternarMapaCalor() {
+        const btn = document.getElementById('btn-calor');
+        if (!mapa) return; // mapa ainda não montou (clique bem no primeiro instante)
+        if (_camadaCalor) {
+          mapa.removeLayer(_camadaCalor);
+          _camadaCalor = null;
+          btn.classList.remove('ativo');
+          return;
+        }
+        btn.classList.add('ativo');
+        btn.textContent = '🔥 Carregando...';
+        try {
+          if (!_pontosCalor) {
+            const r = await fetch('/api/relatorios/mapa-calor', { cache: 'no-store' }).then(r => r.json());
+            _pontosCalor = r.pontos || [];
+          }
+          _camadaCalor = L.layerGroup(_pontosCalor.map(p =>
+            L.circleMarker([p.lat, p.lng], { radius: 20, stroke: false, fillColor: '#f87171', fillOpacity: 0.05 })
+          )).addTo(mapa);
+        } finally {
+          btn.textContent = '🔥 Mapa de calor';
+        }
+      }
+      document.getElementById('btn-calor').addEventListener('click', alternarMapaCalor);
 
       function atualizarMarcador(t) {
         if (!t.lat || !t.lng) {
           if (marcadores[t.tecnico_id]) { mapa.removeLayer(marcadores[t.tecnico_id]); delete marcadores[t.tecnico_id]; }
+          if (linhasDestino[t.tecnico_id]) { mapa.removeLayer(linhasDestino[t.tecnico_id]); delete linhasDestino[t.tecnico_id]; }
           return;
         }
         const ponto = [t.lat, t.lng];
@@ -339,6 +417,17 @@
         } else {
           marcadores[t.tecnico_id] = L.marker(ponto, { icon: iconePara(t) }).addTo(mapa).bindPopup(popup);
         }
+
+        // Linha pontilhada até o destino -- os dados (destino_lat/lng) já
+        // vinham do servidor desde 2026-09-03 mas nunca tinham sido
+        // desenhados; só o pino do técnico aparecia, sem contexto de PRA
+        // ONDE ele está indo.
+        if (linhasDestino[t.tecnico_id]) mapa.removeLayer(linhasDestino[t.tecnico_id]);
+        if (t.destino_lat && t.destino_lng) {
+          linhasDestino[t.tecnico_id] = L.polyline([ponto, [t.destino_lat, t.destino_lng]], {
+            color: esc(t.cor || '#4f8dfb'), weight: 2, opacity: .55, dashArray: '2,8',
+          }).addTo(mapa);
+        }
       }
 
       function statusTexto(t) {
@@ -351,7 +440,30 @@
         return 'sem atendimento rastreado agora';
       }
 
-      const MEDALHAS = ['🥇', '🥈', '🥉'];
+      // Selo de posição no ranking -- pedido de 2026-09-03 ("tire os
+      // emotes, cara de ia") atendido de vez em 2026-09-04: as classes
+      // .tec-selo já existiam desde aquela rodada mas nunca tinham sido
+      // usadas de fato, o HTML ainda montava o emoji de medalha antigo.
+      function seloPosicao(i) {
+        if (i === 0) return '<span class="tec-selo p1">1</span>';
+        if (i === 1) return '<span class="tec-selo p2">2</span>';
+        if (i === 2) return '<span class="tec-selo p3">3</span>';
+        return `<span class="tec-selo pn">${i + 1}</span>`;
+      }
+
+      function avatarTecnico(t, posicao) {
+        const cor = esc(t.cor || '#4f8dfb');
+        const vivo = t.ao_vivo ? ' ao-vivo' : '';
+        const foto = t.tem_foto
+          ? `<img class="tec-avatar${vivo}" src="/api/tecnicos/${t.tecnico_id}/foto" alt="${esc(t.nome)}">`
+          : `<div class="tec-avatar-inicial${vivo}" style="background:linear-gradient(145deg, ${cor}, #0d1220);">${iniciais(t.nome)}</div>`;
+        return `
+          <div class="tec-avatar-wrap">
+            ${foto}
+            ${t.ao_vivo ? '<span class="tec-vivo-dot"></span>' : ''}
+            ${seloPosicao(posicao)}
+          </div>`;
+      }
 
       function renderizarLista(tecnicos, kmPorTecnico) {
         const alvo = document.getElementById('lista');
@@ -368,8 +480,7 @@
         alvo.innerHTML = ordenados.map((t, i) => `
           <div class="tec-card ${t.tecnico_id === selecionadoId ? 'selecionado' : ''} ${t.ao_vivo ? 'ao-vivo' : ''}"
                data-id="${t.tecnico_id}" style="animation-delay:${i * 35}ms;">
-            <span class="tec-medalha">${MEDALHAS[i] || ''}</span>
-            <span class="tec-bolinha ${t.ao_vivo ? 'ao-vivo' : 'parado'}" style="background:${esc(t.cor || '#4f8dfb')}"></span>
+            ${avatarTecnico(t, i)}
             <div class="tec-corpo">
               <div class="tec-nome-linha">
                 <span class="tec-nome">${esc(t.nome)}</span>
@@ -403,13 +514,18 @@
         iconeKpi('#34d399', 'kpi-pontos', 'Atendimentos hoje', '📍'),
         iconeKpi('#f5b544', 'kpi-km', 'Km planejados', '🚗'),
         iconeKpi('#a78bfa', 'kpi-fechadas', 'OS fechadas hoje', '✅'),
+        // Dois novos (pedido de 2026-09-04: "quero estatísticas") --
+        // reaproveitam a mesma contagem que já existia em texto no resumo
+        // do dia, só que como número em destaque em vez de frase corrida.
+        iconeKpi('#f87171', 'kpi-parados', 'Orçamentos parados', '⏳'),
+        iconeKpi('#fb923c', 'kpi-peca', 'Aguardando peça', '🔧'),
       ].join('');
 
       async function atualizarKpisEResumo() {
         try {
           const [fichas, resumo] = await Promise.all([
             fetch('/api/fichas', { cache: 'no-store' }).then(r => r.json()),
-            fetch('/api/relatorios/resumo-dia', { cache: 'no-store' }).then(r => r.json()).catch(() => ({ frases: [] })),
+            fetch('/api/relatorios/resumo-dia', { cache: 'no-store' }).then(r => r.json()).catch(() => ({ numeros: {} })),
           ]);
           const ativas = fichas.filter(f => f.status !== 'concluida');
           const kmPorTecnico = {};
@@ -423,13 +539,13 @@
           animarNumero(document.getElementById('kpi-pontos'), totalPontos);
           animarNumero(document.getElementById('kpi-km'), totalKm, 1);
 
-          const fecharesMatch = (resumo.frases || []).find(f => /OS fechada/.test(f));
-          const fechadas = fecharesMatch ? (parseInt(fecharesMatch, 10) || 0) : 0;
-          animarNumero(document.getElementById('kpi-fechadas'), fechadas);
-
-          document.getElementById('resumo-lista').innerHTML = (resumo.frases || []).length
-            ? resumo.frases.map(f => `<div class="resumo-item">${esc(f)}</div>`).join('')
-            : '<span class="vazio" style="padding:6px 0;">Sem dados ainda.</span>';
+          // Números crus do backend agora (ver routes/relatorios.py:resumo_dia)
+          // -- antes vinha um regex caçando "OS fechada" dentro do texto da
+          // frase, que quebraria se a frase mudasse uma palavra.
+          const n = resumo.numeros || {};
+          animarNumero(document.getElementById('kpi-fechadas'), n.fechadas || 0);
+          animarNumero(document.getElementById('kpi-parados'), n.orcamentos_parados || 0);
+          animarNumero(document.getElementById('kpi-peca'), n.precisa_peca || 0);
 
           return kmPorTecnico;
         } catch (e) {
@@ -438,8 +554,36 @@
         }
       }
 
+      // ─── Atividade recente (feed de eventos) ────────────────────────
+      async function atualizarAtividade() {
+        const alvo = document.getElementById('resumo-lista');
+        try {
+          const r = await fetch('/api/relatorios/atividade-recente', { cache: 'no-store' }).then(r => r.json());
+          const eventos = r.eventos || [];
+          alvo.innerHTML = eventos.length
+            ? eventos.map(e => `
+                <div class="atividade-item tipo-${esc(e.tipo)}">
+                  ${esc(e.texto)}
+                  <span class="atividade-hora">${_horaCurta(e.quando)}</span>
+                </div>`).join('')
+            : '<span class="vazio" style="padding:6px 0;">Nada aconteceu ainda hoje.</span>';
+        } catch (e) {
+          console.warn('Atividade recente:', e.message);
+        }
+      }
+      function _horaCurta(quando) {
+        if (!quando) return '';
+        // "2026-09-04 14:32:10" -> "14:32". Sem Date() de propósito: o valor
+        // já vem em UTC do servidor e converter certo exigiria saber o fuso
+        // de quem está olhando -- pra um feed de "há pouco" a hora crua já
+        // basta, sem arriscar mostrar hora errada.
+        const m = String(quando).match(/(\d{2}):(\d{2})/);
+        return m ? `${m[1]}:${m[2]}` : '';
+      }
+
       async function atualizar() {
         const kmPorTecnico = await atualizarKpisEResumo();
+        atualizarAtividade();
 
         let d;
         try {

@@ -738,7 +738,70 @@ def resumo_dia():
     if len(frases) == 1 and not (n_parados or n_peca or n_cotacao or n_minimo):
         frases.append("Sem pendência parada nas filas de orçamento, peça ou estoque agora.")
 
-    return jsonify({"frases": frases})
+    return jsonify({
+        "frases": frases,
+        # Números crus pra quem quiser ligar isso a um KPI (Central de
+        # Comando) sem precisar caçar dentro do texto da frase com regex
+        # -- o jeito antigo (ver git blame) quebrava se a frase mudasse.
+        "numeros": {
+            "fechadas": n_fechadas, "orcamentos_parados": n_parados,
+            "precisa_peca": n_peca, "estoque_minimo": n_minimo,
+            "cotacoes_pendentes": n_cotacao,
+        },
+    })
+
+
+_DESFECHO_ROTULO_FEED = {
+    "resolvido": "resolveu o atendimento",
+    "orcamento": "levantou orçamento",
+    "precisa_peca": "pediu peça",
+    "volto_depois": "vai voltar depois",
+    "cotacao_peca": "pediu cotação de peça",
+    "fazer_os": "fechou OS em campo",
+    "nao_atendido": "não conseguiu atender",
+}
+
+
+@relatorios_bp.route("/relatorios/atividade-recente", methods=["GET"])
+def atividade_recente():
+    """Feed dos últimos eventos reais -- pedido de 2026-09-04 pra Central de
+    Comando: "quero estatísticas, coisas acontecendo", não só números
+    parados no topo da tela. Junta desfecho de atendimento (técnico em
+    campo) e orçamento aprovado (site/painel), os mais recentes primeiro.
+    """
+    with db_conn() as conn:
+        desfechos = fetch_all(conn, sql("""
+            SELECT sd.registrado_em AS quando, sd.desfecho, s.cliente
+              FROM servico_desfecho sd
+              JOIN servicos s ON s.id = sd.servico_id
+             WHERE sd.registrado_em IS NOT NULL
+             ORDER BY sd.registrado_em DESC LIMIT 15
+        """))
+        orcamentos = fetch_all(conn, sql("""
+            SELECT os.orcamento_aprovado_em AS quando, c.nome AS cliente
+              FROM ordens_servico os
+              LEFT JOIN clientes c ON c.id = os.cliente_id
+             WHERE os.orcamento_aprovado_em IS NOT NULL
+             ORDER BY os.orcamento_aprovado_em DESC LIMIT 15
+        """))
+
+    eventos = []
+    for d in desfechos:
+        rotulo = _DESFECHO_ROTULO_FEED.get(d["desfecho"], d["desfecho"])
+        eventos.append({
+            "quando": d["quando"],
+            "texto": f"{d['cliente'] or 'Cliente sem nome'} — {rotulo}",
+            "tipo": d["desfecho"],
+        })
+    for o in orcamentos:
+        eventos.append({
+            "quando": o["quando"],
+            "texto": f"{o['cliente'] or 'Cliente sem nome'} — orçamento aprovado",
+            "tipo": "orcamento_aprovado",
+        })
+
+    eventos.sort(key=lambda e: e["quando"] or "", reverse=True)
+    return jsonify({"eventos": eventos[:15]})
 
 
 @relatorios_bp.route("/relatorios/mapa-calor", methods=["GET"])
