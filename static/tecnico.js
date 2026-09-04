@@ -257,6 +257,22 @@
   // navigator.share abre a bandeja nativa do celular, onde o grupo aparece
   // entre as conversas recentes — um toque. O wa.me e o plano B para desktop,
   // onde a bandeja nativa nao existe.
+  // Fonte ÚNICA da URL do Waze — usada tanto na mensagem (montarAviso) quanto
+  // no botão "Abrir Waze" da folha. Prefere lat/lng (rota exata); cai pro
+  // endereço/CEP em texto quando o ponto não tem coordenada. Mesmo padrão já
+  // usado no painel do escritório (static/app.js).
+  //
+  // Achado em 2026-09-04 ("o link da localização não está sendo enviado
+  // junto com o Waze"): essa função nunca existiu neste arquivo -- só o
+  // comentário acima dela ("quem gera é o urlWazeDe()") e as duas chamadas.
+  // Toda vez que um técnico tocava "Waze", montarAviso() jogava
+  // ReferenceError e a folha inteira (com o link de acompanhamento E o
+  // Waze) não chegava a aparecer.
+  function urlWazeDe(s) {
+    if (s.lat && s.lng) return `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`;
+    return `https://waze.com/ul?q=${encodeURIComponent(s.endereco_completo || s.cep || '')}&navigate=yes`;
+  }
+
   function montarAviso(s, linkAcompanhar) {
     const partes = [];
     partes.push(`🚗 Técnico ${tecnicoNome || ''} a caminho do cliente ${s.cliente || 'sem nome'}`.trim());
@@ -1702,7 +1718,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v222';
+  const VERSAO_TELA = 'v223';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
