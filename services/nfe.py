@@ -19,7 +19,7 @@ import re
 import socket
 import xml.etree.ElementTree as ET
 from email.header import decode_header
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 log = logging.getLogger("portotec.nfe")
 
@@ -170,15 +170,14 @@ def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
                 codigo = m.group("codigo").strip()
                 data_email = msg.get("Date", "")
 
-                # INVESTIGAÇÃO 2026-09-04: o assunto vem truncado pela VTEX
-                # ("Gaxet...") -- pedido do Kalebe é ver o nome COMPLETO da
-                # peça. Busca o corpo do e-mail (só pros que já bateram no
-                # assunto, então é 1 fetch extra por pedido, não por e-mail
-                # da caixa toda) atrás de uma descrição mais completa perto
-                # do código do produto.
-                descricao_longa, debug_corpo = _descricao_completa_do_corpo(conn, mid, codigo)
+                # O assunto vem truncado pela VTEX ("Gaxet...") -- o corpo
+                # do e-mail tem o nome completo (achado em 2026-09-04, ver
+                # _descricao_completa_do_corpo). Busca só pros que já
+                # bateram no assunto: 1 fetch extra por PEDIDO, não por
+                # e-mail da caixa toda.
+                descricao_longa = _descricao_completa_do_corpo(conn, mid, codigo)
 
-                item = {
+                resultado.append({
                     # Identidade estável entre uma consulta e outra -- o
                     # mesmo código pode ser comprado de novo em outro dia,
                     # então o hash usa código+data (não só o código) pra não
@@ -189,10 +188,7 @@ def pedidos_emitidos_recentes(limite: int = 80) -> List[dict]:
                     "codigo": codigo,
                     "descricao": descricao_longa or descricao,
                     "data": data_email,
-                }
-                if debug_corpo:
-                    item["_debug_corpo"] = debug_corpo
-                resultado.append(item)
+                })
             except Exception as exc:
                 log.warning("Falha lendo e-mail de pedido emitido %s: %s", mid, exc)
         return resultado
@@ -239,30 +235,37 @@ def _corpo_texto(msg) -> str:
     return ""
 
 
-def _descricao_completa_do_corpo(conn, mid, codigo: str):
-    """Tenta achar, no corpo do e-mail, uma descrição mais completa da peça
-    do que a do assunto (que a VTEX trunca). Devolve (descricao_ou_None,
-    trecho_de_depuração) -- o segundo item é temporário, pra validar o
-    formato real do corpo antes de fechar a extração de vez.
+def _descricao_completa_do_corpo(conn, mid, codigo: str) -> Optional[str]:
+    """Nome completo da peça, lido do CORPO do e-mail (o assunto vem
+    truncado pela VTEX, ex: "Gaxet..."). Achado investigando em 2026-09-04:
+    o corpo do e-mail (HTML) repete a descrição da peça duas vezes seguidas
+    logo depois do código -- sobra do template renderizar o mesmo dado em
+    dois elementos visuais (nome + tooltip/alt, por exemplo) que a extração
+    de texto (que tira as tags) junta numa frase só:
+
+        "Receber ARADGC606120 - Gaxeta porta FC / Gasket door FC BB64-5
+         Gaxeta porta FC / Gasket door FC BB64-5 até 07/09/2026 ..."
+
+    Captura o texto entre o código e essa repetição -- é o nome completo,
+    sem o corte que o assunto tem.
     """
     try:
         status, d = conn.fetch(mid, "(RFC822)")
         if status != "OK" or not d or not d[0]:
-            return None, None
+            return None
         msg = email.message_from_bytes(d[0][1])
         corpo = _corpo_texto(msg)
     except Exception as exc:
         log.warning("Falha lendo corpo do e-mail %s: %s", mid, exc)
-        return None, None
+        return None
 
     if not corpo:
-        return None, None
+        return None
 
-    # Recorte ao redor do código do produto -- é o que interessa validar,
-    # sem devolver o e-mail inteiro (pode ter HTML de rodapé/propaganda).
-    pos = corpo.find(codigo)
-    trecho = corpo[max(0, pos - 30):pos + 250] if pos != -1 else corpo[:400]
-    return None, trecho
+    m = re.search(re.escape(codigo) + r"\s*-\s*(.+?)\s+\1(?:\s|$)", corpo)
+    if not m:
+        return None
+    return m.group(1).strip()
 
 
 def _conectar():

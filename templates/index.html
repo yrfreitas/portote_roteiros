@@ -418,14 +418,10 @@
           peças</b>, ali em cima.
         </p>
 
-        <!-- Direto do e-mail de confirmação da loja, sem esperar o robô da
-             planilha achar o XML da nota fiscal (chega bem depois do
-             pedido em si) — pedido de 2026-09-03. -->
-        <div class="historico-header" style="margin-top:4px;">
-          <span class="visao-geral-title" style="font-size:14px;">Pedidos emitidos (direto do e-mail)</span>
-        </div>
-        <div id="pecas-emitidos-lista" style="margin-bottom:18px;"></div>
-
+        <!-- Pedidos emitidos (direto do e-mail, ver static/app.js:
+             carregarPecas) entram DENTRO desta mesma lista, no final —
+             pedido de 2026-09-04: "tem que estar lá embaixo junto com os
+             faturados", não numa seção separada. -->
         <div id="pecas-lista"></div>
       </div>
 

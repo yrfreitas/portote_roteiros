@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v207';
+const VERSAO_PAINEL = 'v208';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -352,7 +352,6 @@ async function recarregarViewAtual() {
       await carregarHistorico();
     } else if (ativa === 'pecas') {
       await carregarPecas();
-      if (_pecasTab === 'compradas') await carregarPedidosEmitidosEmail();
     }
     // A aba "cep" não mostra dado compartilhado — é uma consulta pontual do
     // usuário e recarregar apagaria o resultado que ele está lendo.
@@ -663,7 +662,6 @@ function switchMainTab(tab) {
   }
   if (isPecas) {
     carregarPecas();
-    if (_pecasTab === 'compradas') carregarPedidosEmitidosEmail();
   }
   if (isAtend) {
     carregarDesfechos();
@@ -3420,7 +3418,7 @@ function pecasSwitchTab(tab) {
   document.getElementById('pecas-aba-compradas').style.display = tab === 'compradas' ? 'block' : 'none';
   document.getElementById('pecas-aba-pedidos').style.display = tab === 'pedidos' ? 'block' : 'none';
   document.getElementById('pecas-aba-cotacao').style.display = tab === 'cotacao' ? 'block' : 'none';
-  if (tab === 'compradas') carregarPedidosEmitidosEmail();
+  if (tab === 'compradas') carregarPecas();
   if (tab === 'pedidos') carregarPedidosComComprovante();
   if (tab === 'cotacao') { carregarCotacoes(); carregarStatusSubstituicao(); }
 }
@@ -3541,28 +3539,37 @@ async function desfazerPedidoPeca(servicoId, pedidoOsId) {
 // propósito: sem "Registrar no estoque" (não existe custo/nota ainda pra
 // registrar) e sem botão de "chegou" (marcar chegada aqui seria dado
 // falso — a peça claramente ainda não chegou).
-async function carregarPedidosEmitidosEmail() {
-  const alvo = document.getElementById('pecas-emitidos-lista');
-  if (!alvo) return;
-  alvo.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:14px;"><div class="spinner"></div> Lendo e-mail...</div>`;
+//
+// Pedido de 2026-09-04: "tem que estar lá embaixo junto com os
+// faturados" -- deixou de ser uma seção própria (ver carregarPecas()
+// abaixo, que busca isso e agrega no MESMO #pecas-lista) e ganhou
+// data-estagio/data-pendente/data-busca pra participar dos mesmos
+// filtro/busca dos cartões da planilha, não só visualmente parecer igual.
+async function _buscarPedidosEmitidosEmail() {
   try {
     const r = await api('/pedidos/emitidos-email');
-    const pedidos = r.pedidos || [];
-    if (!pedidos.length) {
-      alvo.innerHTML = `<p class="pecas-nota-cotacao" style="margin:0;">Nenhum pedido emitido encontrado no e-mail recente.</p>`;
-      return;
-    }
-    alvo.innerHTML = pedidos.map(p => {
-      // A descrição vem TRUNCADA pelo próprio e-mail da VTEX -- às vezes
-      // sobra só 1-2 letras ("P…", "CO…"), que mais atrapalha que ajuda.
-      // Só pré-preenche o campo Peça com ela quando sobrou coisa legível o
-      // bastante pra valer (4+ caracteres); do contrário deixa em branco
-      // com um placeholder, sem "P…" bagunçando o campo de digitação.
-      const descUtil = (p.descricao || '').replace(/…$/, '').trim().length >= 4;
-      return `
-      <div class="peca-linha peca-linha-email" id="peca-email-${p.chave}"
+    return r.pedidos || [];
+  } catch (e) {
+    console.warn('Falha lendo pedidos emitidos por e-mail:', e);
+    return [];
+  }
+}
+
+function _htmlPedidosEmitidosEmail(pedidos) {
+  return pedidos.map(p => {
+    // Quando o corpo do e-mail não trouxe o nome completo (falha de rede,
+    // formato diferente), sobra o assunto truncado da VTEX -- às vezes só
+    // 1-2 letras ("P…"), que mais atrapalha que ajuda. Só pré-preenche o
+    // campo Peça quando sobrou algo legível (4+ caracteres); do contrário
+    // fica em branco com um placeholder.
+    const descUtil = (p.descricao || '').replace(/…$/, '').trim().length >= 4;
+    const busca = ((p.codigo || '') + ' ' + (p.descricao || '') + ' ' + (p.cliente_final || '')).toLowerCase();
+    return `
+      <div class="peca-linha peca-linha-email${p.cliente_final ? ' tem-cliente' : ''}" id="peca-email-${p.chave}"
            data-chave="${esc(p.chave)}" data-codigo="${esc(p.codigo)}"
-           data-descricao="${esc(p.descricao)}" data-data-email="${esc(p.data)}">
+           data-descricao="${esc(p.descricao)}" data-data-email="${esc(p.data)}"
+           data-estagio="CRIADO" data-pendente="${p.cliente_final ? '0' : '1'}"
+           data-busca="${esc(busca)}">
         <div class="pel-topo">
           <span class="pel-codigo" title="${esc(p.descricao)}">${esc(p.codigo)}</span>
           <span class="peca-estagio e-criado">aguardando pagamento</span>
@@ -3597,10 +3604,7 @@ async function carregarPedidosEmitidosEmail() {
           </div>
         </div>
       </div>`;
-    }).join('');
-  } catch (e) {
-    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
-  }
+  }).join('');
 }
 
 async function salvarPecaEmailInline(chave) {
@@ -3697,20 +3701,33 @@ async function carregarPecas() {
   if (!lista) return;
 
   const todas = document.getElementById('pecas-mostrar-todas')?.checked;
-  lista.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Lendo a planilha...</div>`;
+  lista.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Lendo a planilha e o e-mail...</div>`;
 
   let r;
+  let emitidosEmail;
   try {
-    r = await api(`/pedidos${todas ? '?todos=true' : ''}`);
+    // Em paralelo: a planilha (Google Sheets) e a leitura direta do e-mail
+    // (pedido de 2026-09-03/04, robô da planilha ficou parado pra pedidos
+    // recentes) -- um não espera o outro, e um erro no e-mail não pode
+    // derrubar a lista principal.
+    [r, emitidosEmail] = await Promise.all([
+      api(`/pedidos${todas ? '?todos=true' : ''}`),
+      _buscarPedidosEmitidosEmail(),
+    ]);
   } catch (e) {
     lista.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
     return;
   }
 
   clientesConhecidos = r.clientes || [];
-  const pedidos = r.pedidos || [];
+  // Faturado (pedido de 2026-09-04: "eu não quero que apareça mais") só
+  // fica de fora quando ainda NÃO chegou -- uma peça que já está na
+  // bancada continua aparecendo (chegou_em manda mais que status_compra,
+  // mesma prioridade que o resto da tela já usa).
+  const pedidos = (r.pedidos || []).filter(p =>
+    p.chegou_em || (p.status_compra || '').trim().toUpperCase() !== 'FATURADO');
 
-  if (pedidos.length === 0) {
+  if (pedidos.length === 0 && emitidosEmail.length === 0) {
     lista.innerHTML = `
       <div class="historico-vazio">
         ${icone('check', 'icone-24')}
@@ -3721,22 +3738,27 @@ async function carregarPecas() {
 
   // Contagem por estágio: é o que responde "cadê a peça do fulano?" antes
   // mesmo de procurar. Antes o status_compra vinha da planilha até o
-  // navegador e era descartado na hora de desenhar.
-  const porEstagio = { chegou: 0, ENVIADO: 0, FATURADO: 0, APROVADO: 0, CRIADO: 0 };
+  // navegador e era descartado na hora de desenhar. FATURADO não entra
+  // mais como chip próprio -- pedido de 2026-09-04, e essas linhas nem
+  // chegam aqui (já filtradas acima). Os pedidos emitidos por e-mail
+  // contam junto de CRIADO: mesma etapa, duas origens.
+  const porEstagio = { chegou: 0, ENVIADO: 0, APROVADO: 0, CRIADO: emitidosEmail.length };
   pedidos.forEach(p => {
     if (p.chegou_em) porEstagio.chegou++;
     else porEstagio[(p.status_compra || 'CRIADO').toUpperCase()] =
       (porEstagio[(p.status_compra || 'CRIADO').toUpperCase()] || 0) + 1;
   });
+  const totalCombinado = pedidos.length + emitidosEmail.length;
+  const semClienteCombinado = pedidos.filter(p => !p.cliente_final).length
+    + emitidosEmail.filter(p => !p.cliente_final).length;
 
   lista.innerHTML = `
     <div class="pecas-filtros" id="pecas-filtros">
-      ${[['', 'Todas', pedidos.length],
+      ${[['', 'Todas', totalCombinado],
          ['chegou', 'Chegou', porEstagio.chegou],
          ['ENVIADO', 'A caminho', porEstagio.ENVIADO],
-         ['FATURADO', 'Faturada', porEstagio.FATURADO],
          ['CRIADO', 'Emitido', porEstagio.CRIADO],
-         ['pendente', 'Sem cliente', pedidos.filter(p => !p.cliente_final).length]]
+         ['pendente', 'Sem cliente', semClienteCombinado]]
         .map(([v, rot, n]) => `
           <button class="pecas-filtro${v === '' ? ' ativo' : ''}" data-estagio="${v}"
                   onclick="filtrarPorEstagio('${v}')">
@@ -3747,7 +3769,7 @@ async function carregarPecas() {
       <input class="pecas-busca" id="pecas-busca" type="search" autocomplete="off"
              placeholder="Filtrar por peça, cliente ou pedido..."
              oninput="filtrarPecas(this.value)">
-      <span class="pecas-contagem" id="pecas-contagem">${pedidos.length} compra${pedidos.length !== 1 ? 's' : ''}</span>
+      <span class="pecas-contagem" id="pecas-contagem">${totalCombinado} compra${totalCombinado !== 1 ? 's' : ''}</span>
       ${r.sugestao_peca_ativa
         ? `<span class="conc-tag ok" title="O código/descrição da peça é lido sozinho da nota fiscal (XML) que a Panasonic envia por e-mail — só preencha à mão se vier em branco">campo "Peça" preenche sozinho</span>`
         : `<span class="conc-tag neutro" title="Leitura automática da nota fiscal desligada neste ambiente — preencha o campo Peça à mão">campo "Peça" é preenchido à mão</span>`}
@@ -3824,12 +3846,16 @@ async function carregarPecas() {
       <div class="peca-sugestao-slot" id="sugestao-${p.linha}"
            data-nota="${esc(p.nota_fiscal)}"></div>
     </div>
-  `).join('') + `
+  `).join('')
+    // Pedido de 2026-09-04: "tem que estar lá embaixo junto com os
+    // faturados" -- os cartões de pedido emitido (e-mail) entram no fim
+    // da MESMA lista, não numa seção à parte.
+    + _htmlPedidosEmitidosEmail(emitidosEmail) + `
     <datalist id="lista-clientes">
       ${clientesConhecidos.map(c => `<option value="${esc(c.nome)}">${esc(c.aparelho)}${c.modelo ? ' · ' + esc(c.modelo) : ''}</option>`).join('')}
     </datalist>`;
 
-  atualizarSeloPecas(r.pendentes ?? pedidos.filter(p => !p.cliente_final).length);
+  atualizarSeloPecas(semClienteCombinado);
 
   // Mostra o saldo do estoque ao lado de cada compra (o elo com a aba Estoque).
   anotarSaldosEstoque(pedidos);
