@@ -990,11 +990,7 @@ _CSP = "; ".join([
     "script-src 'self' 'unsafe-inline' https://unpkg.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
     "font-src 'self' https://fonts.gstatic.com",
-    # basemaps.cartocdn.com: tile ESCURO de verdade da Central de Comando
-    # (pedido de 2026-09-04, "está muito feio") -- sem isso o navegador
-    # bloqueia a imagem (CSP) e o mapa fica cinza, sem erro visível pra
-    # quem está só olhando a tela.
-    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://unpkg.com",
+    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://unpkg.com",
     "connect-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'self'",

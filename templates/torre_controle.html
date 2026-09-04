@@ -193,10 +193,14 @@
     /* ─── Mapa ───────────────────────────────────────────────────── */
     main { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--borda); }
     #mapa { position: absolute; inset: 0; background: #0b0f17; }
-    /* Tiles escuros de verdade (CartoDB dark_all) -- pedido de 2026-09-04:
-       "tá muito feio" era, em boa parte, mapa CLARO com filtro CSS por
-       cima fingindo ser escuro (brightness/saturate/hue-rotate no OSM
-       padrão). Isso troca pelo provedor certo, sem filtro nenhum. */
+    /* Mapa escuro sem depender de provedor pago -- CartoDB dark_all passou a
+       exigir chave de API (achado em 2026-09-04, "API KEY REQUIRED" escrito
+       por cima do mapa inteiro). OpenStreetMap padrão + inversão de cor no
+       PAINEL DE TILES INTEIRO (não tile por tile, pra não deixar costura
+       entre eles) é o truque de sempre pra virar claro em escuro de verdade:
+       bem diferente do filtro antigo (só brightness/saturate/hue-rotate),
+       que deixava o mapa CLARO só um pouco mais escuro, não realmente escuro. */
+    .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7); }
     .leaflet-control-attribution { display: none; }
     .leaflet-control-zoom a {
       background: rgba(13,18,30,.85) !important; color: #9aacc6 !important;
@@ -359,12 +363,13 @@
 
       function iniciarMapa() {
         mapa = L.map('mapa', { attributionControl: false, zoomControl: true }).setView([-23.55, -46.63], 11);
-        // CartoDB dark_all: tile ESCURO de verdade, sem precisar de filtro
-        // CSS por cima fingindo (era o que tinha antes -- pedido de
-        // 2026-09-04, "tá muito feio").
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-          maxZoom: 20, subdomains: 'abcd',
-        }).addTo(mapa);
+        // CartoDB dark_all (tentativa de 2026-09-04) passou a exigir chave de
+        // API -- a política deles mudou, tile vinha com marca d'água "API KEY
+        // REQUIRED" por cima do mapa inteiro. Volta pro OpenStreetMap (grátis,
+        // sem chave, já liberado na CSP do site) com inversão de cor via CSS
+        // (.leaflet-tile-pane), que é o truque padrão pra virar mapa claro em
+        // escuro de verdade sem depender de provedor nenhum de pago.
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
       }
 
       // ─── Mapa de calor (histórico de onde vêm os chamados) ──────────
