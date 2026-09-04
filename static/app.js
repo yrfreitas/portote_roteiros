@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v221';
+const VERSAO_PAINEL = 'v222';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -6389,6 +6389,13 @@ async function forcarOtimizacao(fichaId) {
 
     let msg = `Rota otimizada! ${fmtKm(r.distancia_total)} km`;
     if (r.ganho_2opt_km > 0.1) msg += ` (−${fmtKm(r.ganho_2opt_km)} km com o 2-opt)`;
+    // Pedido de 2026-09-04: mostrar que a ordem agora considera rua de
+    // verdade (rio, sentido único, marginal) em vez de deixar parecer
+    // mágica -- e também avisar quando caiu na estimativa por linha reta,
+    // pra não passar confiança que a rua real não confirmou.
+    msg += r.fonte_distancia === 'osrm'
+      ? ' · calculado com as ruas de verdade'
+      : ' · estimativa por linha reta (mapa de trânsito fora do ar agora)';
     toast(msg, 'success');
 
     await renderFichaDetalhe(fichaId);

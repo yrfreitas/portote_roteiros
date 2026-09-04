@@ -1,4 +1,7 @@
+import logging
 import math
+
+log = logging.getLogger("portotec.otimizador")
 
 # Constantes da estimativa LOCAL — a rede de segurança de quando não há chave
 # do Google ou o serviço de trânsito falha. Enquanto foram a única fonte, a
@@ -40,8 +43,22 @@ def distancia_rua(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return haversine(lat1, lon1, lat2, lon2) * FATOR_ROTA
 
 
-def _matrizes(partida: dict, pontos: list):
+def _matrizes(partida: dict, pontos: list, matriz_km_real=None):
+    """dp[i][j] = distância entre pontos[i] e pontos[j]; db[i] = distância
+    da partida até pontos[i].
+
+    Usa `matriz_km_real` (OSRM Table, índice 0 = partida) quando ela vem
+    preenchida -- distância de RUA de verdade, com rio/marginal/sentido
+    único já contados, em vez da reta (haversine) que ordenava a rota até
+    2026-09-04 mesmo sabendo que "reta mais perto" não é "rua mais perto".
+    Cai em haversine só quando o OSRM não respondeu (rede de segurança).
+    """
     n = len(pontos)
+    if matriz_km_real is not None:
+        dp = [[matriz_km_real[i + 1][j + 1] for j in range(n)] for i in range(n)]
+        db = [matriz_km_real[0][i + 1] for i in range(n)]
+        return dp, db
+
     dp = [[0.0] * n for _ in range(n)]
     for i in range(n):
         for j in range(i + 1, n):
@@ -140,7 +157,21 @@ def otimizar_rota(partida: dict, pontos: list) -> dict:
         return vazio
 
     n = len(pontos)
-    dp, db = _matrizes(partida, pontos)
+
+    # OSRM Table: distância/tempo de RUA de verdade entre partida+pontos,
+    # numa chamada só -- pedido de 2026-09-04 ("otimização de CEP" não
+    # ajudava de verdade, ordenava por linha reta). Cai em haversine
+    # sozinho se o OSRM falhar ou demorar (rede de segurança, nunca
+    # trava a ação de otimizar por causa de uma API externa fora do ar).
+    matriz_km_real, matriz_min_real = None, None
+    try:
+        from services.rota_tempo import matriz_osrm
+        matriz_km_real, matriz_min_real = matriz_osrm([partida] + pontos)
+    except Exception as exc:
+        log.warning("Tabela OSRM indisponível pro otimizador: %s", exc)
+    usa_real = matriz_km_real is not None
+
+    dp, db = _matrizes(partida, pontos, matriz_km_real)
 
     ordem_nn = _nearest_neighbor(n, dp, db)
     custo_nn = _custo(ordem_nn, dp, db, OTIMIZAR_COM_RETORNO)
@@ -148,17 +179,33 @@ def otimizar_rota(partida: dict, pontos: list) -> dict:
     ordem = _dois_opt(ordem_nn, dp, db, OTIMIZAR_COM_RETORNO)
     custo_final = _custo(ordem, dp, db, OTIMIZAR_COM_RETORNO)
 
-    dist_ida = _custo(ordem, dp, db, com_retorno=False) * FATOR_ROTA
-    retorno = (db[ordem[-1]] * FATOR_ROTA) if ordem else 0.0
-    ganho = max(0.0, (custo_nn - custo_final) * FATOR_ROTA)
+    # Distância real já é a de rua -- sem o fator de fudge (FATOR_ROTA), que
+    # só existe pra compensar a reta não ter rio/marginal/sentido único.
+    fator = 1.0 if usa_real else FATOR_ROTA
+    dist_ida = _custo(ordem, dp, db, com_retorno=False) * fator
+    retorno = (db[ordem[-1]] * fator) if ordem else 0.0
+    ganho = max(0.0, (custo_nn - custo_final) * fator)
+
+    if usa_real and matriz_min_real and ordem:
+        tempo_desloc = matriz_min_real[0][ordem[0] + 1] or 0
+        for a, b in zip(ordem, ordem[1:]):
+            tempo_desloc += matriz_min_real[a + 1][b + 1] or 0
+        tempo_minutos = int(round(tempo_desloc)) + n * MINUTOS_PARADA
+    else:
+        tempo_minutos = calcular_tempo(dist_ida, n)
 
     return {
         "ordem":          ordem,
         "distancia_km":   round(dist_ida, 2),
         "retorno_km":     round(retorno, 2),
         "total_km":       round(dist_ida + retorno, 2),
-        "tempo_minutos":  calcular_tempo(dist_ida, n),
+        "tempo_minutos":  tempo_minutos,
         "ganho_2opt_km":  round(ganho, 2),
+        # Pro front dizer "rota calculada com trânsito real das ruas" em vez
+        # de deixar parecer mágica -- e pra dar pra saber, num chamado de
+        # suporte, se caiu no OSRM ou na estimativa (achado de 2026-09-04
+        # foi exatamente essa falta de transparência).
+        "fonte_distancia": "osrm" if usa_real else "linha_reta",
     }
 
 

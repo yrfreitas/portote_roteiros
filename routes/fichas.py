@@ -816,6 +816,10 @@ def recalcular_rota(conn, ficha_id, ficha) -> dict:
         "tempo_minutos":   r["tempo_minutos"],
         "ganho_2opt_km":   r["ganho_2opt_km"],
         "sem_coordenada":  len(servicos) - len(validos),
+        # "osrm" (distância de rua de verdade) ou "linha_reta" (o OSRM não
+        # respondeu a tempo) -- pedido de 2026-09-04: mostrar isso em vez de
+        # deixar parecer que a rota é sempre calculada do mesmo jeito.
+        "fonte_distancia": r.get("fonte_distancia", "linha_reta"),
     }
 
 

@@ -59,6 +59,16 @@ URL_MATRIZ = "https://maps.googleapis.com/maps/api/distancematrix/json"
 # reta, 15 min livres. A distância é medida; o que falta é o congestionamento.
 URL_OSRM = "https://router.project-osrm.org/route/v1/driving/{o_lng},{o_lat};{d_lng},{d_lat}"
 
+# Table API: distância/tempo de RUA entre TODOS os pares de uma lista de
+# pontos, numa chamada SÓ (não uma por par) -- é o que faltava pro
+# otimizador de rota (services/otimizador.py) parar de ordenar as paradas
+# por LINHA RETA (rio, marginal, sentido único e quadra fechada fazem a
+# ordem "mais perto em linha reta" ser pior na rua de verdade, mesmo
+# problema já documentado pra ETA individual, nunca corrigido na ORDEM).
+# Pedido de 2026-09-04: "otimização de CEP" não ajudava de verdade.
+URL_OSRM_TABLE = "https://router.project-osrm.org/table/v1/driving/{coords}"
+TIMEOUT_OSRM_TABLE = 10
+
 # Fator de trânsito aplicado sobre o tempo de via livre do OSRM.
 #
 # É calibração, não medida — e por isso fica configurável. 1.45 corresponde a
@@ -204,6 +214,42 @@ def _osrm(origem_lat, origem_lng, destino_lat, destino_lng):
     except Exception as exc:
         log.warning("Falha no OSRM: %s", exc)
         return None
+
+
+def matriz_osrm(pontos):
+    """Distância (km) e duração (min) por RUA entre TODOS os pares de
+    `pontos` ([{lat, lng}, ...]), numa chamada só via OSRM Table API.
+
+    Devolve (matriz_km, matriz_min) -- listas NxN -- ou (None, None) se o
+    OSRM falhar ou algum ponto não tiver lat/lng (aí quem chama cai na
+    estimativa por linha reta, mesma rede de segurança do resto do
+    módulo). Sem trânsito (é "via livre" do OSRM): o fator urbano
+    (FATOR_TRANSITO) é aplicado por cima, igual _osrm() já faz par a par.
+    """
+    if not pontos or any(p.get("lat") is None or p.get("lng") is None for p in pontos):
+        return None, None
+    if len(pontos) < 2:
+        return None, None
+
+    coords = ";".join(f"{p['lng']},{p['lat']}" for p in pontos)
+    try:
+        r = _sessao.get(
+            URL_OSRM_TABLE.format(coords=coords),
+            params={"annotations": "distance,duration"},
+            timeout=TIMEOUT_OSRM_TABLE)
+        r.raise_for_status()
+        dados = r.json()
+        if dados.get("code") != "Ok" or not dados.get("distances") or not dados.get("durations"):
+            return None, None
+
+        matriz_km = [[(d / 1000.0 if d is not None else None) for d in linha]
+                     for linha in dados["distances"]]
+        matriz_min = [[(round(d * FATOR_TRANSITO / 60, 1) if d is not None else None) for d in linha]
+                      for linha in dados["durations"]]
+        return matriz_km, matriz_min
+    except Exception as exc:
+        log.warning("Falha na tabela OSRM (%d pontos): %s", len(pontos), exc)
+        return None, None
 
 
 def minutos_ate(origem_lat, origem_lng, destino_lat, destino_lng):
