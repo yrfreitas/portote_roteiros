@@ -652,6 +652,11 @@
         div.textContent = iniciais(img.dataset.nome);
         img.replaceWith(div);
       }
+      // O onerror="" inline resolve no escopo GLOBAL, mas esta função vive
+      // dentro da IIFE da página -- sem isto, toda foto quebrada gerava
+      // "_avatarErro is not defined" no console e o alt-text continuava
+      // vazando (achado ao testar o próprio fix em produção).
+      window._avatarErro = _avatarErro;
 
       function avatarTecnico(t, posicao) {
         const cor = esc(t.cor || '#4f8dfb');
