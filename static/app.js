@@ -242,7 +242,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v216';
+const VERSAO_PAINEL = 'v217';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3574,7 +3574,10 @@ async function _preencherPedidosEmitidosEmail() {
   if (!emitidosEmail.length) return;
 
   // Some no chip "Emitido" e no total -- só depois de já ter chegado,
-  // pra não fazer a lista da planilha esperar essa conta.
+  // pra não fazer a lista da planilha esperar essa conta. O texto de
+  // contagem ao lado da busca (#pecas-contagem) precisa do MESMO reforço --
+  // sem isso ficava "Todas 18" no chip e "7 compras" no texto ao lado,
+  // dois números diferentes pra mesma coisa (achado em 2026-09-04).
   const chipCriado = document.querySelector('.pecas-filtro[data-estagio="CRIADO"] .pecas-filtro-n');
   if (chipCriado) chipCriado.textContent = String(Number(chipCriado.textContent || 0) + emitidosEmail.length);
   const chipTodas = document.querySelector('.pecas-filtro[data-estagio=""] .pecas-filtro-n');
@@ -3582,6 +3585,9 @@ async function _preencherPedidosEmitidosEmail() {
   const semCliente = emitidosEmail.filter(p => !p.cliente_final).length;
   const chipPendente = document.querySelector('.pecas-filtro[data-estagio="pendente"] .pecas-filtro-n');
   if (semCliente && chipPendente) chipPendente.textContent = String(Number(chipPendente.textContent || 0) + semCliente);
+  const totalLinhas = document.querySelectorAll('#pecas-lista .peca-linha').length;
+  const contagem = document.getElementById('pecas-contagem');
+  if (contagem) contagem.textContent = `${totalLinhas} compra${totalLinhas !== 1 ? 's' : ''}`;
 }
 
 async function _buscarPedidosEmitidosEmail() {
@@ -3632,7 +3638,7 @@ function _htmlPedidosEmitidosEmail(pedidos) {
             <div class="peca-cliente-linha">
               <input class="form-input peca-input" list="lista-clientes"
                      id="peca-email-cliente-${p.chave}" value="${esc(p.cliente_final)}"
-                     placeholder="Escolha ou digite..."
+                     placeholder="Nome do cliente"
                      onchange="salvarPecaEmailInline('${p.chave}')">
               <button type="button" class="peca-cliente-add" title="Cadastrar cliente novo (nome + telefone)"
                       onclick="abrirClienteRapidoEmail('${p.chave}')">+</button>
@@ -3850,7 +3856,7 @@ async function carregarPecas() {
         <div class="peca-cliente-linha">
           <input class="form-input peca-input" list="lista-clientes"
                  id="peca-cliente-${p.linha}" value="${esc(p.cliente_final)}"
-                 placeholder="Escolha ou digite..."
+                 placeholder="Nome do cliente"
                  onchange="salvarPecaInline(${p.linha})">
           <!-- A lista sugere quem já apareceu num roteiro de técnico, mas o
                dono da peça nem sempre é essa pessoa (pode ser cliente de
@@ -4342,7 +4348,11 @@ const ESTAGIOS = {
 
 function estagioPeca(p) {
   if (p.chegou_em) {
-    return `<span class="peca-estagio e-chegou" title="Registrado em ${esc(p.chegou_em)}">chegou</span>`;
+    // Só a data aqui -- "chegou" sozinho repetia o botão "📦 chegou" ali do
+    // lado (pedido de 2026-09-04: "essa parte tá uma bagunça"), então esse
+    // selo passa a dizer a informação que falta: QUANDO chegou.
+    const dia = (p.chegou_em || '').split(' ')[0].split('-').reverse().join('/');
+    return `<span class="peca-estagio e-chegou" title="Registrado em ${esc(p.chegou_em)}">chegou em ${esc(dia)}</span>`;
   }
   const e = ESTAGIOS[(p.status_compra || '').toUpperCase()] || ESTAGIOS.CRIADO;
   return `<span class="peca-estagio ${e.classe}">${e.rotulo}</span>`;
