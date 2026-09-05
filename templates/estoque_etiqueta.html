@@ -18,6 +18,15 @@
   }
   .pagina { max-width: 760px; margin: 16px auto; padding: 0 16px; }
   .instrucao { font-size: 12px; color: var(--tinta-2); margin-bottom: 14px; }
+  .controle-qtd {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+    font-size: 13px; color: var(--tinta-2);
+  }
+  .controle-qtd input {
+    width: 60px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--linha);
+    font-size: 13px; text-align: center;
+  }
+  .etiquetas-grade { display: flex; flex-wrap: wrap; gap: 4mm; }
   .etiqueta {
     width: 90mm; height: 50mm; border: 1.5px dashed var(--linha);
     border-radius: 4px; padding: 4mm; display: flex; gap: 3mm;
@@ -30,7 +39,7 @@
   .etiqueta-desc { font-size: 11px; color: var(--tinta-2); margin-top: 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
   @media print {
     body { background: #fff; }
-    .instrucao, .botao-imprimir { display: none; }
+    .instrucao, .botao-imprimir, .controle-qtd { display: none; }
     .etiqueta { border-style: solid; }
   }
   .botao-imprimir {
@@ -42,14 +51,34 @@
 <body>
   <div class="pagina">
     <p class="instrucao">Corte na linha pontilhada e cole na peça. Na hora da venda, bipe (leitor USB ou câmera) e o sistema identifica a peça sozinho.</p>
-    <div class="etiqueta">
-      <div class="etiqueta-qr"><img src="{{ qr_data_uri }}" alt="QR Code"></div>
-      <div class="etiqueta-info">
-        <div class="etiqueta-codigo">{{ item.codigo }}</div>
-        {% if item.descricao %}<div class="etiqueta-desc">{{ item.descricao }}</div>{% endif %}
+    <div class="controle-qtd">
+      <label for="qtd-etiquetas">Quantidade de etiquetas</label>
+      <input type="number" id="qtd-etiquetas" value="{{ qtd_sugerida }}" min="1" max="60"
+             oninput="atualizarQtdEtiquetas(this.value)">
+      <span>(uma por unidade em estoque, ajuste se quiser)</span>
+    </div>
+    <div class="etiquetas-grade" id="etiquetas-grade">
+      <div class="etiqueta">
+        <div class="etiqueta-qr"><img src="{{ qr_data_uri }}" alt="QR Code"></div>
+        <div class="etiqueta-info">
+          <div class="etiqueta-codigo">{{ item.codigo }}</div>
+          {% if item.descricao %}<div class="etiqueta-desc">{{ item.descricao }}</div>{% endif %}
+        </div>
       </div>
     </div>
     <button class="botao-imprimir" onclick="window.print()">Imprimir</button>
   </div>
+  <script>
+    // Uma peça costuma ter VÁRIAS unidades em estoque -- imprimir etiqueta
+    // uma a uma seria repetir o mesmo clique N vezes. Duplica o cartão
+    // (já com o QR embutido como data URI, sem nova chamada ao servidor)
+    // na tela toda, pra imprimir/cortar de uma vez. Pedido de 2026-09-05.
+    const _etiquetaModelo = document.querySelector('.etiqueta').outerHTML;
+    function atualizarQtdEtiquetas(qtd) {
+      qtd = Math.max(1, Math.min(60, parseInt(qtd, 10) || 1));
+      document.getElementById('etiquetas-grade').innerHTML = _etiquetaModelo.repeat(qtd);
+    }
+    atualizarQtdEtiquetas({{ qtd_sugerida }});
+  </script>
 </body>
 </html>

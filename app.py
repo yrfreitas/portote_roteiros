@@ -786,7 +786,7 @@ def etiqueta_estoque(item_id):
     import qrcode
 
     with db_conn() as conn:
-        item = fetch_one(conn, "SELECT id, codigo, descricao FROM estoque_itens WHERE id = ?",
+        item = fetch_one(conn, "SELECT id, codigo, descricao, saldo FROM estoque_itens WHERE id = ?",
                           (item_id,))
     if not item:
         return "<h1>Peça não encontrada</h1>", 404
@@ -796,7 +796,12 @@ def etiqueta_estoque(item_id):
     img.save(buf, format="PNG")
     qr_data_uri = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
-    return render_template("estoque_etiqueta.html", item=item, qr_data_uri=qr_data_uri)
+    # Sugere uma etiqueta por unidade em estoque -- o caso comum é etiquetar
+    # tudo que já tem, não só uma peça avulsa. Sempre ajustável na tela.
+    qtd_sugerida = max(1, min(60, int(item.get("saldo") or 1)))
+
+    return render_template("estoque_etiqueta.html", item=item, qr_data_uri=qr_data_uri,
+                           qtd_sugerida=qtd_sugerida)
 
 
 @app.route("/os/cliente/<token>")
