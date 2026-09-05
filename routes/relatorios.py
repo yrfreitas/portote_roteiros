@@ -324,6 +324,13 @@ def listar_desfechos():
     limite = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d 00:00:00")
 
     with db_conn() as conn:
+        # cot.id IS NOT NULL: "Cotação de peça" só continua na fila enquanto a
+        # cotação ainda está pendente. Confirmar cotação (cotacoes.py) apaga a
+        # linha de `cotacoes` de propósito, mas mantém `servico_desfecho` como
+        # histórico do atendimento -- sem este filtro, o item confirmado nunca
+        # saía daqui e ficava preso na aba mesmo depois de virar orçamento
+        # (pedido de 2026-09-05: "quando eu mandar uma cotação, ela suma
+        # daqui").
         linhas = fetch_all(conn, sql("""
             SELECT d.servico_id, d.desfecho, d.motivo, d.peca, d.observacao,
                    d.pedido_em, d.pedido_por,
@@ -338,7 +345,9 @@ def listar_desfechos():
               JOIN servicos s ON s.id = d.servico_id
               LEFT JOIN fichas f ON f.id = s.ficha_id
               LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+              LEFT JOIN cotacoes cot ON cot.servico_id = d.servico_id
              WHERE d.registrado_em >= ?
+               AND (d.desfecho <> 'cotacao_peca' OR cot.id IS NOT NULL)
              ORDER BY d.registrado_em DESC
         """), (limite,))
         for l in linhas:
