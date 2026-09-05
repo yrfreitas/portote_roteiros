@@ -222,6 +222,17 @@
 :root[data-theme="light"] .drawer {
   background: linear-gradient(160deg, #ffffff, #f3f5fa 96%);
 }
+/* Mesmo bug de novo, achado em 2026-09-05: .form-input:focus e
+   .vcep-input:focus/.vcep-select:focus escureciam pra rgba(8,14,26,0.9) fixo
+   ao CLICAR pra digitar — no tema escuro isso é só um destaque sutil, mas no
+   claro o texto (--text-primary escuro) ficava escrevendo em cima de um
+   campo quase preto, ilegível bem na hora de digitar. O destaque de foco já
+   vem da borda + glow (ambos com token); a cor de fundo não precisa mudar. */
+:root[data-theme="light"] .form-input:focus,
+:root[data-theme="light"] .vcep-input:focus,
+:root[data-theme="light"] .vcep-select:focus {
+  background: var(--bg-input);
+}
 
 /* ─── RESET ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
