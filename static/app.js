@@ -261,7 +261,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v231';
+const VERSAO_PAINEL = 'v232';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -10149,12 +10149,30 @@ async function marcarCotado(id) {
     valorEl?.focus();
     return;
   }
+  const valor = valorEl.value;
+  const fornecedor = fornecedorEl?.value || '';
+  const item = _cotacoesAtuais.find(i => i.id === id);
   try {
-    const r = await api(`/cotacoes/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ status: 'cotado', valor_cotado: valorEl.value, fornecedor: fornecedorEl?.value || '' }),
-    });
-    toast('Peça marcada como cotada', 'success');
+    let r;
+    if (item?.servico_id) {
+      // Veio de "Cotação de peça" registrada por um técnico em campo (tem
+      // atendimento por trás) — mesma confirmação da aba Atendimentos, pelo
+      // MESMO endpoint: vira item de verdade no orçamento do cliente, em
+      // vez de só um rótulo "cotado" aqui parado sem seguir adiante. Pedido
+      // de 2026-09-05: "faça o fluxo normal que programamos".
+      r = await api(`/desfechos/${item.servico_id}/cotacao-confirmar`, {
+        method: 'POST', body: JSON.stringify({ valor, fornecedor }),
+      });
+      toast('Cotação confirmada — item já está no orçamento do cliente', 'success');
+    } else {
+      // Sem atendimento por trás (item cadastrado direto aqui, sem cliente
+      // associado): não há orçamento pra lançar, só registra o preço achado.
+      r = await api(`/cotacoes/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'cotado', valor_cotado: valor, fornecedor }),
+      });
+      toast('Peça marcada como cotada', 'success');
+    }
     // Alerta de alta de preço (pedido de 2026-09-02/03): o servidor já
     // calculou a variação contra a última cotação deste código — só mostra.
     if (r.aviso_alta) {

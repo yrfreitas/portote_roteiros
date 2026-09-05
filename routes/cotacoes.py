@@ -128,6 +128,36 @@ def criar():
     return jsonify({"mensagem": "Item adicionado à lista de cotação", "id": novo_id}), 201
 
 
+def _aviso_alta_preco(conn, codigo, novo_valor, excluir_id=None):
+    """Alerta de alta de preço (pedido de 2026-09-02/03: "quando o preço de
+    uma peça sobe mais de X% desde a última compra") — compara com o último
+    valor_cotado registrado pra ESTE código, de qualquer fornecedor. Chamado
+    ANTES de gravar o novo valor, óbvio, senão "o último" seria o que está
+    prestes a virar agora mesmo. `excluir_id` tira a própria linha da
+    comparação quando ela já existe em `cotacoes` (edição); None quando o
+    valor está sendo confirmado por fora dessa tabela (ver cotacao-confirmar).
+    """
+    codigo = (codigo or "").strip()
+    if not codigo or not novo_valor:
+        return None
+    anterior = fetch_one(conn, """
+        SELECT valor_cotado FROM cotacoes
+         WHERE LOWER(codigo) = LOWER(?) AND valor_cotado IS NOT NULL
+               AND (? IS NULL OR id <> ?)
+         ORDER BY id DESC LIMIT 1
+    """, (codigo, excluir_id, excluir_id))
+    if not anterior or not anterior.get("valor_cotado"):
+        return None
+    valor_antigo = float(anterior["valor_cotado"])
+    if valor_antigo <= 0:
+        return None
+    variacao = (novo_valor - valor_antigo) / valor_antigo
+    if variacao < 0.20:   # 20% pra cima já vale avisar
+        return None
+    return {"valor_anterior": valor_antigo, "valor_novo": novo_valor,
+            "variacao_pct": round(variacao * 100, 1)}
+
+
 @cotacoes_bp.route("/cotacoes/<int:item_id>", methods=["PUT"])
 def atualizar(item_id):
     """Edita campos e/ou marca como cotado (valor_cotado + fornecedor)."""
@@ -138,11 +168,6 @@ def atualizar(item_id):
         if not item:
             return jsonify({"erro": "Item não encontrado"}), 404
 
-        # Alerta de alta de preço (pedido de 2026-09-02/03: "quando o preço de
-        # uma peça sobe mais de X% desde a última compra") — compara com o
-        # último valor_cotado registrado pra ESTE código, de qualquer
-        # fornecedor, antes de gravar o novo. Calculado ANTES do UPDATE, óbvio,
-        # senão "o último" seria o que está prestes a virar agora mesmo.
         aviso_alta = None
         codigo_atual = (d.get("codigo") or item.get("codigo") or "").strip()
         if "valor_cotado" in d and d.get("valor_cotado") not in (None, "") and codigo_atual:
@@ -150,21 +175,7 @@ def atualizar(item_id):
                 novo_valor = float(d["valor_cotado"])
             except (TypeError, ValueError):
                 novo_valor = None
-            if novo_valor:
-                anterior = fetch_one(conn, """
-                    SELECT valor_cotado, atualizado_em FROM cotacoes
-                     WHERE LOWER(codigo) = LOWER(?) AND valor_cotado IS NOT NULL AND id <> ?
-                     ORDER BY id DESC LIMIT 1
-                """, (codigo_atual, item_id))
-                if anterior and anterior.get("valor_cotado"):
-                    valor_antigo = float(anterior["valor_cotado"])
-                    if valor_antigo > 0:
-                        variacao = (novo_valor - valor_antigo) / valor_antigo
-                        if variacao >= 0.20:   # 20% pra cima já vale avisar
-                            aviso_alta = {
-                                "valor_anterior": valor_antigo, "valor_novo": novo_valor,
-                                "variacao_pct": round(variacao * 100, 1),
-                            }
+            aviso_alta = _aviso_alta_preco(conn, codigo_atual, novo_valor, excluir_id=item_id)
 
         campos, valores = [], []
         if "codigo" in d:
@@ -282,12 +293,17 @@ def confirmar_cotacao_desfecho(servico_id):
         # `servico_desfecho` — esse fica intacto de propósito como histórico
         # do atendimento, então checá-lo deixaria confirmar a MESMA cotação
         # várias vezes, duplicando o item no orçamento a cada clique.
-        cotacao = fetch_one(conn, "SELECT id FROM cotacoes WHERE servico_id = ?", (servico_id,))
+        cotacao = fetch_one(conn, "SELECT id, codigo FROM cotacoes WHERE servico_id = ?", (servico_id,))
         if not cotacao:
             return jsonify({"erro": "Essa cotação já foi confirmada ou não existe mais"}), 404
         desfecho = fetch_one(conn, """
             SELECT * FROM servico_desfecho WHERE servico_id = ? AND desfecho = 'cotacao_peca'
         """, (servico_id,)) or {}
+
+        # Mesmo alerta de alta de preço da confirmação pela aba Peças (ver
+        # marcarCotado/atualizar acima) — confirmar por aqui não pode ficar
+        # cego a isso só porque veio de um atendimento de técnico.
+        aviso_alta = _aviso_alta_preco(conn, cotacao.get("codigo"), valor, excluir_id=cotacao["id"])
 
         os_id = _os_orcamento_do_cliente(conn, servico, _autor())
         if not os_id:
@@ -304,4 +320,7 @@ def confirmar_cotacao_desfecho(servico_id):
         # Some da fila de cotação — o trabalho dela virou item de orçamento.
         execute(conn, "DELETE FROM cotacoes WHERE servico_id = ?", (servico_id,))
 
-    return jsonify({"mensagem": "Cotação confirmada e enviada pro orçamento", "os_id": os_id})
+    resposta = {"mensagem": "Cotação confirmada e enviada pro orçamento", "os_id": os_id}
+    if aviso_alta:
+        resposta["aviso_alta"] = aviso_alta
+    return jsonify(resposta)
