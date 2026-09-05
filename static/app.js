@@ -261,7 +261,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v227';
+const VERSAO_PAINEL = 'v228';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -10487,6 +10487,8 @@ function _cardEstoque(i) {
         <button class="btn btn-ghost btn-xs" title="Corrigir saldo pela contagem física" onclick='abrirAjusteEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.saldo) || 0})'>Ajustar</button>
         <button class="btn btn-ghost btn-xs" title="Definir estoque mínimo" onclick='definirMinimoEstoque(${i.id}, ${JSON.stringify(i.codigo)}, ${Number(i.minimo) || 0})'>Mínimo</button>` : ''}
         <button class="btn btn-ghost btn-xs" title="Histórico de movimentos" onclick='verHistoricoEstoque(${i.id}, ${JSON.stringify(i.codigo)})'>Histórico</button>
+        <a class="btn btn-ghost btn-xs" title="Gerar QR pra imprimir e colar no produto"
+           href="/estoque/${i.id}/etiqueta" target="_blank" rel="noopener">QR</a>
         ${podeUsuario('estoque_excluir') ? `<button class="btn btn-ghost btn-xs estoque-btn-excluir" title="Excluir a peça do estoque" onclick='excluirPecaEstoque(${i.id}, ${JSON.stringify(i.codigo)})'>Excluir</button>` : ''}
       </div>
     </div>`;
@@ -10965,7 +10967,10 @@ function temCameraScan() {
 
 let _scanCamera = null;
 
-async function abrirScanCodigo(inputId) {
+// aoLer(valor): quando informado, é chamado com o código lido no lugar do
+// comportamento padrão (jogar no campo `inputId` e disparar 'input') — usado
+// pela venda, onde ler o QR precisa ADICIONAR ao carrinho, não só preencher.
+async function abrirScanCodigo(inputId, aoLer = null) {
   const modal = document.getElementById('modal-scan-codigo');
   if (!modal) return;
   modal.dataset.alvo = inputId;
@@ -10981,12 +10986,17 @@ async function abrirScanCodigo(inputId) {
       try {
         const cods = await detector.detect(video);
         if (cods.length) {
-          const alvo = document.getElementById(modal.dataset.alvo);
-          if (alvo) {
-            alvo.value = cods[0].rawValue;
-            alvo.dispatchEvent(new Event('input'));
-          }
+          const valor = cods[0].rawValue;
           fecharScanCodigo();
+          if (aoLer) {
+            aoLer(valor);
+          } else {
+            const alvo = document.getElementById(modal.dataset.alvo);
+            if (alvo) {
+              alvo.value = valor;
+              alvo.dispatchEvent(new Event('input'));
+            }
+          }
           return;
         }
       } catch { /* frame ruim: tenta o próximo */ }
@@ -12230,6 +12240,8 @@ function _brlVenda(n) {
 }
 
 async function carregarVendas() {
+  const btnScan = document.getElementById('venda-scan-btn');
+  if (btnScan) btnScan.style.display = temCameraScan() ? '' : 'none';
   try {
     const r = await api('/vendas/produtos');
     vendaProdutosCache = r.itens || [];
@@ -12309,8 +12321,14 @@ function renderProdutosVenda(itens) {
 function vendaBuscaKeydown(event) {
   if (event.key !== 'Enter') return;
   event.preventDefault();
-  const input = event.target;
-  const termo = input.value.trim();
+  vendaProcurarEAdicionar(event.target.value);
+}
+
+// Mesma lógica de identificar o produto pelo termo bipado/digitado, usada
+// tanto pelo Enter do leitor USB quanto pelo QR lido pela câmera (pedido de
+// 2026-09-05: gerar QR pra colar na peça e reconhecer na hora da venda).
+function vendaProcurarEAdicionar(termo) {
+  termo = (termo || '').trim();
   if (!termo) return;
   const termoLower = termo.toLowerCase();
   let alvo = vendaProdutosCache.find(i => (i.codigo || '').toLowerCase() === termoLower);
@@ -12327,8 +12345,15 @@ function vendaBuscaKeydown(event) {
     return;
   }
   vendaAdicionarAoCarrinho(alvo.id);
-  input.value = '';
+  const input = document.getElementById('venda-busca-input');
+  if (input) input.value = '';
   filtrarProdutosVenda();
+}
+
+// QR colado na peça física (gerado em abrirQrPeca) lido pela câmera do
+// celular -- mesmo gesto do leitor USB, sem precisar de um.
+function abrirScanVenda() {
+  abrirScanCodigo('venda-busca-input', vendaProcurarEAdicionar);
 }
 
 function vendaAdicionarAoCarrinho(id) {

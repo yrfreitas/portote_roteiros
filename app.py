@@ -768,6 +768,37 @@ def etiqueta_os(os_id):
     return render_template("os_etiqueta.html", ordem=ordem, qr_data_uri=qr_data_uri)
 
 
+@app.route("/estoque/<int:item_id>/etiqueta")
+def etiqueta_estoque(item_id):
+    """QR pra imprimir e colar na peça física do estoque -- pedido de
+    2026-09-05: bipar na hora da venda e o sistema já reconhecer a peça.
+
+    Diferente do QR da OS (que aponta pra uma URL), aqui o QR carrega o
+    CÓDIGO da peça, cru -- é exatamente o texto que um leitor USB digitaria
+    bipando um código de barras comum, e é contra esse texto que a tela de
+    Vendas já casa (vendaProcurarEAdicionar, por codigo exato). Um link só
+    funcionaria bipando na tela de Vendas se ela soubesse abrir URL; o
+    código cru funciona ali E em qualquer leitor de código de barras/QR.
+    """
+    import base64
+    import io as _io
+
+    import qrcode
+
+    with db_conn() as conn:
+        item = fetch_one(conn, "SELECT id, codigo, descricao FROM estoque_itens WHERE id = ?",
+                          (item_id,))
+    if not item:
+        return "<h1>Peça não encontrada</h1>", 404
+
+    img = qrcode.make(item["codigo"], box_size=8, border=2)
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_data_uri = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+    return render_template("estoque_etiqueta.html", item=item, qr_data_uri=qr_data_uri)
+
+
 @app.route("/os/cliente/<token>")
 def imprimir_os_cliente(token):
     """Mesmo documento, sem login — o token de 32 bytes é a credencial

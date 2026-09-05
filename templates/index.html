@@ -525,10 +525,14 @@
 
       <div class="venda-layout">
         <div class="venda-produtos">
-          <input type="text" id="venda-busca-input" class="form-input venda-busca-input"
-                 placeholder="Bipar código de barras ou pesquisar produto..."
-                 autocomplete="off" autofocus
-                 onkeydown="vendaBuscaKeydown(event)" oninput="filtrarProdutosVenda()">
+          <div class="campo-com-scan" style="margin-bottom:12px;">
+            <input type="text" id="venda-busca-input" class="form-input venda-busca-input"
+                   placeholder="Bipar código de barras ou pesquisar produto..."
+                   autocomplete="off" autofocus style="margin-bottom:0;"
+                   onkeydown="vendaBuscaKeydown(event)" oninput="filtrarProdutosVenda()">
+            <button type="button" class="btn-scan-codigo" id="venda-scan-btn" title="Ler o QR da peça pela câmera"
+                    onclick="abrirScanVenda()" style="display:none;">📷</button>
+          </div>
           <div class="venda-grid" id="venda-grid"></div>
         </div>
 
