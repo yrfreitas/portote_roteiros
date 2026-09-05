@@ -96,7 +96,7 @@
         <span id="status-latencia" class="status-latencia"></span>
       </div>
       <button class="btn-almoco-painel" id="btn-almoco-painel" style="display:none" onclick="alternarAlmocoPainel()">
-        🍽 Ir almoçar
+        Ir almoçar
       </button>
       <div class="notif-wrap">
         <button type="button" class="btn-notif" id="btn-notif" onclick="alternarNotificacoes()" title="Notificações" aria-label="Notificações">
@@ -241,7 +241,7 @@
       <div class="verificador-title-row">
         <div class="verificador-title">Saúde do sistema</div>
         <div style="display:flex;gap:8px;">
-          <a class="btn btn-ghost btn-sm" href="/api/backup" download title="Baixa um retrato completo do banco agora, em JSON">⬇ Baixar backup</a>
+          <a class="btn btn-ghost btn-sm" href="/api/backup" download title="Baixa um retrato completo do banco agora, em JSON"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Baixar backup</a>
           <button class="btn btn-ghost btn-sm" onclick="carregarDiagnostico()">Atualizar</button>
         </div>
       </div>
@@ -329,7 +329,7 @@
                placeholder="Buscar por número da OS ou nome do cliente..."
                style="max-width:380px;margin-bottom:0;" oninput="osBuscar(this.value)">
         <button type="button" class="btn btn-ghost btn-sm" id="btn-clientes-duplicados"
-                style="display:none;" onclick="abrirClientesDuplicados()">🧬 Detectar duplicados</button>
+                style="display:none;" onclick="abrirClientesDuplicados()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Detectar duplicados</button>
       </div>
 
       <details class="cotacao-details" id="os-metricas-details" ontoggle="if(this.open) carregarOSMetricas()">
@@ -531,7 +531,7 @@
                    autocomplete="off" autofocus style="margin-bottom:0;"
                    onkeydown="vendaBuscaKeydown(event)" oninput="filtrarProdutosVenda()">
             <button type="button" class="btn-scan-codigo" id="venda-scan-btn" title="Ler o QR da peça pela câmera"
-                    onclick="abrirScanVenda()" style="display:none;">📷</button>
+                    onclick="abrirScanVenda()" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
           </div>
           <div class="venda-grid" id="venda-grid"></div>
         </div>
@@ -714,7 +714,7 @@
 
     <div class="bipar-alt">
       <button type="button" class="bipar-camera-btn" id="bipar-camera-btn"
-              onclick="biparPelaCamera()" style="display:none;">📷 Ler pela câmera</button>
+              onclick="biparPelaCamera()" style="display:none;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Ler pela câmera</button>
       <button type="button" class="bipar-xml-link" onclick="toggleXmlBipar()">
         Nota não achada? Colar o XML
       </button>
@@ -1246,7 +1246,8 @@
   </div>
   <form class="chat-envio" id="painel-chat-form" style="display:none;">
     <label class="chat-anexo-botao" title="Anexar imagem ou PDF">
-      📎<input type="file" accept="image/*,application/pdf" onchange="escolherAnexoChat(this)" hidden>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      <input type="file" accept="image/*,application/pdf" onchange="escolherAnexoChat(this)" hidden>
     </label>
     <input id="painel-chat-texto" placeholder="Responder..." autocomplete="off" maxlength="1000">
     <button type="submit">↑</button>

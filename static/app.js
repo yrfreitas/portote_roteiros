@@ -32,6 +32,20 @@ const ICONES = {
   historico:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
   navegacao:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>',
   telefone:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+  // Adicionados em 2026-09-05 pra tirar os últimos emoji de interface do
+  // painel (pedido: "unificar no mesmo jogo de ícones") — mensagem de
+  // WhatsApp/chat continua com emoji de propósito, isso aqui é só chrome
+  // da tela (botão, selo, título).
+  comida:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
+  caixa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>',
+  robo:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>',
+  sino:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+  duvida:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  camera:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+  lampada:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>',
+  carro:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.6-4.8A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.2L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>',
+  clipe:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>',
+  sol:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
 };
 
 function icone(nome, cls = '') {
@@ -261,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v232';
+const VERSAO_PAINEL = 'v233';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -486,7 +500,7 @@ async function carregarStatusAlmocoTecnicos() {
       const desde = parseDataBanco(info.desde);
       const minutos = desde ? Math.max(0, Math.round((Date.now() - desde.getTime()) / 60000)) : 0;
       el.hidden = false;
-      el.textContent = `🍽 há ${minutos}min`;
+      el.innerHTML = `${icone('comida', 'icone-11')} há ${minutos}min`;
       el.title = `Em almoço desde ${formatarDataHora(info.desde)}`;
     });
   } catch { /* selo de almoço não é crítico — próximo ciclo tenta de novo */ }
@@ -504,9 +518,11 @@ async function verificarAlmocoEventosNovos() {
     if (eventos.length) {
       eventos.forEach(ev => {
         if (ev.tipo === 'inicio') {
-          toast(`🍽 ${ev.tecnico_nome} foi almoçar agora`, 'info');
+          // Sem emoji na frente: toast() já desenha o ícone certo pro tipo
+          // ('info'/'success') -- um emoji ali era ícone em dobro.
+          toast(`${ev.tecnico_nome} foi almoçar agora`, 'info');
         } else {
-          toast(`✅ ${ev.tecnico_nome} voltou do almoço — ${ev.duracao_min}min`, 'success');
+          toast(`${ev.tecnico_nome} voltou do almoço — ${ev.duracao_min}min`, 'success');
         }
       });
       carregarStatusAlmocoTecnicos();
@@ -1078,7 +1094,7 @@ function _anexoHtmlChat(m) {
   if ((m.anexo_tipo || '').startsWith('image/')) {
     return `<img class="msg-anexo-img" src="${m.anexo}" alt="${esc(m.anexo_nome || 'imagem')}" onclick="ampliarFoto(this.src)">`;
   }
-  return `<a class="msg-anexo-arquivo" href="${m.anexo}" download="${esc(m.anexo_nome || 'arquivo')}">📎 ${esc(m.anexo_nome || 'arquivo anexado')}</a>`;
+  return `<a class="msg-anexo-arquivo" href="${m.anexo}" download="${esc(m.anexo_nome || 'arquivo')}">${icone('clipe', 'icone-12')} ${esc(m.anexo_nome || 'arquivo anexado')}</a>`;
 }
 
 function _msgHtml(m) {
@@ -1354,7 +1370,7 @@ async function escolherAnexoChat(input) {
     const previa = document.getElementById('painel-chat-anexo-previa');
     if (previa) {
       previa.style.display = 'flex';
-      previa.querySelector('span').textContent = `📎 ${arquivo.name}`;
+      previa.querySelector('span').innerHTML = `${icone('clipe', 'icone-12')} ${esc(arquivo.name)}`;
     }
   };
   leitor.readAsDataURL(arquivo);
@@ -1590,7 +1606,7 @@ function _renderBotaoAlmocoPainel() {
   const btn = document.getElementById('btn-almoco-painel');
   if (!btn) return;
   if (!_almocoPainelDesde) {
-    btn.textContent = '🍽 Ir almoçar';
+    btn.innerHTML = `${icone('comida', 'icone-13')} Ir almoçar`;
     btn.className = 'btn-almoco-painel';
     return;
   }
@@ -1601,7 +1617,7 @@ function _renderBotaoAlmocoPainel() {
   const minutos = inicio ? Math.max(0, Math.round((Date.now() - inicio.getTime()) / 60000)) : 0;
   const restante = 60 - minutos;
   const rotulo = restante >= 0 ? `faltam ${restante}min` : `${Math.abs(restante)}min atrasado`;
-  btn.textContent = `⏱ Voltar do almoço (${rotulo})`;
+  btn.innerHTML = `${icone('historico', 'icone-13')} Voltar do almoço (${rotulo})`;
   btn.className = 'btn-almoco-painel em-almoco' + (restante < 0 ? ' atrasado' : '');
 }
 
@@ -2140,11 +2156,11 @@ function verificarTourPrimeiraVez() {
   if (corpo) {
     corpo.innerHTML = `
       <p class="ajuda-texto" style="margin-bottom:10px;">Um resumo rápido antes de começar:</p>
-      <div class="ajuda-item"><div class="ajuda-pergunta">🔔 Sino de notificações</div>
+      <div class="ajuda-item"><div class="ajuda-pergunta">${icone('sino', 'icone-13')} Sino de notificações</div>
         <div class="ajuda-resposta">Peça pendente, cliente esperando agendamento, erro do sistema — tudo num lugar só, no header.</div></div>
-      <div class="ajuda-item"><div class="ajuda-pergunta">☀️ Tema claro/escuro</div>
+      <div class="ajuda-item"><div class="ajuda-pergunta">${icone('sol', 'icone-13')} Tema claro/escuro</div>
         <div class="ajuda-resposta">Botão de sol/lua ao lado do sino, se o escuro incomodar.</div></div>
-      <div class="ajuda-item"><div class="ajuda-pergunta">❓ Ajuda</div>
+      <div class="ajuda-item"><div class="ajuda-pergunta">${icone('duvida', 'icone-13')} Ajuda</div>
         <div class="ajuda-resposta">O botão de interrogação abre este mesmo tipo de resumo, com perguntas frequentes, a qualquer momento.</div></div>`;
   }
   document.getElementById('modal-tour')?.classList.add('open');
@@ -2219,7 +2235,7 @@ function _renderErroDiag(e) {
       <div class="diag-erro-msg">${esc(e.mensagem)}</div>
       <div class="diag-detalhe">${esc(e.quando)} · ${esc(e.origem)} · ${esc(e.versao)} · ${esc(e.url)}</div>
       <div class="diag-erro-acoes">
-        <button class="btn btn-ghost btn-xs diag-ia-btn" onclick="analisarErroIA(${e.id})" title="Pedir à IA um diagnóstico e a correção">🤖 Analisar com IA</button>
+        <button class="btn btn-ghost btn-xs diag-ia-btn" onclick="analisarErroIA(${e.id})" title="Pedir à IA um diagnóstico e a correção">${icone('robo', 'icone-13')} Analisar com IA</button>
         ${podeEditar ? `
         <select class="diag-erro-status" onchange="atualizarErroDiag(${e.id}, 'status', this.value)">${opts}</select>
         <input class="diag-erro-obs form-input" placeholder="observação..." value="${esc(e.obs || '')}"
@@ -2237,7 +2253,7 @@ async function analisarErroIA(id) {
   try {
     const d = await api(`/erros-cliente/${id}/analisar`, { method: 'POST' }, 90000);
     // Texto simples da IA — escapo e preservo as quebras de linha.
-    alvo.innerHTML = `<div class="diag-ia-caixa"><div class="diag-ia-titulo">🤖 Análise da IA</div><div class="diag-ia-texto">${esc(d.analise).replace(/\n/g, '<br>')}</div></div>`;
+    alvo.innerHTML = `<div class="diag-ia-caixa"><div class="diag-ia-titulo">${icone('robo', 'icone-13')} Análise da IA</div><div class="diag-ia-texto">${esc(d.analise).replace(/\n/g, '<br>')}</div></div>`;
   } catch (e) {
     alvo.innerHTML = `<div class="erro-box">${esc(e.message)}</div>`;
   }
@@ -2942,7 +2958,7 @@ async function carregarResumoDia() {
   try {
     const r = await api('/relatorios/resumo-dia');
     alvo.innerHTML = `
-      <div class="vg-resumo-dia-titulo">📋 Resumo do dia</div>
+      <div class="vg-resumo-dia-titulo">${icone('clipboard', 'icone-13')} Resumo do dia</div>
       <ul class="vg-resumo-dia-lista">${(r.frases || []).map(f => `<li>${esc(f)}</li>`).join('')}</ul>`;
   } catch {
     alvo.innerHTML = '';
@@ -3139,7 +3155,7 @@ async function carregarRelatoriosNegocio() {
     ${tabelaSetores}
     <div class="rel-neg-titulo" style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
       <span>De onde vêm os chamados</span>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="abrirMapaCalor()">🗺 Ver no mapa</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="abrirMapaCalor()">${icone('mapa', 'icone-13')} Ver no mapa</button>
     </div>
     ${listaBairros}`;
 }
@@ -3486,7 +3502,7 @@ async function carregarPedidosComComprovante() {
     return `
       <div class="pp-cartao ${chegou ? 'pp-chegou' : ''}">
         <div class="pp-lado-dados">
-          <div class="pp-cliente">${p.cliente ? esc(p.cliente) : '📦 Reposição de estoque'}</div>
+          <div class="pp-cliente">${p.cliente ? esc(p.cliente) : icone('caixa', 'icone-13') + ' Reposição de estoque'}</div>
           ${p.endereco_completo ? `<div class="pp-sub">${esc(p.endereco_completo)}</div>` : ''}
           ${aparelho ? `<div class="pp-sub">${esc(aparelho)}</div>` : ''}
           ${p.peca ? `<div class="pp-peca">Peça: ${esc(p.peca)}</div>` : ''}
@@ -3897,7 +3913,7 @@ async function carregarPecas() {
                 title="${p.chegou_em ? 'Chegou em ' + esc(p.chegou_em) + ' — clique para desfazer'
                                      : 'Marcar que a peça chegou na oficina'}"
                 onclick="alternarChegada(${p.linha})">
-          ${p.chegou_em ? '📦 chegou' : 'marcar chegada'}
+          ${p.chegou_em ? icone('caixa', 'icone-13') + ' chegou' : 'marcar chegada'}
         </button>
         <button class="peca-estoque-btn" id="peca-estoque-btn-${p.linha}"
                 title="Opcional: soma essa peça ao saldo da aba Estoque, já com o custo desta nota preenchido. Vincular ao cliente (acima) NÃO faz isso sozinho."
@@ -4378,33 +4394,51 @@ function estagioPeca(p) {
 }
 
 // Limpa peça/cliente de uma linha da planilha (o X no canto do cartão) --
-// pedido de 2026-09-04. Confirma antes: ao contrário do "desfazer" dos
-// pedidos emitidos (uma tabela só nossa), aqui é a PLANILHA de verdade
-// sendo apagada, sem histórico de desfazer.
-async function limparPedidoPlanilha(linha) {
+// pedido de 2026-09-04. Mesmo padrão de desfazer do resto do site (pedido
+// de 2026-09-05: "unificar no padrão de desfazer") -- a escrita na PLANILHA
+// de verdade só acontece depois da janela de desfazer passar, então "sem
+// confirm()" não significa sem rede de segurança: clicar Desfazer a tempo
+// cancela a chamada antes dela sair, a limpeza nunca chega a acontecer.
+function limparPedidoPlanilha(linha) {
   const el = document.getElementById(`peca-${linha}`);
-  const peca = document.getElementById(`peca-desc-${linha}`)?.value.trim();
-  const cliente = document.getElementById(`peca-cliente-${linha}`)?.value.trim();
+  const campoPeca = document.getElementById(`peca-desc-${linha}`);
+  const campoCliente = document.getElementById(`peca-cliente-${linha}`);
+  const peca = campoPeca?.value.trim();
+  const cliente = campoCliente?.value.trim();
   if (!peca && !cliente) return; // nada pra limpar
-  if (!confirm('Limpar peça e cliente desta linha da planilha?')) return;
 
-  try {
-    await api(`/pedidos/${linha}/limpar`, { method: 'POST' });
-    const campoPeca = document.getElementById(`peca-desc-${linha}`);
-    const campoCliente = document.getElementById(`peca-cliente-${linha}`);
-    if (campoPeca) campoPeca.value = '';
-    if (campoCliente) campoCliente.value = '';
-    const estado = document.getElementById(`peca-estado-${linha}`);
-    if (estado) estado.innerHTML = '';
-    if (el) {
-      el.classList.remove('tem-cliente');
-      el.dataset.pendente = '1';
-      el.dataset.busca = ((el.dataset.nota || '') + ' ' + (el.dataset.valor || '')).toLowerCase();
-    }
-    toast('Limpo', 'success');
-  } catch (e) {
-    toast(e.message, 'error');
+  const estado = document.getElementById(`peca-estado-${linha}`);
+  const valoresAntes = {
+    peca: campoPeca?.value, cliente: campoCliente?.value, estado: estado?.innerHTML,
+    temCliente: el?.classList.contains('tem-cliente'), pendente: el?.dataset.pendente,
+  };
+  if (campoPeca) campoPeca.value = '';
+  if (campoCliente) campoCliente.value = '';
+  if (estado) estado.innerHTML = '';
+  if (el) {
+    el.classList.remove('tem-cliente');
+    el.dataset.pendente = '1';
+    el.dataset.busca = ((el.dataset.nota || '') + ' ' + (el.dataset.valor || '')).toLowerCase();
   }
+
+  const restaurar = () => {
+    if (campoPeca) campoPeca.value = valoresAntes.peca;
+    if (campoCliente) campoCliente.value = valoresAntes.cliente;
+    if (estado) estado.innerHTML = valoresAntes.estado;
+    if (el) {
+      el.classList.toggle('tem-cliente', !!valoresAntes.temCliente);
+      el.dataset.pendente = valoresAntes.pendente ?? '';
+    }
+  };
+
+  toastDesfazer('Peça e cliente removidos desta linha.', async () => {
+    try {
+      await api(`/pedidos/${linha}/limpar`, { method: 'POST' });
+    } catch (e) {
+      toast(e.message, 'error');
+      restaurar();
+    }
+  }, restaurar);
 }
 
 // Registra que a peça chegou na bancada. É o elo que faltava: a planilha
@@ -4423,7 +4457,7 @@ async function alternarChegada(linha) {
       body: JSON.stringify({ chave: el.dataset.chave, chegou: marcando }),
     });
     btn.classList.toggle('marcado', marcando);
-    btn.textContent = marcando ? '📦 chegou' : 'marcar chegada';
+    btn.innerHTML = marcando ? `${icone('caixa', 'icone-13')} chegou` : 'marcar chegada';
     btn.title = marcando ? `Chegou em ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — clique para desfazer`
                           : 'Marcar que a peça chegou na oficina';
     el.classList.toggle('chegou', marcando);
@@ -6891,7 +6925,7 @@ function escolherDesfecho(tipo) {
       <div class="campo-com-scan">
         <input class="form-input" id="df-codigo" autocomplete="off"
                placeholder="Ex: DE97-01234A" oninput="validarConfirmarDesfecho()">
-        ${temCameraScan() ? `<button type="button" class="btn-scan-codigo" title="Ler código de barras/QR pela câmera" onclick="abrirScanCodigo('df-codigo')">📷</button>` : ''}
+        ${temCameraScan() ? `<button type="button" class="btn-scan-codigo" title="Ler código de barras/QR pela câmera" onclick="abrirScanCodigo('df-codigo')">${icone('camera', 'icone-15')}</button>` : ''}
       </div>
       <label class="form-label" style="margin-top:10px;" for="df-nome-peca">Nome da peça</label>
       <input class="form-input" id="df-nome-peca" autocomplete="off"
@@ -7066,7 +7100,7 @@ async function _dfCarregarSugestaoPreco() {
   try {
     const r = await api(`/relatorios/sugestao-preco?aparelho=${encodeURIComponent(s.tipo_aparelho)}`);
     alvo.textContent = r.n >= 3
-      ? `💡 Histórico de ${r.n} orçamentos aprovados pra ${s.tipo_aparelho}: média ${_brlCotacao(r.media)} (de ${_brlCotacao(r.minimo)} a ${_brlCotacao(r.maximo)})`
+      ? `${icone('lampada', 'icone-13')} Histórico de ${r.n} orçamentos aprovados pra ${s.tipo_aparelho}: média ${_brlCotacao(r.media)} (de ${_brlCotacao(r.minimo)} a ${_brlCotacao(r.maximo)})`
       : '';
   } catch { alvo.textContent = ''; }
 }
@@ -7937,7 +7971,7 @@ async function carregarOS() {
         <span class="conc-tag ${statusClasse}">${esc(statusRotulo || 'Sem status')}</span>
         ${o.visita_data
           ? `<span class="conc-tag ok" title="${o.visita_tecnico ? 'Técnico: ' + esc(o.visita_tecnico) : ''}">
-               📅 ${esc(o.visita_data.split('-').reverse().join('/'))}</span>`
+               ${icone('calendario', 'icone-12')} ${esc(o.visita_data.split('-').reverse().join('/'))}</span>`
           : ''}
       </div>
     </div>`;
@@ -9917,7 +9951,7 @@ async function buscarComparadorFornecedores(codigo) {
 
     const linhas = r.fornecedores.map((f, i) => `
       <div class="comparador-linha ${i === 0 ? 'comparador-melhor' : ''}">
-        <span class="comparador-fornecedor">${esc(f.fornecedor)}${i === 0 ? ' 🏆' : ''}</span>
+        <span class="comparador-fornecedor">${esc(f.fornecedor)}${i === 0 ? ' ' + icone('estrela', 'icone-12') : ''}</span>
         <span class="comparador-valor">${_brlCotacao(f.valor_cotado)}</span>
         <span class="comparador-data">${esc(parseDataBanco(f.atualizado_em || f.criado_em)?.toLocaleDateString('pt-BR') || '')}</span>
       </div>`).join('');
@@ -10194,15 +10228,22 @@ async function reabrirCotacao(id) {
   }
 }
 
-async function removerCotacao(id) {
-  if (!confirm('Remover este item da lista de cotação?')) return;
-  try {
-    await api(`/cotacoes/${id}`, { method: 'DELETE' });
-    toast('Item removido', 'success');
-    carregarCotacoes();
-  } catch (e) {
-    toast(e.message, 'error');
-  }
+// Mesmo padrão de desfazer de removerAtendimento (pedido de 2026-09-05:
+// "unificar no padrão de desfazer") -- a linha esmaece na hora, e o DELETE
+// só sai de verdade se ninguém desfizer a tempo.
+function removerCotacao(id) {
+  const linha = document.getElementById(`cotacao-${id}`);
+  if (linha) { linha.style.transition = 'opacity .2s'; linha.style.opacity = '0.35'; linha.style.pointerEvents = 'none'; }
+  toastDesfazer('Item removido da lista de cotação.', async () => {
+    try {
+      await api(`/cotacoes/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      toast(e.message, 'error');
+      carregarCotacoes();
+    }
+  }, () => {
+    if (linha) { linha.style.opacity = '1'; linha.style.pointerEvents = ''; }
+  });
 }
 
 async function salvarObsCotacao(id, valor) {
@@ -10275,8 +10316,8 @@ async function abrirEstoqueRaiz() {
     'para ver e adicionar as peças dele. Isso é o saldo de verdade — ' +
     'diferente da aba "Peças", que só concilia compra com cliente.';
   document.getElementById('estoque-topo-acoes').innerHTML = podeUsuario('estoque_editar')
-    ? '<button class="btn btn-ghost btn-sm" onclick="abrirReposicaoEstoque()">📉 Repor peça</button>'
-      + '<button class="btn btn-ghost btn-sm" onclick="abrirBiparNota()">📷 Bipar nota fiscal</button>'
+    ? `<button class="btn btn-ghost btn-sm" onclick="abrirReposicaoEstoque()">${icone('caixa', 'icone-13')} Repor peça</button>`
+      + `<button class="btn btn-ghost btn-sm" onclick="abrirBiparNota()">${icone('camera', 'icone-13')} Bipar nota fiscal</button>`
       + '<button class="btn btn-primary btn-sm" onclick="abrirCriarGrupo()">+ Criar estoque</button>'
     : '';
   document.getElementById('estoque-filtros').style.display = 'none';
@@ -12210,7 +12251,7 @@ function alertaNoCarro(a) {
   const quem = lista.map(c =>
     `<b>${esc(c.tecnico)}</b>${c.quantidade > 1 ? ` (${c.quantidade})` : ''}`).join(', ');
   return `<div class="at-no-carro">
-      <span class="at-carro-icone" aria-hidden="true">🚗</span>
+      <span class="at-carro-icone" aria-hidden="true">${icone('carro')}</span>
       Já está no carro de ${quem} — confira antes de comprar
     </div>`;
 }
@@ -12234,7 +12275,7 @@ function avisarPecasNoCarro(atendimentos) {
   aviso.className = 'aviso-carro';
   aviso.setAttribute('role', 'status');
   aviso.innerHTML = `
-    <span class="aviso-carro-icone" aria-hidden="true">🚗</span>
+    <span class="aviso-carro-icone" aria-hidden="true">${icone('carro')}</span>
     <span><b>${comCarro.length} peça${comCarro.length !== 1 ? 's' : ''}</b>
       que ${comCarro.length !== 1 ? 'os técnicos pediram já estão' : 'o técnico pediu já está'}
       no carro de alguém. Confira antes de comprar.</span>
