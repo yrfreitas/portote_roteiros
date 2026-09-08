@@ -73,10 +73,17 @@ def _agora():
 
 def _renderizar_ultimas_paginas(caminho_pdf):
     """Cada página vira uma imagem (pro desenho, que é gráfico mesmo) MAIS a
-    lista de palavras com a posição de cada uma, em % da página (pedido de
-    2026-09-08: "poder selecionar e copiar o código"). O client desenha um
-    <span> transparente em cima de cada palavra, na posição certa — a pessoa
-    vê só a imagem, mas o texto por baixo é de verdade, selecionável."""
+    lista de LINHAS de texto com a posição de cada uma, em % da página
+    (pedido de 2026-09-08: "poder selecionar e copiar o código"). O client
+    desenha um <span> transparente em cima de cada linha, na posição certa
+    — a pessoa vê só a imagem, mas o texto por baixo é de verdade,
+    selecionável.
+
+    Agrupado por LINHA (não por palavra): a primeira versão tinha um <span>
+    justo em cada palavra, com um vão morto (só imagem, nada selecionável)
+    entre uma e outra — bastava o arrasto do mouse passar por cima do vão
+    pra travar/perder a seleção (2026-09-08, reportado pelo Kalebe). Uma
+    linha inteira vira um retângulo só, sem vão nenhum no meio."""
     import pymupdf
 
     doc = pymupdf.open(caminho_pdf)
@@ -91,16 +98,27 @@ def _renderizar_ultimas_paginas(caminho_pdf):
 
             largura_pt = pagina.rect.width or 1
             altura_pt = pagina.rect.height or 1
-            palavras = []
-            for (x0, y0, x1, y1, texto, *_resto) in pagina.get_text("words"):
+
+            linhas = {}  # (bloco, linha) -> lista de (x0, y0, x1, y1, texto)
+            for (x0, y0, x1, y1, texto, bloco, linha, _wn) in pagina.get_text("words"):
                 if not texto.strip():
                     continue
+                linhas.setdefault((bloco, linha), []).append((x0, y0, x1, y1, texto))
+
+            palavras = []
+            for grupo in linhas.values():
+                grupo.sort(key=lambda p: p[0])  # ordem de leitura, esquerda->direita
+                x0min = min(p[0] for p in grupo)
+                y0min = min(p[1] for p in grupo)
+                x1max = max(p[2] for p in grupo)
+                y1max = max(p[3] for p in grupo)
+                texto_linha = " ".join(p[4] for p in grupo)
                 palavras.append({
-                    "t": texto,
-                    "x": round(x0 / largura_pt * 100, 3),
-                    "y": round(y0 / altura_pt * 100, 3),
-                    "w": round((x1 - x0) / largura_pt * 100, 3),
-                    "h": round((y1 - y0) / altura_pt * 100, 3),
+                    "t": texto_linha,
+                    "x": round(x0min / largura_pt * 100, 3),
+                    "y": round(y0min / altura_pt * 100, 3),
+                    "w": round((x1max - x0min) / largura_pt * 100, 3),
+                    "h": round((y1max - y0min) / altura_pt * 100, 3),
                 })
 
             paginas.append({
@@ -112,17 +130,26 @@ def _renderizar_ultimas_paginas(caminho_pdf):
         doc.close()
 
 
+"""Versão do FORMATO gravado em manual_pecas_cache — sobe toda vez que o
+que fica guardado muda de forma, pra cache velho não voltar a ser servido
+como se fosse igual:
+  1 = v235, só a imagem (string), sem texto nenhum pra selecionar.
+  2 = v236-v239, {imagem, palavras} com uma palavra POR PALAVRA — tinha
+      vão morto (só imagem) entre uma palavra e a próxima, e o arrasto do
+      mouse travava/perdia a seleção ao passar por cima do vão.
+  3 = v240, {imagem, palavras} com uma palavra POR LINHA inteira — sem
+      vão no meio do código/descrição, só entre colunas."""
+_FORMATO_CACHE = 3
+
+
 def obter_paginas(conn, drive_id):
     """Retorna as páginas ({imagem, palavras}) do manual. Usa o cache se já
-    existe; senão baixa do Drive, renderiza e grava."""
+    existe NO FORMATO ATUAL; senão baixa do Drive, renderiza e grava."""
     linha = fetch_one(conn, "SELECT imagens FROM manual_pecas_cache WHERE drive_id = ?", (drive_id,))
     if linha and linha.get("imagens"):
-        paginas_cache = json.loads(linha["imagens"])
-        # Cache da v235 guardava só a imagem (string), sem palavra pra
-        # selecionar — trata como se não tivesse cache e gera de novo no
-        # formato novo, em vez de mostrar página sem texto pra sempre.
-        if paginas_cache and isinstance(paginas_cache[0], dict):
-            return paginas_cache
+        dados = json.loads(linha["imagens"])
+        if isinstance(dados, dict) and dados.get("formato") == _FORMATO_CACHE:
+            return dados["paginas"]
 
     item = next((i for i in _carregar_indice() if i["drive_id"] == drive_id), None)
     if not item:
@@ -147,14 +174,15 @@ def obter_paginas(conn, drive_id):
             log.exception("Falha ao renderizar manual (drive_id=%s)", drive_id)
             return None
 
-    # drive_id é PRIMARY KEY: pode já existir uma linha no formato antigo
-    # (v235, sem palavra) pra regenerar — apaga antes de inserir a nova em
-    # vez de UPDATE ... ON CONFLICT (dialeto diferente entre SQLite/Postgres,
+    # drive_id é PRIMARY KEY: pode já existir uma linha de um formato
+    # antigo pra regenerar — apaga antes de inserir a nova em vez de
+    # UPDATE ... ON CONFLICT (dialeto diferente entre SQLite/Postgres,
     # mesmo motivo do resto do projeto, ver services/substituicoes.py).
     execute(conn, "DELETE FROM manual_pecas_cache WHERE drive_id = ?", (drive_id,))
     execute(conn, """
         INSERT INTO manual_pecas_cache (drive_id, categoria, arquivo, imagens, gerado_em)
         VALUES (?, ?, ?, ?, ?)
-    """, (drive_id, item["categoria"], item["arquivo"], json.dumps(paginas), _agora()))
+    """, (drive_id, item["categoria"], item["arquivo"],
+          json.dumps({"formato": _FORMATO_CACHE, "paginas": paginas}), _agora()))
 
     return paginas
