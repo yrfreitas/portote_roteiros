@@ -275,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v236';
+const VERSAO_PAINEL = 'v237';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4384,11 +4384,19 @@ function abrirPaginaManual(pagina) {
   };
   if (img.complete) montarPalavras(); else img.onload = montarPalavras;
 
+  // "Fechar ao clicar fora" não pode ser um simples 'click': arrastar pra
+  // selecionar texto (o objetivo desta tela) e soltar o mouse um pixel fora
+  // da imagem/scroll também dispara 'click' com target=lupa -- fechava o
+  // modal bem na hora que a pessoa terminava de selecionar. Só fecha se o
+  // CLIQUE INTEIRO (mousedown E mouseup) começou e terminou no fundo,
+  // nunca quando é a ponta de um arrasto que começou em cima do conteúdo.
+  let mousedownNoFundo = false;
   const onEsc = (ev) => { if (ev.key === 'Escape') fechar(); };
   const fechar = () => { document.removeEventListener('keydown', onEsc); lupa.remove(); };
   document.addEventListener('keydown', onEsc);
   lupa.querySelector('.lupa-fechar').onclick = fechar;
-  lupa.addEventListener('click', (ev) => { if (ev.target === lupa) fechar(); });
+  lupa.addEventListener('mousedown', (ev) => { mousedownNoFundo = ev.target === lupa; });
+  lupa.addEventListener('click', (ev) => { if (ev.target === lupa && mousedownNoFundo) fechar(); });
 }
 
 // ─── Desfecho do atendimento (visto do escritório) ──────────────────
@@ -8654,7 +8662,39 @@ async function osAbrirNovoFilho(paiId, clienteId, clienteNome) {
   const selPai = document.getElementById('os-pai-select');
   if (selPai) selPai.value = String(paiId);
   osEscolherModelo('chamado_tecnico');
+  await osPreencherDoPai();
   toast('Escolha Chamado Técnico ou Orçamento — o cliente e a OS já estão marcados', 'info');
+}
+
+// Pendurar uma OS nova dentro de um caso já aberto (pedido de 2026-09-08)
+// era retrabalho: mesmo cliente, MESMO APARELHO, e a pessoa tinha que
+// digitar tipo/marca/modelo/série/voltagem de novo do zero. Copia esses
+// campos da OS pai — só nos que ainda estão vazios, pra não apagar o que
+// já foi digitado na mão antes de escolher o pai. Defeito/solução ficam
+// de fora de propósito: são o motivo da visita NOVA, quase sempre diferente
+// do que gerou a OS pai.
+async function osPreencherDoPai() {
+  const paiId = document.getElementById('os-pai-select')?.value;
+  if (!paiId) return;
+  let pai;
+  try {
+    pai = (await api(`/ordens-servico/${paiId}`)).ordem;
+  } catch {
+    return;
+  }
+  if (!pai) return;
+  const mapa = {
+    'os-tipo-aparelho': pai.tipo_aparelho,
+    'os-marca': pai.marca,
+    'os-modelo': pai.modelo,
+    'os-serie': pai.numero_serie,
+    'os-voltagem': pai.voltagem,
+    'os-acessorios': pai.acessorios,
+  };
+  for (const [id, valor] of Object.entries(mapa)) {
+    const campo = document.getElementById(id);
+    if (campo && !campo.value && valor) campo.value = valor;
+  }
 }
 
 // Mesma razão do osEdTipoMudou (edição): "OS de saída da oficina" tem uma
