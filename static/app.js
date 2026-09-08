@@ -275,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v237';
+const VERSAO_PAINEL = 'v238';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7733,8 +7733,10 @@ function osSwitchOrigemTab(tab) {
   const btnDup = document.getElementById('btn-clientes-duplicados');
   if (btnDup) btnDup.style.display = ehClientes ? '' : 'none';
 
+  document.getElementById('os-prazos-proximos').style.display = ehClientes ? '' : 'none';
   if (ehClientes) {
     carregarClientesTodos();
+    carregarPrazosProximos();
   } else {
     carregarOS();
   }
@@ -7808,6 +7810,57 @@ async function carregarClientesTodos() {
   mount.innerHTML = `
     <p class="ajuda-texto" style="margin:0 0 10px;">${r.total} cliente${r.total !== 1 ? 's' : ''} cadastrado${r.total !== 1 ? 's' : ''}, em ordem alfabética. Clique num cliente pra ver o cadastro completo.</p>
     <div class="cliente-lista">${linhas}</div>`;
+}
+
+// Painel de prazos perto de vencer (pedido de 2026-09-08), dentro da aba
+// Clientes. Diferente do resto do site (que só AVISA "há dados novos" e
+// espera clique — ver verificarRevisao) este é um mostrador passivo, não
+// um formulário que alguém possa estar editando: atualizar sozinho não
+// derruba trabalho de ninguém, é o ponto de ter uma tela de "acompanhar em
+// tempo real". Para de se atualizar sozinho ao sair da aba Clientes (senão
+// ficaria batendo no servidor pra sempre em segundo plano).
+const _PRAZOS_INTERVALO_MS = 45000;
+let _prazosGeracao = 0;
+
+async function carregarPrazosProximos() {
+  const minhaGeracao = ++_prazosGeracao;
+  const mount = document.getElementById('os-prazos-proximos');
+  if (!mount) return;
+
+  let r;
+  try {
+    r = await api('/ordens-servico/prazos-proximos');
+  } catch {
+    return; // erro passageiro -- tenta de novo no próximo ciclo, sem gritar
+  }
+  if (minhaGeracao !== _prazosGeracao || _osOrigemTab !== 'clientes') return;
+
+  const resultados = r.resultados || [];
+  if (!resultados.length) {
+    mount.innerHTML = '';
+  } else {
+    const linhas = resultados.map(o => {
+      const aparelho = [o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' ') || 'sem aparelho informado';
+      const dias = o.dias_restantes;
+      const urgencia = dias < 0 ? 'vencido' : dias === 0 ? 'hoje' : 'perto';
+      const rotuloDias = dias < 0 ? `vencido há ${Math.abs(dias)}d` : dias === 0 ? 'vence hoje' : `vence em ${dias}d`;
+      const prazoFmt = parseDataBanco(o.prazo_previsto)?.toLocaleDateString('pt-BR') || o.prazo_previsto;
+      return `
+        <div class="prazo-linha prazo-${urgencia}" onclick="abrirOSDetalhe(${o.id})">
+          <span class="prazo-cliente">${esc(o.cliente_nome)}</span>
+          <span class="prazo-aparelho">${esc(aparelho)}</span>
+          <span class="prazo-data">${esc(prazoFmt)}</span>
+          <span class="prazo-badge prazo-badge-${urgencia}">${esc(rotuloDias)}</span>
+        </div>`;
+    }).join('');
+    mount.innerHTML = `
+      <div class="prazo-painel">
+        <p class="form-separador" style="margin-bottom:8px;">Prazos perto de vencer (${resultados.length})</p>
+        ${linhas}
+      </div>`;
+  }
+
+  setTimeout(() => { if (_osOrigemTab === 'clientes') carregarPrazosProximos(); }, _PRAZOS_INTERVALO_MS);
 }
 
 // Modal "interfacezinha" (pedido de 2026-09-01: a lista crua ficava "jogada
@@ -8300,7 +8353,7 @@ async function abrirModalNovaOS() {
    'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
    'os-serie','os-voltagem','os-acessorios','os-defeito','os-obs','os-tipo','os-solucao',
    'os-chamado-tecnico','os-forma-pagamento','os-chamado-tecnico-solo',
-   'os-garantia-inicio'].forEach(id => {
+   'os-garantia-inicio','os-prazo-previsto'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -8720,6 +8773,7 @@ async function osCriar() {
     acessorios: document.getElementById('os-acessorios').value.trim(),
     defeito_declarado: document.getElementById('os-defeito').value.trim(),
     observacao: document.getElementById('os-obs').value.trim(),
+    prazo_previsto: document.getElementById('os-prazo-previsto').value || null,
   };
 
   // Solução/técnico/foto são comuns aos 3 modelos. Forma de pagamento e
@@ -8978,6 +9032,15 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       <select class="form-input" id="os-ed-setor"></select>
     </div>`;
 
+  // Prazo PROMETIDO ao cliente (pedido de 2026-09-08) -- diferente de
+  // garantia_inicio (dia da conclusão, conta a garantia PRA FRENTE). Comum
+  // aos 3 modelos: qualquer um pode ter um "até quando" combinado.
+  const campoPrazoPrevisto = `
+    <div class="form-group">
+      <label class="form-label" for="os-ed-prazo-previsto">Prazo prometido ao cliente</label>
+      <input type="date" class="form-input" id="os-ed-prazo-previsto" value="${esc(o.prazo_previsto || '')}">
+    </div>`;
+
   // Seções sem UM campo dono (Garantia é preenchida à mão no papel; Termos
   // nasce do tipo_os) — checklist à parte, mesmo coletor (.os-imp-campo).
   const outrasSecoes = (incluirGarantia) => `
@@ -8995,6 +9058,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${equipamento}
       ${defeito}
       ${campoSetor}
+      ${campoPrazoPrevisto}
       ${tipoOsOpcional}
       ${camposComunsChamado}
       ${observacao}
@@ -9052,6 +9116,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
+      ${campoPrazoPrevisto}
       ${tipoOsOpcional}
       ${garantiaOrcamento}
       ${camposComuns}
@@ -9089,6 +9154,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
+      ${campoPrazoPrevisto}
       ${camposComuns}
       <div class="form-row">
         <div class="form-group">
@@ -9246,6 +9312,7 @@ async function osSalvarEdicaoChamado(id) {
     observacao: document.getElementById('os-ed-obs').value.trim(),
     imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
     setor_id: document.getElementById('os-ed-setor')?.value || undefined,
+    prazo_previsto: document.getElementById('os-ed-prazo-previsto')?.value || null,
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
@@ -9277,6 +9344,7 @@ async function osSalvarEdicaoOrcamento(id) {
     imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
     garantia_inicio: document.getElementById('os-ed-garantia-inicio')?.value || null,
     garantia_meses: Number(document.getElementById('os-ed-garantia-meses')?.value) || 3,
+    prazo_previsto: document.getElementById('os-ed-prazo-previsto')?.value || null,
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
@@ -9735,6 +9803,7 @@ async function osSalvarEdicao(id) {
     garantia_meses: tipoOsEditado === 'saida_oficina'
       ? (Number(document.getElementById('os-ed-garantia-meses')?.value) || 3) : null,
     setor_id: document.getElementById('os-ed-setor')?.value || undefined,
+    prazo_previsto: document.getElementById('os-ed-prazo-previsto')?.value || null,
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {

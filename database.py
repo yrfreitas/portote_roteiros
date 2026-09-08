@@ -1173,6 +1173,12 @@ _MIGRACOES_PG = [
         imagens    TEXT,
         gerado_em  TEXT
     )""",
+    # Prazo prometido ao cliente (pedido de 2026-09-08) — diferente de
+    # garantia_inicio (que é o dia da CONCLUSÃO, pra contar garantia PÓS
+    # entrega). Este é o dia combinado ANTES, pra saber se um caso está
+    # perto de estourar o que foi prometido. Opcional e solto: nem toda OS
+    # tem prazo combinado.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS prazo_previsto TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1424,6 +1430,7 @@ _MIGRACOES_SQLITE = [
         imagens    TEXT,
         gerado_em  TEXT
     )""",
+    "ALTER TABLE ordens_servico ADD COLUMN prazo_previsto TEXT",
 ]
 
 

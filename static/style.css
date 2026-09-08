@@ -5228,6 +5228,28 @@ select:focus-visible,
    reaproveitar a grid de 4 colunas pensada pra OS (ficava "jogado e feio"
    com só 3 dados de verdade pra preencher 4 colunas). Clique abre o modal
    de detalhe com o cadastro completo. */
+.prazo-painel {
+  background: var(--bg-card); border: 1px solid var(--border-bright);
+  border-radius: 13px; padding: 14px 16px; margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.prazo-linha {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 10px; border-radius: 9px; cursor: pointer;
+  background: var(--bg-panel); transition: background .14s ease;
+}
+.prazo-linha:hover { background: var(--bg-hover); }
+.prazo-cliente { font-weight: 700; color: var(--text-primary); font-size: 13px; flex: 1 1 160px; }
+.prazo-aparelho { color: var(--text-muted); font-size: 12px; flex: 1 1 160px; }
+.prazo-data { color: var(--text-secondary); font-size: 12px; font-family: var(--font-mono); }
+.prazo-badge {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  padding: 3px 9px; border-radius: 999px; flex: 0 0 auto;
+}
+.prazo-badge-perto   { background: var(--gold-dim);   color: var(--gold-text); }
+.prazo-badge-hoje,
+.prazo-badge-vencido { background: var(--danger-dim); color: var(--danger-text); }
+
 .cliente-lista { display: flex; flex-direction: column; gap: 9px; }
 .cliente-linha {
   display: flex; align-items: center; gap: 14px;
