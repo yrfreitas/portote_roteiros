@@ -150,7 +150,10 @@
   --text-primary:   #101828;
   --text-secondary: #3f4b63;
   --text-muted:     #667085;
-  --text-faint:     #98a2b3;
+  /* Era #98a2b3 (contraste ~2,6:1 no branco — abaixo do mínimo legível de
+     4,5:1). Usado em rótulos pequenos/negrito (ex: .vcep-historico-label),
+     não só em decoração, então precisa ler de verdade. */
+  --text-faint:     #6c7890;
 
   --glass-fill:      rgba(255,255,255,0.72);
   --glass-fill-2:    rgba(255,255,255,0.55);
