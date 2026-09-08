@@ -27,9 +27,9 @@ def rota_buscar():
 @manuais_pecas_bp.route("/manuais-pecas/<drive_id>/paginas", methods=["GET"])
 def rota_paginas(drive_id):
     with db_conn(commit=True) as conn:
-        imagens = obter_paginas(conn, drive_id)
+        paginas = obter_paginas(conn, drive_id)
 
-    if imagens is None:
+    if paginas is None:
         return jsonify({"erro": "Não consegui obter esse manual — tenta de novo em instantes"}), 502
 
-    return jsonify({"imagens": imagens})
+    return jsonify({"paginas": paginas})

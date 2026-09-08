@@ -275,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v235';
+const VERSAO_PAINEL = 'v236';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4339,6 +4339,56 @@ function ampliarFoto(src) {
   lupa.querySelector('.lupa-fechar').onclick = fechar;
   lupa.addEventListener('click', (ev) => { if (ev.target === lupa) fechar(); });
   aplicar();
+}
+
+// Página de manual com TEXTO selecionável em cima da imagem (pedido de
+// 2026-09-08: "poder copiar o código"). Diferente de ampliarFoto (que é
+// pan/zoom arrastando a imagem) porque arrastar pra mover e arrastar pra
+// selecionar texto são a mesma ação do mouse — não dá pra ter as duas. Aqui
+// a imagem fica em tamanho real dentro de uma caixa com rolagem, e cada
+// palavra vira um <span> transparente na posição exata (em %, calculada no
+// servidor a partir do PDF) — a pessoa vê a imagem, mas seleciona/copia o
+// texto de verdade por baixo.
+function abrirPaginaManual(pagina) {
+  const lupa = document.createElement('div');
+  lupa.className = 'lupa-fundo manual-pecas-modal';
+  lupa.innerHTML = `
+    <button type="button" class="lupa-fechar" title="Fechar (Esc)">✕</button>
+    <div class="manual-pecas-modal-scroll">
+      <div class="manual-pecas-modal-wrap">
+        <img src="${pagina.imagem}" alt="Página do manual" draggable="false">
+      </div>
+    </div>
+    <div class="lupa-dica">arraste o mouse por cima do texto pra selecionar e copiar (Ctrl+C)</div>`;
+  document.body.appendChild(lupa);
+
+  const wrap = lupa.querySelector('.manual-pecas-modal-wrap');
+  const img = wrap.querySelector('img');
+
+  const montarPalavras = () => {
+    wrap.style.width = img.naturalWidth + 'px';
+    wrap.style.height = img.naturalHeight + 'px';
+    const frag = document.createDocumentFragment();
+    for (const p of (pagina.palavras || [])) {
+      const span = document.createElement('span');
+      span.className = 'manual-pecas-palavra';
+      span.textContent = p.t;
+      span.style.left = p.x + '%';
+      span.style.top = p.y + '%';
+      span.style.width = p.w + '%';
+      span.style.height = p.h + '%';
+      span.style.fontSize = Math.max(6, (p.h / 100) * img.naturalHeight * 0.85) + 'px';
+      frag.appendChild(span);
+    }
+    wrap.appendChild(frag);
+  };
+  if (img.complete) montarPalavras(); else img.onload = montarPalavras;
+
+  const onEsc = (ev) => { if (ev.key === 'Escape') fechar(); };
+  const fechar = () => { document.removeEventListener('keydown', onEsc); lupa.remove(); };
+  document.addEventListener('keydown', onEsc);
+  lupa.querySelector('.lupa-fechar').onclick = fechar;
+  lupa.addEventListener('click', (ev) => { if (ev.target === lupa) fechar(); });
 }
 
 // ─── Desfecho do atendimento (visto do escritório) ──────────────────
@@ -10005,6 +10055,7 @@ async function importarSubstituicao(botao) {
 // pra quem está cotando não precisar sair do site e vasculhar o Drive à mão.
 const CATEGORIA_MANUAL_ROTULO = { lavadora: 'Lavadora', microondas: 'Micro-ondas', refrigerador: 'Refrigerador' };
 let _manualPecasResultados = [];
+let _manualPecasPaginas = [];
 
 async function buscarManualPecas() {
   const termo = document.getElementById('manual-pecas-busca')?.value.trim();
@@ -10061,18 +10112,22 @@ async function carregarPaginasManual(resultado) {
     return;
   }
 
-  const imagens = r.imagens || [];
-  if (!imagens.length) {
+  const paginas = r.paginas || [];
+  if (!paginas.length) {
     alvo.innerHTML = '<p class="vcep-erro" style="margin:0;">Não consegui abrir esse manual.</p>';
     return;
   }
 
+  // Guardado numa variável global em vez de dentro do onclick -- são as
+  // palavras (texto+posição) de cada página, JSON grande demais pra virar
+  // atributo HTML sem correr risco de quebrar escape de aspas.
+  _manualPecasPaginas = paginas;
   alvo.innerHTML = `
-    <p class="ajuda-texto">${esc(CATEGORIA_MANUAL_ROTULO[resultado.categoria] || '')} — ${esc(resultado.arquivo)} · clique numa página pra ampliar</p>
+    <p class="ajuda-texto">${esc(CATEGORIA_MANUAL_ROTULO[resultado.categoria] || '')} — ${esc(resultado.arquivo)} · clique numa página pra ampliar e poder selecionar o código</p>
     <div class="manual-pecas-grade">
-      ${imagens.map((src, i) => `
-        <img class="manual-pecas-pagina" src="${src}" alt="Página ${i + 1} do manual"
-             onclick="ampliarFoto('${src}')">`).join('')}
+      ${paginas.map((p, i) => `
+        <img class="manual-pecas-pagina" src="${p.imagem}" alt="Página ${i + 1} do manual"
+             onclick="abrirPaginaManual(_manualPecasPaginas[${i}])">`).join('')}
     </div>`;
 }
 

@@ -3449,6 +3449,26 @@ select:focus-visible,
 }
 .manual-pecas-pagina:hover { transform: scale(1.03); box-shadow: var(--shadow-card-hi); }
 
+/* Modal de página com texto selecionável (abrirPaginaManual) -- sobrescreve
+   o max-width/max-height de ".lupa-fundo img" porque aqui a imagem PRECISA
+   ficar no tamanho real (mesma escala do cálculo de posição das palavras,
+   feito em % no servidor); quem limita o tamanho na tela é o scroll da
+   caixa em volta, não a própria imagem encolhendo. */
+.manual-pecas-modal-scroll {
+  max-width: 96vw; max-height: 92vh; overflow: auto; cursor: text;
+  border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+}
+.manual-pecas-modal-wrap { position: relative; display: block; line-height: 0; }
+.manual-pecas-modal-wrap img {
+  display: block; max-width: none; max-height: none; width: 100%; height: 100%;
+  user-select: none;
+}
+.manual-pecas-palavra {
+  position: absolute; color: transparent; user-select: text;
+  white-space: pre; overflow: hidden; line-height: 1; cursor: text;
+}
+.manual-pecas-palavra::selection { background: rgba(47,111,224,0.35); color: transparent; }
+
 .substituicao-cartao {
   background: var(--bg-panel); border: 1px solid var(--border-bright);
   border-radius: 9px; padding: 10px 12px; margin-top: 10px;
