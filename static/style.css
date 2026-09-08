@@ -3438,6 +3438,17 @@ select:focus-visible,
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 14px 16px;
 }
+.manual-pecas-lista { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.manual-pecas-grade {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px; margin-top: 10px;
+}
+.manual-pecas-pagina {
+  width: 100%; border-radius: 8px; border: 1px solid var(--border-bright);
+  background: #fff; cursor: zoom-in; transition: transform 0.15s, box-shadow 0.15s;
+}
+.manual-pecas-pagina:hover { transform: scale(1.03); box-shadow: var(--shadow-card-hi); }
+
 .substituicao-cartao {
   background: var(--bg-panel); border: 1px solid var(--border-bright);
   border-radius: 9px; padding: 10px 12px; margin-top: 10px;

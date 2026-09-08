@@ -126,6 +126,7 @@ REGRAS = [
     ("/api/pedidos",               None,                     "pecas"),
     ("/api/cotacoes",              None,                     "cotacao"),
     ("/api/pecas-substituicao",    None,                     "cotacao"),
+    ("/api/manuais-pecas",         None,                     "cotacao"),
     ("/api/clientes",              None,                     "ordens_servico"),
     ("/api/ordens-servico",        None,                     "ordens_servico"),
     ("/api/usuarios",              None,                     "gerenciar_usuarios"),

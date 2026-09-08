@@ -1160,6 +1160,19 @@ _MIGRACOES_PG = [
     # (reposição), diferenciados por qual das duas colunas está preenchida.
     "ALTER TABLE pedido_peca_os ALTER COLUMN ordem_servico_id DROP NOT NULL",
     "ALTER TABLE pedido_peca_os ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL",
+    # Cache das últimas páginas (desenho explodido + lista de códigos) dos
+    # manuais de serviço da Panasonic (pedido de 2026-09-08). O PDF em si
+    # mora no Google Drive do Kalebe, público por link; baixar e renderizar
+    # de novo a cada busca seria lento (PDF de alguns MB + render de imagem),
+    # então a primeira busca de um modelo gera as imagens e grava aqui —
+    # buscas seguintes do mesmo modelo (por qualquer usuário) saem na hora.
+    """CREATE TABLE IF NOT EXISTS manual_pecas_cache (
+        drive_id   TEXT PRIMARY KEY,
+        categoria  TEXT,
+        arquivo    TEXT,
+        imagens    TEXT,
+        gerado_em  TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1404,6 +1417,13 @@ _MIGRACOES_SQLITE = [
         criado_em  TEXT
     )""",
     "ALTER TABLE pedido_peca_os ADD COLUMN cliente_id INTEGER REFERENCES clientes(id)",
+    """CREATE TABLE IF NOT EXISTS manual_pecas_cache (
+        drive_id   TEXT PRIMARY KEY,
+        categoria  TEXT,
+        arquivo    TEXT,
+        imagens    TEXT,
+        gerado_em  TEXT
+    )""",
 ]
 
 

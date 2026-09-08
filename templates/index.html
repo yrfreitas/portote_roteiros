@@ -470,6 +470,31 @@
         </div>
 
         <div class="pecas-sub-secao" style="margin-top:20px;">
+          <p class="form-separador">Manual de peças (desenho + código)</p>
+          <p class="ajuda-texto">Digite o modelo do aparelho pra ver o desenho explodido e a
+            lista de códigos das últimas páginas do manual de serviço (Panasonic).</p>
+          <div class="form-row" style="align-items:flex-end;">
+            <div class="form-group">
+              <label class="form-label" for="manual-pecas-categoria">Aparelho</label>
+              <select class="form-input" id="manual-pecas-categoria">
+                <option value="">Todos</option>
+                <option value="lavadora">Lavadora</option>
+                <option value="microondas">Micro-ondas</option>
+                <option value="refrigerador">Refrigerador</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label class="form-label" for="manual-pecas-busca">Modelo</label>
+              <input class="form-input" id="manual-pecas-busca" autocomplete="off"
+                     placeholder="Ex: NA-F160B5W"
+                     onkeydown="if(event.key==='Enter') buscarManualPecas()">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="buscarManualPecas()">Buscar manual</button>
+          </div>
+          <div id="manual-pecas-resultado"></div>
+        </div>
+
+        <div class="pecas-sub-secao" style="margin-top:20px;">
           <p class="form-separador">Preço antes de comprar</p>
           <div id="cotacao-conteudo"></div>
         </div>

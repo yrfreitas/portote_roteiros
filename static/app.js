@@ -275,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v234';
+const VERSAO_PAINEL = 'v235';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -9998,6 +9998,82 @@ async function importarSubstituicao(botao) {
     if (botao) { botao.disabled = false; botao.textContent = textoOriginal; }
     carregarStatusSubstituicao();
   }
+}
+
+// Manual de peças por modelo (pedido de 2026-09-08): pega as últimas páginas
+// do manual de serviço da Panasonic (desenho explodido + tabela de código)
+// pra quem está cotando não precisar sair do site e vasculhar o Drive à mão.
+const CATEGORIA_MANUAL_ROTULO = { lavadora: 'Lavadora', microondas: 'Micro-ondas', refrigerador: 'Refrigerador' };
+let _manualPecasResultados = [];
+
+async function buscarManualPecas() {
+  const termo = document.getElementById('manual-pecas-busca')?.value.trim();
+  const categoria = document.getElementById('manual-pecas-categoria')?.value || '';
+  const alvo = document.getElementById('manual-pecas-resultado');
+  if (!alvo) return;
+  if (!termo) { alvo.innerHTML = ''; return; }
+
+  alvo.innerHTML = '<p class="ajuda-texto">Buscando...</p>';
+  let r;
+  try {
+    const q = `modelo=${encodeURIComponent(termo)}${categoria ? `&categoria=${encodeURIComponent(categoria)}` : ''}`;
+    r = await api(`/manuais-pecas/buscar?${q}`);
+  } catch (e) {
+    alvo.innerHTML = `<p class="vcep-erro" style="margin:0;">${esc(e.message)}</p>`;
+    return;
+  }
+
+  const resultados = r.resultados || [];
+  if (!resultados.length) {
+    alvo.innerHTML = '<p class="ajuda-texto">Nenhum manual encontrado pra esse modelo.</p>';
+    return;
+  }
+  if (resultados.length === 1) {
+    carregarPaginasManual(resultados[0]);
+    return;
+  }
+
+  // Mais de um bateu (modelo genérico ou nome de arquivo que cobre vários) --
+  // deixa a pessoa escolher em vez de chutar o primeiro. Guarda a lista numa
+  // variável global e referencia por índice no onclick -- meter o objeto
+  // inteiro dentro do atributo HTML é fonte fácil de bug de escape de aspas.
+  _manualPecasResultados = resultados;
+  alvo.innerHTML = `
+    <p class="ajuda-texto">Mais de um manual bateu com esse modelo — escolha:</p>
+    <div class="manual-pecas-lista">
+      ${resultados.map((res, i) => `
+        <button class="btn btn-ghost btn-sm" onclick="carregarPaginasManual(_manualPecasResultados[${i}])">
+          ${esc(CATEGORIA_MANUAL_ROTULO[res.categoria] || res.categoria)} — ${esc(res.arquivo)}
+        </button>`).join('')}
+    </div>`;
+}
+
+async function carregarPaginasManual(resultado) {
+  const alvo = document.getElementById('manual-pecas-resultado');
+  if (!alvo) return;
+  alvo.innerHTML = `<div class="loading-row" style="display:flex;align-items:center;gap:10px;padding:16px 0;"><div class="spinner"></div> Abrindo ${esc(resultado.arquivo)} — a primeira vez demora um pouco, as próximas saem na hora...</div>`;
+
+  let r;
+  try {
+    r = await api(`/manuais-pecas/${encodeURIComponent(resultado.id)}/paginas`, {}, 90000);
+  } catch (e) {
+    alvo.innerHTML = `<p class="vcep-erro" style="margin:0;">${esc(e.message)}</p>`;
+    return;
+  }
+
+  const imagens = r.imagens || [];
+  if (!imagens.length) {
+    alvo.innerHTML = '<p class="vcep-erro" style="margin:0;">Não consegui abrir esse manual.</p>';
+    return;
+  }
+
+  alvo.innerHTML = `
+    <p class="ajuda-texto">${esc(CATEGORIA_MANUAL_ROTULO[resultado.categoria] || '')} — ${esc(resultado.arquivo)} · clique numa página pra ampliar</p>
+    <div class="manual-pecas-grade">
+      ${imagens.map((src, i) => `
+        <img class="manual-pecas-pagina" src="${src}" alt="Página ${i + 1} do manual"
+             onclick="ampliarFoto('${src}')">`).join('')}
+    </div>`;
 }
 
 async function carregarCotacoes() {

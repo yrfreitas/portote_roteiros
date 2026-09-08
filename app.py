@@ -25,6 +25,7 @@ from routes.ordens_servico import (MODELOS_OS_ROTULO, TERMOS_PADRAO,
                                    TERMOS_POR_TIPO, TIPOS_OS_ROTULO,
                                    ordens_servico_bp)
 from routes.fichas import fichas_bp
+from routes.manuais_pecas import manuais_pecas_bp
 from routes.pedidos import pedidos_bp
 from routes.rastreio import rastreio_bp
 from routes.relatorios import relatorios_bp
@@ -110,6 +111,7 @@ app.register_blueprint(clientes_bp, url_prefix="/api")
 app.register_blueprint(ordens_servico_bp, url_prefix="/api")
 app.register_blueprint(vendas_bp, url_prefix="/api")
 app.register_blueprint(substituicoes_bp, url_prefix="/api")
+app.register_blueprint(manuais_pecas_bp, url_prefix="/api")
 
 
 def _e_api() -> bool:
