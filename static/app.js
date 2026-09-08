@@ -275,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v238';
+const VERSAO_PAINEL = 'v239';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7733,10 +7733,15 @@ function osSwitchOrigemTab(tab) {
   const btnDup = document.getElementById('btn-clientes-duplicados');
   if (btnDup) btnDup.style.display = ehClientes ? '' : 'none';
 
-  document.getElementById('os-prazos-proximos').style.display = ehClientes ? '' : 'none';
+  // Painel de prazos mora em "Produtos da loja" (pedido de 2026-09-08,
+  // corrigido depois pra sair de Clientes) -- é onde o prazo prometido é
+  // mais relevante no dia a dia.
+  const ehBalcao = tab === 'balcao';
+  document.getElementById('os-prazos-proximos').style.display = ehBalcao ? '' : 'none';
+  if (ehBalcao) carregarPrazosProximos();
+
   if (ehClientes) {
     carregarClientesTodos();
-    carregarPrazosProximos();
   } else {
     carregarOS();
   }
@@ -7813,12 +7818,13 @@ async function carregarClientesTodos() {
 }
 
 // Painel de prazos perto de vencer (pedido de 2026-09-08), dentro da aba
-// Clientes. Diferente do resto do site (que só AVISA "há dados novos" e
+// "Produtos da loja" (nasceu em Clientes, movido a pedido do Kalebe no
+// mesmo dia). Diferente do resto do site (que só AVISA "há dados novos" e
 // espera clique — ver verificarRevisao) este é um mostrador passivo, não
 // um formulário que alguém possa estar editando: atualizar sozinho não
 // derruba trabalho de ninguém, é o ponto de ter uma tela de "acompanhar em
-// tempo real". Para de se atualizar sozinho ao sair da aba Clientes (senão
-// ficaria batendo no servidor pra sempre em segundo plano).
+// tempo real". Para de se atualizar sozinho ao sair da aba (senão ficaria
+// batendo no servidor pra sempre em segundo plano).
 const _PRAZOS_INTERVALO_MS = 45000;
 let _prazosGeracao = 0;
 
@@ -7833,7 +7839,7 @@ async function carregarPrazosProximos() {
   } catch {
     return; // erro passageiro -- tenta de novo no próximo ciclo, sem gritar
   }
-  if (minhaGeracao !== _prazosGeracao || _osOrigemTab !== 'clientes') return;
+  if (minhaGeracao !== _prazosGeracao || _osOrigemTab !== 'balcao') return;
 
   const resultados = r.resultados || [];
   if (!resultados.length) {
@@ -7860,7 +7866,7 @@ async function carregarPrazosProximos() {
       </div>`;
   }
 
-  setTimeout(() => { if (_osOrigemTab === 'clientes') carregarPrazosProximos(); }, _PRAZOS_INTERVALO_MS);
+  setTimeout(() => { if (_osOrigemTab === 'balcao') carregarPrazosProximos(); }, _PRAZOS_INTERVALO_MS);
 }
 
 // Modal "interfacezinha" (pedido de 2026-09-01: a lista crua ficava "jogada
