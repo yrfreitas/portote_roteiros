@@ -607,12 +607,23 @@ def resumo_carro():
              ORDER BY b.id DESC
              LIMIT 30
         """))
+        # SÓ conta como alerta quem já teve baixa DE VERDADE (EXISTS em
+        # peca_carro_baixa) — achado testando com dado real: muita peça
+        # nasce cadastrada com quantidade 1 (ferramenta/insumo que ninguém
+        # nunca ajustou, tipo "vaselina" ou "fixa tudo") e nunca teve
+        # nenhuma baixa. Sem esse filtro, TUDO que nasceu com 1 virava
+        # alerta pra sempre — 17 peças "baixas" do mesmo técnico que na
+        # real nunca foram tocadas. O alerta é sobre CONSUMO recente, não
+        # sobre "quantidade pequena de cadastro".
         alertas = fetch_all(conn, sql("""
             SELECT c.id, c.codigo, c.descricao, c.quantidade,
                    t.id AS tecnico_id, t.nome AS tecnico_nome, t.cor AS tecnico_cor
               FROM peca_carro c
               JOIN tecnicos t ON t.id = c.tecnico_id
              WHERE c.quantidade <= ?
+               AND EXISTS (
+                    SELECT 1 FROM peca_carro_baixa b
+                     WHERE b.tecnico_id = c.tecnico_id AND b.codigo = c.codigo)
              ORDER BY c.quantidade, t.nome, c.codigo
         """), (_ESTOQUE_CARRO_BAIXO,))
 
