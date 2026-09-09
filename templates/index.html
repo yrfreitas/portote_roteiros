@@ -383,6 +383,9 @@
         <button class="vcep-tab" id="ptab-cotacao" style="display:none" onclick="pecasSwitchTab('cotacao')">
           Cotação de peças
         </button>
+        <button class="vcep-tab" id="ptab-carro" onclick="pecasSwitchTab('carro')">
+          Carro dos técnicos
+        </button>
       </div>
 
       <div id="pecas-aba-compradas">
@@ -500,6 +503,19 @@
           <p class="form-separador">Preço antes de comprar</p>
           <div id="cotacao-conteudo"></div>
         </div>
+      </div>
+
+      <div id="pecas-aba-carro" style="display:none;">
+        <div class="historico-header">
+          <span class="visao-geral-title">Carro dos técnicos</span>
+        </div>
+        <p class="ajuda-texto" style="margin:0 0 14px;">
+          Cada baixa que um técnico registra em campo aparece aqui na hora, e a
+          peça que está ficando sem estoque no carro dele vira alerta no topo.
+          Cadastrar/ajustar o que cada um carrega continua em Roteiros, no
+          ícone de caixa ao lado do nome do técnico.
+        </p>
+        <div id="pecas-carro-conteudo"></div>
       </div>
     </div>
   </main>

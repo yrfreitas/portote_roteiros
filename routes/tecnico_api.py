@@ -894,3 +894,79 @@ def push_unsubscribe(token):
         """, (endpoint, tecnico["id"]))
 
     return jsonify({"mensagem": "Notificações desativadas"})
+
+
+# ═══ Peça no carro — dar baixa (pedido de 2026-09-09) ═══════════════════
+#
+# Até aqui só o painel (Kalebe) mexia no estoque do carro — ele descontava
+# na mão quando ficava sabendo que uma peça tinha sido usada. Isso significa
+# que "quando o técnico usou" e "quando o painel descontou" podiam ser dias
+# diferentes, e o Kalebe só descobria o consumo se alguém contasse pra ele.
+# Agora o próprio técnico registra em campo, na hora — e cada baixa vira uma
+# linha em peca_carro_baixa, que é o que alimenta o feed/alerta do painel.
+@tecnico_api_bp.route("/<token>/carro", methods=["GET"])
+def carro_do_tecnico(token):
+    with db_conn() as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+        pecas = fetch_all(conn, sql("""
+            SELECT id, codigo, descricao, quantidade
+              FROM peca_carro WHERE tecnico_id = ? ORDER BY codigo
+        """), (tecnico["id"],))
+    return jsonify({"pecas": pecas})
+
+
+@tecnico_api_bp.route("/<token>/carro/baixar", methods=["POST"])
+def carro_baixar(token):
+    data = request.get_json(silent=True) or {}
+    codigo = (data.get("codigo") or "").strip().upper()
+    if not codigo:
+        return jsonify({"erro": "Informe o código da peça"}), 400
+    try:
+        quantidade = max(1, min(999, int(data.get("quantidade") or 1)))
+    except (TypeError, ValueError):
+        quantidade = 1
+    servico_id = data.get("servico_id")
+    try:
+        servico_id = int(servico_id) if servico_id else None
+    except (TypeError, ValueError):
+        servico_id = None
+
+    with db_conn(commit=True) as conn:
+        tecnico = _tecnico_por_token(conn, token)
+        if not tecnico:
+            return jsonify({"erro": "Link inválido"}), 404
+
+        atual = fetch_one(conn, sql("""
+            SELECT id, descricao, quantidade FROM peca_carro
+             WHERE tecnico_id = ? AND codigo = ?
+        """), (tecnico["id"], codigo))
+        if not atual:
+            return jsonify({"erro": "Essa peça não está no seu carro"}), 404
+
+        quantidade_apos = max(0, (atual["quantidade"] or 0) - quantidade)
+        agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+        # Zero REMOVE a linha — mesma regra de sempre (routes/tecnicos.py,
+        # atualizar_peca_carro): "acabou" e "nunca teve" são a mesma coisa
+        # pra quem consulta o carro. O LOG abaixo é o que preserva "isso
+        # aconteceu", independente da linha ainda existir ou não.
+        if quantidade_apos <= 0:
+            execute(conn, "DELETE FROM peca_carro WHERE id = ?", (atual["id"],))
+        else:
+            execute(conn, sql("""
+                UPDATE peca_carro SET quantidade = ?, atualizado_em = ?,
+                       atualizado_por = ? WHERE id = ?
+            """), (quantidade_apos, agora, tecnico["nome"], atual["id"]))
+
+        insert_returning_id(conn, sql("""
+            INSERT INTO peca_carro_baixa
+                (tecnico_id, codigo, descricao, quantidade, quantidade_apos, servico_id, criado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """), (tecnico["id"], codigo, atual["descricao"], quantidade,
+               quantidade_apos, servico_id, agora))
+
+        bump_revisao(conn)
+
+    return jsonify({"codigo": codigo, "quantidade_apos": quantidade_apos}), 201

@@ -24,6 +24,9 @@
     <button class="t-btn-almoco" id="btn-almoco" onclick="window._tAlternarAlmoco()">
       🍽 Ir almoçar
     </button>
+    <button class="t-btn-sino" id="btn-carro" onclick="window._tAbrirCarro()" title="Peças no meu carro">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16V8a1 1 0 0 1 1-1h11l5 5v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+    </button>
     <button class="t-btn-sino" id="btn-notificacoes" title="Ativar notificações de nova rota">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
     </button>
@@ -49,6 +52,19 @@
     <div class="t-folha-painel">
       <div class="t-folha-alca" onclick="window._tFecharDesfecho()"></div>
       <div class="t-folha-corpo"></div>
+    </div>
+  </div>
+
+  <!-- Peças no carro (pedido de 2026-09-09): o técnico vê o que carrega na
+       van e dá baixa na hora que usa — some do painel do Kalebe em tempo
+       real (mesmo bump_revisao de sempre), em vez dele descobrir só quando
+       alguém contar. -->
+  <div class="t-folha" id="t-folha-carro" role="dialog" aria-modal="true"
+       aria-label="Peças no meu carro">
+    <div class="t-folha-fundo" onclick="window._tFecharCarro()"></div>
+    <div class="t-folha-painel">
+      <div class="t-folha-alca" onclick="window._tFecharCarro()"></div>
+      <div class="t-folha-corpo" id="t-carro-corpo"></div>
     </div>
   </div>
 

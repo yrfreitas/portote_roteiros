@@ -275,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v242';
+const VERSAO_PAINEL = 'v243';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3465,12 +3465,65 @@ function pecasSwitchTab(tab) {
   document.getElementById('ptab-compradas')?.classList.toggle('active', tab === 'compradas');
   document.getElementById('ptab-pedidos')?.classList.toggle('active', tab === 'pedidos');
   document.getElementById('ptab-cotacao')?.classList.toggle('active', tab === 'cotacao');
+  document.getElementById('ptab-carro')?.classList.toggle('active', tab === 'carro');
   document.getElementById('pecas-aba-compradas').style.display = tab === 'compradas' ? 'block' : 'none';
   document.getElementById('pecas-aba-pedidos').style.display = tab === 'pedidos' ? 'block' : 'none';
   document.getElementById('pecas-aba-cotacao').style.display = tab === 'cotacao' ? 'block' : 'none';
+  document.getElementById('pecas-aba-carro').style.display = tab === 'carro' ? 'block' : 'none';
   if (tab === 'compradas') carregarPecas();
   if (tab === 'pedidos') carregarPedidosComComprovante();
   if (tab === 'cotacao') { carregarCotacoes(); carregarStatusSubstituicao(); }
+  if (tab === 'carro') carregarCarroResumo();
+}
+
+// Carro dos técnicos: feed de baixa + alerta de reposição (pedido de
+// 2026-09-09). Reaproveita o padrão de auto-atualização do painel de
+// prazos (ver carregarPrazosProximos) -- é mostrador passivo, não
+// formulário, então atualizar sozinho não derruba trabalho de ninguém.
+const _CARRO_INTERVALO_MS = 45000;
+let _carroResumoGeracao = 0;
+
+async function carregarCarroResumo() {
+  const minhaGeracao = ++_carroResumoGeracao;
+  const mount = document.getElementById('pecas-carro-conteudo');
+  if (!mount) return;
+
+  let r;
+  try {
+    r = await api('/tecnicos/carro/resumo');
+  } catch {
+    return;
+  }
+  if (minhaGeracao !== _carroResumoGeracao || _pecasTab !== 'carro') return;
+
+  const alertas = r.alertas || [];
+  const atividade = r.atividade || [];
+
+  const blocoAlertas = alertas.length ? `
+    <div class="prazo-painel">
+      <p class="form-separador" style="margin-bottom:8px;">Estoque baixo no carro (${alertas.length})</p>
+      ${alertas.map(a => `
+        <div class="prazo-linha prazo-vencido">
+          <span class="prazo-cliente" style="color:${escCor(a.tecnico_cor)}">${esc(a.tecnico_nome)}</span>
+          <span class="prazo-aparelho">${esc(a.codigo)}${a.descricao ? ' — ' + esc(a.descricao) : ''}</span>
+          <span class="prazo-badge prazo-badge-vencido">${a.quantidade === 0 ? 'acabou' : `só ${a.quantidade}`}</span>
+        </div>`).join('')}
+    </div>` : '';
+
+  const blocoAtividade = atividade.length ? `
+    <div class="prazo-painel">
+      <p class="form-separador" style="margin-bottom:8px;">Últimas baixas registradas</p>
+      ${atividade.map(a => `
+        <div class="prazo-linha" style="cursor:default;">
+          <span class="prazo-cliente" style="color:${escCor(a.tecnico_cor)}">${esc(a.tecnico_nome)}</span>
+          <span class="prazo-aparelho">deu baixa em ${esc(a.codigo)}${a.descricao ? ' — ' + esc(a.descricao) : ''} (restam ${a.quantidade_apos})</span>
+          <span class="prazo-data">${esc(parseDataBanco(a.criado_em)?.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) || '')}</span>
+        </div>`).join('')}
+    </div>` : '<p class="ajuda-texto">Nenhuma baixa registrada ainda.</p>';
+
+  mount.innerHTML = blocoAlertas + blocoAtividade;
+
+  setTimeout(() => { if (_pecasTab === 'carro') carregarCarroResumo(); }, _CARRO_INTERVALO_MS);
 }
 
 async function carregarPedidosComComprovante() {

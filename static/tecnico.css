@@ -524,6 +524,27 @@ button.t-ponto-link-waze {
 .t-df-ajuda {
   margin: 0 0 9px; font-size: 12px; color: #8fa3bf; line-height: 1.45;
 }
+
+/* ─── Peças no carro ────────────────────────────────────────────── */
+.t-carro-lista { display: flex; flex-direction: column; gap: 8px; }
+.t-carro-item {
+  display: flex; align-items: center; gap: 10px;
+  background: #171d28; border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px; padding: 11px 12px;
+}
+.t-carro-info { flex: 1 1 auto; min-width: 0; }
+.t-carro-codigo { font-family: var(--font-mono); font-weight: 700; font-size: 13.5px; }
+.t-carro-desc { font-size: 11.5px; color: #8fa3bf; margin-top: 2px; }
+.t-carro-qtd {
+  font-family: var(--font-mono); font-weight: 700; font-size: 15px;
+  min-width: 26px; text-align: center; color: #cfdaea;
+}
+.t-carro-usar {
+  flex: none; background: rgba(52,211,153,0.14); border: 1px solid rgba(52,211,153,0.35);
+  color: #6ee7b7; border-radius: 9px; padding: 8px 12px;
+  font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.t-carro-usar:disabled { opacity: .5; }
 .t-df-foto-botao {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   min-height: 52px; border-radius: 12px; cursor: pointer;

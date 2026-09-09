@@ -297,7 +297,7 @@
 //        técnico cadastrado" — mentira nesse caso, parecia bug do sistema
 //        inteiro. Mensagem agora diz a causa certa e pra onde ir resolver
 //        (Diagnóstico → Acessos, vincular o login a um técnico).
-const CACHE_VERSAO = 'portotec-roteiros-v242';
+const CACHE_VERSAO = 'portotec-roteiros-v243';
 
 const ARQUIVOS_CASCA = [
   '/',

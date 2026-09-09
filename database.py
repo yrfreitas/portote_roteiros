@@ -1179,6 +1179,22 @@ _MIGRACOES_PG = [
     # perto de estourar o que foi prometido. Opcional e solto: nem toda OS
     # tem prazo combinado.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS prazo_previsto TEXT",
+    # Histórico de baixa da peça no carro (pedido de 2026-09-09): peca_carro
+    # só guarda o SALDO atual (e zerar apaga a linha, ver routes/tecnicos.py)
+    # — não dá pra saber DEPOIS quem usou o quê e quando. Esta tabela é só
+    # log, uma linha por baixa que o próprio técnico registra em campo;
+    # nunca é editada, só lida (feed de atividade + base do alerta de
+    # estoque baixo no painel).
+    """CREATE TABLE IF NOT EXISTS peca_carro_baixa (
+        id               SERIAL PRIMARY KEY,
+        tecnico_id       INTEGER NOT NULL REFERENCES tecnicos(id) ON DELETE CASCADE,
+        codigo           TEXT NOT NULL,
+        descricao        TEXT,
+        quantidade       INTEGER NOT NULL,
+        quantidade_apos  INTEGER NOT NULL,
+        servico_id       INTEGER,
+        criado_em        TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1431,6 +1447,16 @@ _MIGRACOES_SQLITE = [
         gerado_em  TEXT
     )""",
     "ALTER TABLE ordens_servico ADD COLUMN prazo_previsto TEXT",
+    """CREATE TABLE IF NOT EXISTS peca_carro_baixa (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        tecnico_id       INTEGER NOT NULL,
+        codigo           TEXT NOT NULL,
+        descricao        TEXT,
+        quantidade       INTEGER NOT NULL,
+        quantidade_apos  INTEGER NOT NULL,
+        servico_id       INTEGER,
+        criado_em        TEXT
+    )""",
 ]
 
 

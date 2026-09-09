@@ -1726,7 +1726,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v242';
+  const VERSAO_TELA = 'v243';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
@@ -1804,6 +1804,65 @@
   };
 
   carregarStatusAlmoco();
+
+  // ===== PEÇAS NO CARRO (pedido de 2026-09-09) =====
+  // O painel só tinha o saldo (peca_carro), mexido à mão pelo Kalebe quando
+  // ficava sabendo que algo tinha sido usado. Aqui o técnico vê o que
+  // carrega e dá baixa direto, na hora — sem precisar avisar por fora.
+  window._tAbrirCarro = function () {
+    document.getElementById('t-folha-carro')?.classList.add('aberta');
+    carregarCarro();
+  };
+
+  window._tFecharCarro = function () {
+    document.getElementById('t-folha-carro')?.classList.remove('aberta');
+  };
+
+  async function carregarCarro() {
+    const corpo = document.getElementById('t-carro-corpo');
+    if (!corpo) return;
+    corpo.innerHTML = '<div class="t-loading">Carregando...</div>';
+    try {
+      const r = await api('/carro');
+      const pecas = r.pecas || [];
+      if (!pecas.length) {
+        corpo.innerHTML = `
+          <h3 class="t-folha-titulo">Peças no meu carro</h3>
+          <p class="t-df-ajuda">Nenhuma peça registrada no seu carro ainda — quem cadastra é o escritório.</p>`;
+        return;
+      }
+      corpo.innerHTML = `
+        <h3 class="t-folha-titulo">Peças no meu carro</h3>
+        <p class="t-df-ajuda">Toque em "usei 1" assim que tirar uma peça pra um atendimento.</p>
+        <div class="t-carro-lista">
+          ${pecas.map(p => `
+            <div class="t-carro-item">
+              <div class="t-carro-info">
+                <div class="t-carro-codigo">${esc(p.codigo)}</div>
+                ${p.descricao ? `<div class="t-carro-desc">${esc(p.descricao)}</div>` : ''}
+              </div>
+              <div class="t-carro-qtd">${p.quantidade}</div>
+              <button class="t-carro-usar" onclick="window._tDarBaixaCarro('${esc(p.codigo)}', this)">usei 1</button>
+            </div>`).join('')}
+        </div>`;
+    } catch (e) {
+      corpo.innerHTML = `<p class="t-df-ajuda">Não consegui carregar — ${esc(e.message)}</p>`;
+    }
+  }
+
+  window._tDarBaixaCarro = async function (codigo, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const r = await api('/carro/baixar', {
+        method: 'POST', body: JSON.stringify({ codigo, quantidade: 1 }),
+      });
+      toast(r.quantidade_apos > 0 ? `Baixa registrada — restam ${r.quantidade_apos}` : 'Baixa registrada — acabou, avisa o escritório');
+      await carregarCarro();
+    } catch (e) {
+      toast(e.message || 'Não consegui registrar a baixa.');
+      if (btn) btn.disabled = false;
+    }
+  };
 
   carregarFichas().then(atualizarAvisoTopo);
 

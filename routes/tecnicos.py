@@ -583,6 +583,65 @@ def adicionar_peca_carro(tecnico_id):
     return jsonify({"codigo": codigo, "quantidade": quantidade}), 201
 
 
+# Painel de atividade + alerta de reposição (pedido de 2026-09-09) — feed do
+# que os técnicos foram dando baixa em campo (peca_carro_baixa, só log,
+# nunca editado) e quem está ficando sem peça de giro na van. Limite de
+# quantidade pra "estoque baixo" é 1 de propósito: ainda dá tempo de repor
+# antes do próximo atendimento pedir a peça.
+_ESTOQUE_CARRO_BAIXO = 1
+
+
+@tecnicos_bp.route("/tecnicos/carro/resumo", methods=["GET"])
+def resumo_carro():
+    # Atividade/estoque de TODOS os técnicos junto — não é decoração
+    # esconder do login "tecnico" (mesmo espírito do resto de 2026-09-09):
+    # um técnico não precisa saber quanto o colega tem no carro dele.
+    if session.get("papel") == "tecnico":
+        return jsonify({"atividade": [], "alertas": []})
+    with db_conn() as conn:
+        atividade = fetch_all(conn, sql("""
+            SELECT b.id, b.codigo, b.descricao, b.quantidade, b.quantidade_apos,
+                   b.criado_em, t.id AS tecnico_id, t.nome AS tecnico_nome, t.cor AS tecnico_cor
+              FROM peca_carro_baixa b
+              JOIN tecnicos t ON t.id = b.tecnico_id
+             ORDER BY b.id DESC
+             LIMIT 30
+        """))
+        alertas = fetch_all(conn, sql("""
+            SELECT c.id, c.codigo, c.descricao, c.quantidade,
+                   t.id AS tecnico_id, t.nome AS tecnico_nome, t.cor AS tecnico_cor
+              FROM peca_carro c
+              JOIN tecnicos t ON t.id = c.tecnico_id
+             WHERE c.quantidade <= ?
+             ORDER BY c.quantidade, t.nome, c.codigo
+        """), (_ESTOQUE_CARRO_BAIXO,))
+
+        # Zerar uma peça APAGA a linha de peca_carro (regra de sempre — ver
+        # atualizar_peca_carro): sem isto, "acabou de vez" desaparecia do
+        # alerta assim que passasse de "só 1" pra "zero", que é o momento
+        # que MAIS precisa aparecer. Acha, pelo log, o último (técnico,
+        # código) que zerou e que ninguém repôs desde então.
+        acabaram = fetch_all(conn, sql("""
+            SELECT b.tecnico_id, b.codigo, b.descricao, t.nome AS tecnico_nome, t.cor AS tecnico_cor
+              FROM peca_carro_baixa b
+              JOIN tecnicos t ON t.id = b.tecnico_id
+             WHERE b.quantidade_apos = 0
+               AND NOT EXISTS (
+                    SELECT 1 FROM peca_carro c
+                     WHERE c.tecnico_id = b.tecnico_id AND c.codigo = b.codigo)
+               AND b.id = (
+                    SELECT MAX(b2.id) FROM peca_carro_baixa b2
+                     WHERE b2.tecnico_id = b.tecnico_id AND b2.codigo = b.codigo)
+             ORDER BY t.nome, b.codigo
+        """))
+        for a in acabaram:
+            a["quantidade"] = 0
+            a["id"] = None
+        alertas = list(alertas) + acabaram
+
+    return jsonify({"atividade": atividade, "alertas": alertas})
+
+
 @tecnicos_bp.route("/tecnicos/carro/<int:peca_id>", methods=["PUT"])
 def atualizar_peca_carro(peca_id):
     """Muda a quantidade. Zero REMOVE: 'acabou' e 'nunca teve' dão no mesmo
