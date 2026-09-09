@@ -275,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v241';
+const VERSAO_PAINEL = 'v242';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2945,7 +2945,11 @@ async function carregarVisaoGeral() {
     console.error('Erro ao carregar visão geral', e);
   }
 
-  carregarResumoSetores();
+  // Classificar por setor (Panasonic/Philco/Loja) é tarefa de escritório —
+  // pedido de 2026-09-09 pra login de técnico nunca ver esse convite nem o
+  // recorte por setor da empresa inteira (não é o trabalho dele, é
+  // relatório pra fabricante). Some da Visão Geral pra esse papel.
+  if (usuarioLogado?.papel !== 'tecnico') carregarResumoSetores();
   carregarResumoDia();
 }
 
@@ -7413,7 +7417,16 @@ async function abrirModalEditarServico(servicoId) {
   document.getElementById('edit-cep').value = formatCEP(s.cep);
   document.getElementById('edit-numero').value = s.numero || '';
   document.getElementById('edit-cliente').value = s.cliente || '';
-  document.getElementById('edit-telefone').value = s.telefone || '';
+  // Login "tecnico" nunca vê telefone de cliente (pedido de 2026-09-09) --
+  // o servidor já nem manda o valor pra esse papel (ver obter_ficha em
+  // routes/fichas.py), mas esconder o campo aqui também evita mandar de
+  // volta um telefone em branco que apagaria o de verdade no banco (por
+  // isso osSalvarEdicaoServico agora pula esse campo inteiro pra quem é
+  // técnico, em vez de só escondê-lo visualmente).
+  const grupoTelefone = document.getElementById('edit-telefone-grupo');
+  const ehTecnico = usuarioLogado?.papel === 'tecnico';
+  if (grupoTelefone) grupoTelefone.style.display = ehTecnico ? 'none' : '';
+  document.getElementById('edit-telefone').value = ehTecnico ? '' : (s.telefone || '');
   document.getElementById('edit-tipo-aparelho').value = s.tipo_aparelho || '';
   document.getElementById('edit-modelo').value = s.modelo || '';
   document.getElementById('edit-numero-os').value = s.numero_os || '';
@@ -7573,8 +7586,13 @@ async function salvarEdicaoServico() {
     return;
   }
 
+  // Técnico não vê (nem edita) telefone -- pula a exigência e o campo no
+  // corpo inteiro em vez de mandar vazio, que apagaria o número de
+  // verdade (o servidor só troca o telefone quando a chave "telefone"
+  // vem no corpo; omitir mantém o que já estava salvo).
+  const ehTecnico = usuarioLogado?.papel === 'tecnico';
   const telefoneEditado = document.getElementById('edit-telefone').value.trim();
-  if (!telefoneEditado) {
+  if (!ehTecnico && !telefoneEditado) {
     toast('Informe o telefone do cliente.', 'error');
     document.getElementById('edit-telefone').focus();
     return;
@@ -7585,21 +7603,20 @@ async function salvarEdicaoServico() {
   btn.innerHTML = '<div class="spinner"></div> Salvando...';
 
   try {
-    await api(`/servicos/${servicoId}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        cep,
-        numero:        document.getElementById('edit-numero').value,
-        cliente:       document.getElementById('edit-cliente').value,
-        telefone:      telefoneEditado,
-        descricao:     document.getElementById('edit-descricao').value,
-        tipo_aparelho: document.getElementById('edit-tipo-aparelho').value,
-        modelo:        document.getElementById('edit-modelo').value,
-        numero_os:     document.getElementById('edit-numero-os').value,
-        setor_id:      setorEditado,
-        ordem_servico_id: document.getElementById('edit-ordem-servico-id').value || null,
-      }),
-    });
+    const corpoEdicao = {
+      cep,
+      numero:        document.getElementById('edit-numero').value,
+      cliente:       document.getElementById('edit-cliente').value,
+      descricao:     document.getElementById('edit-descricao').value,
+      tipo_aparelho: document.getElementById('edit-tipo-aparelho').value,
+      modelo:        document.getElementById('edit-modelo').value,
+      numero_os:     document.getElementById('edit-numero-os').value,
+      setor_id:      setorEditado,
+      ordem_servico_id: document.getElementById('edit-ordem-servico-id').value || null,
+    };
+    if (!ehTecnico) corpoEdicao.telefone = telefoneEditado;
+
+    await api(`/servicos/${servicoId}`, { method: 'PUT', body: JSON.stringify(corpoEdicao) });
 
     lembrarSetor(setorEditado);
 

@@ -388,6 +388,16 @@ def obter_ficha(ficha_id):
         "sem_coordenada": sum(1 for s in servicos if s.get("lat") is None),
     }
 
+    # Login "tecnico" não pode ver telefone de cliente (pedido de
+    # 2026-09-09) — apagado aqui, não só escondido no front, porque
+    # esconder no HTML e mandar o valor de verdade no JSON da API não
+    # protege nada (dá pra ler pelo painel de rede do navegador). O
+    # SELECT s.* de cima traz a coluna pra todo mundo; isto é o que de
+    # fato barra o dado de chegar num login de técnico.
+    if session.get("papel") == "tecnico":
+        for s in servicos:
+            s["telefone"] = None
+
     return jsonify({"ficha": ficha, "servicos": servicos, "resumo": resumo})
 
 

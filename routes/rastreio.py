@@ -36,7 +36,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, session
 
 from database import IS_PG, db_conn, execute, fetch_all, fetch_one
 from services.otimizador import (FATOR_ROTA, MINUTOS_PARADA,
@@ -1048,5 +1048,13 @@ def avisos():
     # trabalho pendente (sem setor).
     if not e_admin():
         saida["rastreio"] = []
+
+    # "Classificar atendimento sem setor" é tarefa de escritório (decide qual
+    # fabricante/frente é cada ponto pro relatório fechar certo) — pedido de
+    # 2026-09-09 pra técnico NUNCA ver esse convite, nem saber que existe
+    # trabalho "sem setor" pendente. Reaproveitar e_admin() aqui apagaria
+    # pra recepcionista também, que não foi pedido — checa o papel direto.
+    if session.get("papel") == "tecnico":
+        saida["sem_setor"] = 0
 
     return jsonify(saida)
