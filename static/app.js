@@ -275,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v244';
+const VERSAO_PAINEL = 'v245';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4398,14 +4398,17 @@ function ampliarFoto(src) {
   aplicar();
 }
 
-// Página de manual com TEXTO selecionável em cima da imagem (pedido de
-// 2026-09-08: "poder copiar o código"). Diferente de ampliarFoto (que é
-// pan/zoom arrastando a imagem) porque arrastar pra mover e arrastar pra
-// selecionar texto são a mesma ação do mouse — não dá pra ter as duas. Aqui
-// a imagem fica em tamanho real dentro de uma caixa com rolagem, e cada
-// palavra vira um <span> transparente na posição exata (em %, calculada no
-// servidor a partir do PDF) — a pessoa vê a imagem, mas seleciona/copia o
-// texto de verdade por baixo.
+// Página de manual com código CLICÁVEL PRA COPIAR, em cima da imagem
+// (pedido de 2026-09-08: "poder copiar o código"). Primeira versão usava
+// seleção de texto arrastando o mouse (igual um PDF) — na prática travava
+// ou não selecionava nada pra alguns (relatado repetidas vezes em
+// 2026-09-09, mesmo depois de dois consertos). Arrastar pra selecionar
+// depende de acertar o começo e o fim exatos, de o navegador não confundir
+// com scroll/drag da imagem, etc. — clicar uma vez não tem nada disso pra
+// dar errado. Cada trecho (linha inteira, calculada no servidor a partir
+// do PDF) vira um retângulo clicável sobre a imagem; um clique copia o
+// texto daquele trecho direto pra área de transferência, sem precisar
+// selecionar nada.
 function abrirPaginaManual(pagina) {
   const lupa = document.createElement('div');
   lupa.className = 'lupa-fundo manual-pecas-modal';
@@ -4416,7 +4419,7 @@ function abrirPaginaManual(pagina) {
         <img src="${pagina.imagem}" alt="Página do manual" draggable="false">
       </div>
     </div>
-    <div class="lupa-dica">arraste o mouse por cima do texto pra selecionar e copiar (Ctrl+C)</div>`;
+    <div class="lupa-dica">toque num trecho contornado pra copiar o texto dele</div>`;
   document.body.appendChild(lupa);
 
   const wrap = lupa.querySelector('.manual-pecas-modal-wrap');
@@ -4429,31 +4432,37 @@ function abrirPaginaManual(pagina) {
     for (const p of (pagina.palavras || [])) {
       const span = document.createElement('span');
       span.className = 'manual-pecas-palavra';
-      span.textContent = p.t;
+      span.title = 'Toque pra copiar';
       span.style.left = p.x + '%';
       span.style.top = p.y + '%';
       span.style.width = p.w + '%';
       span.style.height = p.h + '%';
-      span.style.fontSize = Math.max(6, (p.h / 100) * img.naturalHeight * 0.85) + 'px';
+      span.onclick = () => _copiarTrechoManual(p.t, span);
       frag.appendChild(span);
     }
     wrap.appendChild(frag);
   };
   if (img.complete) montarPalavras(); else img.onload = montarPalavras;
 
-  // "Fechar ao clicar fora" não pode ser um simples 'click': arrastar pra
-  // selecionar texto (o objetivo desta tela) e soltar o mouse um pixel fora
-  // da imagem/scroll também dispara 'click' com target=lupa -- fechava o
-  // modal bem na hora que a pessoa terminava de selecionar. Só fecha se o
-  // CLIQUE INTEIRO (mousedown E mouseup) começou e terminou no fundo,
-  // nunca quando é a ponta de um arrasto que começou em cima do conteúdo.
-  let mousedownNoFundo = false;
   const onEsc = (ev) => { if (ev.key === 'Escape') fechar(); };
   const fechar = () => { document.removeEventListener('keydown', onEsc); lupa.remove(); };
   document.addEventListener('keydown', onEsc);
   lupa.querySelector('.lupa-fechar').onclick = fechar;
-  lupa.addEventListener('mousedown', (ev) => { mousedownNoFundo = ev.target === lupa; });
-  lupa.addEventListener('click', (ev) => { if (ev.target === lupa && mousedownNoFundo) fechar(); });
+  lupa.addEventListener('click', (ev) => { if (ev.target === lupa) fechar(); });
+}
+
+function _copiarTrechoManual(texto, span) {
+  const marcarCopiado = () => {
+    span.classList.add('copiado');
+    setTimeout(() => span.classList.remove('copiado'), 700);
+    const resumo = texto.length > 40 ? texto.slice(0, 40) + '…' : texto;
+    toast(`Copiado: ${resumo}`, 'success');
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(texto).then(marcarCopiado).catch(() => _copiarFallback(texto, marcarCopiado));
+  } else {
+    _copiarFallback(texto, marcarCopiado);
+  }
 }
 
 // ─── Desfecho do atendimento (visto do escritório) ──────────────────
