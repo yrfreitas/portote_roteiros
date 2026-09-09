@@ -46,6 +46,7 @@ const ICONES = {
   carro:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.6-4.8A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.2L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>',
   clipe:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>',
   sol:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
+  copiar:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
 };
 
 function icone(nome, cls = '') {
@@ -275,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v245';
+const VERSAO_PAINEL = 'v246';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4398,65 +4399,19 @@ function ampliarFoto(src) {
   aplicar();
 }
 
-// Página de manual com código CLICÁVEL PRA COPIAR, em cima da imagem
-// (pedido de 2026-09-08: "poder copiar o código"). Primeira versão usava
-// seleção de texto arrastando o mouse (igual um PDF) — na prática travava
-// ou não selecionava nada pra alguns (relatado repetidas vezes em
-// 2026-09-09, mesmo depois de dois consertos). Arrastar pra selecionar
-// depende de acertar o começo e o fim exatos, de o navegador não confundir
-// com scroll/drag da imagem, etc. — clicar uma vez não tem nada disso pra
-// dar errado. Cada trecho (linha inteira, calculada no servidor a partir
-// do PDF) vira um retângulo clicável sobre a imagem; um clique copia o
-// texto daquele trecho direto pra área de transferência, sem precisar
-// selecionar nada.
-function abrirPaginaManual(pagina) {
-  const lupa = document.createElement('div');
-  lupa.className = 'lupa-fundo manual-pecas-modal';
-  lupa.innerHTML = `
-    <button type="button" class="lupa-fechar" title="Fechar (Esc)">✕</button>
-    <div class="manual-pecas-modal-scroll">
-      <div class="manual-pecas-modal-wrap">
-        <img src="${pagina.imagem}" alt="Página do manual" draggable="false">
-      </div>
-    </div>
-    <div class="lupa-dica">toque num trecho contornado pra copiar o texto dele</div>`;
-  document.body.appendChild(lupa);
-
-  const wrap = lupa.querySelector('.manual-pecas-modal-wrap');
-  const img = wrap.querySelector('img');
-
-  const montarPalavras = () => {
-    wrap.style.width = img.naturalWidth + 'px';
-    wrap.style.height = img.naturalHeight + 'px';
-    const frag = document.createDocumentFragment();
-    for (const p of (pagina.palavras || [])) {
-      const span = document.createElement('span');
-      span.className = 'manual-pecas-palavra';
-      span.title = 'Toque pra copiar';
-      span.style.left = p.x + '%';
-      span.style.top = p.y + '%';
-      span.style.width = p.w + '%';
-      span.style.height = p.h + '%';
-      span.onclick = () => _copiarTrechoManual(p.t, span);
-      frag.appendChild(span);
-    }
-    wrap.appendChild(frag);
-  };
-  if (img.complete) montarPalavras(); else img.onload = montarPalavras;
-
-  const onEsc = (ev) => { if (ev.key === 'Escape') fechar(); };
-  const fechar = () => { document.removeEventListener('keydown', onEsc); lupa.remove(); };
-  document.addEventListener('keydown', onEsc);
-  lupa.querySelector('.lupa-fechar').onclick = fechar;
-  lupa.addEventListener('click', (ev) => { if (ev.target === lupa) fechar(); });
-}
-
-function _copiarTrechoManual(texto, span) {
+// Copia um código/trecho de texto do manual de peças (pedido de
+// 2026-09-08). Três versões tentaram um mecanismo "esperto" de clicar/
+// selecionar em CIMA da imagem (posição calculada em %, overlay) — todas
+// falharam na mão de quem usa de verdade, mesmo passando em todo teste
+// automático daqui (sinal de que o problema era do ambiente real, não do
+// clique em si). A versão atual (ver carregarPaginasManual) nem tenta mais
+// alinhar nada com a imagem: é uma lista de texto NORMAL, com botão — só
+// isso precisa funcionar, e isso qualquer navegador faz.
+function _copiarTrechoManual(texto, botao) {
   const marcarCopiado = () => {
-    span.classList.add('copiado');
-    setTimeout(() => span.classList.remove('copiado'), 700);
-    const resumo = texto.length > 40 ? texto.slice(0, 40) + '…' : texto;
-    toast(`Copiado: ${resumo}`, 'success');
+    botao.classList.add('copiado');
+    setTimeout(() => botao.classList.remove('copiado'), 700);
+    toast(`Copiado: ${texto}`, 'success');
   };
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(texto).then(marcarCopiado).catch(() => _copiarFallback(texto, marcarCopiado));
@@ -10330,13 +10285,52 @@ async function carregarPaginasManual(resultado) {
   // palavras (texto+posição) de cada página, JSON grande demais pra virar
   // atributo HTML sem correr risco de quebrar escape de aspas.
   _manualPecasPaginas = paginas;
+
+  // Clicar em cima da imagem pra copiar (v237-v245) nunca ficou confiável
+  // pra ninguém testar de verdade, apesar de bater em todo teste automático
+  // daqui -- sinal de que o problema era algo do ambiente real de quem usa,
+  // não do mecanismo em si. Trocado por texto NORMAL de verdade, visível,
+  // fora da imagem: sem posição calculada, sem overlay, sem depender de
+  // zoom/escala de tela nenhuma -- só uma lista com botão de copiar.
+  const codigos = _extrairCodigosManual(paginas);
+
   alvo.innerHTML = `
-    <p class="ajuda-texto">${esc(CATEGORIA_MANUAL_ROTULO[resultado.categoria] || '')} — ${esc(resultado.arquivo)} · clique numa página pra ampliar e poder selecionar o código</p>
+    <p class="ajuda-texto">${esc(CATEGORIA_MANUAL_ROTULO[resultado.categoria] || '')} — ${esc(resultado.arquivo)} · clique numa página pra ampliar</p>
     <div class="manual-pecas-grade">
       ${paginas.map((p, i) => `
         <img class="manual-pecas-pagina" src="${p.imagem}" alt="Página ${i + 1} do manual"
-             onclick="abrirPaginaManual(_manualPecasPaginas[${i}])">`).join('')}
-    </div>`;
+             onclick="ampliarFoto('${p.imagem}')">`).join('')}
+    </div>
+    ${codigos.length ? `
+      <p class="form-separador" style="margin-top:16px;">Códigos encontrados (${codigos.length}) — clique pra copiar</p>
+      <div class="manual-pecas-codigos">
+        ${codigos.map(c => `
+          <button type="button" class="manual-pecas-codigo-item" onclick="_copiarTrechoManual('${esc(c).replace(/'/g, "\\'")}', this)">
+            <span class="manual-pecas-codigo-texto">${esc(c)}</span>
+            ${icone('copiar', 'icone-12')}
+          </button>`).join('')}
+      </div>` : ''}`;
+}
+
+// Isola só o que parece CÓDIGO DE PEÇA de verdade entre as linhas de texto
+// extraídas (título, aviso legal e descrição de peça também vêm no mesmo
+// JSON) — código de peça não tem espaço e mistura letra maiúscula/número,
+// quase sempre com um hífen no meio (ex: "W024C-6B502", "0164-6P510VH1").
+function _extrairCodigosManual(paginas) {
+  const vistos = new Set();
+  const codigos = [];
+  const RE_CODIGO = /^[A-Z0-9]{2,}(-[A-Z0-9]{2,})+$|^[A-Z]{1,3}[0-9][A-Z0-9]{2,}$/;
+  for (const pagina of paginas) {
+    for (const p of (pagina.palavras || [])) {
+      const t = (p.t || '').trim();
+      if (t.includes(' ') || vistos.has(t)) continue;
+      if (RE_CODIGO.test(t)) {
+        vistos.add(t);
+        codigos.push(t);
+      }
+    }
+  }
+  return codigos;
 }
 
 async function carregarCotacoes() {
