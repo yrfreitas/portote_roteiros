@@ -275,7 +275,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v240';
+const VERSAO_PAINEL = 'v241';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8761,10 +8761,24 @@ async function osPreencherDoPai() {
 // partir da data da conclusão do reparo", não do dia em que a OS foi aberta.
 // O modelo Orçamento também ganha o campo (pedido de 2026-08-29), mesmo sem
 // tipo_os escolhido — dá pra já deixar combinado um prazo no orçamento.
+// Tipos com prazo de garantia FIXO pelo próprio nome (pedido de 2026-09-08,
+// corrigindo um furo: só "saida_oficina" e Orçamento tinham campo de data
+// pra escolher o início da garantia -- estes três nunca tinham como
+// preencher garantia_inicio, então a impressão sempre saía em branco pra
+// preencher à mão, mesmo a pessoa já sabendo o prazo (3/6/12 meses já está
+// no próprio tipo escolhido).
+const TIPOS_GARANTIA_FIXA = ['garantia_3_meses', 'garantia_6_meses', 'garantia_1_ano'];
+
 function osTipoMudou() {
   const tipo = document.getElementById('os-tipo')?.value;
   const grupo = document.getElementById('os-garantia-inicio-grupo');
-  if (grupo) grupo.style.display = (tipo === 'saida_oficina' || _novaOSModelo === 'orcamento') ? '' : 'none';
+  const ehGarantiaFixa = TIPOS_GARANTIA_FIXA.includes(tipo);
+  if (grupo) grupo.style.display = (tipo === 'saida_oficina' || ehGarantiaFixa || _novaOSModelo === 'orcamento') ? '' : 'none';
+  // Prazo (3/6/12 meses) já vem decidido pelo próprio tipo escolhido acima
+  // nesses três casos -- mostrar o select de novo só confundiria (podia
+  // parecer que dá pra escolher um prazo diferente do nome do tipo).
+  const grupoMeses = document.getElementById('os-garantia-meses-grupo');
+  if (grupoMeses) grupoMeses.style.display = ehGarantiaFixa ? 'none' : '';
 }
 
 async function osCriar() {
@@ -8821,7 +8835,7 @@ async function osCriar() {
     }
     corpo.tipo_os = tipoOs;
     corpo.taxa_avaliacao = document.getElementById('os-taxa').value || 0;
-    if (tipoOs === 'saida_oficina') {
+    if (tipoOs === 'saida_oficina' || TIPOS_GARANTIA_FIXA.includes(tipoOs)) {
       corpo.garantia_inicio = document.getElementById('os-garantia-inicio').value || null;
       corpo.garantia_meses = Number(document.getElementById('os-garantia-meses').value) || 3;
     }
@@ -9142,7 +9156,7 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       <label class="form-label" for="os-ed-tipo-os">Tipo de OS</label>
       <select class="form-input" id="os-ed-tipo-os" onchange="osEdTipoMudou()">${opcoesTipoOs}</select>
       <div class="form-row" id="os-ed-garantia-inicio-grupo"
-           style="margin-top:8px;display:${o.tipo_os === 'saida_oficina' ? '' : 'none'};">
+           style="margin-top:8px;display:${(o.tipo_os === 'saida_oficina' || TIPOS_GARANTIA_FIXA.includes(o.tipo_os)) ? '' : 'none'};">
         <div class="form-group">
           <label class="form-label" for="os-ed-garantia-inicio">Dia da garantia (conclusão do reparo)</label>
           <input type="date" class="form-input" id="os-ed-garantia-inicio" value="${esc(o.garantia_inicio || '')}">
@@ -9778,7 +9792,7 @@ async function osEnviarPedidoPeca(id) {
 function osEdTipoMudou() {
   const tipo = document.getElementById('os-ed-tipo-os')?.value;
   const grupo = document.getElementById('os-ed-garantia-inicio-grupo');
-  if (grupo) grupo.style.display = tipo === 'saida_oficina' ? '' : 'none';
+  if (grupo) grupo.style.display = (tipo === 'saida_oficina' || TIPOS_GARANTIA_FIXA.includes(tipo)) ? '' : 'none';
 }
 
 async function osSalvarEdicao(id) {
@@ -9804,9 +9818,9 @@ async function osSalvarEdicao(id) {
     taxa_avaliacao: document.getElementById('os-ed-taxa').value || 0,
     observacao: document.getElementById('os-ed-obs').value.trim(),
     imprimir_ocultar: _osColetarImprimirOcultar('os-detalhe-corpo'),
-    garantia_inicio: tipoOsEditado === 'saida_oficina'
+    garantia_inicio: (tipoOsEditado === 'saida_oficina' || TIPOS_GARANTIA_FIXA.includes(tipoOsEditado))
       ? (document.getElementById('os-ed-garantia-inicio')?.value || null) : null,
-    garantia_meses: tipoOsEditado === 'saida_oficina'
+    garantia_meses: (tipoOsEditado === 'saida_oficina' || TIPOS_GARANTIA_FIXA.includes(tipoOsEditado))
       ? (Number(document.getElementById('os-ed-garantia-meses')?.value) || 3) : null,
     setor_id: document.getElementById('os-ed-setor')?.value || undefined,
     prazo_previsto: document.getElementById('os-ed-prazo-previsto')?.value || null,

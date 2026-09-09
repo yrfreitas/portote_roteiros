@@ -90,6 +90,16 @@ TIPOS_OS = [
     "criterios_condicoes_orcamento",
 ]
 
+# Tipos cujo prazo de garantia já vem FIXO no próprio nome (pedido de
+# 2026-09-08, corrigindo um furo real): junto com "saida_oficina" e o
+# modelo Orçamento, são os únicos tipo_os que têm um "início de garantia"
+# pra guardar. Antes disso só saida_oficina/orçamento tinham como escolher
+# a data — estes três nunca podiam, então a impressão sempre saía com a
+# garantia em branco pra preencher à mão, mesmo o prazo (3/6/12 meses) já
+# estando decidido pelo próprio tipo escolhido (ver _GARANTIA_MESES em
+# app.py, que já sabia o prazo fixo — só faltava a DATA de início).
+TIPOS_GARANTIA_FIXA = {"garantia_3_meses", "garantia_6_meses", "garantia_1_ano"}
+
 TIPOS_OS_ROTULO = {
     "garantia_3_meses": "Garantia 3 meses",
     "entrada_oficina": "OS de entrada na oficina",
@@ -1679,7 +1689,7 @@ def criar():
     # Garantia vale pra "saída da oficina" (data calculada pelo tipo) e pro
     # modelo Orçamento (o cliente pode querer já deixar combinado um prazo,
     # mesmo sem ainda ter um tipo_os fechado) — pedido de 2026-08-29.
-    _usa_garantia = tipo_os == "saida_oficina" or modelo_os == "orcamento"
+    _usa_garantia = tipo_os == "saida_oficina" or tipo_os in TIPOS_GARANTIA_FIXA or modelo_os == "orcamento"
     garantia_inicio = _validar_data_iso(d.get("garantia_inicio")) if _usa_garantia else None
     garantia_meses = _validar_garantia_meses(d.get("garantia_meses")) if _usa_garantia else None
     # Prazo PROMETIDO ao cliente (pedido de 2026-09-08) — diferente de
@@ -1860,7 +1870,9 @@ def editar(os_id):
             valores.append(setor_id)
         # "saida_oficina" e o modelo Orçamento usam garantia — pedido de
         # 2026-08-29 pra poder já deixar combinado um prazo no orçamento.
-        _usa_garantia_efetivo = tipo_os_efetivo == "saida_oficina" or modelo_efetivo == "orcamento"
+        _usa_garantia_efetivo = (tipo_os_efetivo == "saida_oficina"
+                                 or tipo_os_efetivo in TIPOS_GARANTIA_FIXA
+                                 or modelo_efetivo == "orcamento")
         if "garantia_inicio" in d or (("tipo_os" in d or "modelo_os" in d) and not _usa_garantia_efetivo):
             # Fora desses dois casos, guardar essa data não tem pra que servir
             # na impressão (ver _GARANTIA_MESES em app.py). O segundo caso
