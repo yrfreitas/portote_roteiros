@@ -1161,14 +1161,24 @@ def listar():
         # Contagem por status respeita a origem escolhida (senão os números
         # dos cartões não bateriam com a lista de baixo), mas não os outros
         # filtros (status/dias/busca) — mesmo comportamento de sempre.
-        origem_sql = ""
+        #
+        # BUG corrigido em 2026-09-09 (relatado pelo Kalebe: "clico em
+        # aguardando agendamento, tem 10, só aparece 3"): esta contagem
+        # somava TODA ordens_servico, inclusive FILHA (Chamado Técnico/
+        # Orçamento pendurado numa OS já existente, os_pai_id preenchido) —
+        # mas a lista logo abaixo tem "os.os_pai_id IS NULL" e nunca mostra
+        # filha nenhuma (de propósito, pra não empilhar linha do mesmo caso).
+        # O cartão contava filha, a lista escondia — por isso o número nunca
+        # batia com o que aparecia depois de clicar.
+        condicoes_contagem = ["ordens_servico.os_pai_id IS NULL"]
         if origem == "panasonic":
-            origem_sql = "WHERE EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)"
+            condicoes_contagem.append("EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)")
         elif origem == "balcao":
-            origem_sql = "WHERE ordens_servico.balcao_em IS NOT NULL"
+            condicoes_contagem.append("ordens_servico.balcao_em IS NOT NULL")
         elif origem == "nossa":
-            origem_sql = ("WHERE NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id) "
-                          "AND ordens_servico.balcao_em IS NULL")
+            condicoes_contagem.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)")
+            condicoes_contagem.append("ordens_servico.balcao_em IS NULL")
+        origem_sql = "WHERE " + " AND ".join(condicoes_contagem)
         if origem == "balcao":
             # "sem_status" (pedido de 2026-09-01): sem isso, uma OS recém-
             # movida pra cá (balcao_em preenchido, status_loja ainda vazio)
