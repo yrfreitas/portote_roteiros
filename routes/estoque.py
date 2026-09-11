@@ -99,8 +99,8 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
     if not codigo:
         raise ValueError("Código da peça é obrigatório")
     quantidade = float(quantidade)
-    if quantidade <= 0:
-        raise ValueError("Quantidade tem que ser maior que zero")
+    if quantidade < 0:
+        raise ValueError("Quantidade não pode ser negativa")
     custo_unit = max(0.0, float(custo_unit or 0))
 
     marca = (marca or "").strip()
@@ -145,8 +145,13 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
         """, (codigo, (descricao or "").strip(), marca, aparelho, modelo,
               grupo_final if mexer_grupo else None,
               quantidade, custo_unit, preco_venda or 0, foto or None, _agora(), _agora()))
-        _registrar_movimento(conn, novo_id, "entrada", quantidade, quantidade,
-                             custo_unit, origem, referencia, obs)
+        # Cadastro sem estoque físico (quantidade 0) não é uma entrada de
+        # verdade — é só a ficha da peça existindo, pra peça que o fornecedor
+        # tem mas a gente ainda não comprou. Sem movimento nenhum registrado,
+        # porque não houve peça nenhuma entrando fisicamente.
+        if quantidade > 0:
+            _registrar_movimento(conn, novo_id, "entrada", quantidade, quantidade,
+                                 custo_unit, origem, referencia, obs)
         return {"item_id": novo_id, "saldo": quantidade, "custo_medio": custo_unit,
                 "criado": True}
 
@@ -181,8 +186,9 @@ def dar_entrada(conn, codigo, descricao, quantidade, custo_unit=0.0,
                foto        = COALESCE(NULLIF(?, ''), foto){set_grupo}
          WHERE id = ?
     """, params)
-    _registrar_movimento(conn, item["id"], "entrada", quantidade, saldo_novo,
-                        custo_unit, origem, referencia, obs)
+    if quantidade > 0:
+        _registrar_movimento(conn, item["id"], "entrada", quantidade, saldo_novo,
+                            custo_unit, origem, referencia, obs)
     return {"item_id": item["id"], "saldo": saldo_novo, "custo_medio": custo_novo,
             "criado": False}
 
