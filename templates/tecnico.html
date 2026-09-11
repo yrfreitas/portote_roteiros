@@ -30,6 +30,9 @@
     <button class="t-btn-sino" id="btn-notificacoes" title="Ativar notificações de nova rota">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
     </button>
+    <button class="t-btn-sino" id="btn-ajuda" onclick="window._tAbrirAjuda()" title="Ajuda — o que cada botão faz">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><path d="M12 17.5h.01"/></svg>
+    </button>
     <button class="t-btn-sos" id="btn-sos" onclick="window._tPedirSos()" title="Pedir ajuda ao escritório agora">🆘</button>
   </div>
 
@@ -65,6 +68,52 @@
     <div class="t-folha-painel">
       <div class="t-folha-alca" onclick="window._tFecharCarro()"></div>
       <div class="t-folha-corpo" id="t-carro-corpo"></div>
+    </div>
+  </div>
+
+  <!-- Ajuda (pedido de 2026-09-10): tela explicando o que cada botão faz,
+       com foco em "dar baixa" — o técnico às vezes usa sem saber pra que
+       serve de verdade, e isso bagunça a contagem do carro pro Kalebe. -->
+  <div class="t-folha" id="t-folha-ajuda" role="dialog" aria-modal="true" aria-label="Ajuda">
+    <div class="t-folha-fundo" onclick="window._tFecharAjuda()"></div>
+    <div class="t-folha-painel">
+      <div class="t-folha-alca" onclick="window._tFecharAjuda()"></div>
+      <div class="t-folha-corpo t-ajuda-corpo">
+        <h3 class="t-ajuda-titulo">Ajuda</h3>
+
+        <div class="t-ajuda-item">
+          <div class="t-ajuda-nome">🚐 Peças no meu carro</div>
+          <p>Mostra as peças que você está carregando na van, com a quantidade que ainda tem de cada uma.</p>
+        </div>
+
+        <div class="t-ajuda-item">
+          <div class="t-ajuda-nome">✅ "Usei 1" (dar baixa)</div>
+          <p><strong>O que faz:</strong> tira 1 unidade daquela peça do seu carro. O escritório vê isso na hora, sem precisar você avisar por fora.</p>
+          <p><strong>Quando usar:</strong> só no momento em que a peça sai mesmo do carro — foi instalada no aparelho do cliente, ou entregue numa venda. Toda baixa registrada fica no histórico.</p>
+          <p><strong>Quando NÃO usar:</strong> se a contagem do carro está errada por algum outro motivo (sobrou, faltou, peça quebrada, troca entre técnicos), não clica em "usei 1" pra tentar acertar o número — isso mistura no histórico de uso real. Nesse caso, avisa o escritório e quem ajusta a quantidade é lá.</p>
+          <p>Quando uma peça chega a 0, o app já avisa "acabou, avisa o escritório" — é o sinal de repor o estoque do carro.</p>
+        </div>
+
+        <div class="t-ajuda-item">
+          <div class="t-ajuda-nome">🔔 Sino de notificações</div>
+          <p>Ativa aviso no celular quando uma rota nova é montada pra você.</p>
+        </div>
+
+        <div class="t-ajuda-item">
+          <div class="t-ajuda-nome">🍽 Ir almoçar</div>
+          <p>Avisa o painel que você está no horário de almoço, pra ninguém estranhar se o rastreio parar de se mover.</p>
+        </div>
+
+        <div class="t-ajuda-item">
+          <div class="t-ajuda-nome">🆘 SOS</div>
+          <p>Pede ajuda direta do escritório agora — use em urgência, não pra dúvida do dia a dia.</p>
+        </div>
+
+        <div class="t-ajuda-item">
+          <div class="t-ajuda-nome">✓ Concluir atendimento</div>
+          <p>Abre a folha de desfecho pra registrar o que aconteceu no atendimento (instalado, orçamento, não atendido etc.) e fecha aquele ponto da rota.</p>
+        </div>
+      </div>
     </div>
   </div>
 

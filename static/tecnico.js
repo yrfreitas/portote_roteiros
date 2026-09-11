@@ -1726,7 +1726,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v247';
+  const VERSAO_TELA = 'v248';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
@@ -1816,6 +1816,14 @@
 
   window._tFecharCarro = function () {
     document.getElementById('t-folha-carro')?.classList.remove('aberta');
+  };
+
+  window._tAbrirAjuda = function () {
+    document.getElementById('t-folha-ajuda')?.classList.add('aberta');
+  };
+
+  window._tFecharAjuda = function () {
+    document.getElementById('t-folha-ajuda')?.classList.remove('aberta');
   };
 
   async function carregarCarro() {
