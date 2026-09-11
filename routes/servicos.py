@@ -78,6 +78,16 @@ def buscar():
         condicoes.append("s.cep LIKE ?")
         params.append(f"{cep_digitos}%")
 
+    # numero_os é o número do DigiTeam (Panasonic), 13 dígitos — bem mais
+    # longo que CEP, por isso o corte em 10 evita colidir com a busca de CEP
+    # acima. Não existia busca nenhuma por ele até 2026-09-11 (achado ao
+    # tentar localizar a OS 1307202616936): quem quisesse achar um
+    # atendimento por esse número não tinha como, só vasculhando ficha por
+    # ficha.
+    if len(cep_digitos) >= 10:
+        condicoes.append("s.numero_os = ?")
+        params.append(cep_digitos)
+
     with db_conn() as conn:
         # Ficha em aberto primeiro — é quem está procurando "cadê o Fulano"
         # quer saber a próxima visita, não escavar o histórico de anos atrás.
