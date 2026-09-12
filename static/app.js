@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v254';
+const VERSAO_PAINEL = 'v255';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3196,7 +3196,7 @@ async function carregarFaturamento() {
       </div>
       <div class="vg-stat">
         <div class="vg-valor">${d.transacoes || 0}</div>
-        <div class="vg-label">Transação${d.transacoes === 1 ? '' : 'ões'} no período</div>
+        <div class="vg-label">${d.transacoes === 1 ? 'Transação' : 'Transações'} no período</div>
       </div>
       <div class="vg-stat">
         <div class="vg-valor">${brl(d.ticket_medio)}</div>
