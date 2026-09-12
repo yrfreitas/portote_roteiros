@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v257';
+const VERSAO_PAINEL = 'v258';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -10565,12 +10565,15 @@ function renderCotacoes(mount, itens, todas) {
          </div>`;
 
     // Foto vem do técnico em campo (desfecho "Cotação de peça") — é dela que
-    // sai o modelo/série certo. Miniatura clicável: abre em tamanho real
-    // pra ler o que está escrito na etiqueta sem depender de zoom no navegador.
+    // sai o modelo/série certo. Miniatura clicável: abre no visualizador
+    // próprio do site (ampliarFoto), não em aba nova — corrigido em
+    // 2026-09-12, "não consigo abrir a imagem": link com target="_blank"
+    // pra um data: URI é bloqueado por vários navegadores/celular, o mesmo
+    // motivo pelo qual toda outra foto do site (etiqueta do roteiro, manual
+    // de peças) já usa ampliarFoto() em vez de <a target="_blank">.
     const foto = item.foto
-      ? `<a href="${item.foto}" target="_blank" rel="noopener" class="cotacao-foto-link" title="Ver foto da etiqueta">
-           <img class="cotacao-foto-mini" src="${item.foto}" alt="Foto da etiqueta enviada pelo técnico">
-         </a>`
+      ? `<img class="cotacao-foto-mini" src="${item.foto}" alt="Foto da etiqueta enviada pelo técnico"
+             title="Ver foto da etiqueta" onclick="ampliarFoto(this.src)">`
       : '';
 
     return `
