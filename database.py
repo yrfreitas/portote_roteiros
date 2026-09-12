@@ -1195,6 +1195,12 @@ _MIGRACOES_PG = [
         servico_id       INTEGER,
         criado_em        TEXT
     )""",
+    # Forma de pagamento no desfecho (pedido de 2026-09-12): "resolvido" e
+    # "fazer_os" podem envolver receber dinheiro do cliente na hora, e até
+    # aqui não existia nem o campo nem a exigência de comprovar — só o
+    # próprio "fazer_os" guardava forma_pagamento (na OS que ele cria), sem
+    # obrigar e sem foto nenhuma. Ver rotas/tecnico_api.py:_gravar_desfecho.
+    "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS forma_pagamento TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1457,6 +1463,7 @@ _MIGRACOES_SQLITE = [
         servico_id       INTEGER,
         criado_em        TEXT
     )""",
+    "ALTER TABLE servico_desfecho ADD COLUMN forma_pagamento TEXT",
 ]
 
 

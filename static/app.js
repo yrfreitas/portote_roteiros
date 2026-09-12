@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v256';
+const VERSAO_PAINEL = 'v257';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4569,6 +4569,7 @@ function seloDesfecho(s) {
   const extra = s.desfecho_peca || s.desfecho_motivo || '';
   return `<div class="roteiro-desfecho ${d.classe}">${d.txt}${
     extra ? ' · ' + esc(extra) : ''}</div>${
+    s.desfecho_forma_pagamento ? `<div class="roteiro-obs">💳 ${esc(s.desfecho_forma_pagamento)}</div>` : ''}${
     s.desfecho_obs ? `<div class="roteiro-obs">${esc(s.desfecho_obs)}</div>` : ''}`;
 }
 

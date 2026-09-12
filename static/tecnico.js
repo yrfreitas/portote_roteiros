@@ -776,7 +776,10 @@
     // "peça"), então as mais específicas têm prioridade de checagem.
     { chaves: ['resolvido', 'resolvi', 'consertado', 'concertado'], tipo: 'resolvido' },
   ];
-  const TIPOS_VOZ_FECHAM_SOZINHOS = new Set(['resolvido', 'precisa_peca', 'volto_depois']);
+  // "resolvido" saiu daqui em 2026-09-12: passou a exigir forma de
+  // pagamento + foto do comprovante, que comando de voz não tem como captar
+  // sozinho — agora ele também completa na tela, como quem pede foto/assinatura.
+  const TIPOS_VOZ_FECHAM_SOZINHOS = new Set(['precisa_peca', 'volto_depois']);
 
   function _botaoComandoVoz(servicoId) {
     if (!_SpeechRecognitionCtor) return '';
@@ -895,6 +898,11 @@
   let _desfechoServicoId = null;
   let _desfechoTipo = null;
   let _desfechoFoto = null;
+  // Comprovante de pagamento (pedido de 2026-09-12) — separado de
+  // _desfechoFoto de propósito: "Resolvido" e "Fazer OS" podem também usar
+  // a foto normal (etiqueta/produto) pra outra coisa, então precisa de um
+  // slot próprio pra não misturar as duas fotos numa só.
+  let _desfechoFotoPagamento = null;
   // Desfecho "Orçamento" (pedido de 2026-09-02): o técnico pode já ter
   // combinado o valor com o cliente na hora ("feito no local") em vez de
   // sempre deixar pro escritório montar depois ("na base") — ver
@@ -1091,10 +1099,63 @@
       <div id="t-df-previa" class="t-df-previa"></div>`;
   }
 
+  // Forma de pagamento + comprovante — pedido de 2026-09-12: todo desfecho
+  // que termina com o técnico recebendo dinheiro do cliente ali na hora
+  // ("Resolvido", "Fazer OS") exige os dois, sem exceção. Os outros
+  // desfechos (orçamento, peça, reagendar, não atendido) não recebem
+  // pagamento nenhum, então não usam este bloco.
+  function blocoPagamento() {
+    return `
+      <label class="t-df-rotulo" for="t-df-forma-pagamento">Forma de pagamento <span class="t-df-obrigatorio">*</span></label>
+      <select class="t-df-input" id="t-df-forma-pagamento" onchange="window._tValidarConfirmar()">
+        <option value="">Selecione...</option>
+        <option value="Pix">Pix</option>
+        <option value="Dinheiro">Dinheiro</option>
+        <option value="Cartão de débito">Cartão de débito</option>
+        <option value="Cartão de crédito">Cartão de crédito</option>
+      </select>
+      <label class="t-df-rotulo">Comprovante de pagamento <span class="t-df-obrigatorio">*</span></label>
+      <p class="t-df-ajuda">Foto do Pix, do comprovante da maquininha, ou do dinheiro contado com o cliente.</p>
+      <label class="t-df-foto-botao">
+        Tirar foto
+        <input type="file" accept="image/*" capture="environment"
+               onchange="window._tEscolherFotoPagamento(this)" hidden>
+      </label>
+      <div id="t-df-pagamento-previa" class="t-df-previa"></div>`;
+  }
+
+  window._tEscolherFotoPagamento = async function (input) {
+    const arquivo = input.files && input.files[0];
+    if (!arquivo) return;
+    const previa = document.getElementById('t-df-pagamento-previa');
+    previa.innerHTML = '<span class="t-df-processando">preparando a foto...</span>';
+    try {
+      _desfechoFotoPagamento = await reduzirFoto(arquivo);
+      previa.innerHTML = `
+        <img class="t-df-thumb" src="${_desfechoFotoPagamento}" alt="Comprovante de pagamento">
+        <button type="button" class="t-df-remover-foto"
+                onclick="window._tRemoverFotoPagamento()">remover</button>`;
+    } catch (e) {
+      _desfechoFotoPagamento = null;
+      previa.innerHTML = `<span class="t-df-erro">${esc(e.message)}</span>`;
+    } finally {
+      input.value = '';
+      window._tValidarConfirmar();
+    }
+  };
+
+  window._tRemoverFotoPagamento = function () {
+    _desfechoFotoPagamento = null;
+    const previa = document.getElementById('t-df-pagamento-previa');
+    if (previa) previa.innerHTML = '';
+    window._tValidarConfirmar();
+  };
+
   window._tAbrirDesfecho = function (servicoId) {
     _desfechoServicoId = servicoId;
     _desfechoTipo = null;
     _desfechoFoto = null;
+    _desfechoFotoPagamento = null;
     const folha = document.getElementById('t-folha-desfecho');
     if (!folha) return;
     folha.querySelector('.t-folha-corpo').innerHTML = `
@@ -1120,11 +1181,17 @@
 
   window._tEscolherDesfecho = function (tipo) {
     _desfechoTipo = tipo;
+    _desfechoFotoPagamento = null;
     document.querySelectorAll('.t-df-opcao').forEach(b =>
       b.classList.toggle('ativa', b.dataset.tipo === tipo));
 
     const extra = document.getElementById('t-df-extra');
-    if (tipo === 'precisa_peca') {
+    if (tipo === 'resolvido') {
+      // Pedido de 2026-09-12: "consertei na hora, nada pendente" significa
+      // que o técnico recebeu do cliente ali mesmo — forma de pagamento e
+      // comprovante viram obrigatórios, sem exceção.
+      extra.innerHTML = blocoPagamento();
+    } else if (tipo === 'precisa_peca') {
       extra.innerHTML = `
         <label class="t-df-rotulo" for="t-df-peca">Qual peça?</label>
         <input class="t-df-input" id="t-df-peca" autocomplete="off"
@@ -1179,13 +1246,7 @@
         <label class="t-df-rotulo" for="t-df-fos-solucao">Nossa solução</label>
         <textarea class="t-df-input" id="t-df-fos-solucao" rows="3" placeholder="O que foi feito"></textarea>
         ${_botaoDitado('t-df-fos-solucao')}
-        <label class="t-df-rotulo" for="t-df-fos-pagamento">Forma de pagamento</label>
-        <select class="t-df-input" id="t-df-fos-pagamento">
-          <option value="">Selecione...</option>
-          <option value="Pix">Pix</option>
-          <option value="Dinheiro">Dinheiro</option>
-          <option value="Cartão">Cartão</option>
-        </select>
+        ${blocoPagamento()}
         <label class="t-df-rotulo" for="t-df-fos-tipo-os">Tipo de OS / Termo (opcional)</label>
         <select class="t-df-input" id="t-df-fos-tipo-os">
           <option value="">Selecione...</option>
@@ -1334,11 +1395,16 @@
       const codigo = document.getElementById('t-df-codigo')?.value.trim();
       const nome = document.getElementById('t-df-nome-peca')?.value.trim();
       ok = !!(codigo && nome && _desfechoFoto);
+    } else if (_desfechoTipo === 'resolvido') {
+      // Pedido de 2026-09-12: recebeu do cliente, tem que provar como.
+      const pagamento = document.getElementById('t-df-forma-pagamento')?.value;
+      ok = !!(pagamento && _desfechoFotoPagamento);
     } else if (_desfechoTipo === 'fazer_os') {
       const nome = document.getElementById('t-df-fos-nome')?.value.trim();
+      const pagamento = document.getElementById('t-df-forma-pagamento')?.value;
       const checks = document.querySelectorAll('[data-checklist]');
       const checklistOk = checks.length > 0 && Array.from(checks).every(c => c.checked);
-      ok = !!(nome && _assinaturaTemTraco && checklistOk);
+      ok = !!(nome && pagamento && _desfechoFotoPagamento && _assinaturaTemTraco && checklistOk);
     } else if (_desfechoTipo === 'orcamento') {
       const nome = document.getElementById('t-df-orc-nome')?.value.trim();
       const valorLocal = Number(document.getElementById('t-df-orc-valor')?.value);
@@ -1394,6 +1460,10 @@
     if (_desfechoTipo === 'nao_atendido') {
       desfecho.motivo = document.querySelector('.t-df-motivo.ativa')?.dataset.motivo || '';
     }
+    if (_desfechoTipo === 'resolvido') {
+      desfecho.forma_pagamento = document.getElementById('t-df-forma-pagamento')?.value || '';
+      if (_desfechoFotoPagamento) desfecho.foto_pagamento = _desfechoFotoPagamento;
+    }
     if (_desfechoTipo === 'fazer_os') {
       desfecho.cliente_nome = document.getElementById('t-df-fos-nome')?.value.trim() || '';
       desfecho.cliente_telefone = document.getElementById('t-df-fos-telefone')?.value.trim() || '';
@@ -1401,7 +1471,8 @@
       desfecho.modelo = document.getElementById('t-df-fos-modelo')?.value.trim() || '';
       desfecho.defeito_declarado = document.getElementById('t-df-fos-defeito')?.value.trim() || '';
       desfecho.solucao_os = document.getElementById('t-df-fos-solucao')?.value.trim() || '';
-      desfecho.forma_pagamento = document.getElementById('t-df-fos-pagamento')?.value || '';
+      desfecho.forma_pagamento = document.getElementById('t-df-forma-pagamento')?.value || '';
+      if (_desfechoFotoPagamento) desfecho.foto_pagamento = _desfechoFotoPagamento;
       desfecho.tipo_os = document.getElementById('t-df-fos-tipo-os')?.value || '';
       desfecho.checklist = JSON.stringify(_checklistAtual.map((item, i) => ({
         item, marcado: !!document.querySelector(`[data-checklist="${i}"]`)?.checked,
@@ -1726,7 +1797,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v256';
+  const VERSAO_TELA = 'v257';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

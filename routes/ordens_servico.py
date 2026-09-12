@@ -1578,7 +1578,8 @@ def obter(os_id):
         visitas = fetch_all(conn, """
             SELECT s.id, s.status, s.ordem, f.id AS ficha_id, f.dia_semana,
                    f.data_referencia, t.id AS tecnico_id, t.nome AS tecnico_nome,
-                   t.cor AS tecnico_cor, d.desfecho, d.observacao AS desfecho_obs
+                   t.cor AS tecnico_cor, d.desfecho, d.observacao AS desfecho_obs,
+                   d.forma_pagamento AS desfecho_forma_pagamento
               FROM servicos s
               JOIN fichas f ON f.id = s.ficha_id
               LEFT JOIN tecnicos t ON t.id = f.tecnico_id

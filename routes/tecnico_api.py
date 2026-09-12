@@ -290,6 +290,13 @@ def status_servico_tecnico(token, servico_id):
 DESFECHOS_VALIDOS = {"resolvido", "precisa_peca", "volto_depois", "nao_atendido",
                      "cotacao_peca", "fazer_os", "orcamento"}
 
+# Pedido de 2026-09-12: só nestes dois o atendimento termina com dinheiro na
+# mão do técnico ali mesmo — "resolvido" fecha o caso na hora (nada
+# pendente), "fazer_os" cobra taxa/serviço já formalizando a OS em campo. Os
+# outros (orçamento, precisa_peca, volto_depois, cotação, não atendido) não
+# envolvem receber de cliente nenhum, por isso ficam de fora da exigência.
+TIPOS_EXIGEM_PAGAMENTO = {"resolvido", "fazer_os"}
+
 # Desfechos que fazem sentido levar pra um dia futuro (o cliente exige nova
 # visita). "resolvido" e "cotacao_peca" terminam o atendimento ali mesmo —
 # reagendar não se aplica a eles.
@@ -304,8 +311,10 @@ PREFIXOS_FOTO = ("data:image/jpeg;base64,", "data:image/png;base64,",
                  "data:image/webp;base64,")
 
 
-def _gravar_foto(conn, servico_id, foto, quem, agora):
-    """Guarda a foto da etiqueta do aparelho.
+def _gravar_foto(conn, servico_id, foto, quem, agora, legenda="etiqueta"):
+    """Guarda uma foto ligada ao atendimento (etiqueta do aparelho por
+    padrão; `legenda` diferencia outros usos, como comprovante de
+    pagamento).
 
     Existe porque para pedir a peça é preciso o modelo e o número de série,
     que estão na etiqueta — e ditar isso por telefone ou digitar no celular na
@@ -320,7 +329,7 @@ def _gravar_foto(conn, servico_id, foto, quem, agora):
     execute(conn, sql(
         "INSERT INTO servico_foto (servico_id, foto, legenda, criado_em, "
         "enviado_por) VALUES (?, ?, ?, ?, ?)"),
-        (servico_id, foto, "etiqueta", agora, quem))
+        (servico_id, foto, legenda, agora, quem))
 
 
 def _criar_cotacao_do_desfecho(conn, servico_id, codigo, nome_peca, foto, quem):
@@ -745,6 +754,8 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
     # lá conhece ("cliente pediu para voltar de manhã", "tomada queimada").
     observacao = (desfecho.get("observacao") or "").strip()[:600]
     foto = desfecho.get("foto")
+    forma_pagamento = (desfecho.get("forma_pagamento") or "").strip()[:40]
+    foto_pagamento = desfecho.get("foto_pagamento")
     # Checklist do "Fazer OS" (pedido de 2026-09-02) — string JSON pronta,
     # só limitando tamanho pra não virar campo livre gigante.
     checklist = (desfecho.get("checklist") or "").strip()[:2000] or None
@@ -760,15 +771,30 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
             return None
         peca = f"{codigo} — {nome_peca}"
 
+    # Pedido de 2026-09-12: quem recebe dinheiro do cliente ali na hora
+    # ("resolvido", "fazer_os") precisa dizer como recebeu E anexar
+    # comprovante — sem os dois, recusa igual à cotação de peça acima. Isso
+    # não substitui a foto do produto/etiqueta (campos diferentes,
+    # legenda diferente no servico_foto), é um comprovante à parte.
+    if tipo in TIPOS_EXIGEM_PAGAMENTO:
+        foto_pagamento_valida = isinstance(foto_pagamento, str) \
+            and foto_pagamento.startswith(PREFIXOS_FOTO) \
+            and len(foto_pagamento) <= FOTO_MAXIMA
+        if not forma_pagamento or not foto_pagamento_valida:
+            return None
+
     _gravar_foto(conn, servico_id, foto, quem, agora)
+    if foto_pagamento:
+        _gravar_foto(conn, servico_id, foto_pagamento, quem, agora, legenda="comprovante_pagamento")
 
     execute(conn, sql("DELETE FROM servico_desfecho WHERE servico_id = ?"),
             (servico_id,))
     execute(conn, sql(
         "INSERT INTO servico_desfecho (servico_id, desfecho, motivo, peca, "
-        "codigo, observacao, registrado_em, registrado_por, checklist) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"),
-        (servico_id, tipo, motivo, peca, codigo, observacao, agora, quem, checklist))
+        "codigo, observacao, registrado_em, registrado_por, checklist, "
+        "forma_pagamento) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+        (servico_id, tipo, motivo, peca, codigo, observacao, agora, quem, checklist,
+         forma_pagamento or None))
 
     if tipo == "cotacao_peca":
         _criar_cotacao_do_desfecho(conn, servico_id, codigo, nome_peca, foto, quem)
