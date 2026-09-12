@@ -49,6 +49,7 @@ CATALOGO = [
     # Comunicação e relatórios
     {"chave": "chat_equipe",        "area": "Comunicação", "rotulo": "Usar o chat da equipe"},
     {"chave": "relatorios",         "area": "Relatórios",  "rotulo": "Ver a aba Histórico, relatórios e exportações"},
+    {"chave": "faturamento",        "area": "Relatórios",  "rotulo": "Ver a aba Faturamento (dado financeiro)"},
 ]
 
 TODAS = [c["chave"] for c in CATALOGO]
@@ -132,6 +133,13 @@ REGRAS = [
     ("/api/usuarios",              None,                     "gerenciar_usuarios"),
     ("/api/permissoes",            None,                     "gerenciar_usuarios"),
     ("/api/equipe",                None,                     "chat_equipe"),
+    # Faturamento é dado financeiro — mais sensível que o resto de
+    # Relatórios, por isso permissão própria em vez de cair em "relatorios".
+    # Tem que vir ANTES da regra genérica de /api/relatorios logo abaixo:
+    # /api/relatorios/faturamento também começa com /api/relatorios, e
+    # startswith casa a primeira regra que bater (mesma pegadinha de sempre
+    # com prefixo mais específico vindo depois do genérico).
+    ("/api/relatorios/faturamento", None,                     "faturamento"),
     ("/api/relatorios",            None,                     "relatorios"),
     ("/api/historico",             None,                     "relatorios"),
     ("/api/metricas",              None,                     "relatorios"),
