@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v253';
+const VERSAO_PAINEL = 'v254';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3125,10 +3125,22 @@ const ORIGEM_ROTULO_FATURAMENTO = {
   nossa: 'Nossa OS', panasonic: 'Panasonic', balcao: 'Balcão',
 };
 
+function _fatVariacaoHtml(pct) {
+  // null = sem período anterior pra comparar (não é "0%", é "não sei ainda").
+  if (pct === null || pct === undefined) {
+    return '<span class="fat-variacao" style="color:var(--text-muted);">sem comparação</span>';
+  }
+  const sinal = pct > 0 ? '+' : '';
+  const cor = pct > 0 ? 'var(--success-text, #34d399)' : (pct < 0 ? 'var(--danger-text, #f87171)' : 'var(--text-muted)');
+  const seta = pct > 0 ? '▲' : (pct < 0 ? '▼' : '—');
+  return `<span class="fat-variacao" style="color:${cor};font-weight:700;">${seta} ${sinal}${pct}% <span style="font-weight:400;color:var(--text-muted);">vs período anterior</span></span>`;
+}
+
 async function carregarFaturamento() {
   const alvo = document.getElementById('fat-conteudo');
   if (!alvo) return;
   const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  alvo.innerHTML = '<p class="ajuda-texto">Carregando...</p>';
 
   let d;
   try {
@@ -3140,24 +3152,72 @@ async function carregarFaturamento() {
 
   const total = d.total || 0;
   const origens = d.por_origem || {};
-  const maior = Math.max(1, ...Object.values(origens));
+  const maiorOrigem = Math.max(1, ...Object.values(origens));
+  const porDia = d.por_dia || [];
+  const maiorDia = Math.max(1, ...porDia.map(p => p.valor));
+  const itens = d.itens || [];
+
+  const diaCurto = data => {
+    const [, m, dd] = (data || '').split('-');
+    return dd && m ? `${dd}/${m}` : '';
+  };
+
+  const grafico = porDia.length ? `
+    <div class="rel-neg-titulo">Evolução no período</div>
+    <div class="fat-grafico" title="Faturamento por dia">
+      ${porDia.map(p => `
+        <div class="fat-grafico-col" title="${diaCurto(p.data)}: ${brl(p.valor)}">
+          <div class="fat-grafico-barra" style="height:${p.valor > 0 ? Math.max(3, Math.round((p.valor / maiorDia) * 100)) : 0}%"></div>
+        </div>`).join('')}
+    </div>` : '';
+
+  const tabela = itens.length ? `
+    <div class="rel-neg-titulo" style="margin-top:14px;">Transações do período (${itens.length}${itens.length === 100 ? '+' : ''})</div>
+    <div class="rel-neg-tabela-wrap">
+      <table class="fat-tabela">
+        <thead><tr><th>Data</th><th>Origem</th><th>Cliente</th><th style="text-align:right;">Valor</th></tr></thead>
+        <tbody>
+          ${itens.map(t => `
+            <tr>
+              <td>${esc(parseDataBanco(t.data)?.toLocaleDateString('pt-BR') || '—')}</td>
+              <td>${esc(ORIGEM_ROTULO_FATURAMENTO[t.origem] || t.origem)}${t.tipo === 'venda' ? ' · venda' : ' · OS'}</td>
+              <td>${esc(t.cliente) || '—'}</td>
+              <td style="text-align:right;">${brl(t.valor)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : '<p class="ajuda-texto" style="margin-top:10px;">Nenhuma transação neste período.</p>';
 
   alvo.innerHTML = `
-    <div class="historico-stats" style="margin-bottom:14px;">
+    <div class="historico-stats" style="margin-bottom:6px;">
       <div class="vg-stat">
         <div class="vg-valor">${brl(total)}</div>
         <div class="vg-label">Faturamento total (${d.dias} dias)</div>
       </div>
+      <div class="vg-stat">
+        <div class="vg-valor">${d.transacoes || 0}</div>
+        <div class="vg-label">Transação${d.transacoes === 1 ? '' : 'ões'} no período</div>
+      </div>
+      <div class="vg-stat">
+        <div class="vg-valor">${brl(d.ticket_medio)}</div>
+        <div class="vg-label">Ticket médio</div>
+      </div>
     </div>
-    <div class="rel-neg-titulo">Por origem</div>
+    <div style="margin-bottom:14px;">${_fatVariacaoHtml(d.variacao_pct)}</div>
+
+    ${grafico}
+
+    <div class="rel-neg-titulo" style="margin-top:14px;">Por origem</div>
     <div class="rel-neg-bairros">
       ${Object.entries(origens).map(([chave, valor]) => `
         <div class="rel-neg-bairro-linha">
           <span>${esc(ORIGEM_ROTULO_FATURAMENTO[chave] || chave)}</span>
-          <div class="vg-setor-barra"><div class="vg-setor-preenchido" style="width:${Math.round((valor / maior) * 100)}%"></div></div>
+          <div class="vg-setor-barra"><div class="vg-setor-preenchido" style="width:${Math.round((valor / maiorOrigem) * 100)}%"></div></div>
           <span class="cliente-detalhe-valor">${brl(valor)}</span>
         </div>`).join('')}
     </div>
+
+    ${tabela}
   `;
 }
 

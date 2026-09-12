@@ -5307,6 +5307,28 @@ select:focus-visible,
   font-size: 12.5px; color: var(--text-secondary);
 }
 
+/* Faturamento: gráfico de barras por dia, em CSS puro (projeto não usa
+   biblioteca de gráfico) — cada coluna é só uma div com altura em %,
+   'title' nativo do navegador serve de tooltip sem precisar de JS extra. */
+.fat-grafico {
+  display: flex; align-items: flex-end; gap: 2px; height: 90px;
+  padding: 8px 4px 0; margin-bottom: 14px;
+  background: var(--bg-card); border-radius: 10px;
+}
+.fat-grafico-col { flex: 1 1 0; display: flex; align-items: flex-end; height: 100%; min-width: 2px; }
+.fat-grafico-barra {
+  width: 100%; background: var(--accent); border-radius: 2px 2px 0 0;
+  min-height: 0; transition: height .3s ease;
+}
+.fat-variacao { font-size: 13px; }
+.fat-tabela { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.fat-tabela th {
+  text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px;
+  color: var(--text-muted); font-weight: 700; padding: 0 8px 6px 0; border-bottom: 1px solid var(--border);
+}
+.fat-tabela td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.fat-tabela tbody tr:hover td { background: var(--bg-hover); }
+
 .ajuda-corpo { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .ajuda-item { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .ajuda-item:last-child { border-bottom: none; }

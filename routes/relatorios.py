@@ -837,12 +837,19 @@ def atividade_recente():
         })
 
     eventos.sort(key=lambda e: e["quando"] or "", reverse=True)
-    return jsonify({"eventos": eventos[:20]})
+    return jsonify({"eventos": eventos[:15]})
+
+
+def _eh_panasonic(valor_bruto) -> bool:
+    """bool no Postgres, 0/1 no SQLite — normaliza antes de comparar."""
+    return str(valor_bruto) in ("True", "1", "t")
 
 
 @relatorios_bp.route("/relatorios/faturamento", methods=["GET"])
 def faturamento():
-    """Faturamento geral e por origem (pedido de 2026-09-11).
+    """Faturamento geral e por origem, com comparação e detalhe (pedido de
+    2026-09-11, ampliado em 2026-09-12: "detalhar mais, deixar mais
+    funcional").
 
     Duas fontes reais de receita: venda de balcão (`vendas.valor_total`,
     sempre balcão) e orçamento de OS aprovado (`ordem_servico_itens.valor`,
@@ -852,45 +859,99 @@ def faturamento():
     pela aprovação do orçamento — antes disso o valor não é receita, é só
     proposta, e cancelada não conta de jeito nenhum mesmo que tenha sido
     aprovada antes de cancelar.
+
+    Busca uma janela de 2×dias e separa "atual" de "anterior" em Python (não
+    em SQL) pela mesma razão de sempre neste projeto: SQLite e Postgres não
+    concordam em função de data, e aqui isso é só comparar string de data,
+    que os dois fazem igual. O período anterior serve só pra variação
+    percentual — o resto da resposta (série, itens, contagem) é sempre do
+    período atual.
     """
     dias = request.args.get("dias", "30")
     if not str(dias).isdigit() or not (1 <= int(dias) <= 3650):
         return jsonify({"erro": "dias inválido"}), 400
-    corte = (datetime.now(timezone.utc) - timedelta(days=int(dias))).strftime("%Y-%m-%d %H:%M:%S")
+    dias = int(dias)
+    agora = datetime.now(timezone.utc)
+    corte_atual = (agora - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+    corte_anterior = (agora - timedelta(days=2 * dias)).strftime("%Y-%m-%d %H:%M:%S")
 
     with db_conn() as conn:
         vendas = fetch_all(conn, sql("""
-            SELECT COALESCE(SUM(valor_total), 0) AS total FROM vendas WHERE criado_em >= ?
-        """), (corte,))
+            SELECT id, cliente_nome, valor_total, criado_em
+              FROM vendas WHERE criado_em >= ?
+        """), (corte_anterior,))
         os_aprovadas = fetch_all(conn, sql("""
-            SELECT os.id, os.balcao_em,
+            SELECT os.id, os.balcao_em, os.orcamento_aprovado_em, c.nome AS cliente,
                    EXISTS (SELECT 1 FROM pecas_chegada pc
                             WHERE pc.ordem_servico_id = os.id) AS eh_panasonic,
                    COALESCE((SELECT SUM(valor) FROM ordem_servico_itens
                               WHERE ordem_servico_id = os.id), 0) AS valor
               FROM ordens_servico os
+              LEFT JOIN clientes c ON c.id = os.cliente_id
              WHERE os.orcamento_aprovado_em IS NOT NULL
                AND os.orcamento_aprovado_em >= ?
                AND os.status <> 'cancelada'
-        """), (corte,))
+        """), (corte_anterior,))
 
-    origem = {"nossa": 0.0, "panasonic": 0.0, "balcao": float(vendas[0]["total"] or 0)}
+    def origem_da_os(o):
+        if _eh_panasonic(o["eh_panasonic"]):
+            return "panasonic"
+        if o["balcao_em"]:
+            return "balcao"
+        return "nossa"
+
+    # Transações unificadas (venda + orçamento de OS), já com a data que
+    # importa pra cada uma (criado_em vs orcamento_aprovado_em) e a origem.
+    transacoes = []
+    for v in vendas:
+        transacoes.append({
+            "data": v["criado_em"], "origem": "balcao", "tipo": "venda",
+            "cliente": v["cliente_nome"], "valor": float(v["valor_total"] or 0),
+        })
     for o in os_aprovadas:
-        valor = float(o["valor"] or 0)
-        # bool no Postgres, 0/1 no SQLite — normaliza antes de comparar.
-        if str(o["eh_panasonic"]) in ("True", "1", "t"):
-            origem["panasonic"] += valor
-        elif o["balcao_em"]:
-            origem["balcao"] += valor
-        else:
-            origem["nossa"] += valor
+        transacoes.append({
+            "data": o["orcamento_aprovado_em"], "origem": origem_da_os(o), "tipo": "os",
+            "cliente": o["cliente"], "valor": float(o["valor"] or 0),
+        })
+
+    atuais = [t for t in transacoes if (t["data"] or "") >= corte_atual]
+    anteriores = [t for t in transacoes if (t["data"] or "") < corte_atual]
+
+    total_atual = sum(t["valor"] for t in atuais)
+    total_anterior = sum(t["valor"] for t in anteriores)
+    if total_anterior > 0:
+        variacao_pct = round((total_atual - total_anterior) / total_anterior * 100, 1)
+    else:
+        variacao_pct = None  # sem base de comparação — não dá pra falar em %
+
+    origem = {"nossa": 0.0, "panasonic": 0.0, "balcao": 0.0}
+    for t in atuais:
+        origem[t["origem"]] += t["valor"]
+
+    # Série por dia do período atual, com dia sem movimento aparecendo como
+    # zero — sem isso um gráfico de barras "pula" dia vazio e engana o olho
+    # sobre onde o dia atual realmente está na janela.
+    por_dia = {}
+    for i in range(dias):
+        chave = (agora - timedelta(days=dias - 1 - i)).strftime("%Y-%m-%d")
+        por_dia[chave] = 0.0
+    for t in atuais:
+        chave = (t["data"] or "")[:10]
+        if chave in por_dia:
+            por_dia[chave] += t["valor"]
+
+    atuais.sort(key=lambda t: t["data"] or "", reverse=True)
 
     return jsonify({
-        "dias": int(dias),
-        "total": round(sum(origem.values()), 2),
+        "dias": dias,
+        "total": round(total_atual, 2),
+        "variacao_pct": variacao_pct,
+        "transacoes": len(atuais),
+        "ticket_medio": round(total_atual / len(atuais), 2) if atuais else 0.0,
         "por_origem": {k: round(v, 2) for k, v in origem.items()},
+        "por_dia": [{"data": k, "valor": round(v, 2)} for k, v in por_dia.items()],
+        "itens": [{**t, "valor": round(t["valor"], 2)} for t in atuais[:100]],
     })
-    return jsonify({"eventos": eventos[:15]})
 
 
 @relatorios_bp.route("/relatorios/mapa-calor", methods=["GET"])
