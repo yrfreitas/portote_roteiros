@@ -837,6 +837,59 @@ def atividade_recente():
         })
 
     eventos.sort(key=lambda e: e["quando"] or "", reverse=True)
+    return jsonify({"eventos": eventos[:20]})
+
+
+@relatorios_bp.route("/relatorios/faturamento", methods=["GET"])
+def faturamento():
+    """Faturamento geral e por origem (pedido de 2026-09-11).
+
+    Duas fontes reais de receita: venda de balcão (`vendas.valor_total`,
+    sempre balcão) e orçamento de OS aprovado (`ordem_servico_itens.valor`,
+    somado por OS). Origem da OS usa a MESMA regra de sempre (ver
+    routes/ordens_servico.py:listar): tem peça vinda da Panasonic = panasonic;
+    senão tem balcao_em = balcao; senão = nossa. Só entra OS que já passou
+    pela aprovação do orçamento — antes disso o valor não é receita, é só
+    proposta, e cancelada não conta de jeito nenhum mesmo que tenha sido
+    aprovada antes de cancelar.
+    """
+    dias = request.args.get("dias", "30")
+    if not str(dias).isdigit() or not (1 <= int(dias) <= 3650):
+        return jsonify({"erro": "dias inválido"}), 400
+    corte = (datetime.now(timezone.utc) - timedelta(days=int(dias))).strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_conn() as conn:
+        vendas = fetch_all(conn, sql("""
+            SELECT COALESCE(SUM(valor_total), 0) AS total FROM vendas WHERE criado_em >= ?
+        """), (corte,))
+        os_aprovadas = fetch_all(conn, sql("""
+            SELECT os.id, os.balcao_em,
+                   EXISTS (SELECT 1 FROM pecas_chegada pc
+                            WHERE pc.ordem_servico_id = os.id) AS eh_panasonic,
+                   COALESCE((SELECT SUM(valor) FROM ordem_servico_itens
+                              WHERE ordem_servico_id = os.id), 0) AS valor
+              FROM ordens_servico os
+             WHERE os.orcamento_aprovado_em IS NOT NULL
+               AND os.orcamento_aprovado_em >= ?
+               AND os.status <> 'cancelada'
+        """), (corte,))
+
+    origem = {"nossa": 0.0, "panasonic": 0.0, "balcao": float(vendas[0]["total"] or 0)}
+    for o in os_aprovadas:
+        valor = float(o["valor"] or 0)
+        # bool no Postgres, 0/1 no SQLite — normaliza antes de comparar.
+        if str(o["eh_panasonic"]) in ("True", "1", "t"):
+            origem["panasonic"] += valor
+        elif o["balcao_em"]:
+            origem["balcao"] += valor
+        else:
+            origem["nossa"] += valor
+
+    return jsonify({
+        "dias": int(dias),
+        "total": round(sum(origem.values()), 2),
+        "por_origem": {k: round(v, 2) for k, v in origem.items()},
+    })
     return jsonify({"eventos": eventos[:15]})
 
 

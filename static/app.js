@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v250';
+const VERSAO_PAINEL = 'v251';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -572,6 +572,7 @@ document.addEventListener('DOMContentLoaded', () => {
   iniciarMonitorSaude();
   iniciarAutoRefresh();
   iniciarFiltroHistorico();
+  iniciarFiltroFaturamento();
   carregarUsuarioLogadoPromise = carregarUsuarioLogado();
   verificarTourPrimeiraVez();
   iniciarChatPainel();
@@ -657,11 +658,13 @@ function switchMainTab(tab) {
   const isOS        = tab === 'os';
   const isAgendar   = tab === 'agendar';
   const isVendas    = tab === 'vendas';
+  const isFaturamento = tab === 'faturamento';
 
   _mostrarPainelPrincipal('panel-roteiros-sidebar', isRoteiros, true);
   _mostrarPainelPrincipal('panel-roteiros-main', isRoteiros);
   _mostrarPainelPrincipal('panel-cep', isCep);
   _mostrarPainelPrincipal('panel-historico', isHistorico);
+  _mostrarPainelPrincipal('panel-faturamento', isFaturamento);
   _mostrarPainelPrincipal('panel-pecas', isPecas);
   _mostrarPainelPrincipal('panel-diagnostico', isDiag);
   _mostrarPainelPrincipal('panel-atendimentos', isAtend);
@@ -681,6 +684,7 @@ function switchMainTab(tab) {
   document.getElementById('mtab-os').classList.toggle('active', isOS);
   document.getElementById('mtab-agendar').classList.toggle('active', isAgendar);
   document.getElementById('mtab-vendas').classList.toggle('active', isVendas);
+  document.getElementById('mtab-faturamento').classList.toggle('active', isFaturamento);
 
   // Foco automático no campo de CEP ao abrir a aba, pra já poder digitar
   if (isCep) {
@@ -710,6 +714,9 @@ function switchMainTab(tab) {
   }
   if (isAgendar) {
     carregarAgendarClientes();
+  }
+  if (isFaturamento) {
+    carregarFaturamento();
   }
 }
 
@@ -1573,6 +1580,7 @@ async function carregarUsuarioLogado() {
   mostra('mtab-roteiros', podeUsuario('roteiros_ver'));
   mostra('mtab-cep', podeUsuario('cep_ver'));
   mostra('mtab-historico', podeUsuario('relatorios'));
+  mostra('mtab-faturamento', podeUsuario('relatorios'));
   mostra('mtab-atendimentos', podeUsuario('desfechos_ver'));
   mostra('btn-torre-controle', podeUsuario('torre_controle'));
 
@@ -3091,6 +3099,66 @@ async function carregarResumoSetores() {
   } catch (e) {
     alvo.innerHTML = '';
   }
+}
+
+// Período selecionado no Faturamento — 30 dias por padrão (diferente do
+// Histórico, onde o padrão é "tudo"): faturamento sem recorte de tempo
+// nenhum somaria anos de OS de uma vez, número grande demais pra dizer
+// qualquer coisa útil sobre "como estamos indo".
+let faturamentoDias = '30';
+
+function iniciarFiltroFaturamento() {
+  const barra = document.getElementById('fat-periodo');
+  if (!barra) return;
+
+  barra.querySelectorAll('.hist-periodo-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      faturamentoDias = btn.dataset.dias;
+      barra.querySelectorAll('.hist-periodo-btn')
+           .forEach(b => b.classList.toggle('active', b === btn));
+      carregarFaturamento();
+    });
+  });
+}
+
+const ORIGEM_ROTULO_FATURAMENTO = {
+  nossa: 'Nossa OS', panasonic: 'Panasonic', balcao: 'Balcão',
+};
+
+async function carregarFaturamento() {
+  const alvo = document.getElementById('fat-conteudo');
+  if (!alvo) return;
+  const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  let d;
+  try {
+    d = await api(`/relatorios/faturamento?dias=${faturamentoDias}`);
+  } catch (e) {
+    alvo.innerHTML = `<p class="ajuda-texto">Não consegui carregar o faturamento: ${esc(e.message || '')}</p>`;
+    return;
+  }
+
+  const total = d.total || 0;
+  const origens = d.por_origem || {};
+  const maior = Math.max(1, ...Object.values(origens));
+
+  alvo.innerHTML = `
+    <div class="historico-stats" style="margin-bottom:14px;">
+      <div class="vg-stat">
+        <div class="vg-valor">${brl(total)}</div>
+        <div class="vg-label">Faturamento total (${d.dias} dias)</div>
+      </div>
+    </div>
+    <div class="rel-neg-titulo">Por origem</div>
+    <div class="rel-neg-bairros">
+      ${Object.entries(origens).map(([chave, valor]) => `
+        <div class="rel-neg-bairro-linha">
+          <span>${esc(ORIGEM_ROTULO_FATURAMENTO[chave] || chave)}</span>
+          <div class="vg-setor-barra"><div class="vg-setor-preenchido" style="width:${Math.round((valor / maior) * 100)}%"></div></div>
+          <span class="cliente-detalhe-valor">${brl(valor)}</span>
+        </div>`).join('')}
+    </div>
+  `;
 }
 
 // Período selecionado no Histórico. Vazio = tudo, que é o padrão.
