@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v258';
+const VERSAO_PAINEL = 'v259';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1992,12 +1992,6 @@ async function carregarDiagnostico() {
     em.configurado ? 'ok' : 'aviso',
     em.configurado ? 'configurada' : 'não configurada'));
 
-  const ia = d.ia || {};
-  partes.push(_linhaDiag('Análise de erros com IA',
-    ia.configurado ? 'ok' : 'aviso',
-    ia.configurado ? 'ligada (' + esc(ia.modelo || '') + ')' : 'sem ANTHROPIC_API_KEY',
-    ia.configurado ? '' : 'Defina ANTHROPIC_API_KEY nas variáveis do Railway para o botão "Analisar com IA" funcionar.'));
-
   // ── Higiene dos dados
   partes.push(`<div class="diag-secao">Dados</div>`);
   const semSetor = (d.setores && d.setores.sem_setor) || 0;
@@ -2022,7 +2016,7 @@ async function carregarDiagnostico() {
     partes.push((er.ultimos || []).map(e => _renderErroDiag(e)).join(''));
   }
 
-  // ── O que já mudou (changelog) e conversa com a IA — pedido de 2026-08-29.
+  // ── O que já mudou (changelog) — pedido de 2026-08-29.
   partes.push(`
     <div class="diag-secao">O que já mudou</div>
     <div id="changelog-corpo"><div class="ajuda-texto">Carregando...</div></div>`);
@@ -2031,20 +2025,6 @@ async function carregarDiagnostico() {
   partes.push(`
     <div class="diag-secao">Exportações recentes</div>
     <div id="log-exportacoes-corpo"><div class="ajuda-texto">Carregando...</div></div>`);
-
-  partes.push(`
-    <div class="diag-secao">Converse com a IA sobre o sistema</div>
-    <p class="ajuda-texto" style="margin:0 0 8px;">
-      Ela analisa e sugere — não edita código nem faz deploy. Pra mudar algo
-      de verdade, peça na conversa com o Claude Code.
-    </p>
-    <div id="diag-chat-lista" class="diag-chat-lista"></div>
-    <div class="diag-chat-caixa">
-      <textarea id="diag-chat-input" class="form-input" rows="2"
-                placeholder="Descreva o que quer entender ou o problema que viu..."
-                onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();enviarChatDiagnostico();}"></textarea>
-      <button class="btn btn-primary btn-sm" id="diag-chat-enviar" onclick="enviarChatDiagnostico()">Enviar</button>
-    </div>`);
 
   alvo.innerHTML = `<div class="diag-versao">Sistema na versão ${esc(d.app || '—')}</div>`
     + partes.join('')
@@ -2055,7 +2035,6 @@ async function carregarDiagnostico() {
   if (podeUsuario('gerenciar_usuarios')) carregarAcessos();
   carregarChangelog();
   carregarLogExportacoes();
-  carregarChatDiagnostico();
 }
 
 async function carregarLogExportacoes() {
@@ -2180,57 +2159,6 @@ function fecharTour() {
   fecharModais();
 }
 
-function _renderMensagemChatDiag(m) {
-  const ehIa = m.autor === 'ia';
-  return `<div class="diag-chat-msg ${ehIa ? 'ia' : 'kalebe'}">
-    <div class="quem">${ehIa ? 'IA' : 'Você'}</div>
-    <div class="texto">${esc(m.texto).replace(/\n/g, '<br>')}</div>
-  </div>`;
-}
-
-async function carregarChatDiagnostico() {
-  const alvo = document.getElementById('diag-chat-lista');
-  if (!alvo) return;
-  try {
-    const r = await api('/diagnostico/chat');
-    const msgs = r.mensagens || [];
-    alvo.innerHTML = msgs.length
-      ? msgs.map(_renderMensagemChatDiag).join('')
-      : '<div class="ajuda-texto">Nenhuma conversa ainda — pergunte alguma coisa abaixo.</div>';
-    alvo.scrollTop = alvo.scrollHeight;
-  } catch (e) {
-    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
-  }
-}
-
-async function enviarChatDiagnostico() {
-  const input = document.getElementById('diag-chat-input');
-  const btn = document.getElementById('diag-chat-enviar');
-  const texto = input.value.trim();
-  if (!texto) return;
-
-  const alvo = document.getElementById('diag-chat-lista');
-  if (!alvo.querySelector('.diag-chat-msg')) alvo.innerHTML = ''; // tira o "nenhuma conversa ainda"
-  alvo.innerHTML += _renderMensagemChatDiag({ autor: 'kalebe', texto });
-  alvo.innerHTML += `<div class="diag-chat-msg ia pensando" id="diag-chat-pensando">
-    <div class="quem">IA</div><div class="texto">pensando...</div></div>`;
-  alvo.scrollTop = alvo.scrollHeight;
-  input.value = '';
-  btn.disabled = true;
-
-  try {
-    const r = await api('/diagnostico/chat', { method: 'POST', body: JSON.stringify({ texto }) }, 90000);
-    document.getElementById('diag-chat-pensando')?.remove();
-    alvo.innerHTML += _renderMensagemChatDiag({ autor: 'ia', texto: r.resposta });
-    alvo.scrollTop = alvo.scrollHeight;
-  } catch (e) {
-    document.getElementById('diag-chat-pensando')?.remove();
-    toast(e.message, 'error');
-  } finally {
-    btn.disabled = false;
-  }
-}
-
 // Cada erro do log com status editável, observação e excluir. `data-id` liga
 // os controles ao registro; salvar é na hora, ao mudar o campo.
 const _STATUS_ERRO_DIAG = ['novo', 'investigando', 'resolvido', 'ignorado'];
@@ -2244,28 +2172,13 @@ function _renderErroDiag(e) {
       <div class="diag-erro-msg">${esc(e.mensagem)}</div>
       <div class="diag-detalhe">${esc(e.quando)} · ${esc(e.origem)} · ${esc(e.versao)} · ${esc(e.url)}</div>
       <div class="diag-erro-acoes">
-        <button class="btn btn-ghost btn-xs diag-ia-btn" onclick="analisarErroIA(${e.id})" title="Pedir à IA um diagnóstico e a correção">${icone('robo', 'icone-13')} Analisar com IA</button>
         ${podeEditar ? `
         <select class="diag-erro-status" onchange="atualizarErroDiag(${e.id}, 'status', this.value)">${opts}</select>
         <input class="diag-erro-obs form-input" placeholder="observação..." value="${esc(e.obs || '')}"
                onchange="atualizarErroDiag(${e.id}, 'obs', this.value)">
         <button class="btn btn-ghost btn-xs estoque-btn-excluir" onclick="removerErroDiag(${e.id})">Excluir</button>` : ''}
       </div>
-      <div class="diag-ia-resultado" id="diag-ia-${e.id}"></div>
     </div>`;
-}
-
-async function analisarErroIA(id) {
-  const alvo = document.getElementById(`diag-ia-${id}`);
-  if (!alvo) return;
-  alvo.innerHTML = '<div class="diag-ia-carregando"><div class="spinner"></div> A IA está analisando o erro...</div>';
-  try {
-    const d = await api(`/erros-cliente/${id}/analisar`, { method: 'POST' }, 90000);
-    // Texto simples da IA — escapo e preservo as quebras de linha.
-    alvo.innerHTML = `<div class="diag-ia-caixa"><div class="diag-ia-titulo">${icone('robo', 'icone-13')} Análise da IA</div><div class="diag-ia-texto">${esc(d.analise).replace(/\n/g, '<br>')}</div></div>`;
-  } catch (e) {
-    alvo.innerHTML = `<div class="erro-box">${esc(e.message)}</div>`;
-  }
 }
 
 async function atualizarErroDiag(id, campo, valor) {
