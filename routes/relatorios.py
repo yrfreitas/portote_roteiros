@@ -860,6 +860,14 @@ def faturamento():
     proposta, e cancelada não conta de jeito nenhum mesmo que tenha sido
     aprovada antes de cancelar.
 
+    Pedido de 2026-09-12 ("quero que conste só os aprovados"): item de
+    balcão tem status PRÓPRIO (status_loja), separado do status geral da OS
+    — um item pode ter sido aprovado (orcamento_aprovado_em preenchido) e
+    DEPOIS o cliente desistir (status_loja='reprovado') ou nunca vir buscar
+    (status_loja='abandonado'). Sem checar isso, esse item continuava
+    contando como faturamento pra sempre, mesmo já sabendo que não vai
+    receber.
+
     Busca uma janela de 2×dias e separa "atual" de "anterior" em Python (não
     em SQL) pela mesma razão de sempre neste projeto: SQLite e Postgres não
     concordam em função de data, e aqui isso é só comparar string de data,
@@ -891,6 +899,7 @@ def faturamento():
              WHERE os.orcamento_aprovado_em IS NOT NULL
                AND os.orcamento_aprovado_em >= ?
                AND os.status <> 'cancelada'
+               AND (os.status_loja IS NULL OR os.status_loja NOT IN ('reprovado', 'abandonado'))
         """), (corte_anterior,))
 
     def origem_da_os(o):
