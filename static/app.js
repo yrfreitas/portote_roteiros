@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v259';
+const VERSAO_PAINEL = 'v260';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7731,6 +7731,16 @@ const OS_STATUS_ROTULO = {
   cancelada:              'Cancelada',
 };
 
+// Cartões clicáveis da aba "Ordens de Serviço" NÃO mostram "Aguardando
+// agendamento" — pedido de 2026-09-14: toda OS nesse status já aparece na
+// aba Agendar Clientes > Reagendamento, e listar nos dois lugares fazia a
+// recepcionista ver o mesmo cliente pra agendar em dois cantos diferentes.
+// OS_STATUS_ROTULO continua completo pra rótulo individual (detalhe da OS,
+// busca, diagnóstico) — só o cartão de navegação some daqui.
+const OS_STATUS_ROTULO_CARTOES = Object.fromEntries(
+  Object.entries(OS_STATUS_ROTULO).filter(([chave]) => chave !== 'aguardando_agendamento')
+);
+
 // Status PRÓPRIO da aba "Produtos da loja" (pedido de 2026-09-01) — espelha
 // STATUS_LOJA_ROTULO em routes/ordens_servico.py. Campo separado do status
 // normal de OS, ciclo de vida diferente (não tem agendamento de visita).
@@ -8115,7 +8125,7 @@ async function carregarOS() {
   // nenhum filtro que a trouxesse de volta pra tela.
   const rotulosCartoes = _osOrigemTab === 'balcao'
     ? { sem_status: 'Selecionar status', ...STATUS_LOJA_ROTULO }
-    : OS_STATUS_ROTULO;
+    : OS_STATUS_ROTULO_CARTOES;
   const cartoes = Object.entries(rotulosCartoes).map(([chave, rotulo]) => `
     <button class="os-cartao${_osFiltroStatus === chave ? ' ativo' : ''}" onclick="osFiltrar('${chave}')">
       <div class="n">${r.contagem[chave] ?? 0}</div>
