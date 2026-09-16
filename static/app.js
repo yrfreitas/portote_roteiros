@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v263';
+const VERSAO_PAINEL = 'v264';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1019,18 +1019,31 @@ async function carregarCentralCliente() {
     return;
   }
 
-  mount.innerHTML = r.ordens.map(o => `
-    <div class="os-linha">
-      <div class="num-bloco">
-        <div class="num">OS #${String(o.id).padStart(6, '0')}</div>
+  mount.innerHTML = r.ordens.map(o => {
+    const statusClasse = o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso';
+    return `
+    <div class="agendar-card" onclick="abrirOSDetalhe(${o.id})">
+      <div class="agendar-card-topo">
+        <div class="agendar-cliente">${destacar(o.cliente_nome, _centralClienteBuscaTexto)}</div>
+        <span class="conc-tag ${statusClasse}">${esc(OS_STATUS_ROTULO[o.status] || 'Sem status')}</span>
       </div>
-      <div>
-        <div class="cliente">${destacar(o.cliente_nome, _centralClienteBuscaTexto)}</div>
-        <div class="aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || '—'}</div>
+      <div class="agendar-linha-info">
+        ${icone('telefone', 'icone-13')}
+        ${o.cliente_telefone
+          ? `<a href="tel:${esc(o.cliente_telefone.replace(/\D/g, ''))}" onclick="event.stopPropagation()">${esc(o.cliente_telefone)}</a>`
+          : `<span class="agendar-sem-info">sem telefone cadastrado</span>`}
+        <span class="agendar-sep">·</span>
+        <span>OS #${String(o.id).padStart(6, '0')}</span>
       </div>
-      <span class="conc-tag aviso">${esc(OS_STATUS_ROTULO[o.status] || 'Sem status')}</span>
-      <button class="btn btn-ghost btn-sm" onclick="copiarLinkCentral(${o.id}, '${o.token_cliente || ''}')">Copiar link do cliente</button>
-    </div>`).join('');
+      <div class="agendar-linha-info">
+        <span class="agendar-aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || 'aparelho não informado'}</span>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm agendar-btn"
+              onclick="event.stopPropagation(); copiarLinkCentral(${o.id}, '${o.token_cliente || ''}')">
+        ${icone('externo', 'icone-12')} Copiar link do cliente
+      </button>
+    </div>`;
+  }).join('');
 }
 
 async function copiarLinkCentral(osId, tokenAtual) {

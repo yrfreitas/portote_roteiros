@@ -8,20 +8,31 @@
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
+    html, body { overflow-x: hidden; }
     body {
-      margin: 0; background: #0c0f12; color: #e8edf3;
+      margin: 0; background: #0a0d11; color: #e8edf3;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       min-height: 100vh;
+      /* Faixa de cor no topo por trás do header, pra não parecer uma caixa
+         estreita boiando sozinha numa tela preta em monitor largo — o
+         header e as cartas abaixo compartilham o MESMO eixo central
+         (.pagina), então nada fica desalinhado entre si. */
+      background-image: radial-gradient(760px 380px at 50% -120px, rgba(26,111,212,.22), transparent 70%);
+      background-repeat: no-repeat;
     }
-    header { padding: 14px 16px; border-bottom: 1px solid #1e252d; }
-    .marca { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #6f7d8c; }
-    h1 { font-size: 17px; margin: 4px 0 0; font-weight: 700; }
-    main { padding: 16px; display: flex; flex-direction: column; gap: 14px; max-width: 520px; margin: 0 auto; }
+    .pagina { width: 100%; max-width: 600px; margin: 0 auto; padding: 0 16px 40px; }
+    header { padding: 22px 0 18px; }
+    .marca { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #7c8a99; }
+    .marca .ponto { width: 6px; height: 6px; border-radius: 50%; background: #1a6fd4; flex: none; }
+    h1 { font-size: 20px; margin: 6px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+    main { display: flex; flex-direction: column; gap: 14px; width: 100%; }
     .card {
-      background: #10151a; border: 1px solid #1e252d; border-radius: 12px; padding: 14px 16px;
+      background: #10151a; border: 1px solid #1e252d; border-radius: 14px; padding: 16px 17px;
+      overflow-wrap: anywhere;
     }
     .card:empty { display: none; }
-    .card h2 { font-size: 13px; margin: 0 0 10px; color: #94a1ae; text-transform: uppercase; letter-spacing: .6px; }
+    .card h2 { font-size: 12px; margin: 0 0 12px; color: #94a1ae; text-transform: uppercase; letter-spacing: .8px; font-weight: 700; }
+    footer { text-align: center; font-size: 11.5px; color: #4c5867; padding: 22px 0 6px; }
 
     /* Técnico a caminho */
     .tec-cartao { display: flex; align-items: center; gap: 12px; }
@@ -65,22 +76,26 @@
   </style>
 </head>
 <body data-token="{{ token }}" data-vapid-key="{{ vapid_public_key }}">
-  <header>
-    <div class="marca">Porto Tec Assistência Técnica</div>
-    <h1 id="titulo">Olá!</h1>
-  </header>
+  <div class="pagina">
+    <header>
+      <div class="marca"><span class="ponto"></span>Porto Tec Assistência Técnica</div>
+      <h1 id="titulo">Olá!</h1>
+    </header>
 
-  <main>
-    <div class="card" id="card-cancelada"></div>
-    <div class="card" id="card-tecnico"></div>
-    <div class="card">
-      <h2>Status do atendimento</h2>
-      <div class="timeline" id="timeline">Carregando...</div>
-    </div>
-    <div class="card" id="card-orcamento"></div>
-    <div class="card" id="card-garantia"></div>
-    <button class="btn-push" id="btn-push">Avisar quando o técnico sair</button>
-  </main>
+    <main>
+      <div class="card" id="card-cancelada"></div>
+      <div class="card" id="card-tecnico"></div>
+      <div class="card">
+        <h2>Status do atendimento</h2>
+        <div class="timeline" id="timeline">Carregando...</div>
+      </div>
+      <div class="card" id="card-orcamento"></div>
+      <div class="card" id="card-garantia"></div>
+      <button class="btn-push" id="btn-push">Avisar quando o técnico sair</button>
+    </main>
+
+    <footer>Porto Tec Assistência Técnica · atendimento acompanhado por este link</footer>
+  </div>
 
   <script>
     (function () {
