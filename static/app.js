@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v266';
+const VERSAO_PAINEL = 'v267';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -704,7 +704,9 @@ function switchMainTab(tab) {
     carregarDiagnostico();
   }
   if (isPecas) {
-    carregarPecas();
+    // "Peças Compradas" saiu da navegação (pedido de 2026-09-16) -- a aba
+    // Peças agora abre direto em "Pedidos com comprovante".
+    pecasSwitchTab(_pecasTab === 'compradas' ? 'pedidos' : _pecasTab);
   }
   if (isAtend) {
     carregarDesfechos();
@@ -3650,11 +3652,10 @@ async function salvarClienteRapido() {
 // (o robô lê o e-mail); esta é o pedido que o PRÓPRIO técnico/atendente fez
 // e marcou "já pedi" lá em Atendimentos, com a foto do comprovante anexada.
 // Duas origens diferentes — por isso não entram na mesma lista.
-let _pecasTab = 'compradas';
+let _pecasTab = 'pedidos';
 
 function pecasSwitchTab(tab) {
   _pecasTab = tab;
-  document.getElementById('ptab-compradas')?.classList.toggle('active', tab === 'compradas');
   document.getElementById('ptab-pedidos')?.classList.toggle('active', tab === 'pedidos');
   document.getElementById('ptab-cotacao')?.classList.toggle('active', tab === 'cotacao');
   document.getElementById('ptab-carro')?.classList.toggle('active', tab === 'carro');
@@ -3718,6 +3719,29 @@ async function carregarCarroResumo() {
   setTimeout(() => { if (_pecasTab === 'carro') carregarCarroResumo(); }, _CARRO_INTERVALO_MS);
 }
 
+// Botão explícito "Agendar cliente" pra Pedidos com comprovante — pedido de
+// 2026-09-16 ("continua sem o botão"): marcar "Chegou?" já manda o cliente
+// pra Agendar Clientes por baixo dos panos (ver POST /pedidos/chegada), mas
+// sem UM BOTÃO À VISTA (igual botaoAgendarPeca() já mostra em Peças
+// Compradas) isso ficava invisível — só um toast que passa. Agora mostra o
+// mesmo padrão visual: desabilitado até chegar, "✓ enviado p/ agendar"
+// depois, abrindo a OS com um clique.
+function _botaoAgendarPedidoComprovante(p) {
+  if (p.agendamento_os_id) {
+    return `
+      <button type="button" class="peca-agendar enviado" onclick="abrirOSDetalhe(${p.agendamento_os_id})"
+              title="Já está na fila de Agendar Clientes — clique pra abrir a OS">
+        ✓ enviado p/ agendar
+      </button>`;
+  }
+  if (!p.cliente) return '';   // reposição de estoque, sem cliente -- nada pra agendar
+  return `
+    <button type="button" class="peca-agendar" disabled
+            title="Marque &quot;Chegou?&quot; primeiro — é isso que já manda o cliente pra Agendar Clientes">
+      Agendar cliente
+    </button>`;
+}
+
 async function carregarPedidosComComprovante() {
   const alvo = document.getElementById('pecas-pedidos-lista');
   if (!alvo) return;
@@ -3761,12 +3785,13 @@ async function carregarPedidosComComprovante() {
             pedida ${esc(quando)}${p.pedido_por ? ' por ' + esc(p.pedido_por) : ''}
             ${p.numero_os ? ` · OS ${esc(p.numero_os)}` : ''}
           </div>
-          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
             <button type="button" class="btn btn-sm pp-btn-chegou ${chegou ? 'ativo' : ''}"
                     onclick="alternarPecaChegou('${p.chave_chegada}', ${!chegou}, this)"
                     title="${chegou ? 'Peça já marcada como chegada — clique pra desmarcar' : 'Marcar que a peça chegou fisicamente'}">
               ${chegou ? `✓ Chegou${p.chegou_em ? ' em ' + esc(parseDataBanco(p.chegou_em)?.toLocaleDateString('pt-BR') || '') : ''}` : 'Chegou?'}
             </button>
+            ${_botaoAgendarPedidoComprovante(p)}
             <button type="button" class="btn btn-ghost btn-sm"
                     onclick="desfazerPedidoPeca(${p.servico_id ?? 'null'}, ${p.pedido_os_id ?? 'null'})"
                     title="Volta pra Atendimentos como 'Precisa de peça', sem comprovante — pra corrigir e pedir de novo">

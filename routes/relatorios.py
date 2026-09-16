@@ -1171,10 +1171,17 @@ def listar_pedidos_de_peca():
             chaves = [l["chave_chegada"] for l in linhas]
             marcadores = ",".join("?" * len(chaves))
             chegadas = fetch_all(conn, sql(
-                f"SELECT chave, chegou_em FROM pecas_chegada WHERE chave IN ({marcadores})"),
+                f"SELECT chave, chegou_em, ordem_servico_id FROM pecas_chegada WHERE chave IN ({marcadores})"),
                 chaves)
-            chegou_por_chave = {c["chave"]: c["chegou_em"] for c in chegadas}
+            chegou_por_chave = {c["chave"]: c for c in chegadas}
             for l in linhas:
-                l["chegou_em"] = chegou_por_chave.get(l["chave_chegada"]) or None
+                info = chegou_por_chave.get(l["chave_chegada"])
+                l["chegou_em"] = (info or {}).get("chegou_em") or None
+                # Pedido de 2026-09-16: marcar "chegou" aqui já tenta jogar o
+                # cliente pra Agendar Clientes (ver POST /pedidos/chegada) —
+                # este campo é o que deixa isso visível na tela como um botão
+                # "✓ enviado p/ agendar", igual Peças Compradas já mostra em
+                # botaoAgendarPeca().
+                l["agendamento_os_id"] = (info or {}).get("ordem_servico_id") or None
 
     return jsonify({"pedidos": linhas})
