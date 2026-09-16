@@ -1185,6 +1185,13 @@ def listar():
         elif origem == "nossa":
             condicoes_contagem.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)")
             condicoes_contagem.append("ordens_servico.balcao_em IS NULL")
+        if fonte == "publico":
+            # Mesmo bug de 2026-09-09 (cartão contando o que a lista não
+            # mostra) espreitando aqui: sem isto, os cartões da aba "Central
+            # do Cliente" (só clientes vindos de /novo-atendimento) contariam
+            # TODA ordens_servico, não só a fatia pública.
+            condicoes_contagem.append("ordens_servico.origem_publica_em IS NOT NULL")
+            condicoes_contagem.append("ordens_servico.oculta_fila_em IS NULL")
         origem_sql = "WHERE " + " AND ".join(condicoes_contagem)
         if origem == "balcao":
             # "sem_status" (pedido de 2026-09-01): sem isso, uma OS recém-

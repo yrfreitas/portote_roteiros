@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v264';
+const VERSAO_PAINEL = 'v265';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -981,19 +981,31 @@ function copiarLinkTecnico(token) {
     .catch(() => toast(link, 'info'));
 }
 
-// ─── Central do Cliente (link público por OS) ───────────────────────────
-// Reaproveita GET /ordens-servico (mesmo endpoint da aba OS) em vez de criar
-// rota nova — token_cliente já vem no SELECT (os.*), então na maioria das
-// vezes o botão de copiar nem precisa de ida ao servidor.
+// ─── Central do Cliente (só quem chegou por /novo-atendimento) ──────────
+// Pedido de 2026-09-16: "organizada tipo clientes aguardando tal coisa,
+// igual a OS" — mesmo padrão de cartões por status da aba OS (osFiltrar/
+// carregarOS), mas escopado SÓ a fonte=publico (contagem() no backend já
+// respeita esse escopo, ver routes/ordens_servico.py:listar). Ao contrário
+// da aba OS, este cartão de "Aguardando agendamento" fica visível de
+// propósito: aqui não é fila geral misturando 3 origens, é o canal do link
+// do WhatsApp — é exatamente onde "os que chegaram agora" precisam aparecer.
+let _centralClienteDados = { ordens: [], contagem: {} };
+let _centralClienteFiltroStatus = 'aguardando_agendamento';
 let _centralClienteBuscaTexto = '';
 let _centralClienteBuscaTimer = null;
+let _centralClienteCarregado = false;
 
 function centralClienteBuscar(valor) {
   clearTimeout(_centralClienteBuscaTimer);
   _centralClienteBuscaTimer = setTimeout(() => {
-    _centralClienteBuscaTexto = valor.trim();
-    carregarCentralCliente();
+    _centralClienteBuscaTexto = valor.trim().toLowerCase();
+    _renderCentralCliente();
   }, 300);
+}
+
+function centralClienteFiltrar(status) {
+  _centralClienteFiltroStatus = _centralClienteFiltroStatus === status ? '' : status;
+  _renderCentralCliente();
 }
 
 async function carregarCentralCliente() {
@@ -1001,31 +1013,68 @@ async function carregarCentralCliente() {
   if (!mount) return;
   mount.innerHTML = _skeletonOS();
 
-  const params = new URLSearchParams();
-  if (_centralClienteBuscaTexto) params.set('busca', _centralClienteBuscaTexto);
-  else params.set('dias', '30');
-
   let r;
   try {
-    r = await api(`/ordens-servico?${params.toString()}`);
+    r = await api('/ordens-servico?fonte=publico');
   } catch (e) {
     mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
     return;
   }
 
-  if (r.ordens.length === 0) {
-    mount.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
-      <p>${_centralClienteBuscaTexto ? 'Nenhuma OS encontrada pra essa busca.' : 'Nenhuma OS nos últimos 30 dias — busque por nome ou número.'}</p></div>`;
+  _centralClienteDados = r;
+  _centralClienteCarregado = true;
+  _renderCentralCliente();
+}
+
+// "chegou há 20 min" com destaque pra quem é bem recente — pedido explícito
+// de deixar visível "os que chegaram agora" sem precisar calcular na mão.
+function _centralClienteRecente(criadoEmTxt) {
+  const d = parseDataBanco(criadoEmTxt);
+  if (!d) return { texto: '', novo: false };
+  const min = Math.round((new Date() - d) / 60000);
+  const novo = min <= 120;
+  if (min < 60) return { texto: 'chegou há pouco', novo };
+  const horas = Math.round(min / 60);
+  if (horas < 24) return { texto: `chegou há ${horas}h`, novo };
+  const dias = Math.round(horas / 24);
+  return { texto: dias === 1 ? 'chegou há 1 dia' : `chegou há ${dias} dias`, novo };
+}
+
+function _renderCentralCliente() {
+  const mount = document.getElementById('central-cliente-conteudo');
+  if (!mount || !_centralClienteCarregado) return;
+
+  const cartoes = Object.entries(OS_STATUS_ROTULO).map(([chave, rotulo]) => `
+    <button class="os-cartao${_centralClienteFiltroStatus === chave ? ' ativo' : ''}" onclick="centralClienteFiltrar('${chave}')">
+      <div class="n">${_centralClienteDados.contagem[chave] ?? 0}</div>
+      <div class="rot">${rotulo}</div>
+    </button>`).join('');
+
+  let ordens = _centralClienteDados.ordens || [];
+  if (_centralClienteFiltroStatus) ordens = ordens.filter(o => o.status === _centralClienteFiltroStatus);
+  if (_centralClienteBuscaTexto) {
+    ordens = ordens.filter(o =>
+      (o.cliente_nome || '').toLowerCase().includes(_centralClienteBuscaTexto)
+      || String(o.id) === _centralClienteBuscaTexto.replace(/^#|^0+/g, ''));
+  }
+
+  if (ordens.length === 0) {
+    mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>
+      <div class="historico-vazio">${icone('check', 'icone-24')}
+        <p>${_centralClienteBuscaTexto ? 'Nenhum cliente encontrado pra essa busca.'
+          : _centralClienteFiltroStatus ? 'Ninguém nesse status no momento.'
+          : 'Nenhum cliente chegou pelo link ainda.'}</p></div>`;
     return;
   }
 
-  mount.innerHTML = r.ordens.map(o => {
+  const linhas = ordens.map(o => {
     const statusClasse = o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso';
+    const recente = _centralClienteRecente(o.criado_em);
     return `
     <div class="agendar-card" onclick="abrirOSDetalhe(${o.id})">
       <div class="agendar-card-topo">
         <div class="agendar-cliente">${destacar(o.cliente_nome, _centralClienteBuscaTexto)}</div>
-        <span class="conc-tag ${statusClasse}">${esc(OS_STATUS_ROTULO[o.status] || 'Sem status')}</span>
+        <span class="agendar-espera">${recente.novo ? '🆕 ' : ''}${recente.texto}</span>
       </div>
       <div class="agendar-linha-info">
         ${icone('telefone', 'icone-13')}
@@ -1034,16 +1083,28 @@ async function carregarCentralCliente() {
           : `<span class="agendar-sem-info">sem telefone cadastrado</span>`}
         <span class="agendar-sep">·</span>
         <span>OS #${String(o.id).padStart(6, '0')}</span>
+        <span class="agendar-sep">·</span>
+        <span class="conc-tag ${statusClasse}">${esc(OS_STATUS_ROTULO[o.status] || 'Sem status')}</span>
       </div>
       <div class="agendar-linha-info">
         <span class="agendar-aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || 'aparelho não informado'}</span>
       </div>
+      ${o.defeito_declarado ? `<div class="agendar-defeito">${esc(o.defeito_declarado)}</div>` : ''}
+      ${o.preferencia_data ? `
+      <div class="agendar-linha-info">
+        ${icone('calendario', 'icone-13')}
+        <span>Preferência: ${esc(o.preferencia_data.split('-').reverse().join('/'))}
+          ${o.preferencia_periodo ? '· ' + (o.preferencia_periodo === 'manha' ? 'manhã' : 'tarde') : ''}</span>
+        ${!o.setor_id ? '<span class="conc-tag aviso" style="margin-left:6px;">Setor pendente</span>' : ''}
+      </div>` : ''}
       <button type="button" class="btn btn-primary btn-sm agendar-btn"
               onclick="event.stopPropagation(); copiarLinkCentral(${o.id}, '${o.token_cliente || ''}')">
         ${icone('externo', 'icone-12')} Copiar link do cliente
       </button>
     </div>`;
   }).join('');
+
+  mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${linhas}`;
 }
 
 async function copiarLinkCentral(osId, tokenAtual) {
@@ -8281,7 +8342,7 @@ async function carregarOS() {
 // fluxos de origem bem diferentes (peça que chegou x atendimento que não
 // rolou e precisa de outra visita): misturado numa lista só, quem confere a
 // fila não sabe se aquele card é "compra pronta esperando" ou "revisita".
-let _agendarDados = { peca: [], reagendamento: [], publico: [] };
+let _agendarDados = { peca: [], reagendamento: [] };
 let _agendarTab = 'reagendamento';
 let _agendarFiltroTexto = '';
 
@@ -8290,20 +8351,19 @@ async function carregarAgendarClientes() {
   if (!mount) return;
   mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
 
-  let rReag, rPeca, rPublico;
+  let rReag, rPeca;
   try {
-    [rReag, rPeca, rPublico] = await Promise.all([
+    [rReag, rPeca] = await Promise.all([
       api('/ordens-servico?status=aguardando_agendamento&fonte=reagendamento'),
       api('/ordens-servico?status=aguardando_agendamento&fonte=peca'),
-      api('/ordens-servico?status=aguardando_agendamento&fonte=publico'),
     ]);
   } catch (e) {
     mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
     return;
   }
 
-  _agendarDados = { reagendamento: rReag.ordens, peca: rPeca.ordens, publico: rPublico.ordens };
-  atualizarSeloAgendar(rReag.ordens.length + rPeca.ordens.length + rPublico.ordens.length);
+  _agendarDados = { reagendamento: rReag.ordens, peca: rPeca.ordens };
+  atualizarSeloAgendar(rReag.ordens.length + rPeca.ordens.length);
   _renderAgendarTabs();
 }
 
@@ -8318,7 +8378,7 @@ function agendarFiltrar(valor) {
 }
 
 function _renderAgendarTabs() {
-  ['reagendamento', 'peca', 'publico'].forEach(t => {
+  ['reagendamento', 'peca'].forEach(t => {
     const btn = document.getElementById('atab-' + t);
     if (btn) btn.classList.toggle('active', t === _agendarTab);
     const cont = document.getElementById('atab-' + t + '-cont');
@@ -8342,12 +8402,10 @@ function _renderAgendarLista() {
     mount.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
       <p>${_agendarFiltroTexto ? 'Nada encontrado com esse filtro.'
         : _agendarTab === 'peca' ? 'Nenhuma peça esperando cliente ser agendado.'
-        : _agendarTab === 'publico' ? 'Ninguém pediu atendimento pelo site no momento.'
         : 'Ninguém esperando reagendamento no momento.'}</p></div>`;
     return;
   }
 
-  const ehPublico = _agendarTab === 'publico';
   mount.innerHTML = ordens.map(o => `
     <div class="agendar-card" onclick="abrirOSDetalhe(${o.id})">
       <button type="button" class="agendar-remover" title="Remover da fila (a OS continua no sistema)"
@@ -8368,16 +8426,9 @@ function _renderAgendarLista() {
         <span class="agendar-aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || 'aparelho não informado'}</span>
       </div>
       ${o.defeito_declarado ? `<div class="agendar-defeito">${esc(o.defeito_declarado)}</div>` : ''}
-      ${ehPublico ? `
-      <div class="agendar-linha-info">
-        ${icone('calendario', 'icone-13')}
-        <span>Preferência: ${o.preferencia_data ? esc(o.preferencia_data.split('-').reverse().join('/')) : '—'}
-          ${o.preferencia_periodo ? '· ' + (o.preferencia_periodo === 'manha' ? 'manhã' : 'tarde') : ''}</span>
-        ${!o.setor_id ? '<span class="conc-tag aviso" style="margin-left:6px;">Setor pendente</span>' : ''}
-      </div>` : ''}
       <button type="button" class="btn btn-primary btn-sm agendar-btn"
               onclick="event.stopPropagation(); abrirOSDetalhe(${o.id})">
-        ${ehPublico ? 'Confirmar e agendar →' : 'Agendar visita →'}
+        Agendar visita →
       </button>
     </div>`).join('');
 }
@@ -8394,8 +8445,7 @@ async function agendarRemoverDaFila(id) {
   }
   _agendarDados.reagendamento = _agendarDados.reagendamento.filter(o => o.id !== id);
   _agendarDados.peca = _agendarDados.peca.filter(o => o.id !== id);
-  _agendarDados.publico = (_agendarDados.publico || []).filter(o => o.id !== id);
-  atualizarSeloAgendar(_agendarDados.reagendamento.length + _agendarDados.peca.length + _agendarDados.publico.length);
+  atualizarSeloAgendar(_agendarDados.reagendamento.length + _agendarDados.peca.length);
   toast('Removido da fila — a OS continua no sistema, veja na aba OS', 'success');
   _renderAgendarTabs();
 }
