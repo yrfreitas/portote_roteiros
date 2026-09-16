@@ -1805,7 +1805,7 @@ def editar(os_id):
     d = request.get_json(silent=True) or {}
 
     with db_conn(commit=True) as conn:
-        existe = fetch_one(conn, "SELECT id, modelo_os, tipo_os FROM ordens_servico WHERE id = ?", (os_id,))
+        existe = fetch_one(conn, "SELECT id, modelo_os, tipo_os, garantia_inicio FROM ordens_servico WHERE id = ?", (os_id,))
         if not existe:
             return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
         # Efetivo = o modelo/tipo que a OS vai TER depois deste PUT (se vier
@@ -1907,6 +1907,14 @@ def editar(os_id):
             campos.append("garantia_inicio = ?")
             valores.append(_validar_data_iso(d.get("garantia_inicio"))
                            if _usa_garantia_efetivo else None)
+        elif _usa_garantia_efetivo and d.get("status") == "finalizada" and not existe.get("garantia_inicio"):
+            # Pedido de 2026-09-16 ("não quero que fique pra por manual"): a
+            # garantia deixa de exigir lembrar de digitar a data à parte —
+            # finalizar a OS já marca o início no dia de hoje sozinho. Só
+            # entra quando ainda não tinha nenhuma data guardada, pra não
+            # sobrescrever um início combinado/backdated de propósito.
+            campos.append("garantia_inicio = ?")
+            valores.append(datetime.now().strftime("%Y-%m-%d"))
         if "garantia_meses" in d or (("tipo_os" in d or "modelo_os" in d) and not _usa_garantia_efetivo):
             campos.append("garantia_meses = ?")
             valores.append(_validar_garantia_meses(d.get("garantia_meses"))

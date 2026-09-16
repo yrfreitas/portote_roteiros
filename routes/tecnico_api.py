@@ -10,7 +10,14 @@ from database import (bump_revisao, db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id, ler_revisao, sql)
 from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
                            recalcular_distancia_ordem_fixa)
-from routes.ordens_servico import TIPOS_OS
+from routes.ordens_servico import TIPOS_OS, TIPOS_GARANTIA_FIXA
+
+# tipo_os que carregam garantia — mesmo conjunto usado em services/garantia.py
+# pra decidir se _GARANTIA_MESES tem uma entrada (saida_oficina cai lá com
+# fallback fixo mesmo sem garantia_meses preenchido; os 3 de TIPOS_GARANTIA_FIXA
+# idem). Usado só pra decidir SE preenche garantia_inicio sozinho — não muda
+# nada do cálculo em si, que continua 100% em services/garantia.py.
+_TIPOS_COM_GARANTIA = {"saida_oficina"} | TIPOS_GARANTIA_FIXA
 from routes.servicos import STATUS_SERVICO_VALIDOS, aplicar_status_servico
 
 tecnico_api_bp = Blueprint("tecnico_api", __name__)
@@ -499,17 +506,22 @@ def _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     tipo_os_bruto = (desfecho.get("tipo_os") or "").strip()
     tipo_os = tipo_os_bruto if tipo_os_bruto in TIPOS_OS else None
     token_cliente = secrets.token_urlsafe(24)
+    # Pedido de 2026-09-16 ("não quero que fique pra por manual"): a OS já
+    # nasce FINALIZADA aqui (o técnico fechou tudo em campo) — se o termo
+    # escolhido carrega garantia, o início já é o dia de hoje, sem exigir
+    # que alguém abra a OS depois no painel só pra digitar essa data.
+    garantia_inicio = agora[:10] if tipo_os in _TIPOS_COM_GARANTIA else None
 
     os_id = insert_returning_id(conn, sql("""
         INSERT INTO ordens_servico
             (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
              solucao, forma_pagamento, foto, assinatura_cliente,
              tecnico_atendeu_id, taxa_avaliacao, status, modelo_os, tipo_os,
-             criado_em, criado_por, finalizada_em, token_cliente)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             criado_em, criado_por, finalizada_em, token_cliente, garantia_inicio)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """), (cliente_id, quem, tipo_aparelho, modelo, defeito, solucao,
           forma_pagamento, foto, assinatura, tecnico_id, 0, "finalizada",
-          "chamado_tecnico", tipo_os, agora, quem, agora, token_cliente))
+          "chamado_tecnico", tipo_os, agora, quem, agora, token_cliente, garantia_inicio))
 
     execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
            (os_id, servico["id"]))
@@ -540,12 +552,20 @@ def _fechar_os_existente(conn, ordem_servico_id, desfecho, quem):
     if tipo_os_bruto in TIPOS_OS:
         campos.append("tipo_os = ?"); valores.append(tipo_os_bruto)
 
-    existente = fetch_one(conn, "SELECT token_cliente FROM ordens_servico WHERE id = ?",
+    existente = fetch_one(conn, "SELECT token_cliente, tipo_os, garantia_inicio FROM ordens_servico WHERE id = ?",
                           (ordem_servico_id,))
     token_cliente = (existente or {}).get("token_cliente")
     if not token_cliente:
         token_cliente = secrets.token_urlsafe(24)
         campos.append("token_cliente = ?"); valores.append(token_cliente)
+
+    # Mesma lógica de _criar_os_do_tecnico (pedido de 2026-09-16): esta OS
+    # também está sendo fechada AGORA em campo — só não sobrescreve se já
+    # tinha uma data guardada antes (ex.: escritório já tinha combinado um
+    # início diferente).
+    tipo_os_efetivo = tipo_os_bruto if tipo_os_bruto in TIPOS_OS else (existente or {}).get("tipo_os")
+    if tipo_os_efetivo in _TIPOS_COM_GARANTIA and not (existente or {}).get("garantia_inicio"):
+        campos.append("garantia_inicio = ?"); valores.append(agora[:10])
 
     valores.append(ordem_servico_id)
     execute(conn, f"UPDATE ordens_servico SET {', '.join(campos)} WHERE id = ?", valores)
