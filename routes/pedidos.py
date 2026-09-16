@@ -772,6 +772,91 @@ def diagnostico_agoraos():
     return jsonify(agoraos.diagnostico())
 
 
+_CHAVE_SERVICO_DESFECHO = re.compile(r"^t(\d+)$")
+_CHAVE_PEDIDO_OS = re.compile(r"^o(\d+)$")
+
+
+def _criar_os_para_peca_chegada(conn, cliente_nome, tipo_aparelho, modelo, peca, observacao):
+    """Mesma forma mínima de OS que agendar_cliente_email/agendar_cliente_planilha
+    já usam pra 'peça chegou' virar cliente em Agendar Clientes — reaproveitado
+    aqui pra 'Pedidos com comprovante' fazer a MESMA coisa, sem exigir passo
+    manual de digitar peça/cliente de novo (já vem tudo do pedido)."""
+    from routes.clientes import criar_cliente
+
+    existente = fetch_one(conn, sql("SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
+    cliente_id = existente["id"] if existente else criar_cliente(conn, {"nome": cliente_nome})
+
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    quem = (session.get("usuario_nome") or "Administrador").strip()[:80]
+    return insert_returning_id(conn, sql("""
+        INSERT INTO ordens_servico
+            (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
+             taxa_avaliacao, status, observacao, criado_em, criado_por)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """), (cliente_id, quem, tipo_aparelho, modelo,
+           f"Peça pedida: {peca}" if peca else (observacao or "Peça pedida — agendar visita"),
+           0, "aguardando_agendamento",
+           "Vindo de Pedidos com comprovante (peça chegou).", agora, quem))
+
+
+def _resolver_os_da_peca_pedida(conn, chave):
+    """Pra 'chegou' em Pedidos com comprovante já jogar o cliente pra Agendar
+    Clientes NA MESMA marcação (pedido de 2026-09-16: "eu falo que a peça
+    chegou e já jogo o cliente pra agendar") — sem isso exigiria abrir a OS
+    à parte só pra mudar o status, um passo a mais que Peças Compradas
+    também não tem mais depois desta mudança.
+
+    Devolve o id da OS (existente ou recém-criada), ou None quando não há
+    cliente nenhum por trás (reposição pura de estoque via pedido_peca_os
+    sem cliente_id nem OS — aí não existe quem agendar). Só entende as
+    chaves SINTÉTICAS desta aba (t<servico_id> / o<pedido_os_id>) — a chave
+    de nota fiscal da Panasonic (Peças Compradas) não bate em nenhum dos
+    dois padrões e sai por aqui sem fazer nada, comportamento inalterado.
+    """
+    m = _CHAVE_SERVICO_DESFECHO.match(chave)
+    if m:
+        s = fetch_one(conn, sql("""
+            SELECT s.ordem_servico_id, s.cliente, s.tipo_aparelho, s.modelo,
+                   d.peca, d.observacao
+              FROM servicos s
+              LEFT JOIN servico_desfecho d ON d.servico_id = s.id
+             WHERE s.id = ?
+        """), (int(m.group(1)),))
+        if not s:
+            return None
+        if s.get("ordem_servico_id"):
+            return s["ordem_servico_id"]
+        if not (s.get("cliente") or "").strip():
+            return None
+        return _criar_os_para_peca_chegada(
+            conn, s["cliente"], s.get("tipo_aparelho"), s.get("modelo"),
+            s.get("peca"), s.get("observacao"))
+
+    m = _CHAVE_PEDIDO_OS.match(chave)
+    if m:
+        p = fetch_one(conn, sql("""
+            SELECT p.ordem_servico_id, p.peca, p.descricao,
+                   COALESCE(c.nome, c2.nome) AS cliente_nome,
+                   os.tipo_aparelho, os.modelo
+              FROM pedido_peca_os p
+              LEFT JOIN ordens_servico os ON os.id = p.ordem_servico_id
+              LEFT JOIN clientes c  ON c.id = p.cliente_id
+              LEFT JOIN clientes c2 ON c2.id = os.cliente_id
+             WHERE p.id = ?
+        """), (int(m.group(1)),))
+        if not p:
+            return None
+        if p.get("ordem_servico_id"):
+            return p["ordem_servico_id"]
+        if not p.get("cliente_nome"):
+            return None  # reposição de estoque pura -- nada pra agendar
+        return _criar_os_para_peca_chegada(
+            conn, p["cliente_nome"], p.get("tipo_aparelho"), p.get("modelo"),
+            p.get("peca"), p.get("descricao"))
+
+    return None
+
+
 @pedidos_bp.route("/pedidos/chegada", methods=["POST"])
 def marcar_chegada():
     """Registra que a peça chegou fisicamente na oficina — ou desfaz.
@@ -801,21 +886,26 @@ def marcar_chegada():
             bump_revisao(conn)
             return jsonify({"chave": chave, "chegou_em": ""})
 
-        ja = fetch_one(conn, sql("SELECT chave FROM pecas_chegada WHERE chave = ?"),
+        os_id = _resolver_os_da_peca_pedida(conn, chave)
+
+        ja = fetch_one(conn, sql("SELECT chave, ordem_servico_id FROM pecas_chegada WHERE chave = ?"),
                        (chave,))
+        if os_id is None and ja:
+            os_id = ja.get("ordem_servico_id")
         if ja:
             execute(conn, sql(
                 "UPDATE pecas_chegada SET chegou_em = ?, observacao = ?, "
-                "registrado_por = ? WHERE chave = ?"),
-                (agora, observacao, quem, chave))
+                "registrado_por = ?, ordem_servico_id = ? WHERE chave = ?"),
+                (agora, observacao, quem, os_id, chave))
         else:
             execute(conn, sql(
                 "INSERT INTO pecas_chegada (chave, chegou_em, observacao, "
-                "registrado_por) VALUES (?, ?, ?, ?)"),
-                (chave, agora, observacao, quem))
+                "registrado_por, ordem_servico_id) VALUES (?, ?, ?, ?, ?)"),
+                (chave, agora, observacao, quem, os_id))
         bump_revisao(conn)
 
-    return jsonify({"chave": chave, "chegou_em": agora, "registrado_por": quem})
+    return jsonify({"chave": chave, "chegou_em": agora, "registrado_por": quem,
+                    "ordem_servico_id": os_id})
 
 
 @pedidos_bp.route("/pedidos/clientes", methods=["POST"])

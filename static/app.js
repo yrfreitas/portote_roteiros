@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v265';
+const VERSAO_PAINEL = 'v266';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3790,8 +3790,13 @@ async function carregarPedidosComComprovante() {
 async function alternarPecaChegou(chave, chegou, botao) {
   botao.disabled = true;
   try {
-    await api('/pedidos/chegada', { method: 'POST', body: JSON.stringify({ chave, chegou }) });
-    toast(chegou ? 'Marcado como chegou' : 'Desmarcado', 'success');
+    const r = await api('/pedidos/chegada', { method: 'POST', body: JSON.stringify({ chave, chegou }) });
+    // Chegou -> já joga o cliente pra Agendar Clientes na mesma marcação
+    // (pedido de 2026-09-16), sem passo manual de "peça + cliente" que
+    // Peças Compradas ainda exige (ali o robô não sabe de qual cliente é).
+    toast(chegou
+      ? (r.ordem_servico_id ? 'Chegou — cliente enviado pra Agendar Clientes' : 'Marcado como chegou')
+      : 'Desmarcado', 'success');
     carregarPedidosComComprovante();
   } catch (e) {
     toast(e.message, 'error');
