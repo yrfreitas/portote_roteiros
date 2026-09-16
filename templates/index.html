@@ -71,6 +71,10 @@
         <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
         OS
       </button>
+      <button class="main-tab" id="mtab-central-cliente" style="display:none" onclick="switchMainTab('central-cliente')">
+        <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        Central do Cliente
+      </button>
       <button class="main-tab" id="mtab-agendar" style="display:none" onclick="switchMainTab('agendar')">
         <svg class="icone-svg icone-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         Agendar Clientes
@@ -359,6 +363,24 @@
       <div id="os-prazos-proximos" style="display:none;"></div>
 
       <div id="os-conteudo"></div>
+    </div>
+  </main>
+
+  <main class="main" id="panel-central-cliente" style="display:none; grid-row: 2; grid-column: 1 / -1;">
+    <div class="historico-wrap">
+      <div class="historico-header">
+        <span class="visao-geral-title">Central do Cliente</span>
+      </div>
+      <p class="ajuda-texto" style="margin:0 0 14px;">
+        Link público de acompanhamento por OS — o cliente vê status, orçamento
+        pra aprovar/reprovar, técnico a caminho e garantia, sem enxergar mais
+        nada do painel. Busque a OS ou o cliente e copie o link pra mandar.
+      </p>
+      <input class="form-input" id="central-cliente-busca" type="search"
+             placeholder="Buscar por número da OS ou nome do cliente..."
+             autocomplete="off" style="max-width:380px;margin-bottom:14px;"
+             oninput="centralClienteBuscar(this.value)">
+      <div id="central-cliente-conteudo"></div>
     </div>
   </main>
 

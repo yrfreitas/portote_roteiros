@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v261';
+const VERSAO_PAINEL = 'v262';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -656,6 +656,7 @@ function switchMainTab(tab) {
   const isAtend     = tab === 'atendimentos';
   const isEstoque   = tab === 'estoque';
   const isOS        = tab === 'os';
+  const isCentralCliente = tab === 'central-cliente';
   const isAgendar   = tab === 'agendar';
   const isVendas    = tab === 'vendas';
   const isFaturamento = tab === 'faturamento';
@@ -670,6 +671,7 @@ function switchMainTab(tab) {
   _mostrarPainelPrincipal('panel-atendimentos', isAtend);
   _mostrarPainelPrincipal('panel-estoque', isEstoque);
   _mostrarPainelPrincipal('panel-os', isOS);
+  _mostrarPainelPrincipal('panel-central-cliente', isCentralCliente);
   _mostrarPainelPrincipal('panel-agendar', isAgendar);
   _mostrarPainelPrincipal('panel-vendas', isVendas);
   if (isVendas) carregarVendas();
@@ -682,6 +684,7 @@ function switchMainTab(tab) {
   document.getElementById('mtab-atendimentos').classList.toggle('active', isAtend);
   document.getElementById('mtab-estoque').classList.toggle('active', isEstoque);
   document.getElementById('mtab-os').classList.toggle('active', isOS);
+  document.getElementById('mtab-central-cliente').classList.toggle('active', isCentralCliente);
   document.getElementById('mtab-agendar').classList.toggle('active', isAgendar);
   document.getElementById('mtab-vendas').classList.toggle('active', isVendas);
   document.getElementById('mtab-faturamento').classList.toggle('active', isFaturamento);
@@ -711,6 +714,9 @@ function switchMainTab(tab) {
   }
   if (isOS) {
     carregarOS();
+  }
+  if (isCentralCliente) {
+    carregarCentralCliente();
   }
   if (isAgendar) {
     carregarAgendarClientes();
@@ -972,6 +978,75 @@ function copiarLinkTecnico(token) {
   const link = `${window.location.origin}/tecnico/${token}`;
   navigator.clipboard.writeText(link)
     .then(() => toast('Link do técnico copiado — mande por WhatsApp', 'success'))
+    .catch(() => toast(link, 'info'));
+}
+
+// ─── Central do Cliente (link público por OS) ───────────────────────────
+// Reaproveita GET /ordens-servico (mesmo endpoint da aba OS) em vez de criar
+// rota nova — token_cliente já vem no SELECT (os.*), então na maioria das
+// vezes o botão de copiar nem precisa de ida ao servidor.
+let _centralClienteBuscaTexto = '';
+let _centralClienteBuscaTimer = null;
+
+function centralClienteBuscar(valor) {
+  clearTimeout(_centralClienteBuscaTimer);
+  _centralClienteBuscaTimer = setTimeout(() => {
+    _centralClienteBuscaTexto = valor.trim();
+    carregarCentralCliente();
+  }, 300);
+}
+
+async function carregarCentralCliente() {
+  const mount = document.getElementById('central-cliente-conteudo');
+  if (!mount) return;
+  mount.innerHTML = _skeletonOS();
+
+  const params = new URLSearchParams();
+  if (_centralClienteBuscaTexto) params.set('busca', _centralClienteBuscaTexto);
+  else params.set('dias', '30');
+
+  let r;
+  try {
+    r = await api(`/ordens-servico?${params.toString()}`);
+  } catch (e) {
+    mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    return;
+  }
+
+  if (r.ordens.length === 0) {
+    mount.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
+      <p>${_centralClienteBuscaTexto ? 'Nenhuma OS encontrada pra essa busca.' : 'Nenhuma OS nos últimos 30 dias — busque por nome ou número.'}</p></div>`;
+    return;
+  }
+
+  mount.innerHTML = r.ordens.map(o => `
+    <div class="os-linha">
+      <div class="num-bloco">
+        <div class="num">OS #${String(o.id).padStart(6, '0')}</div>
+      </div>
+      <div>
+        <div class="cliente">${destacar(o.cliente_nome, _centralClienteBuscaTexto)}</div>
+        <div class="aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || '—'}</div>
+      </div>
+      <span class="conc-tag aviso">${esc(OS_STATUS_ROTULO[o.status] || 'Sem status')}</span>
+      <button class="btn btn-ghost btn-sm" onclick="copiarLinkCentral(${o.id}, '${o.token_cliente || ''}')">Copiar link do cliente</button>
+    </div>`).join('');
+}
+
+async function copiarLinkCentral(osId, tokenAtual) {
+  let token = tokenAtual;
+  if (!token) {
+    try {
+      const r = await api(`/ordens-servico/${osId}/link-cliente`);
+      token = r.token;
+    } catch (e) {
+      toast(e.message, 'error');
+      return;
+    }
+  }
+  const link = `${window.location.origin}/central/${token}`;
+  navigator.clipboard.writeText(link)
+    .then(() => toast('Link da Central do Cliente copiado — mande por WhatsApp', 'success'))
     .catch(() => toast(link, 'info'));
 }
 
@@ -1574,6 +1649,7 @@ async function carregarUsuarioLogado() {
   mostra('mtab-estoque', podeUsuario('estoque_ver'));
   mostra('mtab-pecas', podeUsuario('pecas'));
   mostra('mtab-os', podeUsuario('ordens_servico'));
+  mostra('mtab-central-cliente', podeUsuario('ordens_servico'));
   mostra('mtab-agendar', podeUsuario('ordens_servico'));
   mostra('mtab-vendas', podeUsuario('vendas'));
   mostra('ptab-cotacao', podeUsuario('cotacao'));
