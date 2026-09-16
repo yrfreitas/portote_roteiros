@@ -723,6 +723,7 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_servicos_ordem   ON servicos(ficha_id, ordem)",
     "CREATE INDEX IF NOT EXISTS idx_fichas_tecnico   ON fichas(tecnico_id)",
     "CREATE INDEX IF NOT EXISTS idx_push_tecnico     ON push_subscriptions(tecnico_id)",
+    "CREATE INDEX IF NOT EXISTS idx_push_cliente_os  ON push_subscriptions_cliente(os_id)",
     "CREATE INDEX IF NOT EXISTS idx_servicos_setor   ON servicos(setor_id)",
     "CREATE INDEX IF NOT EXISTS idx_rastreios_servico ON rastreios(servico_id)",
     "CREATE INDEX IF NOT EXISTS idx_rastreios_ativo   ON rastreios(ativo)",
@@ -1201,6 +1202,18 @@ _MIGRACOES_PG = [
     # próprio "fazer_os" guardava forma_pagamento (na OS que ele cria), sem
     # obrigar e sem foto nenhuma. Ver rotas/tecnico_api.py:_gravar_desfecho.
     "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS forma_pagamento TEXT",
+    # Central do Cliente (2026-09-16): reprovar orçamento é um evento próprio,
+    # não um valor novo em STATUS_OS — ver services/garantia.py e
+    # routes/central_cliente.py para o porquê.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS orcamento_reprovado_em TEXT",
+    """CREATE TABLE IF NOT EXISTS push_subscriptions_cliente (
+        id          SERIAL PRIMARY KEY,
+        os_id       INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
+        endpoint    TEXT NOT NULL,
+        p256dh      TEXT NOT NULL,
+        auth        TEXT NOT NULL,
+        created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1464,6 +1477,16 @@ _MIGRACOES_SQLITE = [
         criado_em        TEXT
     )""",
     "ALTER TABLE servico_desfecho ADD COLUMN forma_pagamento TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN orcamento_reprovado_em TEXT",
+    """CREATE TABLE IF NOT EXISTS push_subscriptions_cliente (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        os_id       INTEGER NOT NULL,
+        endpoint    TEXT NOT NULL,
+        p256dh      TEXT NOT NULL,
+        auth        TEXT NOT NULL,
+        created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (os_id) REFERENCES ordens_servico(id) ON DELETE CASCADE
+    )""",
 ]
 
 

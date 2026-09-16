@@ -59,3 +59,44 @@ def notificar_tecnico(tecnico_id: int, titulo: str, corpo: str, url: str = "/") 
             # navegador) nunca pode derrubar a criação da ficha — só essa
             # notificação falha, as outras subscriptions seguem normalmente.
             log.exception("Falha inesperada ao enviar push pro técnico %s", tecnico_id)
+
+
+def notificar_cliente(os_id: int, titulo: str, corpo: str, url: str = "/") -> None:
+    """Mesma ideia de notificar_tecnico, só que pro CLIENTE de uma OS — tabela
+    própria (push_subscriptions_cliente), porque o dono é a OS, não um
+    técnico. Usada hoje só pra avisar "técnico a caminho" (ver
+    routes/rastreio.py::iniciar)."""
+    if not push_configurado():
+        return
+
+    with db_conn() as conn:
+        subs = fetch_all(
+            conn, "SELECT * FROM push_subscriptions_cliente WHERE os_id = ?", (os_id,)
+        )
+
+    if not subs:
+        return
+
+    payload = json.dumps({"titulo": titulo, "corpo": corpo, "url": url})
+
+    for sub in subs:
+        subscription_info = {
+            "endpoint": sub["endpoint"],
+            "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
+        }
+        try:
+            webpush(
+                subscription_info=subscription_info,
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": f"mailto:{VAPID_CLAIMS_EMAIL}"},
+            )
+        except WebPushException as e:
+            status = getattr(e.response, "status_code", None)
+            if status in (404, 410):
+                with db_conn(commit=True) as conn:
+                    execute(conn, "DELETE FROM push_subscriptions_cliente WHERE id = ?", (sub["id"],))
+            else:
+                log.warning("Falha ao enviar push pro cliente da OS %s: %s", os_id, e)
+        except Exception:
+            log.exception("Falha inesperada ao enviar push pro cliente da OS %s", os_id)

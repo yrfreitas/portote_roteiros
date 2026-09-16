@@ -157,6 +157,8 @@ def _tecnico_por_token(conn, token):
 @rastreio_bp.route("/t/<token>/servicos/<int:servico_id>/rastreio", methods=["POST"])
 def iniciar(token, servico_id):
     """Abre (ou reaproveita) o rastreio deste atendimento."""
+    os_id = None
+    novo = False
     with db_conn(commit=True) as conn:
         tecnico = _tecnico_por_token(conn, token)
         if not tecnico:
@@ -165,12 +167,13 @@ def iniciar(token, servico_id):
         # O ponto tem que ser de uma ficha do próprio técnico. Sem isso, quem
         # tivesse um link de técnico poderia abrir rastreio de qualquer ponto.
         servico = fetch_one(conn, """
-            SELECT sv.id FROM servicos sv
+            SELECT sv.id, sv.ordem_servico_id FROM servicos sv
               JOIN fichas f ON f.id = sv.ficha_id
              WHERE sv.id = ? AND f.tecnico_id = ?
         """, (servico_id, tecnico["id"]))
         if not servico:
             return jsonify({"erro": "Ponto não encontrado nas suas rotas"}), 404
+        os_id = servico.get("ordem_servico_id")
 
         existente = fetch_one(conn, f"""
             SELECT * FROM rastreios WHERE servico_id = ? AND {_ATIVO}
@@ -178,7 +181,8 @@ def iniciar(token, servico_id):
         """, (servico_id,))
 
         # Reaproveita o link se ainda vale: reabrir o mesmo atendimento não
-        # pode invalidar o link que o cliente já recebeu.
+        # pode invalidar o link que o cliente já recebeu. Também não avisa de
+        # novo — o cliente já foi avisado quando isto abriu da primeira vez.
         if existente and not _expirado(existente.get("criado_em")):
             return jsonify({"token": existente["token"], "reaproveitado": True})
 
@@ -199,6 +203,24 @@ def iniciar(token, servico_id):
                  f"{tecnico['nome'].split(' ')[0]} saiu e está a caminho. "
                  "Acompanhe pelo mapa acima — se precisar, é só escrever aqui.",
                  autor_tipo="sistema", autor_nome="Porto Tec")
+
+        token_cliente_os = None
+        if os_id:
+            from routes.ordens_servico import garantir_token_cliente
+            token_cliente_os = garantir_token_cliente(conn, os_id)
+        novo = True
+
+    # Push pro cliente só depois do commit — I/O de rede não entra na
+    # transação (mesma convenção de routes/fichas.py ao chamar
+    # notificar_tecnico). Complementar ao aviso no chat acima: aquele o
+    # cliente só vê quando ABRE o link; este avisa antes disso.
+    if novo and os_id and token_cliente_os:
+        from services.push import notificar_cliente
+        notificar_cliente(
+            os_id, "Técnico a caminho",
+            f"{tecnico['nome'].split(' ')[0]} saiu e está a caminho do seu endereço.",
+            url=f"/central/{token_cliente_os}",
+        )
 
     return jsonify({"token": novo_token, "reaproveitado": False}), 201
 
@@ -612,28 +634,19 @@ def iniciar_pelo_painel(servico_id):
     return jsonify({"token": novo_token, "reaproveitado": False}), 201
 
 
-@rastreio_bp.route("/rastreio/<rastreio_token>", methods=["GET"])
-def consultar(rastreio_token):
-    """Leitura PÚBLICA — é o que a página do cliente consome.
+def montar_payload_rastreio(r: dict) -> dict:
+    """Monta o payload público de um rastreio a partir da linha já buscada
+    (ra.* + sv.cliente/endereco/lat/lng/status + t.nome/foto/cor).
+
+    Extraído de consultar() em 2026-09-16 pra ser reaproveitado também pela
+    Central do Cliente (routes/central_cliente.py) — o card de "técnico a
+    caminho" usa exatamente a mesma conta de ETA/idade/"ao vivo" que
+    /acompanhar/<token> já usa, em vez de uma segunda que pode divergir.
 
     Devolve o mínimo: primeiro nome do técnico, posição atual e o destino.
     Nada de telefone, nome completo, outros pontos da rota ou dados da ficha.
     Quem tem o link é o cliente, não alguém com direito ao resto.
     """
-    with db_conn() as conn:
-        r = fetch_one(conn, """
-            SELECT ra.*, sv.cliente, sv.endereco_completo,
-                   sv.lat AS destino_lat, sv.lng AS destino_lng, sv.status AS servico_status,
-                   t.nome AS tecnico_nome, t.foto AS tecnico_foto, t.cor AS tecnico_cor
-              FROM rastreios ra
-              JOIN servicos sv ON sv.id = ra.servico_id
-              JOIN tecnicos t  ON t.id = ra.tecnico_id
-             WHERE ra.token = ?
-        """, (rastreio_token,))
-
-    if not r:
-        return jsonify({"erro": "Link de acompanhamento inválido"}), 404
-
     encerrado = (not r.get("ativo")) or _expirado(r.get("criado_em"))
     primeiro_nome = (r.get("tecnico_nome") or "").split(" ")[0]
 
@@ -680,8 +693,9 @@ def consultar(rastreio_token):
             "ao_vivo": idade is not None and idade <= POSICAO_FRESCA_SEG,
         }
 
-    return jsonify({
+    return {
         "ativo":     not encerrado,
+        "token":     r.get("token"),
         "tecnico":   primeiro_nome,
         # A foto do técnico vai para a página do cliente: quem espera em casa
         # abre a porta com mais tranquilidade sabendo QUEM vai chegar. É o
@@ -696,7 +710,45 @@ def consultar(rastreio_token):
         "saiu_em":   saiu_em,
         "chegada_prevista": chegada,
         "chegou":    r.get("servico_status") == "concluido",
-    })
+    }
+
+
+_CAMPOS_RASTREIO = """ra.*, sv.cliente, sv.endereco_completo,
+                   sv.lat AS destino_lat, sv.lng AS destino_lng, sv.status AS servico_status,
+                   t.nome AS tecnico_nome, t.foto AS tecnico_foto, t.cor AS tecnico_cor"""
+
+
+def rastreio_ativo_para_os(conn, os_id):
+    """Último rastreio ativo (não encerrado, não expirado) pra esta OS, via
+    servicos.ordem_servico_id — None quando não há nenhum em andamento.
+    Usada pela Central do Cliente pra mostrar (ou não) o card de "técnico a
+    caminho" sem duplicar a query de consultar()."""
+    return fetch_one(conn, f"""
+        SELECT {_CAMPOS_RASTREIO}
+          FROM rastreios ra
+          JOIN servicos sv ON sv.id = ra.servico_id
+          JOIN tecnicos t  ON t.id = ra.tecnico_id
+         WHERE sv.ordem_servico_id = ? AND {_ATIVO_RA}
+         ORDER BY ra.id DESC LIMIT 1
+    """, (os_id,))
+
+
+@rastreio_bp.route("/rastreio/<rastreio_token>", methods=["GET"])
+def consultar(rastreio_token):
+    """Leitura PÚBLICA — é o que a página do cliente consome."""
+    with db_conn() as conn:
+        r = fetch_one(conn, f"""
+            SELECT {_CAMPOS_RASTREIO}
+              FROM rastreios ra
+              JOIN servicos sv ON sv.id = ra.servico_id
+              JOIN tecnicos t  ON t.id = ra.tecnico_id
+             WHERE ra.token = ?
+        """, (rastreio_token,))
+
+    if not r:
+        return jsonify({"erro": "Link de acompanhamento inválido"}), 404
+
+    return jsonify(montar_payload_rastreio(r))
 
 
 @rastreio_bp.route("/rastreios/<int:rastreio_id>/posicao", methods=["DELETE"])

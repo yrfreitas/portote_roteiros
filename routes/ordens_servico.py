@@ -1954,18 +1954,30 @@ def pedir_peca(os_id):
     return jsonify({"mensagem": "Peça pedida — já aparece em Atendimentos", "id": pedido_id}), 201
 
 
+def garantir_token_cliente(conn, os_id):
+    """Devolve o token_cliente desta OS, gerando um na hora se ela for de
+    antes desse recurso existir (2026-08-28) e ainda não tiver. None se a OS
+    não existe. Extraído de link_cliente() em 2026-09-16 pra ser reaproveitado
+    por quem precisa do token sem ser uma rota HTTP (ver
+    routes/rastreio.py::iniciar, que usa isto pra montar o link do push da
+    Central do Cliente)."""
+    os_row = fetch_one(conn, "SELECT id, token_cliente FROM ordens_servico WHERE id = ?", (os_id,))
+    if not os_row:
+        return None
+    token = os_row.get("token_cliente")
+    if not token:
+        token = secrets.token_urlsafe(24)
+        execute(conn, "UPDATE ordens_servico SET token_cliente = ? WHERE id = ?", (token, os_id))
+    return token
+
+
 @ordens_servico_bp.route("/ordens-servico/<int:os_id>/link-cliente", methods=["GET"])
 def link_cliente(os_id):
-    """Devolve o token do link público desta OS, gerando um na hora se ela
-    for de antes desse recurso existir (2026-08-28) e ainda não tiver."""
+    """Devolve o token do link público desta OS (ver garantir_token_cliente)."""
     with db_conn(commit=True) as conn:
-        os_row = fetch_one(conn, "SELECT id, token_cliente FROM ordens_servico WHERE id = ?", (os_id,))
-        if not os_row:
+        token = garantir_token_cliente(conn, os_id)
+        if token is None:
             return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
-        token = os_row.get("token_cliente")
-        if not token:
-            token = secrets.token_urlsafe(24)
-            execute(conn, "UPDATE ordens_servico SET token_cliente = ? WHERE id = ?", (token, os_id))
     return jsonify({"token": token})
 
 

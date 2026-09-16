@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Acompanhe sua Ordem de Serviço · Porto Tec</title>
+  <link rel="icon" href="/static/assets/favicon-32x32.png">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #0c0f12; color: #e8edf3;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+    }
+    header { padding: 14px 16px; border-bottom: 1px solid #1e252d; }
+    .marca { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #6f7d8c; }
+    h1 { font-size: 17px; margin: 4px 0 0; font-weight: 700; }
+    main { padding: 16px; display: flex; flex-direction: column; gap: 14px; max-width: 520px; margin: 0 auto; }
+    .card {
+      background: #10151a; border: 1px solid #1e252d; border-radius: 12px; padding: 14px 16px;
+    }
+    .card:empty { display: none; }
+    .card h2 { font-size: 13px; margin: 0 0 10px; color: #94a1ae; text-transform: uppercase; letter-spacing: .6px; }
+
+    /* Técnico a caminho */
+    .tec-cartao { display: flex; align-items: center; gap: 12px; }
+    .avatar { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; flex: none; border: 2px solid #2a333d; }
+    .avatar.sem-foto { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 19px; border-color: transparent; }
+    .tec-nome { font-size: 15px; font-weight: 700; }
+    .tec-detalhe { font-size: 12.5px; color: #94a1ae; margin-top: 2px; }
+    .link-mapa { display: inline-block; margin-top: 10px; font-size: 13px; color: #4da3ff; text-decoration: none; }
+
+    /* Timeline */
+    .timeline { display: flex; flex-direction: column; }
+    .passo { display: flex; gap: 10px; position: relative; padding-bottom: 16px; }
+    .passo:last-child { padding-bottom: 0; }
+    .trilho { display: flex; flex-direction: column; align-items: center; }
+    .bola { width: 13px; height: 13px; border-radius: 50%; border: 3px solid #2a333d; background: #10151a; flex: none; }
+    .barra { flex: 1; width: 2px; background: #1e252d; margin-top: 2px; }
+    .passo.done .bola { border-color: #2aa05c; background: #2aa05c; }
+    .passo.done .barra { background: #2aa05c; }
+    .passo.current .bola { border-color: #1a6fd4; background: #1a6fd4; box-shadow: 0 0 0 4px rgba(26,111,212,.25); }
+    .rotulo { font-size: 13.5px; font-weight: 600; }
+    .passo.pending .rotulo { color: #6f7d8c; font-weight: 500; }
+    .aviso-cancelada { background: rgba(224,32,32,.12); border: 1px solid rgba(224,32,32,.3); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+
+    /* Orçamento */
+    .item-linha { display: flex; justify-content: space-between; font-size: 13.5px; padding: 5px 0; }
+    .total-linha { display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; border-top: 1px solid #1e252d; margin-top: 6px; padding-top: 8px; }
+    .botoes { display: flex; gap: 10px; margin-top: 12px; }
+    button.acao { flex: 1; border: none; border-radius: 9px; padding: 11px 0; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    button.aprovar { background: #1a6fd4; color: #fff; }
+    button.reprovar { background: transparent; border: 1px solid #a83c34; color: #e08683; }
+    button.acao:disabled { opacity: .5; cursor: default; }
+    .aviso-orcamento { font-size: 11.5px; color: #6f7d8c; line-height: 1.5; margin-top: 10px; }
+    .decisao-tomada { font-size: 13.5px; padding: 8px 0; }
+
+    /* Garantia */
+    .garantia-selo { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 99px; background: rgba(42,160,92,.15); color: #6fd28f; margin-bottom: 8px; }
+    .garantia-linha { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; color: #94a1ae; }
+    .garantia-linha b { color: #e8edf3; font-weight: 600; }
+
+    .btn-push { width: 100%; background: #1b2530; color: #cdd6df; border: 1px solid #2a333d; border-radius: 9px; padding: 10px 0; font-size: 13px; font-family: inherit; cursor: pointer; }
+  </style>
+</head>
+<body data-token="{{ token }}" data-vapid-key="{{ vapid_public_key }}">
+  <header>
+    <div class="marca">Porto Tec Assistência Técnica</div>
+    <h1 id="titulo">Olá!</h1>
+  </header>
+
+  <main>
+    <div class="card" id="card-cancelada"></div>
+    <div class="card" id="card-tecnico"></div>
+    <div class="card">
+      <h2>Status do atendimento</h2>
+      <div class="timeline" id="timeline">Carregando...</div>
+    </div>
+    <div class="card" id="card-orcamento"></div>
+    <div class="card" id="card-garantia"></div>
+    <button class="btn-push" id="btn-push">Avisar quando o técnico sair</button>
+  </main>
+
+  <script>
+    (function () {
+      const TOKEN = {{ token | tojson }};
+      const VAPID_KEY = document.body.dataset.vapidKey;
+      const INTERVALO_COM_TECNICO = 30000;
+      const INTERVALO_PADRAO = 60000;
+
+      function moeda(v) {
+        return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function desenharTimeline(passos) {
+        const alvo = document.getElementById('timeline');
+        if (!passos || !passos.length) { alvo.innerHTML = ''; return; }
+        alvo.innerHTML = passos.map((p, i) => `
+          <div class="passo ${p.estado}">
+            <div class="trilho">
+              <div class="bola"></div>
+              ${i < passos.length - 1 ? '<div class="barra"></div>' : ''}
+            </div>
+            <div class="rotulo">${p.rotulo}</div>
+          </div>
+        `).join('');
+      }
+
+      function desenharTecnico(t) {
+        const alvo = document.getElementById('card-tecnico');
+        if (!t || !t.ativo) { alvo.innerHTML = ''; return; }
+        const cor = t.tecnico_cor || '#1a6fd4';
+        const inicial = (t.tecnico || '?').trim().charAt(0).toUpperCase();
+        const avatar = t.tecnico_foto
+          ? `<img src="${t.tecnico_foto}" alt="" class="avatar">`
+          : `<div class="avatar sem-foto" style="background:${cor}">${inicial}</div>`;
+        const chegada = t.posicao && t.posicao.ao_vivo ? 'a caminho agora' : 'saiu para o atendimento';
+        alvo.innerHTML = `
+          <h2>Técnico a caminho</h2>
+          <div class="tec-cartao">
+            ${avatar}
+            <div>
+              <div class="tec-nome">${t.tecnico || 'Técnico'}</div>
+              <div class="tec-detalhe">${chegada}${t.destino && t.destino.endereco ? ' · ' + t.destino.endereco : ''}</div>
+            </div>
+          </div>
+          ${t.token ? `<a class="link-mapa" href="/acompanhar/${t.token}">Ver no mapa em tempo real →</a>` : ''}
+        `;
+      }
+
+      function desenharCancelada(cancelada) {
+        document.getElementById('card-cancelada').innerHTML = cancelada
+          ? '<div class="aviso-cancelada">Este atendimento foi cancelado. Qualquer dúvida, fale com a Porto Tec.</div>'
+          : '';
+      }
+
+      let enviando = false;
+      async function decidirOrcamento(acao) {
+        if (enviando) return;
+        enviando = true;
+        try {
+          const r = await fetch(`/api/central/${TOKEN}/orcamento/${acao}`, { method: 'POST' });
+          const d = await r.json();
+          if (!r.ok) { alert(d.erro || 'Não foi possível registrar sua decisão.'); return; }
+          await atualizar();  // refaz na hora, sem esperar o próximo ciclo
+        } catch (e) {
+          alert('Sem conexão agora. Tente de novo em instantes.');
+        } finally {
+          enviando = false;
+        }
+      }
+
+      function desenharOrcamento(o, reprovado) {
+        const alvo = document.getElementById('card-orcamento');
+        if (reprovado) {
+          alvo.innerHTML = '<h2>Orçamento</h2><div class="decisao-tomada">Você reprovou este orçamento. Se mudar de ideia, fale com a Porto Tec.</div>';
+          return;
+        }
+        if (!o) { alvo.innerHTML = ''; return; }
+        const itens = o.itens.map(i => `<div class="item-linha"><span>${i.nome}</span><span>${moeda(i.valor)}</span></div>`).join('');
+        alvo.innerHTML = `
+          <h2>Orçamento</h2>
+          ${itens}
+          <div class="total-linha"><span>Total</span><span>${moeda(o.valor_total)}</span></div>
+          <div class="botoes">
+            <button class="acao aprovar" id="btn-aprovar">Aprovar</button>
+            <button class="acao reprovar" id="btn-reprovar">Não aprovar</button>
+          </div>
+          <div class="aviso-orcamento">Ao aprovar, você declara estar ciente das condições de reparo informadas.</div>
+        `;
+        document.getElementById('btn-aprovar').addEventListener('click', () => decidirOrcamento('aprovar'));
+        document.getElementById('btn-reprovar').addEventListener('click', () => decidirOrcamento('reprovar'));
+      }
+
+      function desenharGarantia(g) {
+        const alvo = document.getElementById('card-garantia');
+        if (!g) { alvo.innerHTML = ''; return; }
+        alvo.innerHTML = `
+          <h2>Garantia</h2>
+          <span class="garantia-selo">Ativa · ${g.prazo_rotulo}</span>
+          ${g.inicio_br ? `<div class="garantia-linha"><span>Início</span><b>${g.inicio_br}</b></div>` : ''}
+          ${g.fim_br ? `<div class="garantia-linha"><span>Válida até</span><b>${g.fim_br}</b></div>` : ''}
+        `;
+      }
+
+      async function atualizar() {
+        let d;
+        try {
+          const resp = await fetch(`/api/central/${TOKEN}/status`, { cache: 'no-store' });
+          d = await resp.json();
+          if (!resp.ok) throw new Error(d.erro || 'Não foi possível carregar');
+        } catch (e) {
+          document.getElementById('timeline').textContent = 'Sem conexão';
+          return false;
+        }
+
+        document.getElementById('titulo').textContent = d.cliente_nome ? `Olá, ${d.cliente_nome}!` : 'Olá!';
+        desenharCancelada(d.cancelada);
+        desenharTimeline(d.timeline);
+        desenharTecnico(d.tecnico_a_caminho);
+        desenharOrcamento(d.orcamento, d.orcamento_reprovado);
+        desenharGarantia(d.garantia);
+
+        return d.tecnico_a_caminho && d.tecnico_a_caminho.ativo ? 'com_tecnico' : false;
+      }
+
+      async function ciclo() {
+        let r = false;
+        try { r = await atualizar(); }
+        catch (e) { console.warn('Falha no ciclo de atualização:', e); }
+        setTimeout(ciclo, r === 'com_tecnico' ? INTERVALO_COM_TECNICO : INTERVALO_PADRAO);
+      }
+      ciclo();
+
+      // ─── Notificação push (opcional) ──────────────────────────────
+      function urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const raw = atob(base64);
+        return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+      }
+
+      async function alternarPush() {
+        const botao = document.getElementById('btn-push');
+        if (!VAPID_KEY) { botao.textContent = 'Notificações não disponíveis'; botao.disabled = true; return; }
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          botao.textContent = 'Seu navegador não suporta notificações'; botao.disabled = true; return;
+        }
+        const reg = await navigator.serviceWorker.ready;
+        const existente = await reg.pushManager.getSubscription();
+
+        if (existente) {
+          await fetch(`/api/central/${TOKEN}/push/subscribe`, {
+            method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: existente.endpoint }),
+          }).catch(() => {});
+          await existente.unsubscribe();
+          botao.textContent = 'Avisar quando o técnico sair';
+          return;
+        }
+
+        const permissao = await Notification.requestPermission();
+        if (permissao !== 'granted') return;
+
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
+        });
+        await fetch(`/api/central/${TOKEN}/push/subscribe`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: sub.endpoint,
+            keys: {
+              p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')))),
+              auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')))),
+            },
+          }),
+        });
+        botao.textContent = 'Notificações ativadas ✓';
+      }
+
+      document.getElementById('btn-push').addEventListener('click', () => {
+        alternarPush().catch(() => {});
+      });
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+      }
+    })();
+  </script>
+</body>
+</html>

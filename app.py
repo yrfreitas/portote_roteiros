@@ -2,7 +2,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import calendar
 import json
 import logging
 import os
@@ -26,6 +25,7 @@ from routes.ordens_servico import (MODELOS_OS_ROTULO, TERMOS_PADRAO,
                                    ordens_servico_bp)
 from routes.fichas import fichas_bp
 from routes.manuais_pecas import manuais_pecas_bp
+from routes.central_cliente import central_cliente_bp
 from routes.pedidos import pedidos_bp
 from routes.rastreio import rastreio_bp
 from routes.relatorios import relatorios_bp
@@ -33,6 +33,8 @@ from routes.servicos import servicos_bp
 from routes.setores import setores_bp
 from routes.tecnico_api import tecnico_api_bp
 from routes.tecnico_view import tecnico_view_bp
+from services.garantia import calcular_garantia
+from services.push import VAPID_PUBLIC_KEY
 from routes.substituicoes import substituicoes_bp
 from routes.tecnicos import tecnicos_bp
 from routes.vendas import vendas_bp
@@ -112,6 +114,7 @@ app.register_blueprint(ordens_servico_bp, url_prefix="/api")
 app.register_blueprint(vendas_bp, url_prefix="/api")
 app.register_blueprint(substituicoes_bp, url_prefix="/api")
 app.register_blueprint(manuais_pecas_bp, url_prefix="/api")
+app.register_blueprint(central_cliente_bp, url_prefix="/api/central")
 
 
 def _e_api() -> bool:
@@ -124,6 +127,7 @@ _CAMINHOS_PUBLICOS = {"/login", "/api/health", "/api/erro-cliente"}
 # link do técnico. Só expõem posição e destino daquele atendimento.
 _PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
                       "/acompanhar/", "/api/rastreio/", "/api/chat/", "/os/cliente/",
+                      "/central/", "/api/central/",
                       "/api/precos-panasonic")
 # /api/precos-panasonic* é público na camada de sessão porque quem chama é o
 # robô local (Portotec/Softwear para Pedidos), sem cookie de usuário — a
@@ -560,6 +564,18 @@ def acompanhar(token):
     return render_template("acompanhar.html", token=token)
 
 
+@app.route("/central/<token>")
+def central_cliente_pagina(token):
+    """Central do Cliente — página pública onde o cliente acompanha a própria
+    OS (status, técnico a caminho, orçamento, garantia).
+
+    Sem login de propósito, mesmo modelo do link do técnico e do
+    /acompanhar/<token>: o token de 24 bytes (ordens_servico.token_cliente) é
+    a credencial. HTML fica aqui, /api/* fica no blueprint (routes/central_cliente.py).
+    """
+    return render_template("central_cliente.html", token=token, vapid_public_key=VAPID_PUBLIC_KEY)
+
+
 def _montar_documento_os(os_id):
     """Monta o contexto de impressão de uma OS — reaproveitado pela rota
     interna (login) e pela pública por token (ver /os/cliente/<token>),
@@ -630,53 +646,13 @@ def _montar_documento_os(os_id):
         visita["data_referencia_br"] = _data_br(visita["data_referencia"])
 
     # Garantia calculada, não preenchida à mão — pedido de 2026-08-28 pra
-    # não admitir erro de conta: começa NO DIA EM QUE A FOLHA É IMPRESSA
-    # (não na data de abertura da OS, que pode ser bem anterior a quando o
-    # documento realmente sai impresso pro cliente assinar).
-    # "saida_oficina" soma aos outros três em 2026-08-29: o termo dela promete
-    # 3 meses "a partir da data da conclusão do reparo" (ver TERMOS_POR_TIPO),
-    # só que essa data é escolhida à mão no painel (ordem.garantia_inicio) —
-    # o dia em que o aparelho de fato saiu, não necessariamente hoje. Os
-    # outros três tipos não têm esse campo preenchido, então continuam
-    # caindo no "hoje" de sempre.
-    _GARANTIA_MESES = {"garantia_3_meses": 3, "garantia_6_meses": 6, "garantia_1_ano": 12,
-                       "saida_oficina": 3}
-
-    def _somar_meses(data, meses):
-        mes_total = data.month - 1 + meses
-        ano = data.year + mes_total // 12
-        mes = mes_total % 12 + 1
-        ultimo_dia = calendar.monthrange(ano, mes)[1]
-        return data.replace(year=ano, month=mes, day=min(data.day, ultimo_dia))
-
-    # "saida_oficina" pode escolher 3/6/12 meses (pedido de 2026-08-29) em vez
-    # do padrão fixo — os outros três tipos já SÃO um prazo fixo cada um (é a
-    # própria escolha do tipo que decide), então ordem.garantia_meses não se
-    # aplica a eles. O modelo Orçamento entra na mesma regra (2026-08-29):
-    # não tem tipo_os fixo, mas aceita o mesmo campo de prazo escolhido à mão.
-    garantia_meses = (
-        ordem.get("garantia_meses")
-        if (ordem.get("tipo_os") == "saida_oficina" or ordem.get("modelo_os") == "orcamento")
-           and ordem.get("garantia_meses")
-        else _GARANTIA_MESES.get(ordem.get("tipo_os"))
-    )
-    # Pedido de 2026-09-02: "não ir do dia que colocamos pra imprimir" — sem
-    # garantia_inicio preenchida, isto aqui caía pra datetime.now() e
-    # imprimia a garantia começando no dia em que ALGUÉM CLICOU IMPRIMIR
-    # (podia ser semanas depois do atendimento de verdade). O template já
-    # tinha um "else" pronto pra esse caso (linhas em branco pra preencher
-    # à mão, ver os_imprimir.html) — só nunca era usado porque o fallback
-    # aqui embaixo sempre entregava uma data "válida" antes de chegar lá.
-    garantia_inicio_br = garantia_fim_br = garantia_prazo_rotulo = None
-    if garantia_meses:
-        garantia_prazo_rotulo = "1 ano" if garantia_meses == 12 else f"{garantia_meses} meses"
-        if ordem.get("garantia_inicio"):
-            try:
-                base = datetime.strptime(ordem["garantia_inicio"], "%Y-%m-%d")
-                garantia_inicio_br = base.strftime("%d/%m/%Y")
-                garantia_fim_br = _somar_meses(base, garantia_meses).strftime("%d/%m/%Y")
-            except ValueError:
-                pass   # data inválida no banco — imprime em branco, não inventa uma
+    # não admitir erro de conta. Lógica em services/garantia.py: reaproveitada
+    # também pela Central do Cliente, pra nunca divergir do que sai impresso.
+    garantia = calcular_garantia(ordem)
+    garantia_meses = garantia["meses"] if garantia else None
+    garantia_inicio_br = garantia["inicio_br"] if garantia else None
+    garantia_fim_br = garantia["fim_br"] if garantia else None
+    garantia_prazo_rotulo = garantia["prazo_rotulo"] if garantia else None
 
     termos = TERMOS_POR_TIPO.get(ordem.get("tipo_os"), TERMOS_PADRAO)
     # O termo padrão de "saida_oficina" tem "03 (três) meses" escrito por
