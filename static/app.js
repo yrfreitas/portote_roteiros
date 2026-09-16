@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v267';
+const VERSAO_PAINEL = 'v268';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3722,10 +3722,16 @@ async function carregarCarroResumo() {
 // Botão explícito "Agendar cliente" pra Pedidos com comprovante — pedido de
 // 2026-09-16 ("continua sem o botão"): marcar "Chegou?" já manda o cliente
 // pra Agendar Clientes por baixo dos panos (ver POST /pedidos/chegada), mas
-// sem UM BOTÃO À VISTA (igual botaoAgendarPeca() já mostra em Peças
-// Compradas) isso ficava invisível — só um toast que passa. Agora mostra o
-// mesmo padrão visual: desabilitado até chegar, "✓ enviado p/ agendar"
-// depois, abrindo a OS com um clique.
+// sem UM BOTÃO À VISTA isso ficava invisível — só um toast que passa.
+//
+// CORRIGIDO (2026-09-16, "aperto e não dá em nada"): a primeira versão
+// deixava o botão `disabled` antes de chegar — um <button disabled> não
+// dispara onclick NENHUM no navegador, clicar não faz literalmente nada,
+// sem erro nem aviso. Em vez de imitar o botão cinza-morto de Peças
+// Compradas (lá some por CSS, não fica clicável-mas-inerte), este SEMPRE
+// reage: antes de chegar, clicar nele marca a chegada (mesma ação de
+// "Chegou?") E já resolve a OS na mesma tacada; depois, vira link direto
+// pra OS já criada.
 function _botaoAgendarPedidoComprovante(p) {
   if (p.agendamento_os_id) {
     return `
@@ -3736,8 +3742,8 @@ function _botaoAgendarPedidoComprovante(p) {
   }
   if (!p.cliente) return '';   // reposição de estoque, sem cliente -- nada pra agendar
   return `
-    <button type="button" class="peca-agendar" disabled
-            title="Marque &quot;Chegou?&quot; primeiro — é isso que já manda o cliente pra Agendar Clientes">
+    <button type="button" class="peca-agendar" onclick="alternarPecaChegou('${p.chave_chegada}', true, this)"
+            title="Marca a chegada e já manda pra Agendar Clientes">
       Agendar cliente
     </button>`;
 }
