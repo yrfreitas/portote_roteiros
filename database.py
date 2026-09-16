@@ -1214,6 +1214,18 @@ _MIGRACOES_PG = [
         auth        TEXT NOT NULL,
         created_at  TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
+    # Cliente NOVO se auto-cadastrando por /novo-atendimento (2026-09-16) —
+    # pedido do Kalebe: "não é cliente existente, são novos entrando". Só
+    # marca a origem e a preferência que a pessoa digitou; quem decide técnico
+    # e dia de verdade continua sendo a equipe, no mesmo fluxo de "Agendar
+    # Clientes" que já existe (ver routes/ordens_servico.py:listar, fonte
+    # 'publico'). setor_id fica NULL nessas OS (quem preenche é o cliente, que
+    # não tem como saber a classificação interna por fabricante) — mesma
+    # filosofia de "corrige depois é melhor que não poder agendar" já usada
+    # pro CEP sem geocodificação (ver agendar() acima).
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS origem_publica_em TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS preferencia_data TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS preferencia_periodo TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1487,6 +1499,9 @@ _MIGRACOES_SQLITE = [
         created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (os_id) REFERENCES ordens_servico(id) ON DELETE CASCADE
     )""",
+    "ALTER TABLE ordens_servico ADD COLUMN origem_publica_em TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN preferencia_data TEXT",
+    "ALTER TABLE ordens_servico ADD COLUMN preferencia_periodo TEXT",
 ]
 
 

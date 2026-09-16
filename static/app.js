@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v262';
+const VERSAO_PAINEL = 'v263';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8268,7 +8268,7 @@ async function carregarOS() {
 // fluxos de origem bem diferentes (peça que chegou x atendimento que não
 // rolou e precisa de outra visita): misturado numa lista só, quem confere a
 // fila não sabe se aquele card é "compra pronta esperando" ou "revisita".
-let _agendarDados = { peca: [], reagendamento: [] };
+let _agendarDados = { peca: [], reagendamento: [], publico: [] };
 let _agendarTab = 'reagendamento';
 let _agendarFiltroTexto = '';
 
@@ -8277,19 +8277,20 @@ async function carregarAgendarClientes() {
   if (!mount) return;
   mount.innerHTML = `<div class="loading-row" style="display:flex;justify-content:center;gap:10px;padding:30px;"><div class="spinner"></div> Carregando...</div>`;
 
-  let rReag, rPeca;
+  let rReag, rPeca, rPublico;
   try {
-    [rReag, rPeca] = await Promise.all([
+    [rReag, rPeca, rPublico] = await Promise.all([
       api('/ordens-servico?status=aguardando_agendamento&fonte=reagendamento'),
       api('/ordens-servico?status=aguardando_agendamento&fonte=peca'),
+      api('/ordens-servico?status=aguardando_agendamento&fonte=publico'),
     ]);
   } catch (e) {
     mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
     return;
   }
 
-  _agendarDados = { reagendamento: rReag.ordens, peca: rPeca.ordens };
-  atualizarSeloAgendar(rReag.ordens.length + rPeca.ordens.length);
+  _agendarDados = { reagendamento: rReag.ordens, peca: rPeca.ordens, publico: rPublico.ordens };
+  atualizarSeloAgendar(rReag.ordens.length + rPeca.ordens.length + rPublico.ordens.length);
   _renderAgendarTabs();
 }
 
@@ -8304,7 +8305,7 @@ function agendarFiltrar(valor) {
 }
 
 function _renderAgendarTabs() {
-  ['reagendamento', 'peca'].forEach(t => {
+  ['reagendamento', 'peca', 'publico'].forEach(t => {
     const btn = document.getElementById('atab-' + t);
     if (btn) btn.classList.toggle('active', t === _agendarTab);
     const cont = document.getElementById('atab-' + t + '-cont');
@@ -8328,10 +8329,12 @@ function _renderAgendarLista() {
     mount.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
       <p>${_agendarFiltroTexto ? 'Nada encontrado com esse filtro.'
         : _agendarTab === 'peca' ? 'Nenhuma peça esperando cliente ser agendado.'
+        : _agendarTab === 'publico' ? 'Ninguém pediu atendimento pelo site no momento.'
         : 'Ninguém esperando reagendamento no momento.'}</p></div>`;
     return;
   }
 
+  const ehPublico = _agendarTab === 'publico';
   mount.innerHTML = ordens.map(o => `
     <div class="agendar-card" onclick="abrirOSDetalhe(${o.id})">
       <button type="button" class="agendar-remover" title="Remover da fila (a OS continua no sistema)"
@@ -8352,9 +8355,16 @@ function _renderAgendarLista() {
         <span class="agendar-aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || 'aparelho não informado'}</span>
       </div>
       ${o.defeito_declarado ? `<div class="agendar-defeito">${esc(o.defeito_declarado)}</div>` : ''}
+      ${ehPublico ? `
+      <div class="agendar-linha-info">
+        ${icone('calendario', 'icone-13')}
+        <span>Preferência: ${o.preferencia_data ? esc(o.preferencia_data.split('-').reverse().join('/')) : '—'}
+          ${o.preferencia_periodo ? '· ' + (o.preferencia_periodo === 'manha' ? 'manhã' : 'tarde') : ''}</span>
+        ${!o.setor_id ? '<span class="conc-tag aviso" style="margin-left:6px;">Setor pendente</span>' : ''}
+      </div>` : ''}
       <button type="button" class="btn btn-primary btn-sm agendar-btn"
               onclick="event.stopPropagation(); abrirOSDetalhe(${o.id})">
-        Agendar visita →
+        ${ehPublico ? 'Confirmar e agendar →' : 'Agendar visita →'}
       </button>
     </div>`).join('');
 }
@@ -8371,7 +8381,8 @@ async function agendarRemoverDaFila(id) {
   }
   _agendarDados.reagendamento = _agendarDados.reagendamento.filter(o => o.id !== id);
   _agendarDados.peca = _agendarDados.peca.filter(o => o.id !== id);
-  atualizarSeloAgendar(_agendarDados.reagendamento.length + _agendarDados.peca.length);
+  _agendarDados.publico = (_agendarDados.publico || []).filter(o => o.id !== id);
+  atualizarSeloAgendar(_agendarDados.reagendamento.length + _agendarDados.peca.length + _agendarDados.publico.length);
   toast('Removido da fila — a OS continua no sistema, veja na aba OS', 'success');
   _renderAgendarTabs();
 }

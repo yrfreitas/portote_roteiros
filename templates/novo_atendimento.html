@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Solicitar atendimento · Porto Tec</title>
+  <link rel="icon" href="/static/assets/favicon-32x32.png">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #0c0f12; color: #e8edf3;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+    }
+    header { padding: 14px 16px; border-bottom: 1px solid #1e252d; }
+    .marca { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #6f7d8c; }
+    h1 { font-size: 17px; margin: 4px 0 0; font-weight: 700; }
+    main { padding: 16px; display: flex; flex-direction: column; gap: 14px; max-width: 520px; margin: 0 auto 40px; }
+    .card { background: #10151a; border: 1px solid #1e252d; border-radius: 12px; padding: 14px 16px; }
+    .card h2 { font-size: 13px; margin: 0 0 10px; color: #94a1ae; text-transform: uppercase; letter-spacing: .6px; }
+
+    .grid-equip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .equip-pick {
+      border: 1px solid #2a333d; border-radius: 10px; padding: 10px 4px; text-align: center;
+      font-size: 12px; cursor: pointer; background: #0c0f12; color: #cdd6df;
+    }
+    .equip-pick.selecionado { border-color: #1a6fd4; background: rgba(26,111,212,.12); color: #fff; }
+
+    label { display: block; font-size: 12.5px; color: #94a1ae; margin: 10px 0 5px; }
+    label:first-child { margin-top: 0; }
+    input, textarea, select {
+      width: 100%; background: #0c0f12; border: 1px solid #2a333d; border-radius: 8px;
+      padding: 10px 11px; font-size: 14px; color: #e8edf3; font-family: inherit;
+    }
+    textarea { min-height: 64px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #1a6fd4; }
+    .linha-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .linha-3 { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+
+    .tag-escolha { display: flex; gap: 8px; }
+    .tag-op {
+      flex: 1; border: 1px solid #2a333d; border-radius: 8px; padding: 9px 0; text-align: center;
+      font-size: 13px; cursor: pointer; background: #0c0f12; color: #cdd6df;
+    }
+    .tag-op.selecionado { border-color: #1a6fd4; background: rgba(26,111,212,.12); color: #fff; }
+
+    .aviso-rota { font-size: 11.5px; color: #6f7d8c; line-height: 1.5; margin-top: 8px; }
+
+    .btn-enviar {
+      width: 100%; background: #1a6fd4; color: #fff; border: none; border-radius: 9px;
+      padding: 13px 0; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit;
+    }
+    .btn-enviar:disabled { opacity: .55; cursor: default; }
+    .erro-lista { background: rgba(224,32,32,.12); border: 1px solid rgba(224,32,32,.3); border-radius: 10px;
+                  padding: 10px 12px; font-size: 13px; }
+    .erro-lista ul { margin: 4px 0 0; padding-left: 18px; }
+
+    #tela-ok { display: none; text-align: center; padding-top: 30px; }
+    #tela-ok .check { color: #2aa05c; font-size: 42px; }
+    #tela-ok h2 { font-size: 18px; margin: 10px 0 4px; text-transform: none; color: #e8edf3; }
+    #tela-ok p { font-size: 13px; color: #94a1ae; }
+    .link-central { display: inline-block; margin-top: 14px; background: #1a6fd4; color: #fff;
+                    text-decoration: none; padding: 11px 22px; border-radius: 9px; font-size: 14px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="marca">Porto Tec Assistência Técnica</div>
+    <h1>Solicitar atendimento</h1>
+  </header>
+
+  <main id="tela-form">
+    <p style="font-size:12.5px;color:#94a1ae;margin:0;">
+      Conte o que houve e escolha uma janela preferida — nossa equipe confirma o dia certo
+      e te avisa assim que o técnico sair a caminho.
+    </p>
+
+    <div class="card">
+      <h2>Equipamento</h2>
+      <div class="grid-equip" id="grid-equip"></div>
+      <div id="equip-outro-wrap" style="display:none;">
+        <label for="equip-outro">Qual equipamento?</label>
+        <input type="text" id="equip-outro" placeholder="Ex: Adega climatizada">
+      </div>
+      <div class="linha-2">
+        <div><label for="f-marca">Marca</label><input type="text" id="f-marca" placeholder="Ex: Panasonic"></div>
+        <div><label for="f-modelo">Modelo</label><input type="text" id="f-modelo" placeholder="Ex: NR-BB53"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>O que houve</h2>
+      <label for="f-defeito">Descreva o problema</label>
+      <textarea id="f-defeito" placeholder="Ex: Geladeira não gela, motor liga normal"></textarea>
+      <label>Situação</label>
+      <div class="tag-escolha">
+        <div class="tag-op selecionado" data-situacao="particular">Particular</div>
+        <div class="tag-op" data-situacao="garantia">Na garantia</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Seus dados</h2>
+      <label for="f-nome">Nome completo</label>
+      <input type="text" id="f-nome" autocomplete="name">
+      <label for="f-telefone">Telefone (com DDD)</label>
+      <input type="tel" id="f-telefone" inputmode="tel" autocomplete="tel" placeholder="(11) 99999-0000">
+      <label for="f-cep">CEP</label>
+      <input type="text" id="f-cep" inputmode="numeric" maxlength="9" placeholder="00000-000">
+      <div class="linha-3">
+        <div><label for="f-endereco">Endereço</label><input type="text" id="f-endereco"></div>
+        <div><label for="f-numero">Número</label><input type="text" id="f-numero"></div>
+      </div>
+      <div class="linha-2">
+        <div><label for="f-bairro">Bairro</label><input type="text" id="f-bairro"></div>
+        <div><label for="f-cidade">Cidade</label><input type="text" id="f-cidade"></div>
+      </div>
+      <label for="f-complemento">Complemento (opcional)</label>
+      <input type="text" id="f-complemento">
+    </div>
+
+    <div class="card">
+      <h2>Quando podemos ir?</h2>
+      <label for="f-data">Data de preferência</label>
+      <input type="date" id="f-data">
+      <label>Período</label>
+      <div class="tag-escolha">
+        <div class="tag-op selecionado" data-periodo="manha">Manhã</div>
+        <div class="tag-op" data-periodo="tarde">Tarde</div>
+      </div>
+      <p class="aviso-rota">Atendemos por rota, não por horário marcado — você escolhe manhã ou tarde e é
+        avisado assim que o técnico sair a caminho. A data é uma preferência: nossa equipe confirma
+        (ou ajusta, se precisar) antes de sair pra rua.</p>
+    </div>
+
+    <div class="erro-lista" id="caixa-erro" style="display:none;"></div>
+
+    <button class="btn-enviar" id="btn-enviar">Pré-agendar</button>
+  </main>
+
+  <main id="tela-ok">
+    <div class="check">✓</div>
+    <h2>Pré-agendamento realizado</h2>
+    <p>Seu atendimento será confirmado após análise das informações enviadas.</p>
+    <a class="link-central" id="link-central" href="#">Acompanhar minha solicitação →</a>
+  </main>
+
+  <script>
+    (function () {
+      const EQUIPAMENTOS = ['Geladeira', 'Lavadora', 'Lava e seca', 'Lava-louças', 'Micro-ondas',
+                            'Fogão', 'Cooktop', 'Ar-condicionado', 'Outros'];
+      let equipSelecionado = null;
+      let situacao = 'particular';
+      let periodo = 'manha';
+
+      const gridEquip = document.getElementById('grid-equip');
+      gridEquip.innerHTML = EQUIPAMENTOS.map(nome =>
+        `<div class="equip-pick" data-equip="${nome}">${nome}</div>`).join('');
+
+      gridEquip.addEventListener('click', (ev) => {
+        const alvo = ev.target.closest('.equip-pick');
+        if (!alvo) return;
+        gridEquip.querySelectorAll('.equip-pick').forEach(el => el.classList.remove('selecionado'));
+        alvo.classList.add('selecionado');
+        equipSelecionado = alvo.dataset.equip;
+        document.getElementById('equip-outro-wrap').style.display =
+          equipSelecionado === 'Outros' ? '' : 'none';
+      });
+
+      document.querySelectorAll('[data-situacao]').forEach(el => {
+        el.addEventListener('click', () => {
+          document.querySelectorAll('[data-situacao]').forEach(o => o.classList.remove('selecionado'));
+          el.classList.add('selecionado');
+          situacao = el.dataset.situacao;
+        });
+      });
+      document.querySelectorAll('[data-periodo]').forEach(el => {
+        el.addEventListener('click', () => {
+          document.querySelectorAll('[data-periodo]').forEach(o => o.classList.remove('selecionado'));
+          el.classList.add('selecionado');
+          periodo = el.dataset.periodo;
+        });
+      });
+
+      // Telefone: só formata visualmente, quem valida de verdade é o servidor.
+      document.getElementById('f-telefone').addEventListener('input', (ev) => {
+        let v = ev.target.value.replace(/\D/g, '').slice(0, 11);
+        if (v.length > 6) v = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
+        else if (v.length > 2) v = `(${v.slice(0,2)}) ${v.slice(2)}`;
+        ev.target.value = v;
+      });
+
+      // Data mínima = hoje, no fuso do navegador (aproximação suficiente pra
+      // um campo de PREFERÊNCIA — o servidor rejeita data passada de qualquer jeito).
+      const fData = document.getElementById('f-data');
+      fData.min = new Date().toISOString().slice(0, 10);
+
+      // CEP -> autopreenche endereço (mesmo endpoint que o painel já usa pro
+      // cadastro de cliente) — a pessoa ainda pode corrigir tudo antes de enviar.
+      document.getElementById('f-cep').addEventListener('blur', async (ev) => {
+        const cep = ev.target.value.replace(/\D/g, '');
+        if (cep.length !== 8) return;
+        try {
+          const r = await fetch(`/api/clientes/cep/${cep}`);
+          if (!r.ok) return;
+          const d = await r.json();
+          if (d.endereco) document.getElementById('f-endereco').value = d.endereco;
+          if (d.bairro) document.getElementById('f-bairro').value = d.bairro;
+          if (d.cidade) document.getElementById('f-cidade').value = d.cidade;
+        } catch (e) { /* sem autofill não trava o formulário */ }
+      });
+      document.getElementById('f-cep').addEventListener('input', (ev) => {
+        let v = ev.target.value.replace(/\D/g, '').slice(0, 8);
+        if (v.length > 5) v = `${v.slice(0,5)}-${v.slice(5)}`;
+        ev.target.value = v;
+      });
+
+      function mostrarErros(lista) {
+        const caixa = document.getElementById('caixa-erro');
+        if (!lista || !lista.length) { caixa.style.display = 'none'; return; }
+        caixa.innerHTML = '<b>Confira antes de enviar:</b><ul>' +
+          lista.map(e => `<li>${e}</li>`).join('') + '</ul>';
+        caixa.style.display = '';
+        caixa.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      document.getElementById('btn-enviar').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-enviar');
+        const equipamentoFinal = equipSelecionado === 'Outros'
+          ? document.getElementById('equip-outro').value.trim()
+          : equipSelecionado;
+
+        const corpo = {
+          tipo_aparelho: equipamentoFinal || '',
+          marca: document.getElementById('f-marca').value,
+          modelo: document.getElementById('f-modelo').value,
+          defeito_declarado: document.getElementById('f-defeito').value,
+          situacao,
+          nome: document.getElementById('f-nome').value,
+          telefone: document.getElementById('f-telefone').value,
+          cep: document.getElementById('f-cep').value,
+          endereco: document.getElementById('f-endereco').value,
+          numero: document.getElementById('f-numero').value,
+          complemento: document.getElementById('f-complemento').value,
+          bairro: document.getElementById('f-bairro').value,
+          cidade: document.getElementById('f-cidade').value,
+          preferencia_data: document.getElementById('f-data').value,
+          preferencia_periodo: periodo,
+        };
+
+        btn.disabled = true;
+        btn.textContent = 'Enviando...';
+        try {
+          const r = await fetch('/api/novo-atendimento', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(corpo),
+          });
+          const d = await r.json();
+          if (!r.ok) {
+            mostrarErros(d.erros || [d.erro || 'Não foi possível enviar. Confira os dados.']);
+            return;
+          }
+          document.getElementById('tela-form').style.display = 'none';
+          document.getElementById('link-central').href = `/central/${d.token}`;
+          document.getElementById('tela-ok').style.display = 'block';
+        } catch (e) {
+          mostrarErros(['Sem conexão agora. Tente de novo em instantes.']);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Pré-agendar';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

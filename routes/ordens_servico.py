@@ -1115,6 +1115,13 @@ def listar():
                AND sd.desfecho IN ('nao_atendido', 'volto_depois')
         )""")
         condicoes.append("os.oculta_fila_em IS NULL")
+    elif fonte == "publico":
+        # Cliente NOVO que se auto-cadastrou por /novo-atendimento (pedido de
+        # 2026-09-16) — não veio de peça chegando nem de reagendamento, é a
+        # PRIMEIRA vez, aberta pelo próprio cliente em vez de alguém da
+        # equipe digitar. Ver routes/novo_atendimento.py.
+        condicoes.append("os.origem_publica_em IS NOT NULL")
+        condicoes.append("os.oculta_fila_em IS NULL")
     # ?origem=panasonic|nossa|balcao — três lados. "balcao" (aba "Produtos da
     # loja") é SÓ quem a equipe marcou à mão (balcao_em preenchido) — pedido
     # explícito de 2026-09-01 depois de uma primeira tentativa por inferência

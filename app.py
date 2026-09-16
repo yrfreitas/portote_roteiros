@@ -26,6 +26,7 @@ from routes.ordens_servico import (MODELOS_OS_ROTULO, TERMOS_PADRAO,
 from routes.fichas import fichas_bp
 from routes.manuais_pecas import manuais_pecas_bp
 from routes.central_cliente import central_cliente_bp
+from routes.novo_atendimento import novo_atendimento_bp
 from routes.pedidos import pedidos_bp
 from routes.rastreio import rastreio_bp
 from routes.relatorios import relatorios_bp
@@ -115,6 +116,7 @@ app.register_blueprint(vendas_bp, url_prefix="/api")
 app.register_blueprint(substituicoes_bp, url_prefix="/api")
 app.register_blueprint(manuais_pecas_bp, url_prefix="/api")
 app.register_blueprint(central_cliente_bp, url_prefix="/api/central")
+app.register_blueprint(novo_atendimento_bp, url_prefix="/api/novo-atendimento")
 
 
 def _e_api() -> bool:
@@ -128,6 +130,11 @@ _CAMINHOS_PUBLICOS = {"/login", "/api/health", "/api/erro-cliente"}
 _PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
                       "/acompanhar/", "/api/rastreio/", "/api/chat/", "/os/cliente/",
                       "/central/", "/api/central/",
+                      "/novo-atendimento", "/api/novo-atendimento",
+                      # Só a CONSULTA de CEP (leitura, sem custo de negócio) —
+                      # /novo-atendimento usa pra autopreencher endereço, mesmo
+                      # endpoint que o formulário de cliente do painel já usa.
+                      "/api/clientes/cep/",
                       "/api/precos-panasonic")
 # /api/precos-panasonic* é público na camada de sessão porque quem chama é o
 # robô local (Portotec/Softwear para Pedidos), sem cookie de usuário — a
@@ -574,6 +581,17 @@ def central_cliente_pagina(token):
     a credencial. HTML fica aqui, /api/* fica no blueprint (routes/central_cliente.py).
     """
     return render_template("central_cliente.html", token=token, vapid_public_key=VAPID_PUBLIC_KEY)
+
+
+@app.route("/novo-atendimento")
+def novo_atendimento_pagina():
+    """Página pública onde um cliente NOVO (nunca atendido) pede visita
+    técnica sozinho — pedido do Kalebe em 2026-09-16: "não é cliente
+    existente e sim novos que estão entrando". Sem login, mesmo modelo das
+    outras páginas públicas: aqui não existe token ainda porque é ANTES de
+    existir OS — o token só nasce na resposta do POST, que redireciona pra
+    /central/<token> (a mesma tela de acompanhamento de quem já tem OS)."""
+    return render_template("novo_atendimento.html")
 
 
 def _montar_documento_os(os_id):
