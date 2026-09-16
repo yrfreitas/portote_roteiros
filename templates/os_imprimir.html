@@ -51,7 +51,10 @@
   .marca .subnome { font-size: 9.5px; color: var(--tinta); font-weight: 600; }
   .marca .doctype { font-size: 9px; color: var(--azul); font-weight: 700; }
 
-  .os-numero { text-align: right; flex-shrink: 0; padding-top: 2px; }
+  .os-numero {
+    text-align: right; flex-shrink: 0;
+    border: 1px solid var(--linha); border-radius: 6px; padding: 6px 12px;
+  }
   .os-numero .rot { font-size: 7.5px; font-weight: 700; letter-spacing: .4px; color: var(--tinta-3); text-transform: uppercase; }
   .os-numero .n {
     font-size: 15.5px; font-weight: 800; color: var(--azul);
@@ -81,21 +84,39 @@
     border-radius: 20px; margin: 0 0 10px 6px;
   }
 
+  /* Seções em barra cheia (fundo azul clarinho, borda) em vez da bolinha
+     numerada — pedido de 2026-09-16, modelo de referência baixado (Colibri/
+     AutEM) usa cabeçalho de seção em caixa, não número. .num-bola some por
+     CSS em vez de tirar do HTML nas ~15 ocorrências dos 3 modelos — troca
+     seria idêntica em todas, sem motivo pra reescrever cada uma na mão. */
   h2 {
-    display: flex; align-items: center; gap: 7px;
-    font-size: 10px; font-weight: 700; color: var(--azul);
-    margin: 12px 0 6px; letter-spacing: .1px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 9px; font-weight: 800; color: var(--azul);
+    text-transform: uppercase; letter-spacing: .6px;
+    margin: 12px 0 7px; padding: 5px 9px;
+    background: var(--azul-fundo); border: 1px solid var(--linha); border-radius: 5px;
   }
   h2:first-of-type { margin-top: 0; }
-  h2 .num-bola {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 15px; height: 15px; border-radius: 50%; background: var(--azul); color: #fff;
-    font-size: 8px; font-weight: 800; flex-shrink: 0;
+  h2 .num-bola { display: none; }
+  h2::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--azul); flex-shrink: 0;
   }
 
   .linha-divisoria { border: 0; border-top: 1px solid var(--linha); margin: 11px 0 0; }
 
-  .grade { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; row-gap: 6px; }
+  /* Grade de campos ganhou moldura de tabela (pedido de 2026-09-16, "fica
+     exatamente assim" do checklist em tabela do modelo de referência) —
+     cada .campo é uma célula com borda própria, sem precisar trocar a
+     estrutura de <div> por <table> em cada um dos ~10 lugares que usam
+     .grade hoje. */
+  .grade {
+    display: grid; grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--linha); border-radius: 6px; overflow: hidden;
+    background: var(--linha);
+    gap: 1px;
+  }
+  .campo { background: #fff; padding: 5px 9px; }
   .campo .rot { font-size: 8px; color: var(--tinta-3); margin-bottom: 1px; }
   .campo .val { font-size: 10px; font-weight: 500; color: var(--tinta); }
   .largura-total { grid-column: 1 / -1; }
@@ -314,6 +335,12 @@
 
     <div class="grade" style="margin-top:10px;">
       {% if 'tecnico' not in ocultar_impressao %}<div class="campo"><div class="rot">Técnico que atendeu</div><div class="val">{{ tecnico_atendeu_nome or '—' }}</div></div>{% endif %}
+      {% if 'taxa' not in ocultar_impressao and taxa_fmt %}
+      <div class="campo">
+        <div class="rot">Taxa</div>
+        <div class="taxa-bloco"><span class="valor">{{ taxa_fmt }}</span></div>
+      </div>
+      {% endif %}
       {% if 'forma_pagamento' not in ocultar_impressao %}
       <div class="campo largura-total">
         <div class="rot">Forma de pagamento</div>
@@ -338,7 +365,12 @@
         <tr><td colspan="2" style="color:var(--tinta-3);">Nenhum item lançado.</td></tr>
         {% endfor %}
       </tbody>
-      <tfoot><tr><td>Valor total</td><td class="col-valor">{{ total_orcamento_fmt }}</td></tr></tfoot>
+      <tfoot>
+        <tr><td>Valor total dos itens</td><td class="col-valor">{{ total_orcamento_fmt }}</td></tr>
+        {% if total_com_taxa_fmt %}
+        <tr><td>Total com taxa</td><td class="col-valor">{{ total_com_taxa_fmt }}</td></tr>
+        {% endif %}
+      </tfoot>
     </table>
 
     {% if ordem.observacao and 'observacao' not in ocultar_impressao %}

@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v268';
+const VERSAO_PAINEL = 'v269';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8694,7 +8694,11 @@ function osEscolherModelo(modelo) {
   // três modelos (pedido de 2026-08-27) — só a Taxa de avaliação continua
   // exclusiva do modelo "Ordens de Serviço".
   document.getElementById('os-tipo-obrigatorio').style.display = modelo === 'os' ? '' : 'none';
-  document.getElementById('os-campos-taxa').style.display = modelo === 'os' ? '' : 'none';
+  // Taxa (pedido de 2026-09-16): "só deixa um campo pra colocar o valor da
+  // taxa" — Orçamento passa a ter o MESMO campo de valor único que "Ordens
+  // de Serviço" já tinha, sem tirar Itens/Valores (as duas coisas convivem;
+  // quem só quer um número não precisa itemizar nada).
+  document.getElementById('os-campos-taxa').style.display = (modelo === 'os' || modelo === 'orcamento') ? '' : 'none';
   osTipoMudou();
 
   // Setor é obrigatório em "Ordens de Serviço" e "Chamado Técnico" — pedido
@@ -9117,6 +9121,7 @@ async function osCriar() {
     if (tipoOs) corpo.tipo_os = tipoOs;
     corpo.garantia_inicio = document.getElementById('os-garantia-inicio').value || null;
     corpo.garantia_meses = Number(document.getElementById('os-garantia-meses').value) || 3;
+    corpo.taxa_avaliacao = document.getElementById('os-taxa').value || 0;
   } else if (_novaOSModelo === 'chamado_tecnico') {
     // BUG CORRIGIDO EM 2026-09-01: Tipo de OS/termo fica visível e opcional
     // pros 3 modelos (comentário em osEscolherModelo), mas faltava este
@@ -9412,6 +9417,11 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
       ${tipoOsOpcional}
       ${garantiaOrcamento}
       ${camposComuns}
+      <div class="form-row">
+        <div class="form-group">
+          <div class="form-label-linha"><label class="form-label" for="os-ed-taxa">Taxa (R$)</label>${_impCheck('taxa', oc)}</div>
+          <input class="form-input" type="number" step="0.01" min="0" id="os-ed-taxa" value="${o.taxa_avaliacao ?? 0}"></div>
+      </div>
       ${observacao}
       ${outrasSecoes(true)}
     </div>
@@ -9637,6 +9647,7 @@ async function osSalvarEdicaoOrcamento(id) {
     garantia_inicio: document.getElementById('os-ed-garantia-inicio')?.value || null,
     garantia_meses: Number(document.getElementById('os-ed-garantia-meses')?.value) || 3,
     prazo_previsto: document.getElementById('os-ed-prazo-previsto')?.value || null,
+    taxa_avaliacao: document.getElementById('os-ed-taxa')?.value || 0,
   };
   if (_osEdicaoFoto !== undefined) corpo.foto = _osEdicaoFoto;
   try {
