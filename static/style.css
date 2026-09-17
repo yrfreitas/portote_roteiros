@@ -4476,6 +4476,10 @@ select:focus-visible,
   width: 54px; height: 54px; object-fit: cover; border-radius: 8px;
   cursor: zoom-in; border: 1px solid var(--border-bright);
 }
+/* "Já pagou" + comprovante (pedido de 2026-09-17), na coluna de foto do
+   atendimento — mesma info já mostrada no detalhe da OS e em
+   Faturamento > Pagamentos dos técnicos. */
+.at-pagamento { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 6px; }
 
 /* Fotos extras (mais de uma) em OS/estoque — mesmo padrão de thumbnail do
    .at-thumb, com botão de remover no canto. */

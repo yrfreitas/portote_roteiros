@@ -333,7 +333,7 @@ def listar_desfechos():
         # daqui").
         linhas = fetch_all(conn, sql("""
             SELECT d.servico_id, d.desfecho, d.motivo, d.peca, d.observacao,
-                   d.pedido_em, d.pedido_por,
+                   d.pedido_em, d.pedido_por, d.forma_pagamento,
                    d.registrado_em, d.registrado_por,
                    s.cliente, s.endereco_completo, s.tipo_aparelho, s.modelo,
                    s.numero_os, s.ficha_id, s.ordem_servico_id,
@@ -354,6 +354,20 @@ def listar_desfechos():
             l["origem"] = "tecnico"
             l["pedido_os_id"] = None
             l["chave"] = f"t{l['servico_id']}"
+
+        # Comprovante de pagamento (pedido de 2026-09-17, mesmo dado já
+        # mostrado no detalhe da OS e em Faturamento > Pagamentos dos
+        # técnicos) — busca em lote pra não virar N+1.
+        ids_com_pagamento = [l["servico_id"] for l in linhas if l.get("forma_pagamento") and l.get("servico_id")]
+        if ids_com_pagamento:
+            marcadores = ",".join("?" * len(ids_com_pagamento))
+            fotos_pag = fetch_all(conn, sql(
+                f"SELECT servico_id, foto FROM servico_foto "
+                f"WHERE servico_id IN ({marcadores}) AND legenda = 'comprovante_pagamento'"),
+                tuple(ids_com_pagamento))
+            foto_pag_por_servico = {f["servico_id"]: f["foto"] for f in fotos_pag}
+            for l in linhas:
+                l["comprovante_pagamento_foto"] = foto_pag_por_servico.get(l.get("servico_id"))
 
         # "Pedir peça" batido direto na OS (sem visita de técnico envolvida) —
         # mesma vitrine de Atendimentos, mas sem servico_desfecho por trás (ver
