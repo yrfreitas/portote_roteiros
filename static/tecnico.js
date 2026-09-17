@@ -905,9 +905,12 @@
   let _desfechoFotoPagamento = null;
   // Desfecho "Orçamento" (pedido de 2026-09-02): o técnico pode já ter
   // combinado o valor com o cliente na hora ("feito no local") em vez de
-  // sempre deixar pro escritório montar depois ("na base") — ver
-  // window._tEscolherModoOrcamento.
+  // sempre deixar pro escritório montar depois ("na base").
   let _orcamentoModoLocal = false;
+  // Itens/Valores do orçamento em campo (pedido de 2026-09-17: "preciso que
+  // fique igual o orçamento das OS") — mesma ideia de _novosItensOrcamento
+  // no painel (app.js), lista local até confirmar o desfecho.
+  let _orcItensTecnico = [];
 
   // Reduz mantendo a imagem INTEIRA — sem recorte.
   //
@@ -1162,11 +1165,55 @@
     window._tValidarConfirmar();
   };
 
+  // Itens/Valores do orçamento em campo — mesmo padrão de
+  // osAdicionarItemOrcamentoNovo()/_renderItensOrcamentoNovo() no painel
+  // (app.js), adaptado pra tela do técnico.
+  window._tAdicionarItemOrcamento = function () {
+    const nomeEl = document.getElementById('t-df-orc-item-nome');
+    const valorEl = document.getElementById('t-df-orc-item-valor');
+    const nome = nomeEl?.value.trim();
+    if (!nome) { nomeEl?.focus(); return; }
+    const valor = Number(valorEl?.value) || 0;
+    _orcItensTecnico.push({ nome, valor });
+    if (nomeEl) nomeEl.value = '';
+    if (valorEl) valorEl.value = '';
+    nomeEl?.focus();
+    _tRenderItensOrcamento();
+  };
+
+  window._tRemoverItemOrcamento = function (indice) {
+    _orcItensTecnico.splice(indice, 1);
+    _tRenderItensOrcamento();
+  };
+
+  function _tValorFmtOuVazio(valor) {
+    const n = Number(valor) || 0;
+    return n ? `R$ ${n.toFixed(2).replace('.', ',')}` : '';
+  }
+
+  function _tRenderItensOrcamento() {
+    const lista = document.getElementById('t-df-orc-itens-lista');
+    if (!lista) return;
+    if (_orcItensTecnico.length === 0) {
+      lista.innerHTML = `<p class="t-df-ajuda" style="margin:0 0 6px;">Nenhum item ainda.</p>`;
+      return;
+    }
+    const soma = _orcItensTecnico.reduce((s, it) => s + it.valor, 0);
+    lista.innerHTML = _orcItensTecnico.map((it, i) => `
+      <div class="t-df-item-linha">
+        <span>${esc(it.nome)}</span>
+        <span>${_tValorFmtOuVazio(it.valor)}</span>
+        <button type="button" class="t-df-remover-foto" onclick="window._tRemoverItemOrcamento(${i})">remover</button>
+      </div>`).join('')
+      + `<div class="t-df-item-linha t-df-item-total"><span>Total</span><span>${_tValorFmtOuVazio(soma)}</span><span></span></div>`;
+  }
+
   window._tAbrirDesfecho = function (servicoId) {
     _desfechoServicoId = servicoId;
     _desfechoTipo = null;
     _desfechoFoto = null;
     _desfechoFotoPagamento = null;
+    _orcItensTecnico = [];
     const folha = document.getElementById('t-folha-desfecho');
     if (!folha) return;
     folha.querySelector('.t-folha-corpo').innerHTML = `
@@ -1309,25 +1356,30 @@
         <textarea class="t-df-input" id="t-df-orc-defeito" rows="2">${esc(s.descricao || '')}</textarea>
         <label class="t-df-rotulo" for="t-df-orc-solucao">Solução / diagnóstico</label>
         <textarea class="t-df-input" id="t-df-orc-solucao" rows="2" placeholder="O que foi identificado, o que precisa ser feito"></textarea>
-        <label class="t-df-rotulo" for="t-df-orc-item">Serviço orçado</label>
-        <input class="t-df-input" id="t-df-orc-item" placeholder="Ex: Troca do compressor">
-        <label class="t-df-rotulo" for="t-df-orc-valor">Valor do serviço (R$)</label>
-        <input class="t-df-input" type="number" step="0.01" min="0" inputmode="decimal" id="t-df-orc-valor">
-        <p class="t-df-ajuda" id="t-df-orc-sugestao"></p>
         <label class="t-df-rotulo" for="t-df-orc-taxa">Taxa de avaliação (R$)</label>
         <input class="t-df-input" type="number" step="0.01" min="0" inputmode="decimal" id="t-df-orc-taxa">
-        <label class="t-df-rotulo">Cliente já pagou no local?</label>
-        <p class="t-df-ajuda">Só preencha se recebeu pagamento agora — se o cliente vai pagar depois de aprovar, deixe em branco.</p>
+        <label class="t-df-rotulo">Itens / Valores</label>
+        <p class="t-df-ajuda" id="t-df-orc-sugestao"></p>
+        <div id="t-df-orc-itens-lista"></div>
+        <div class="t-df-linha-dupla">
+          <div><label class="t-df-rotulo" for="t-df-orc-item-nome">Serviço</label>
+            <input class="t-df-input" id="t-df-orc-item-nome" placeholder="Ex: Troca do compressor"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault(); window._tAdicionarItemOrcamento();}"></div>
+          <div><label class="t-df-rotulo" for="t-df-orc-item-valor">Valor (R$)</label>
+            <input class="t-df-input" type="number" step="0.01" min="0" inputmode="decimal" id="t-df-orc-item-valor"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault(); window._tAdicionarItemOrcamento();}"></div>
+        </div>
+        <button type="button" class="t-df-limpar-assinatura" onclick="window._tAdicionarItemOrcamento()">+ Adicionar item</button>
+        <label class="t-df-rotulo" for="t-df-forma-pagamento">Forma de pagamento</label>
         <select class="t-df-input" id="t-df-forma-pagamento" onchange="window._tOrcPagamentoMudou(this)">
-          <option value="">Ainda não recebeu</option>
+          <option value="">Selecione...</option>
           <option value="Pix">Pix</option>
           <option value="Dinheiro">Dinheiro</option>
-          <option value="Cartão de débito">Cartão de débito</option>
-          <option value="Cartão de crédito">Cartão de crédito</option>
+          <option value="Cartão">Cartão</option>
         </select>
         <div id="t-df-orc-pagamento-foto" style="display:none;">
           <label class="t-df-rotulo">Comprovante de pagamento</label>
-          <p class="t-df-ajuda">Foto do Pix, do comprovante da maquininha, ou do dinheiro contado com o cliente.</p>
+          <p class="t-df-ajuda">Só se o cliente já pagou agora — foto do Pix, do comprovante da maquininha, ou do dinheiro contado com o cliente.</p>
           <label class="t-df-foto-botao">
             Tirar foto
             <input type="file" accept="image/*" capture="environment"
@@ -1344,6 +1396,7 @@
       // do traço se o cliente já estiver com o dedo na tela.
       _tIniciarAssinatura();
       _tCarregarSugestaoPreco();
+      _tRenderItensOrcamento();
     } else {
       extra.innerHTML = blocoFoto(false);
     }
@@ -1510,10 +1563,7 @@
     }
     if (_desfechoTipo === 'orcamento') {
       desfecho.orcamento_local = _orcamentoModoLocal;
-      if (_orcamentoModoLocal) {
-        desfecho.valor_local = Number(document.getElementById('t-df-orc-valor')?.value) || 0;
-        desfecho.item_local = document.getElementById('t-df-orc-item')?.value.trim() || '';
-      }
+      desfecho.itens_local = _orcItensTecnico;
       desfecho.cliente_nome = document.getElementById('t-df-orc-nome')?.value.trim() || '';
       desfecho.cliente_telefone = document.getElementById('t-df-orc-telefone')?.value.trim() || '';
       desfecho.tipo_aparelho = document.getElementById('t-df-orc-aparelho')?.value.trim() || '';
@@ -1830,7 +1880,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v273';
+  const VERSAO_TELA = 'v274';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

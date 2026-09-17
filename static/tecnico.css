@@ -575,6 +575,15 @@ button.t-ponto-link-waze {
 .t-df-processando { font-size: 13px; color: #8fa3bf; }
 .t-df-erro { font-size: 13px; color: #fca5a5; line-height: 1.45; }
 
+/* Itens/Valores do orçamento em campo (pedido de 2026-09-17) — mesmo
+   espírito visual de .os-orc-item-linha no painel (style.css). */
+.t-df-item-linha {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center;
+  padding: 8px 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px;
+  margin-bottom: 6px; font-size: 13px;
+}
+.t-df-item-total { font-weight: 700; border: none; padding: 6px 10px 0; }
+
 .t-df-obs { resize: vertical; min-height: 70px; line-height: 1.45; }
 
 .t-df-linha-dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

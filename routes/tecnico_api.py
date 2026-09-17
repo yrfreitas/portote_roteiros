@@ -660,31 +660,43 @@ def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     return {"os_id": os_id, "token_cliente": token_cliente}
 
 
+def _itens_orcamento_local_validos(desfecho) -> list:
+    """Itens/Valores lançados pelo técnico em campo (pedido de 2026-09-17:
+    "igual o orçamento das OS" — lista de {nome, valor}, não mais um item
+    único). Ignora linha sem nome ou com valor <= 0."""
+    itens = desfecho.get("itens_local")
+    if not isinstance(itens, list):
+        return []
+    validos = []
+    for item in itens:
+        if not isinstance(item, dict):
+            continue
+        nome = (item.get("nome") or "").strip()
+        try:
+            valor = float(item.get("valor") or 0)
+        except (TypeError, ValueError):
+            valor = 0
+        if nome and valor > 0:
+            validos.append({"nome": nome, "valor": valor})
+    return validos
+
+
 def _status_orcamento(desfecho) -> str:
-    try:
-        local = bool(desfecho.get("orcamento_local")) and float(desfecho.get("valor_local") or 0) > 0
-    except (TypeError, ValueError):
-        local = False
+    local = bool(desfecho.get("orcamento_local")) and bool(_itens_orcamento_local_validos(desfecho))
     return "aguardando_aprovacao" if local else "aguardando_orcamento"
 
 
 def _lancar_item_orcamento_local(conn, os_id, desfecho, agora):
-    """Se o técnico marcou "feito no local", lança o item de orçamento na
-    hora — do contrário a OS fica sem item nenhum, esperando o escritório
-    montar (comportamento de sempre)."""
+    """Se o técnico já lançou item(ns) com valor em campo, grava na hora —
+    do contrário a OS fica sem item nenhum, esperando o escritório montar
+    (comportamento de sempre)."""
     if not desfecho.get("orcamento_local"):
         return
-    try:
-        valor = float(desfecho.get("valor_local") or 0)
-    except (TypeError, ValueError):
-        valor = 0
-    if valor <= 0:
-        return
-    nome_item = (desfecho.get("item_local") or "").strip() or "Orçamento feito em campo"
-    execute(conn, sql("""
-        INSERT INTO ordem_servico_itens (ordem_servico_id, nome, valor, criado_em)
-        VALUES (?, ?, ?, ?)
-    """), (os_id, nome_item, valor, agora))
+    for item in _itens_orcamento_local_validos(desfecho):
+        execute(conn, sql("""
+            INSERT INTO ordem_servico_itens (ordem_servico_id, nome, valor, criado_em)
+            VALUES (?, ?, ?, ?)
+        """), (os_id, item["nome"], item["valor"], agora))
 
 
 def _atualizar_os_orcamento_existente(conn, ordem_servico_id, desfecho, quem):
