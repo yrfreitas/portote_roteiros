@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v274';
+const VERSAO_PAINEL = 'v275';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -724,7 +724,7 @@ function switchMainTab(tab) {
     carregarAgendarClientes();
   }
   if (isFaturamento) {
-    carregarFaturamento();
+    faturamentoSwitchTab(_faturamentoTab);
   }
 }
 
@@ -3171,6 +3171,7 @@ async function carregarResumoSetores() {
 // nenhum somaria anos de OS de uma vez, número grande demais pra dizer
 // qualquer coisa útil sobre "como estamos indo".
 let faturamentoDias = '30';
+let _faturamentoTab = 'resumo';
 
 function iniciarFiltroFaturamento() {
   const barra = document.getElementById('fat-periodo');
@@ -3181,9 +3182,72 @@ function iniciarFiltroFaturamento() {
       faturamentoDias = btn.dataset.dias;
       barra.querySelectorAll('.hist-periodo-btn')
            .forEach(b => b.classList.toggle('active', b === btn));
-      carregarFaturamento();
+      if (_faturamentoTab === 'pagamentos') carregarPagamentosTecnicos();
+      else carregarFaturamento();
     });
   });
+}
+
+// Aba "Pagamentos dos técnicos" (pedido de 2026-09-17) — vive dentro de
+// Faturamento, ao lado do Resumo que já existia. Mesmo padrão de sub-abas
+// já usado em Peças/Agendar Clientes (vcep-tabs).
+function faturamentoSwitchTab(tab) {
+  _faturamentoTab = tab;
+  document.getElementById('ftab-resumo')?.classList.toggle('active', tab === 'resumo');
+  document.getElementById('ftab-pagamentos')?.classList.toggle('active', tab === 'pagamentos');
+  document.getElementById('fat-aba-resumo').style.display = tab === 'resumo' ? '' : 'none';
+  document.getElementById('fat-aba-pagamentos').style.display = tab === 'pagamentos' ? '' : 'none';
+  if (tab === 'pagamentos') carregarPagamentosTecnicos();
+  else carregarFaturamento();
+}
+
+async function carregarPagamentosTecnicos() {
+  const alvo = document.getElementById('fat-pagamentos-conteudo');
+  if (!alvo) return;
+  alvo.innerHTML = '<p class="ajuda-texto">Carregando...</p>';
+
+  let d;
+  try {
+    d = await api(`/relatorios/pagamentos-tecnicos?dias=${faturamentoDias}`);
+  } catch (e) {
+    alvo.innerHTML = `<p class="ajuda-texto">Não consegui carregar: ${esc(e.message || '')}</p>`;
+    return;
+  }
+
+  const cont = document.getElementById('ftab-pagamentos-cont');
+  if (cont) cont.textContent = d.total || '';
+
+  if (!d.pagamentos || d.pagamentos.length === 0) {
+    alvo.innerHTML = `<div class="historico-vazio">${icone('check', 'icone-24')}
+      <p>Nenhum pagamento recebido em campo nesse período.</p></div>`;
+    return;
+  }
+
+  const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  alvo.innerHTML = `
+    <p class="ajuda-texto" style="margin:0 0 12px;">
+      ${d.total} pagamento${d.total !== 1 ? 's' : ''} recebido${d.total !== 1 ? 's' : ''} em campo
+      · ${d.com_comprovante} com comprovante em foto
+    </p>` +
+    d.pagamentos.map(p => `
+    <div class="pp-cartao">
+      <div class="pp-lado-dados">
+        <div class="pp-cliente">${esc(p.cliente || 'Cliente não identificado')}</div>
+        ${p.endereco_completo ? `<div class="pp-sub">${esc(p.endereco_completo)}</div>` : ''}
+        ${(p.tipo_aparelho || p.modelo) ? `<div class="pp-sub">${esc([p.tipo_aparelho, p.modelo].filter(Boolean).join(' · '))}</div>` : ''}
+        <div class="pp-rodape">
+          ${p.tecnico ? `<span class="at-ponto-cor" style="background:${escCor(p.tecnico_cor)}"></span>${esc(p.tecnico)} · ` : ''}
+          <span class="conc-tag ok">${esc(p.forma_pagamento)}</span>
+          · recebido ${esc(parseDataBanco(p.registrado_em)?.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) || '')}
+          ${p.ordem_servico_id ? ` · <a href="#" onclick="event.preventDefault(); switchMainTab('os'); abrirOSDetalhe(${p.ordem_servico_id});">OS #${String(p.ordem_servico_id).padStart(6, '0')}</a>` : ''}
+        </div>
+      </div>
+      <div class="pp-lado-imagem">
+        ${p.comprovante_foto
+          ? `<img class="pp-foto" src="${p.comprovante_foto}" alt="Comprovante de pagamento" onclick="ampliarFoto(this.src)">`
+          : '<span class="pp-sem-foto">sem comprovante anexado</span>'}
+      </div>
+    </div>`).join('');
 }
 
 const ORIGEM_ROTULO_FATURAMENTO = {

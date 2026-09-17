@@ -298,7 +298,24 @@
           <button type="button" class="hist-periodo-btn" data-dias="365">12 meses</button>
         </div>
       </div>
-      <div id="fat-conteudo"></div>
+      <!-- Pagamentos dos técnicos virou aba própria (pedido de 2026-09-17):
+           tudo que envolve dinheiro recebido em campo, com comprovante em
+           foto, num lugar só que o financeiro acompanha -- não é mais só o
+           resumo de receita que já existia. -->
+      <div class="vcep-tabs" style="margin-bottom:14px;">
+        <button class="vcep-tab active" id="ftab-resumo" onclick="faturamentoSwitchTab('resumo')">
+          Resumo
+        </button>
+        <button class="vcep-tab" id="ftab-pagamentos" onclick="faturamentoSwitchTab('pagamentos')">
+          Pagamentos dos técnicos <span class="agendar-tab-count" id="ftab-pagamentos-cont"></span>
+        </button>
+      </div>
+      <div id="fat-aba-resumo">
+        <div id="fat-conteudo"></div>
+      </div>
+      <div id="fat-aba-pagamentos" style="display:none;">
+        <div id="fat-pagamentos-conteudo"></div>
+      </div>
     </div>
   </main>
 

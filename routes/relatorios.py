@@ -1185,3 +1185,50 @@ def listar_pedidos_de_peca():
                 l["agendamento_os_id"] = (info or {}).get("ordem_servico_id") or None
 
     return jsonify({"pedidos": linhas})
+
+
+@relatorios_bp.route("/relatorios/pagamentos-tecnicos", methods=["GET"])
+def listar_pagamentos_tecnicos():
+    """Todo pagamento que um técnico recebeu do cliente NA HORA, em campo —
+    pedido de 2026-09-17 ("uma aba lá no financeiro, pra chegar esses
+    pagamentos dos técnicos... tudo que envolva pagamento").
+
+    servico_desfecho.forma_pagamento é preenchido pra QUALQUER tipo de
+    desfecho que receba dinheiro na hora (resolvido, fazer_os, orçamento
+    feito no local — ver _gravar_desfecho em routes/tecnico_api.py, que
+    grava esse campo de forma genérica, não só pros dois primeiros tipos
+    que EXIGEM), então uma consulta só nessa tabela já cobre todo mundo,
+    sem precisar juntar caso por caso de cada tipo de desfecho.
+    """
+    dias = request.args.get("dias", "30")
+    if not str(dias).isdigit() or not (1 <= int(dias) <= 3650):
+        return jsonify({"erro": "dias inválido"}), 400
+    corte = (datetime.now(timezone.utc) - timedelta(days=int(dias))).strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, sql("""
+            SELECT d.servico_id, d.desfecho, d.forma_pagamento, d.registrado_em,
+                   d.registrado_por, s.cliente, s.endereco_completo, s.tipo_aparelho,
+                   s.modelo, s.ordem_servico_id, t.nome AS tecnico, t.cor AS tecnico_cor
+              FROM servico_desfecho d
+              JOIN servicos s ON s.id = d.servico_id
+              LEFT JOIN fichas f ON f.id = s.ficha_id
+              LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+             WHERE d.forma_pagamento IS NOT NULL AND d.registrado_em >= ?
+             ORDER BY d.registrado_em DESC
+        """), (corte,))
+
+        if linhas:
+            ids_servico = [l["servico_id"] for l in linhas]
+            marcadores = ",".join("?" * len(ids_servico))
+            fotos = fetch_all(conn, sql(
+                f"SELECT servico_id, foto FROM servico_foto "
+                f"WHERE servico_id IN ({marcadores}) AND legenda = 'comprovante_pagamento'"),
+                tuple(ids_servico))
+            foto_por_servico = {f["servico_id"]: f["foto"] for f in fotos}
+            for l in linhas:
+                l["comprovante_foto"] = foto_por_servico.get(l["servico_id"])
+
+        total = sum(1 for l in linhas if l.get("comprovante_foto"))
+
+    return jsonify({"pagamentos": linhas, "total": len(linhas), "com_comprovante": total})

@@ -140,6 +140,7 @@ REGRAS = [
     # startswith casa a primeira regra que bater (mesma pegadinha de sempre
     # com prefixo mais específico vindo depois do genérico).
     ("/api/relatorios/faturamento", None,                     "faturamento"),
+    ("/api/relatorios/pagamentos-tecnicos", None,              "faturamento"),
     ("/api/relatorios",            None,                     "relatorios"),
     ("/api/historico",             None,                     "relatorios"),
     ("/api/metricas",              None,                     "relatorios"),
