@@ -634,14 +634,19 @@ header {
 .cotacao-acoes { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 
 /* ─── Ordens de Serviço ───────────────────────────────────────────────── */
-/* Pedido de 2026-09-17: "fica muito pequeno, mas tmb n precisa preencher a
-   tela toda" — 900px fixo ainda parecia pequeno no monitor de verdade dele
-   (print mostrou o modal ocupando uma fatia estreita, muita cortina escura
-   dos dois lados). Largura em vw em vez de px fixo: acompanha o tamanho da
-   tela de quem está usando — bem mais espaço num monitor grande, sem
-   virar tela cheia (ainda sobra cortina visível, ainda é modal). Usada por
-   Nova OS e pelo detalhe de OS. */
-.modal-lg { width: min(1400px, 88vw); max-height: 88vh; overflow-y: auto; }
+/* Pedido de 2026-09-17: 900px, depois min(1400px,88vw), depois 90vw --
+   NENHUM tinha efeito nenhum, e o motivo real só apareceu agora: a regra
+   base ".modal" (mais abaixo neste arquivo, linha ~2286) define width:480px
+   e vem DEPOIS desta regra no arquivo. Mesma especificidade (uma classe
+   cada) => quem vem depois no CSS vence, empate de especificidade decidido
+   por ORDEM DE ORIGEM, não por qual nome "parece" mais específico. Todo
+   valor que eu já tinha colocado aqui em cima estava sendo silenciosamente
+   substituído pelos 480px da regra de baixo -- por isso nada nunca mudava,
+   não importava o valor. Corrigido usando o seletor composto ".modal.modal-lg"
+   (duas classes = especificidade maior que UMA classe só), que vence a
+   regra base não importa a ordem no arquivo -- resolve de vez, não só até
+   a próxima reorganização do CSS. */
+.modal.modal-lg { width: 90vw; max-width: none; max-height: 88vh; overflow-y: auto; }
 .form-separador {
   font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
   color: var(--text-muted); margin: 18px 0 10px; padding-top: 12px;
