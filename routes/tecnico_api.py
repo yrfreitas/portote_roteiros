@@ -617,6 +617,17 @@ def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     tipo_aparelho = (desfecho.get("tipo_aparelho") or servico.get("tipo_aparelho") or "").strip()
     modelo = (desfecho.get("modelo") or servico.get("modelo") or "").strip()
     defeito = (desfecho.get("defeito_declarado") or servico.get("descricao") or "").strip()
+    # Pedido de 2026-09-16 ("preciso que a gente só importe e mande pra
+    # cliente"): antes o técnico só levantava dados do aparelho, sem dizer o
+    # que fez nem quanto custa a visita — a equipe tinha que ligar pra
+    # perguntar ou esperar ele voltar pra base. Agora solução e taxa vêm
+    # junto, prontas pra imprimir (ver templates/os_imprimir.html, que já lê
+    # ordem.solucao/taxa_fmt sem precisar de nada novo lá).
+    solucao = (desfecho.get("solucao_os") or "").strip()
+    try:
+        taxa_avaliacao = float(desfecho.get("taxa_avaliacao") or 0)
+    except (TypeError, ValueError):
+        taxa_avaliacao = 0
     assinatura = _imagem_valida(desfecho.get("assinatura"))
     foto = _imagem_valida(desfecho.get("foto_produto"))
     token_cliente = secrets.token_urlsafe(24)
@@ -629,11 +640,11 @@ def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     os_id = insert_returning_id(conn, sql("""
         INSERT INTO ordens_servico
             (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
-             foto, assinatura_cliente, tecnico_atendeu_id, taxa_avaliacao,
+             solucao, foto, assinatura_cliente, tecnico_atendeu_id, taxa_avaliacao,
              status, modelo_os, criado_em, criado_por, token_cliente)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """), (cliente_id, quem, tipo_aparelho, modelo, defeito, foto, assinatura,
-          tecnico_id, 0, status_inicial, "orcamento", agora, quem, token_cliente))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """), (cliente_id, quem, tipo_aparelho, modelo, defeito, solucao, foto, assinatura,
+          tecnico_id, taxa_avaliacao, status_inicial, "orcamento", agora, quem, token_cliente))
 
     execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
            (os_id, servico["id"]))
@@ -680,11 +691,20 @@ def _atualizar_os_orcamento_existente(conn, ordem_servico_id, desfecho, quem):
 
     for campo_os, campo_desfecho in (("tipo_aparelho", "tipo_aparelho"),
                                       ("modelo", "modelo"),
-                                      ("defeito_declarado", "defeito_declarado")):
+                                      ("defeito_declarado", "defeito_declarado"),
+                                      ("solucao", "solucao_os")):
         valor = (desfecho.get(campo_desfecho) or "").strip()
         if valor:
             campos.append(f"{campo_os} = ?")
             valores.append(valor)
+
+    try:
+        taxa_avaliacao = float(desfecho.get("taxa_avaliacao") or 0)
+    except (TypeError, ValueError):
+        taxa_avaliacao = 0
+    if taxa_avaliacao:
+        campos.append("taxa_avaliacao = ?")
+        valores.append(taxa_avaliacao)
 
     assinatura = _imagem_valida(desfecho.get("assinatura"))
     if assinatura:

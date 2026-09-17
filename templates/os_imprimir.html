@@ -157,7 +157,11 @@
   .tabela-itens td { font-size: 10px; padding: 5px 0; border-bottom: 1px solid var(--linha); }
   .tabela-itens tfoot td { border-bottom: 0; padding-top: 7px; font-weight: 700; font-size: 11px; }
 
-  .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 22px; }
+  /* Espaço em branco ACIMA da linha aumentado de propósito (pedido de
+     2026-09-16: "não tem espaço pra assinar") — 22px (~6mm impresso) não
+     dava lugar nenhum pra uma assinatura de caneta de verdade, por cima da
+     linha. ~15mm (56px) é o mínimo confortável pra uma assinatura à mão. */
+  .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 56px; }
   /* A imagem da assinatura é position:absolute (fica ACIMA da linha, não
      empurra nada) — sem essa margem extra ela sobrepõe o que vier antes
      (forma de pagamento, garantia...), o que lia como "bugada"/cortada.
@@ -230,7 +234,11 @@
     </span>
   </div>
 
-  <div class="tarja-status">{{ ordem.status.replace('_', ' ') }}</div>
+  {# Selo de status interno ("aguardando agendamento", "em atendimento"...)
+     removido do documento (pedido de 2026-09-16) — é vocabulário de fluxo de
+     trabalho da equipe, sem serventia nenhuma pro cliente que vai assinar
+     este papel. O tipo de garantia (tarja-tipo) continua: esse é conteúdo
+     jurídico de verdade, não jargão interno. #}
   {% if tipo_os_rotulo %}<div class="tarja-tipo">{{ tipo_os_rotulo }}</div>{% endif %}
 
   <h2><span class="num-bola">1</span>Dados do cliente</h2>

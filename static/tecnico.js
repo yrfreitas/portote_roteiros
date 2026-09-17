@@ -1273,10 +1273,12 @@
       // pendente do innerHTML na hora — o canvas já sai com o tamanho certo.
       _tIniciarAssinatura();
     } else if (tipo === 'orcamento') {
-      // Pedido de 2026-09-01: o técnico levanta o básico do cliente/aparelho
-      // e colhe assinatura — quem monta o valor do orçamento (itens/preços)
-      // é o escritório depois, por isso não pede solução nem forma de
-      // pagamento aqui (ainda não existem, o orçamento nem foi feito).
+      // Pedido de 2026-09-01, ampliado em 2026-09-16 ("preciso que a gente só
+      // importe e mande pra cliente"): o técnico já levanta solução/diagnóstico
+      // e taxa de avaliação aqui, além do valor combinado no modo "local" —
+      // a equipe só confere e manda o link pro cliente, sem redigitar nada.
+      // Forma de pagamento continua de fora: só faz sentido depois que o
+      // cliente aprova, não na hora da visita.
       const s = (servicosAbertos || []).find(x => x.id === _desfechoServicoId) || {};
       _orcamentoModoLocal = false;
       extra.innerHTML = `
@@ -1307,6 +1309,10 @@
         </div>
         <label class="t-df-rotulo" for="t-df-orc-defeito">Defeito declarado</label>
         <textarea class="t-df-input" id="t-df-orc-defeito" rows="2">${esc(s.descricao || '')}</textarea>
+        <label class="t-df-rotulo" for="t-df-orc-solucao">Solução / diagnóstico</label>
+        <textarea class="t-df-input" id="t-df-orc-solucao" rows="2" placeholder="O que foi identificado, o que precisa ser feito"></textarea>
+        <label class="t-df-rotulo" for="t-df-orc-taxa">Taxa de avaliação (R$)</label>
+        <input class="t-df-input" type="number" step="0.01" min="0" inputmode="decimal" id="t-df-orc-taxa">
         ${blocoFoto(false)}
         <label class="t-df-rotulo">Assinatura do cliente <span class="t-df-obrigatorio">*</span></label>
         <p class="t-df-ajuda">Passe o celular pro cliente assinar aqui com o dedo.</p>
@@ -1493,6 +1499,8 @@
       desfecho.tipo_aparelho = document.getElementById('t-df-orc-aparelho')?.value.trim() || '';
       desfecho.modelo = document.getElementById('t-df-orc-modelo')?.value.trim() || '';
       desfecho.defeito_declarado = document.getElementById('t-df-orc-defeito')?.value.trim() || '';
+      desfecho.solucao_os = document.getElementById('t-df-orc-solucao')?.value.trim() || '';
+      desfecho.taxa_avaliacao = Number(document.getElementById('t-df-orc-taxa')?.value) || 0;
       // Foto vai como foto_produto (na OS, igual Fazer OS) -- é o que ajuda o
       // escritório a montar o orçamento certo, não um registro solto do
       // atendimento.
@@ -1797,7 +1805,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v270';
+  const VERSAO_TELA = 'v271';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
