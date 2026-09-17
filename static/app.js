@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v288';
+const VERSAO_PAINEL = 'v289';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -12400,6 +12400,7 @@ function _atRenderizarDesfechos(r) {
         </div>
         <div class="at-oque">
           <span class="at-etiqueta ${t.classe}">${esc(t.curto || a.desfecho)}</span>
+          ${a.forma_pagamento ? `<span class="at-etiqueta at-etiqueta-pago">✓ Pago · ${esc(a.forma_pagamento)}</span>` : ''}
           ${detalhe ? `<div class="at-detalhe">${esc(detalhe)}</div>` : ''}
           ${a.observacao ? `<div class="at-obs">${esc(a.observacao)}</div>` : ''}
         </div>
@@ -12412,13 +12413,9 @@ function _atRenderizarDesfechos(r) {
           ${a.fotos ? `<button class="at-ver-foto" onclick="verFotosDoAtendimento(${a.servico_id}, '${a.chave}')">
               ${a.fotos} foto${a.fotos !== 1 ? 's' : ''}</button>` : ''}
           ${a.peca_foto ? `<img class="at-thumb" src="${a.peca_foto}" alt="Foto da peça" onclick="ampliarFoto(this.src)">` : ''}
-          ${a.forma_pagamento ? `
-          <div class="at-pagamento">
-            <span class="conc-tag ok">✓ Já pagou · ${esc(a.forma_pagamento)}</span>
-            ${a.comprovante_pagamento_foto
-              ? `<img class="at-thumb" src="${a.comprovante_pagamento_foto}" alt="Comprovante de pagamento" onclick="ampliarFoto(this.src)">`
-              : ''}
-          </div>` : ''}
+          ${a.comprovante_pagamento_foto
+            ? `<img class="at-thumb" src="${a.comprovante_pagamento_foto}" alt="Comprovante de pagamento" onclick="ampliarFoto(this.src)">`
+            : ''}
         </div>
         <div class="at-baixa" id="at-baixa-${a.chave}">
           ${a.desfecho === 'precisa_peca' ? botaoBaixa(a) : ''}

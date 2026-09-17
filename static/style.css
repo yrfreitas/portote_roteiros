@@ -4466,6 +4466,13 @@ select:focus-visible,
 .at-linha.at-orcamento .at-etiqueta { background: var(--gold); }
 .at-linha.at-ok       .at-etiqueta { background: var(--success); }
 
+/* Etiqueta de "já pagou" (pedido de 2026-09-17): tem que ter a MESMA força
+   visual da etiqueta de desfecho, lado a lado com ela em .at-oque — não
+   uma tag apagada escondida na coluna de foto, que foi a 1ª tentativa e o
+   usuário rejeitou por não aparecer "junto com as outras informações". */
+.at-etiqueta.at-etiqueta-pago { background: var(--success); }
+.at-etiqueta + .at-etiqueta { margin-left: 6px; }
+
 .at-ver-foto {
   padding: 6px 10px; border-radius: 8px; cursor: pointer; white-space: nowrap;
   background: var(--accent-dim); border: 1px solid rgba(79,141,251,.3);
@@ -4476,11 +4483,6 @@ select:focus-visible,
   width: 54px; height: 54px; object-fit: cover; border-radius: 8px;
   cursor: zoom-in; border: 1px solid var(--border-bright);
 }
-/* "Já pagou" + comprovante (pedido de 2026-09-17), na coluna de foto do
-   atendimento — mesma info já mostrada no detalhe da OS e em
-   Faturamento > Pagamentos dos técnicos. */
-.at-pagamento { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 6px; }
-
 /* Fotos extras (mais de uma) em OS/estoque — mesmo padrão de thumbnail do
    .at-thumb, com botão de remover no canto. */
 .foto-extra-lista { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
