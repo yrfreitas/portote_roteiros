@@ -1643,45 +1643,6 @@ def obter(os_id):
                     "itens": itens, "filhas": filhas, "termos": termos})
 
 
-# Painel de prazos (pedido de 2026-09-08): não é sobre GARANTIA (que conta
-# PRA FRENTE a partir da conclusão) — é sobre "estamos perto de estourar o
-# que prometemos pro cliente". Calcula dias_restantes em Python em vez de
-# SQL de data (dialeto diferente entre SQLite/Postgres pra diff de datas,
-# mesmo motivo documentado noutros pontos do arquivo) — a tabela nunca é
-# grande o bastante (só OS em aberto COM prazo marcado) pra isso pesar.
-_PRAZO_JANELA_DIAS = 3
-
-
-@ordens_servico_bp.route("/ordens-servico/prazos-proximos", methods=["GET"])
-def prazos_proximos():
-    from datetime import date
-
-    with db_conn() as conn:
-        linhas = fetch_all(conn, """
-            SELECT os.id, os.modelo_os, os.status, os.prazo_previsto,
-                   os.tipo_aparelho, os.marca, os.modelo, c.nome AS cliente_nome
-              FROM ordens_servico os
-              JOIN clientes c ON c.id = os.cliente_id
-             WHERE os.prazo_previsto IS NOT NULL AND os.prazo_previsto <> ''
-               AND os.status NOT IN ('finalizada', 'cancelada')
-        """)
-
-    hoje = date.today()
-    resultado = []
-    for l in linhas:
-        try:
-            ano, mes, dia = (int(p) for p in l["prazo_previsto"].split("-"))
-            dias_restantes = (date(ano, mes, dia) - hoje).days
-        except (ValueError, AttributeError):
-            continue
-        if dias_restantes <= _PRAZO_JANELA_DIAS:
-            l["dias_restantes"] = dias_restantes
-            resultado.append(l)
-
-    resultado.sort(key=lambda l: l["dias_restantes"])
-    return jsonify({"resultados": resultado})
-
-
 @ordens_servico_bp.route("/ordens-servico", methods=["POST"])
 def criar():
     """Body: {cliente_id} OU {cliente_novo: {...}} — abrir OS com cliente que
@@ -1741,11 +1702,6 @@ def criar():
     _usa_garantia = tipo_os == "saida_oficina" or tipo_os in TIPOS_GARANTIA_FIXA or modelo_os == "orcamento"
     garantia_inicio = _validar_data_iso(d.get("garantia_inicio")) if _usa_garantia else None
     garantia_meses = _validar_garantia_meses(d.get("garantia_meses")) if _usa_garantia else None
-    # Prazo PROMETIDO ao cliente (pedido de 2026-09-08) — diferente de
-    # garantia_inicio (dia da conclusão, conta PRA FRENTE a garantia). Este é
-    # combinado ANTES, vale pros 3 modelos (Chamado Técnico, Orçamento e OS
-    # padrão têm todos um "até quando" possível de prometer).
-    prazo_previsto = _validar_data_iso(d.get("prazo_previsto"))
     # Foto/técnico deixaram de ser exclusivos do Chamado Técnico — pedido de
     # 2026-08-27, mesma OS pode precisar registrar isso em qualquer modelo.
     foto = _foto_valida(d.get("foto"))
@@ -1798,15 +1754,15 @@ def criar():
                  status, observacao, criado_em, criado_por, tipo_os,
                  modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
                  token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio,
-                 garantia_meses, setor_id, prazo_previsto)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 garantia_meses, setor_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
               "aguardando_agendamento", campos["observacao"], agora, _quem(),
               tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
               token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio,
-              garantia_meses, setor_id, prazo_previsto))
+              garantia_meses, setor_id))
 
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
@@ -1943,10 +1899,6 @@ def editar(os_id):
             campos.append("garantia_meses = ?")
             valores.append(_validar_garantia_meses(d.get("garantia_meses"))
                            if _usa_garantia_efetivo else None)
-        if "prazo_previsto" in d:
-            campos.append("prazo_previsto = ?")
-            valores.append(_validar_data_iso(d.get("prazo_previsto")))
-
         if not campos:
             return jsonify({"mensagem": "Nada para mudar"})
 
