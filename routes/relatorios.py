@@ -885,11 +885,12 @@ def faturamento():
 
     with db_conn() as conn:
         vendas = fetch_all(conn, sql("""
-            SELECT id, cliente_nome, valor_total, criado_em
+            SELECT id, cliente_nome, valor_total, criado_em, forma_pagamento
               FROM vendas WHERE criado_em >= ?
         """), (corte_anterior,))
         os_aprovadas = fetch_all(conn, sql("""
-            SELECT os.id, os.balcao_em, os.orcamento_aprovado_em, c.nome AS cliente,
+            SELECT os.id, os.balcao_em, os.orcamento_aprovado_em, os.forma_pagamento,
+                   c.nome AS cliente,
                    EXISTS (SELECT 1 FROM pecas_chegada pc
                             WHERE pc.ordem_servico_id = os.id) AS eh_panasonic,
                    COALESCE((SELECT SUM(valor) FROM ordem_servico_itens
@@ -902,6 +903,26 @@ def faturamento():
                AND (os.status_loja IS NULL OR os.status_loja NOT IN ('reprovado', 'abandonado'))
         """), (corte_anterior,))
 
+        # "O que foi" + ranking de item mais lucrativo (pedido de 2026-09-17:
+        # "detalhada... o que foi... o que mais está lucrando") — busca os
+        # itens de cada venda/OS aprovada de uma vez (2 queries, não N+1).
+        itens_por_venda, itens_por_os = {}, {}
+        if vendas:
+            marcadores = ",".join("?" * len(vendas))
+            linhas_vi = fetch_all(conn, sql(
+                f"SELECT venda_id, descricao, valor_total FROM venda_itens WHERE venda_id IN ({marcadores})"),
+                tuple(v["id"] for v in vendas))
+            for l in linhas_vi:
+                itens_por_venda.setdefault(l["venda_id"], []).append(l)
+        if os_aprovadas:
+            marcadores = ",".join("?" * len(os_aprovadas))
+            linhas_oi = fetch_all(conn, sql(
+                f"SELECT ordem_servico_id, nome, valor FROM ordem_servico_itens "
+                f"WHERE ordem_servico_id IN ({marcadores})"),
+                tuple(o["id"] for o in os_aprovadas))
+            for l in linhas_oi:
+                itens_por_os.setdefault(l["ordem_servico_id"], []).append(l)
+
     def origem_da_os(o):
         if _eh_panasonic(o["eh_panasonic"]):
             return "panasonic"
@@ -911,20 +932,59 @@ def faturamento():
 
     # Transações unificadas (venda + orçamento de OS), já com a data que
     # importa pra cada uma (criado_em vs orcamento_aprovado_em) e a origem.
+    # "descricao" ("o que foi") e "forma_pagamento" pedidos em 2026-09-17
+    # pra tabela do período parar de mostrar só cliente+valor.
     transacoes = []
     for v in vendas:
+        nomes = [i["descricao"] for i in itens_por_venda.get(v["id"], []) if i.get("descricao")]
         transacoes.append({
             "data": v["criado_em"], "origem": "balcao", "tipo": "venda",
             "cliente": v["cliente_nome"], "valor": float(v["valor_total"] or 0),
+            "forma_pagamento": v.get("forma_pagamento") or None,
+            "descricao": ", ".join(nomes) if nomes else None,
         })
     for o in os_aprovadas:
+        nomes = [i["nome"] for i in itens_por_os.get(o["id"], []) if i.get("nome")]
         transacoes.append({
             "data": o["orcamento_aprovado_em"], "origem": origem_da_os(o), "tipo": "os",
             "cliente": o["cliente"], "valor": float(o["valor"] or 0),
+            "forma_pagamento": o.get("forma_pagamento") or None,
+            "descricao": ", ".join(nomes) if nomes else None,
+            "ordem_servico_id": o["id"],
         })
 
     atuais = [t for t in transacoes if (t["data"] or "") >= corte_atual]
     anteriores = [t for t in transacoes if (t["data"] or "") < corte_atual]
+
+    # Ranking "o que mais está lucrando" (pedido de 2026-09-17) — soma por
+    # NOME de item (peça/serviço vendido ou orçado), só dentro do período
+    # atual (mesmo recorte da tabela de transações, não os 2×dias usados
+    # pra comparação). Nome vira chave "normalizada" (minúsculo, sem
+    # espaço nas pontas) pra "Placa eletrônica" e "placa eletrônica " não
+    # virarem duas linhas diferentes no ranking.
+    ids_venda_atual = {v["id"] for v in vendas if (v["criado_em"] or "") >= corte_atual}
+    ids_os_atual = {o["id"] for o in os_aprovadas if (o["orcamento_aprovado_em"] or "") >= corte_atual}
+    ranking_bruto = {}
+    for venda_id in ids_venda_atual:
+        for item in itens_por_venda.get(venda_id, []):
+            chave = (item.get("descricao") or "").strip().lower()
+            if not chave:
+                continue
+            r = ranking_bruto.setdefault(chave, {"nome": item["descricao"].strip(), "valor": 0.0, "vezes": 0})
+            r["valor"] += float(item.get("valor_total") or 0)
+            r["vezes"] += 1
+    for os_id in ids_os_atual:
+        for item in itens_por_os.get(os_id, []):
+            chave = (item.get("nome") or "").strip().lower()
+            if not chave:
+                continue
+            r = ranking_bruto.setdefault(chave, {"nome": item["nome"].strip(), "valor": 0.0, "vezes": 0})
+            r["valor"] += float(item.get("valor") or 0)
+            r["vezes"] += 1
+    ranking_itens = sorted(
+        ({**r, "valor": round(r["valor"], 2)} for r in ranking_bruto.values()),
+        key=lambda r: r["valor"], reverse=True,
+    )[:15]
 
     total_atual = sum(t["valor"] for t in atuais)
     total_anterior = sum(t["valor"] for t in anteriores)
@@ -960,6 +1020,7 @@ def faturamento():
         "por_origem": {k: round(v, 2) for k, v in origem.items()},
         "por_dia": [{"data": k, "valor": round(v, 2)} for k, v in por_dia.items()],
         "itens": [{**t, "valor": round(t["valor"], 2)} for t in atuais[:100]],
+        "ranking_itens": ranking_itens,
     })
 
 

@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v277';
+const VERSAO_PAINEL = 'v278';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3304,18 +3304,31 @@ async function carregarFaturamento() {
     <div class="rel-neg-titulo" style="margin-top:14px;">Transações do período (${itens.length}${itens.length === 100 ? '+' : ''})</div>
     <div class="rel-neg-tabela-wrap">
       <table class="fat-tabela">
-        <thead><tr><th>Data</th><th>Origem</th><th>Cliente</th><th style="text-align:right;">Valor</th></tr></thead>
+        <thead><tr><th>Data</th><th>Origem</th><th>Cliente</th><th>O que foi</th><th>Pagamento</th><th style="text-align:right;">Valor</th></tr></thead>
         <tbody>
           ${itens.map(t => `
-            <tr>
+            <tr${t.ordem_servico_id ? ` style="cursor:pointer;" onclick="switchMainTab('os'); abrirOSDetalhe(${t.ordem_servico_id});"` : ''}>
               <td>${esc(parseDataBanco(t.data)?.toLocaleDateString('pt-BR') || '—')}</td>
               <td>${esc(ORIGEM_ROTULO_FATURAMENTO[t.origem] || t.origem)}${t.tipo === 'venda' ? ' · venda' : ' · OS'}</td>
               <td>${esc(t.cliente) || '—'}</td>
+              <td>${esc(t.descricao) || '—'}</td>
+              <td>${t.forma_pagamento ? `<span class="conc-tag ok">${esc(t.forma_pagamento)}</span>` : '—'}</td>
               <td style="text-align:right;">${brl(t.valor)}</td>
             </tr>`).join('')}
         </tbody>
       </table>
     </div>` : '<p class="ajuda-texto" style="margin-top:10px;">Nenhuma transação neste período.</p>';
+
+  const ranking = (d.ranking_itens || []).length ? `
+    <div class="rel-neg-titulo" style="margin-top:14px;">O que mais está lucrando</div>
+    <div class="rel-neg-bairros">
+      ${d.ranking_itens.map((r, i) => `
+        <div class="rel-neg-bairro-linha">
+          <span>${i + 1}º · ${esc(r.nome)} <span class="ajuda-texto" style="margin-left:4px;">(${r.vezes}×)</span></span>
+          <div class="vg-setor-barra"><div class="vg-setor-preenchido" style="width:${Math.round((r.valor / d.ranking_itens[0].valor) * 100)}%"></div></div>
+          <span class="cliente-detalhe-valor">${brl(r.valor)}</span>
+        </div>`).join('')}
+    </div>` : '';
 
   alvo.innerHTML = `
     <div class="historico-stats" style="margin-bottom:6px;">
@@ -3345,6 +3358,8 @@ async function carregarFaturamento() {
           <span class="cliente-detalhe-valor">${brl(valor)}</span>
         </div>`).join('')}
     </div>
+
+    ${ranking}
 
     ${tabela}
   `;
