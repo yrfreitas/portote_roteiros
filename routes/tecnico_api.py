@@ -628,6 +628,11 @@ def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
         taxa_avaliacao = float(desfecho.get("taxa_avaliacao") or 0)
     except (TypeError, ValueError):
         taxa_avaliacao = 0
+    # Pagamento no local é OPCIONAL pra Orçamento (pedido de 2026-09-17) — só
+    # vem preenchido quando o cliente já pagou na hora (o comprovante em si
+    # já foi salvo por _gravar_desfecho, que roda ANTES desta função, pra
+    # QUALQUER tipo que mande foto_pagamento, não só resolvido/fazer_os).
+    forma_pagamento = (desfecho.get("forma_pagamento") or "").strip()
     assinatura = _imagem_valida(desfecho.get("assinatura"))
     foto = _imagem_valida(desfecho.get("foto_produto"))
     token_cliente = secrets.token_urlsafe(24)
@@ -641,10 +646,11 @@ def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
         INSERT INTO ordens_servico
             (cliente_id, atendente, tipo_aparelho, modelo, defeito_declarado,
              solucao, foto, assinatura_cliente, tecnico_atendeu_id, taxa_avaliacao,
-             status, modelo_os, criado_em, criado_por, token_cliente)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             forma_pagamento, status, modelo_os, criado_em, criado_por, token_cliente)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """), (cliente_id, quem, tipo_aparelho, modelo, defeito, solucao, foto, assinatura,
-          tecnico_id, taxa_avaliacao, status_inicial, "orcamento", agora, quem, token_cliente))
+          tecnico_id, taxa_avaliacao, forma_pagamento or None, status_inicial, "orcamento",
+          agora, quem, token_cliente))
 
     execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
            (os_id, servico["id"]))
@@ -692,7 +698,8 @@ def _atualizar_os_orcamento_existente(conn, ordem_servico_id, desfecho, quem):
     for campo_os, campo_desfecho in (("tipo_aparelho", "tipo_aparelho"),
                                       ("modelo", "modelo"),
                                       ("defeito_declarado", "defeito_declarado"),
-                                      ("solucao", "solucao_os")):
+                                      ("solucao", "solucao_os"),
+                                      ("forma_pagamento", "forma_pagamento")):
         valor = (desfecho.get(campo_desfecho) or "").strip()
         if valor:
             campos.append(f"{campo_os} = ?")

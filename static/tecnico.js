@@ -1151,6 +1151,17 @@
     window._tValidarConfirmar();
   };
 
+  // Pagamento no Orçamento é OPCIONAL (pedido de 2026-09-17) — diferente de
+  // blocoPagamento() acima (Resolvido/Fazer OS, onde é sempre obrigatório):
+  // aqui só faz sentido se o cliente decidiu pagar na hora, então o bloco de
+  // foto só aparece depois que uma forma de pagamento é escolhida.
+  window._tOrcPagamentoMudou = function (select) {
+    const bloco = document.getElementById('t-df-orc-pagamento-foto');
+    if (bloco) bloco.style.display = select.value ? '' : 'none';
+    if (!select.value) window._tRemoverFotoPagamento();
+    window._tValidarConfirmar();
+  };
+
   window._tAbrirDesfecho = function (servicoId) {
     _desfechoServicoId = servicoId;
     _desfechoTipo = null;
@@ -1305,6 +1316,25 @@
         <p class="t-df-ajuda" id="t-df-orc-sugestao"></p>
         <label class="t-df-rotulo" for="t-df-orc-taxa">Taxa de avaliação (R$)</label>
         <input class="t-df-input" type="number" step="0.01" min="0" inputmode="decimal" id="t-df-orc-taxa">
+        <label class="t-df-rotulo">Cliente já pagou no local?</label>
+        <p class="t-df-ajuda">Só preencha se recebeu pagamento agora — se o cliente vai pagar depois de aprovar, deixe em branco.</p>
+        <select class="t-df-input" id="t-df-forma-pagamento" onchange="window._tOrcPagamentoMudou(this)">
+          <option value="">Ainda não recebeu</option>
+          <option value="Pix">Pix</option>
+          <option value="Dinheiro">Dinheiro</option>
+          <option value="Cartão de débito">Cartão de débito</option>
+          <option value="Cartão de crédito">Cartão de crédito</option>
+        </select>
+        <div id="t-df-orc-pagamento-foto" style="display:none;">
+          <label class="t-df-rotulo">Comprovante de pagamento</label>
+          <p class="t-df-ajuda">Foto do Pix, do comprovante da maquininha, ou do dinheiro contado com o cliente.</p>
+          <label class="t-df-foto-botao">
+            Tirar foto
+            <input type="file" accept="image/*" capture="environment"
+                   onchange="window._tEscolherFotoPagamento(this)" hidden>
+          </label>
+          <div id="t-df-pagamento-previa" class="t-df-previa"></div>
+        </div>
         ${blocoFoto(false)}
         <label class="t-df-rotulo">Assinatura do cliente <span class="t-df-obrigatorio">*</span></label>
         <p class="t-df-ajuda">Passe o celular pro cliente assinar aqui com o dedo.</p>
@@ -1410,7 +1440,10 @@
       // orçamento" pro escritório terminar — não trava a conclusão do
       // atendimento por isso.
       const nome = document.getElementById('t-df-orc-nome')?.value.trim();
-      ok = !!(nome && _assinaturaTemTraco);
+      const pagamentoOrc = document.getElementById('t-df-forma-pagamento')?.value;
+      // Comprovante só é obrigatório se uma forma de pagamento foi escolhida
+      // (recebeu na hora) — sem isso, pagamento continua opcional.
+      ok = !!(nome && _assinaturaTemTraco && (!pagamentoOrc || _desfechoFotoPagamento));
     } else if (_desfechoTipo === 'nao_atendido') {
       // Foto obrigatória — comprovante de que o técnico foi até o cliente.
       // Pedido de 2026-09-01, depois de reclamação sem comprovação.
@@ -1488,6 +1521,11 @@
       desfecho.defeito_declarado = document.getElementById('t-df-orc-defeito')?.value.trim() || '';
       desfecho.solucao_os = document.getElementById('t-df-orc-solucao')?.value.trim() || '';
       desfecho.taxa_avaliacao = Number(document.getElementById('t-df-orc-taxa')?.value) || 0;
+      // Pagamento no local é opcional aqui (pedido de 2026-09-17) -- só manda
+      // se o técnico escolheu uma forma, senão fica pra depois da aprovação.
+      const pagamentoOrc = document.getElementById('t-df-forma-pagamento')?.value || '';
+      if (pagamentoOrc) desfecho.forma_pagamento = pagamentoOrc;
+      if (_desfechoFotoPagamento) desfecho.foto_pagamento = _desfechoFotoPagamento;
       // Foto vai como foto_produto (na OS, igual Fazer OS) -- é o que ajuda o
       // escritório a montar o orçamento certo, não um registro solto do
       // atendimento.
@@ -1792,7 +1830,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v272';
+  const VERSAO_TELA = 'v273';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
