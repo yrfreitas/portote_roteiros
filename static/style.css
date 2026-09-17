@@ -635,12 +635,13 @@ header {
 
 /* ─── Ordens de Serviço ───────────────────────────────────────────────── */
 /* Pedido de 2026-09-17: "fica muito pequeno, mas tmb n precisa preencher a
-   tela toda" — 620px pra um formulário com equipamento/defeito/itens/
-   garantia/foto/assinatura era mesmo apertado. 900px é bem mais folgado
-   sem virar tela cheia (max-width:92vw já garante que não estoura em
-   monitor pequeno). Usada por Nova OS e pelo detalhe de OS (as duas telas
-   onde "colocamos as informações"). */
-.modal-lg { width: 900px; max-width: 92vw; max-height: 88vh; overflow-y: auto; }
+   tela toda" — 900px fixo ainda parecia pequeno no monitor de verdade dele
+   (print mostrou o modal ocupando uma fatia estreita, muita cortina escura
+   dos dois lados). Largura em vw em vez de px fixo: acompanha o tamanho da
+   tela de quem está usando — bem mais espaço num monitor grande, sem
+   virar tela cheia (ainda sobra cortina visível, ainda é modal). Usada por
+   Nova OS e pelo detalhe de OS. */
+.modal-lg { width: min(1400px, 88vw); max-height: 88vh; overflow-y: auto; }
 .form-separador {
   font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
   color: var(--text-muted); margin: 18px 0 10px; padding-top: 12px;
