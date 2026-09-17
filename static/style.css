@@ -634,7 +634,13 @@ header {
 .cotacao-acoes { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 
 /* ─── Ordens de Serviço ───────────────────────────────────────────────── */
-.modal-lg { width: 620px; max-height: 88vh; overflow-y: auto; }
+/* Pedido de 2026-09-17: "fica muito pequeno, mas tmb n precisa preencher a
+   tela toda" — 620px pra um formulário com equipamento/defeito/itens/
+   garantia/foto/assinatura era mesmo apertado. 900px é bem mais folgado
+   sem virar tela cheia (max-width:92vw já garante que não estoura em
+   monitor pequeno). Usada por Nova OS e pelo detalhe de OS (as duas telas
+   onde "colocamos as informações"). */
+.modal-lg { width: 900px; max-width: 92vw; max-height: 88vh; overflow-y: auto; }
 .form-separador {
   font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
   color: var(--text-muted); margin: 18px 0 10px; padding-top: 12px;
