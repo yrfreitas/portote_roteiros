@@ -333,7 +333,8 @@ def listar_desfechos():
         # daqui").
         linhas = fetch_all(conn, sql("""
             SELECT d.servico_id, d.desfecho, d.motivo, d.peca, d.observacao,
-                   d.pedido_em, d.pedido_por, d.forma_pagamento,
+                   d.pedido_em, d.pedido_por,
+                   COALESCE(d.forma_pagamento, os2.forma_pagamento) AS forma_pagamento,
                    d.registrado_em, d.registrado_por,
                    s.cliente, s.endereco_completo, s.tipo_aparelho, s.modelo,
                    s.numero_os, s.ficha_id, s.ordem_servico_id,
@@ -346,6 +347,7 @@ def listar_desfechos():
               LEFT JOIN fichas f ON f.id = s.ficha_id
               LEFT JOIN tecnicos t ON t.id = f.tecnico_id
               LEFT JOIN cotacoes cot ON cot.servico_id = d.servico_id
+              LEFT JOIN ordens_servico os2 ON os2.id = s.ordem_servico_id
              WHERE d.registrado_em >= ?
                AND (d.desfecho <> 'cotacao_peca' OR cot.id IS NOT NULL)
              ORDER BY d.registrado_em DESC

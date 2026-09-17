@@ -1617,6 +1617,15 @@ def obter(os_id):
             for v in visitas:
                 v["comprovante_pagamento_foto"] = foto_por_servico.get(v["id"])
 
+        # Pagamento pode ter sido marcado no desfecho do técnico OU direto na
+        # própria OS (editar/Nova OS, campo forma_pagamento da OS) — o
+        # segundo caminho nunca passa por servico_desfecho, então sem este
+        # fallback uma OS paga no balcão/painel nunca mostra o "já pagou"
+        # aqui nem em Atendimentos (mesmo ajuste em relatorios.py).
+        for v in visitas:
+            if not v.get("desfecho_forma_pagamento"):
+                v["desfecho_forma_pagamento"] = os_row.get("forma_pagamento")
+
         pecas = _pecas_da_os(conn, os_id)
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — qualquer OS pode ter, ver criar().
