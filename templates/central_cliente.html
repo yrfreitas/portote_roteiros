@@ -26,6 +26,21 @@
     .marca .ponto { width: 6px; height: 6px; border-radius: 50%; background: #1a6fd4; flex: none; }
     h1 { font-size: 20px; margin: 6px 0 0; font-weight: 700; overflow-wrap: anywhere; }
     main { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+
+    /* Duas colunas em tela larga (pedido de 2026-09-17: "esticar a tela") —
+       no celular (a maioria dos acessos, vindo de link do WhatsApp) continua
+       a coluna única de sempre; só a partir de 860px vira um dashboard de
+       verdade em vez de uma tira estreita numa tela enorme. */
+    @media (min-width: 860px) {
+      .pagina { max-width: 960px; }
+      main {
+        display: grid; grid-template-columns: 1.3fr 1fr;
+        grid-template-areas: "principal lateral" "principal lateral";
+        align-items: start;
+      }
+      main > .col-principal { grid-area: principal; display: flex; flex-direction: column; gap: 14px; }
+      main > .col-lateral { grid-area: lateral; display: flex; flex-direction: column; gap: 14px; }
+    }
     .card {
       background: #10151a; border: 1px solid #1e252d; border-radius: 14px; padding: 16px 17px;
       overflow-wrap: anywhere;
@@ -83,15 +98,19 @@
     </header>
 
     <main>
-      <div class="card" id="card-cancelada"></div>
-      <div class="card" id="card-tecnico"></div>
-      <div class="card">
-        <h2>Status do atendimento</h2>
-        <div class="timeline" id="timeline">Carregando...</div>
+      <div class="col-principal">
+        <div class="card" id="card-cancelada"></div>
+        <div class="card" id="card-tecnico"></div>
+        <div class="card">
+          <h2>Status do atendimento</h2>
+          <div class="timeline" id="timeline">Carregando...</div>
+        </div>
       </div>
-      <div class="card" id="card-orcamento"></div>
-      <div class="card" id="card-garantia"></div>
-      <button class="btn-push" id="btn-push">Avisar quando o técnico sair</button>
+      <div class="col-lateral">
+        <div class="card" id="card-orcamento"></div>
+        <div class="card" id="card-garantia"></div>
+        <button class="btn-push" id="btn-push">Avisar quando o técnico sair</button>
+      </div>
     </main>
 
     <footer>Porto Tec Assistência Técnica · atendimento acompanhado por este link</footer>

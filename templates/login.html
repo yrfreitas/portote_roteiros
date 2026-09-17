@@ -14,12 +14,44 @@
   <link rel="icon" type="image/x-icon" href="/static/assets/favicon.ico">
   <link rel="stylesheet" href="/static/style.css">
   <style>
+    /* Pedido de 2026-09-17: "esticar a tela" — o cartão sozinho numa tela
+       preta enorme lia como metade da tela em branco. Split-screen (comum
+       em telas de login de verdade) usa a largura toda sem esticar o
+       FORMULÁRIO em si (que continua pequeno de propósito — são 2 campos).
+       Só entra a partir de 860px; no celular (o acesso real da maioria)
+       continua exatamente a tela única de sempre. */
     body {
       min-height: 100dvh;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
+      padding: 0;
+    }
+    .login-marca {
+      display: none;
+      flex: 1 1 50%;
+      position: relative;
+      align-items: flex-end;
+      padding: 48px;
+      background:
+        linear-gradient(160deg, rgba(26,111,212,.22), transparent 60%),
+        var(--bg-app, #0c0f12);
+      overflow: hidden;
+    }
+    .login-marca::before {
+      content: '';
+      position: absolute; inset: -20%;
+      background: radial-gradient(480px 480px at 20% 15%, rgba(26,111,212,.25), transparent 70%);
+    }
+    .login-marca-conteudo { position: relative; max-width: 420px; }
+    .login-marca-nome {
+      font-family: var(--font-display); font-size: 34px; font-weight: 800;
+      letter-spacing: -.5px; color: var(--text-primary); margin-bottom: 10px;
+    }
+    .login-marca-texto { font-size: 14px; line-height: 1.6; color: var(--text-muted); }
+    .login-lado-form {
+      flex: 1 1 50%; display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    @media (min-width: 860px) {
+      .login-marca { display: flex; }
     }
     .login-card {
       width: 100%;
@@ -66,25 +98,36 @@
   </style>
 </head>
 <body>
-  <div class="login-card">
-    <div class="login-titulo">Portotec — Roteiros</div>
-    <div class="login-sub">Entre com o seu usuário e senha.</div>
+  <div class="login-marca">
+    <div class="login-marca-conteudo">
+      <div class="login-marca-nome">Portotec</div>
+      <p class="login-marca-texto">
+        Roteirização de técnicos, ordens de serviço, estoque e faturamento da
+        Porto Tec Assistência Técnica — tudo num painel só.
+      </p>
+    </div>
+  </div>
+  <div class="login-lado-form">
+    <div class="login-card">
+      <div class="login-titulo">Portotec — Roteiros</div>
+      <div class="login-sub">Entre com o seu usuário e senha.</div>
 
-    {% if erro %}
-    <div class="login-erro">{{ erro }}</div>
-    {% endif %}
+      {% if erro %}
+      <div class="login-erro">{{ erro }}</div>
+      {% endif %}
 
-    <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
-      <label class="login-label" for="usuario">Usuário</label>
-      <input class="form-input" type="text" id="usuario" name="usuario" autofocus
-             autocomplete="username" autocapitalize="none" spellcheck="false"
-             style="margin-bottom:14px;">
+      <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
+        <label class="login-label" for="usuario">Usuário</label>
+        <input class="form-input" type="text" id="usuario" name="usuario" autofocus
+               autocomplete="username" autocapitalize="none" spellcheck="false"
+               style="margin-bottom:14px;">
 
-      <label class="login-label" for="senha">Senha</label>
-      <input class="form-input" type="password" id="senha" name="senha" required
-             autocomplete="current-password" style="margin-bottom:18px;">
-      <button class="btn btn-primary btn-full" type="submit">Entrar</button>
-    </form>
+        <label class="login-label" for="senha">Senha</label>
+        <input class="form-input" type="password" id="senha" name="senha" required
+               autocomplete="current-password" style="margin-bottom:18px;">
+        <button class="btn btn-primary btn-full" type="submit">Entrar</button>
+      </form>
+    </div>
   </div>
 </body>
 </html>
