@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v276';
+const VERSAO_PAINEL = 'v277';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7103,6 +7103,10 @@ const DF_MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
 
 let _dfServico = null, _dfFicha = null, _dfTipo = null, _dfFoto = null;
 let _dfOrcamentoModoLocal = false;
+// Itens/Valores do orçamento (pedido de 2026-09-17: "igual o orçamento das
+// OS") — mesmo padrão de _novosItensOrcamento (Nova OS) e _orcItensTecnico
+// (tela do técnico), versão pra este formulário de desfecho no painel.
+let _dfItensOrcamento = [];
 
 // Reduz mantendo a imagem INTEIRA — sem recorte.
 //
@@ -7260,6 +7264,7 @@ function limparAssinaturaDesfecho() {
 
 function abrirDesfecho(servicoId, fichaId) {
   _dfServico = servicoId; _dfFicha = fichaId; _dfTipo = null; _dfFoto = null;
+  _dfItensOrcamento = [];
   const m = document.getElementById('modal-desfecho');
   m.querySelector('.df-corpo').innerHTML = `
     <div class="df-opcoes">
@@ -7364,29 +7369,17 @@ function escolherDesfecho(tipo) {
     // nada — o canvas já está com o tamanho certo neste mesmo tick.
     iniciarAssinaturaDesfecho();
   } else if (tipo === 'orcamento') {
-    // Pedido de 2026-09-01: mesma ideia de "Fazer Ordem de Serviço", só que
-    // mais enxuto (sem solução/forma de pagamento — ainda não existem, o
-    // orçamento nem foi montado) — quem monta o valor é o escritório depois,
-    // na mesma tela de Itens/Valores de qualquer orçamento.
+    // Pedido de 2026-09-01, REFEITO em 2026-09-17 ("igual o orçamento das
+    // OS", mesma correção já aplicada na tela do técnico — este formulário
+    // aqui no painel é uma cópia separada que tinha ficado pra trás):
+    // solução, taxa, itens/valores (lista de verdade) e forma de pagamento
+    // ficam sempre visíveis, sem alternador nenhum. Continua opcional --
+    // sem valor nenhum lançado, a OS cai em "aguardando orçamento" pro
+    // escritório terminar, igual sempre foi.
     const s = servicosAtuais.find(x => x.id === _dfServico) || {};
-    _dfOrcamentoModoLocal = false;
+    _dfOrcamentoModoLocal = true;
     extra.innerHTML = `
-      <label class="form-label">Onde vai ser feito o orçamento? <span class="df-obrigatorio">*</span></label>
-      <div class="df-motivos">
-        <button type="button" class="df-motivo ativa" data-modo="base"
-                onclick="_dfEscolherModoOrcamento(this)">Mandar pro escritório montar</button>
-        <button type="button" class="df-motivo" data-modo="local"
-                onclick="_dfEscolherModoOrcamento(this)">Orçamento feito em campo</button>
-      </div>
-      <div id="df-orc-valor-bloco" style="display:none;">
-        <label class="form-label" style="margin-top:10px;" for="df-orc-valor">Valor combinado com o cliente (R$)</label>
-        <input class="form-input" type="number" step="0.01" min="0.01" inputmode="decimal"
-               id="df-orc-valor" oninput="validarConfirmarDesfecho()">
-        <p class="ajuda-texto" id="df-orc-sugestao" style="margin:4px 0 0;"></p>
-        <label class="form-label" for="df-orc-item">O que foi orçado</label>
-        <input class="form-input" id="df-orc-item" placeholder="Ex: Troca do compressor">
-      </div>
-      <label class="form-label" style="margin-top:10px;" for="df-orc-nome">Nome do cliente</label>
+      <label class="form-label" for="df-orc-nome">Nome do cliente</label>
       <input class="form-input" id="df-orc-nome" value="${esc(s.cliente || '')}" oninput="validarConfirmarDesfecho()">
       <label class="form-label" style="margin-top:10px;" for="df-orc-telefone">Telefone</label>
       <input class="form-input" id="df-orc-telefone" value="${esc(s.telefone || '')}" oninput="formatarTelefone(this)">
@@ -7398,12 +7391,37 @@ function escolherDesfecho(tipo) {
       </div>
       <label class="form-label" for="df-orc-defeito">Defeito declarado</label>
       <textarea class="form-input" id="df-orc-defeito" rows="2">${esc(s.descricao || '')}</textarea>
+      <label class="form-label" style="margin-top:10px;" for="df-orc-solucao">Solução / diagnóstico</label>
+      <textarea class="form-input" id="df-orc-solucao" rows="2" placeholder="O que foi identificado, o que precisa ser feito"></textarea>
+      <label class="form-label" style="margin-top:10px;" for="df-orc-taxa">Taxa de avaliação (R$)</label>
+      <input class="form-input" type="number" step="0.01" min="0" inputmode="decimal" id="df-orc-taxa">
+      <label class="form-label" style="margin-top:10px;">Itens / Valores</label>
+      <p class="ajuda-texto" id="df-orc-sugestao" style="margin:0 0 6px;"></p>
+      <div id="df-orc-itens-lista"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label" for="df-orc-item-nome">Serviço</label>
+          <input class="form-input" id="df-orc-item-nome" placeholder="Ex: Troca do compressor"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault(); _dfAdicionarItemOrcamento();}"></div>
+        <div class="form-group"><label class="form-label" for="df-orc-item-valor">Valor (R$)</label>
+          <input class="form-input" type="number" step="0.01" min="0" id="df-orc-item-valor"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault(); _dfAdicionarItemOrcamento();}"></div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_dfAdicionarItemOrcamento()">+ Adicionar item</button>
+      <label class="form-label" style="margin-top:10px;" for="df-orc-pagamento">Forma de pagamento</label>
+      <select class="form-input" id="df-orc-pagamento">
+        <option value="">Selecione...</option>
+        <option value="Pix">Pix</option>
+        <option value="Dinheiro">Dinheiro</option>
+        <option value="Cartão">Cartão</option>
+      </select>
       ${blocoFotoPainel('Foto do produto', 'Opcional — ajuda o escritório a montar o orçamento certo.')}
       <label class="form-label" style="margin-top:14px;">Assinatura do cliente <span class="df-obrigatorio">*</span></label>
       <p class="df-ajuda">Peça pro cliente assinar aqui com o dedo ou o mouse.</p>
       <canvas id="df-assinatura-canvas" class="df-assinatura-canvas"></canvas>
       <button type="button" class="df-limpar-assinatura" onclick="limparAssinaturaDesfecho()">Limpar assinatura</button>`;
     iniciarAssinaturaDesfecho();
+    _dfCarregarSugestaoPreco();
+    _dfRenderItensOrcamento();
   } else {
     extra.innerHTML = '';
   }
@@ -7435,9 +7453,11 @@ function validarConfirmarDesfecho() {
     const checklistOk = checks.length > 0 && Array.from(checks).every(c => c.checked);
     ok = !!(nome && _dfAssinaturaTemTraco && checklistOk);
   } else if (_dfTipo === 'orcamento') {
+    // Itens/valor são opcionais de propósito (pedido de 2026-09-17): sem
+    // nenhum lançado, a OS cai em "aguardando orçamento" pro escritório
+    // terminar depois -- não trava a conclusão do atendimento por isso.
     const nome = document.getElementById('df-orc-nome')?.value.trim();
-    const valorLocal = Number(document.getElementById('df-orc-valor')?.value);
-    ok = !!(nome && _dfAssinaturaTemTraco && (!_dfOrcamentoModoLocal || valorLocal > 0));
+    ok = !!(nome && _dfAssinaturaTemTraco);
   } else if (_dfTipo === 'nao_atendido') {
     // Foto obrigatória — comprovante de que o técnico foi até o cliente.
     // Pedido de 2026-09-01, depois de reclamação sem comprovação.
@@ -7451,13 +7471,42 @@ function escolherMotivoDesfecho(botao) {
   botao.classList.add('ativa');
 }
 
-function _dfEscolherModoOrcamento(botao) {
-  document.querySelectorAll('#df-extra .df-motivo').forEach(b => b.classList.toggle('ativa', b === botao));
-  _dfOrcamentoModoLocal = botao.dataset.modo === 'local';
-  const bloco = document.getElementById('df-orc-valor-bloco');
-  if (bloco) bloco.style.display = _dfOrcamentoModoLocal ? '' : 'none';
-  if (_dfOrcamentoModoLocal) _dfCarregarSugestaoPreco();
-  validarConfirmarDesfecho();
+// Itens/Valores do orçamento (desfecho no painel) — mesmo padrão de
+// osAdicionarItemOrcamentoNovo()/_renderItensOrcamentoNovo() (Nova OS).
+function _dfAdicionarItemOrcamento() {
+  const nomeEl = document.getElementById('df-orc-item-nome');
+  const valorEl = document.getElementById('df-orc-item-valor');
+  const nome = nomeEl?.value.trim();
+  if (!nome) { nomeEl?.focus(); return; }
+  const valor = Number(valorEl?.value) || 0;
+  _dfItensOrcamento.push({ nome, valor });
+  if (nomeEl) nomeEl.value = '';
+  if (valorEl) valorEl.value = '';
+  nomeEl?.focus();
+  _dfRenderItensOrcamento();
+}
+
+function _dfRemoverItemOrcamento(indice) {
+  _dfItensOrcamento.splice(indice, 1);
+  _dfRenderItensOrcamento();
+}
+
+function _dfRenderItensOrcamento() {
+  const lista = document.getElementById('df-orc-itens-lista');
+  if (!lista) return;
+  if (_dfItensOrcamento.length === 0) {
+    lista.innerHTML = `<p class="ajuda-texto" style="margin:0 0 8px;">Nenhum item ainda.</p>`;
+    return;
+  }
+  lista.innerHTML = _dfItensOrcamento.map((it, i) => `
+    <div class="os-orc-item-linha">
+      <span>${esc(it.nome)}</span>
+      <span>${_valorFmtOuVazio(it.valor)}</span>
+      <button type="button" class="btn-remove" onclick="_dfRemoverItemOrcamento(${i})">${icone('x', 'icone-11')}</button>
+    </div>`).join('');
+  const soma = _dfItensOrcamento.reduce((s, it) => s + it.valor, 0);
+  lista.insertAdjacentHTML('beforeend',
+    `<div class="os-orc-total">Total: ${_valorFmtOuVazio(soma) || 'R$ 0,00'}</div>`);
 }
 
 // Precificação inteligente (pedido de 2026-09-03) — mesma lógica da tela
@@ -7502,15 +7551,16 @@ async function confirmarDesfecho() {
   }
   if (_dfTipo === 'orcamento') {
     desfecho.orcamento_local = _dfOrcamentoModoLocal;
-    if (_dfOrcamentoModoLocal) {
-      desfecho.valor_local = Number(document.getElementById('df-orc-valor')?.value) || 0;
-      desfecho.item_local = document.getElementById('df-orc-item')?.value.trim() || '';
-    }
+    desfecho.itens_local = _dfItensOrcamento;
     desfecho.cliente_nome = document.getElementById('df-orc-nome')?.value.trim() || '';
     desfecho.cliente_telefone = document.getElementById('df-orc-telefone')?.value.trim() || '';
     desfecho.tipo_aparelho = document.getElementById('df-orc-aparelho')?.value.trim() || '';
     desfecho.modelo = document.getElementById('df-orc-modelo')?.value.trim() || '';
     desfecho.defeito_declarado = document.getElementById('df-orc-defeito')?.value.trim() || '';
+    desfecho.solucao_os = document.getElementById('df-orc-solucao')?.value.trim() || '';
+    desfecho.taxa_avaliacao = Number(document.getElementById('df-orc-taxa')?.value) || 0;
+    const pagamentoOrc = document.getElementById('df-orc-pagamento')?.value || '';
+    if (pagamentoOrc) desfecho.forma_pagamento = pagamentoOrc;
     if (_dfFoto) desfecho.foto_produto = _dfFoto;
     if (_dfAssinaturaTemTraco && _dfAssinaturaCanvas) desfecho.assinatura = _dfAssinaturaCanvas.toDataURL('image/png');
   }
