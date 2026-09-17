@@ -13,26 +13,21 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       min-height: 100vh;
     }
-    header { padding: 18px 16px; border-bottom: 1px solid #1e252d; max-width: 520px; margin: 0 auto; }
+    header { padding: 18px clamp(16px, 4vw, 64px); border-bottom: 1px solid #1e252d; }
     .marca { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #6f7d8c; }
     h1 { font-size: 17px; margin: 4px 0 0; font-weight: 700; }
-    main { padding: 16px; display: flex; flex-direction: column; gap: 14px; max-width: 520px; margin: 0 auto 40px; }
+    main { padding: 16px clamp(16px, 4vw, 64px) 40px; display: flex; flex-direction: column; gap: 14px; }
     .card { background: #10151a; border: 1px solid #1e252d; border-radius: 12px; padding: 14px 16px; }
     .card h2 { font-size: 13px; margin: 0 0 10px; color: #94a1ae; text-transform: uppercase; letter-spacing: .6px; }
 
-    /* Tela larga = site preenchendo a janela de ponta a ponta, sem coluna
-       centralizada com moldura (pedido de 2026-09-17, segunda rodada: "quero
-       q o site preencha a pagina toda e n que seja centralizado"). Só a
-       partir de 860px — no celular (quem realmente abre esse link, vindo do
-       WhatsApp) fica exatamente como está, coluna única de sempre. */
-    @media (min-width: 860px) {
-      header { max-width: none; padding-left: clamp(16px, 4vw, 64px); padding-right: clamp(16px, 4vw, 64px); }
-      main#tela-form { max-width: none; padding-left: clamp(16px, 4vw, 64px); padding-right: clamp(16px, 4vw, 64px); }
-      .grid-cards { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(14px, 2.5vw, 32px); align-items: start; }
-    }
-    @media (min-width: 1600px) {
-      header, main#tela-form { padding-left: 8vw; padding-right: 8vw; }
-    }
+    /* SEM breakpoint fixo de propósito (pedido de 2026-09-17, terceira
+       rodada: dois "@media min-width" seguidos não bateram com a janela real
+       de quem estava testando). flex-wrap reage ao espaço DISPONÍVEL de
+       verdade: cada cartão pede uma largura mínima e quebra pra baixo
+       sozinho quando não cabem dois lado a lado — sem "versão celular" e
+       "versão desktop" como dois modos separados pra adivinhar. */
+    .grid-cards { display: flex; flex-wrap: wrap; gap: clamp(14px, 2.5vw, 32px); }
+    .grid-cards > .card { flex: 1 1 380px; min-width: 0; }
 
     .grid-equip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .equip-pick {
