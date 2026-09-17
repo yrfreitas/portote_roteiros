@@ -1273,30 +1273,17 @@
       // pendente do innerHTML na hora — o canvas já sai com o tamanho certo.
       _tIniciarAssinatura();
     } else if (tipo === 'orcamento') {
-      // Pedido de 2026-09-01, ampliado em 2026-09-16 ("preciso que a gente só
-      // importe e mande pra cliente"): o técnico já levanta solução/diagnóstico
-      // e taxa de avaliação aqui, além do valor combinado no modo "local" —
-      // a equipe só confere e manda o link pro cliente, sem redigitar nada.
-      // Forma de pagamento continua de fora: só faz sentido depois que o
-      // cliente aprova, não na hora da visita.
+      // Pedido de 2026-09-01, REFEITO em 2026-09-17 ("tire esse valor
+      // combinado com o cliente e coloque o q eu pedi"): o alternador
+      // "fazer na base / feito no local" saiu — confundia e escondia o
+      // campo de valor até escolher um modo. Agora solução, valor do
+      // serviço e taxa de avaliação ficam SEMPRE visíveis; a equipe só
+      // confere e manda o link pro cliente, sem redigitar nada. Se o
+      // técnico não souber o valor ainda, deixa em branco — a OS cai em
+      // "aguardando orçamento" pro escritório terminar, igual antes.
       const s = (servicosAbertos || []).find(x => x.id === _desfechoServicoId) || {};
-      _orcamentoModoLocal = false;
+      _orcamentoModoLocal = true;
       extra.innerHTML = `
-        <label class="t-df-rotulo">Onde vai ser feito o orçamento? <span class="t-df-obrigatorio">*</span></label>
-        <div class="t-df-motivos">
-          <button type="button" class="t-df-motivo ativa" data-modo="base"
-                  onclick="window._tEscolherModoOrcamento(this)">Fazer orçamento na base</button>
-          <button type="button" class="t-df-motivo" data-modo="local"
-                  onclick="window._tEscolherModoOrcamento(this)">Orçamento feito no local</button>
-        </div>
-        <div id="t-df-orc-valor-bloco" style="display:none;">
-          <label class="t-df-rotulo" for="t-df-orc-valor">Valor combinado com o cliente (R$)</label>
-          <input class="t-df-input" type="number" step="0.01" min="0.01" inputmode="decimal"
-                 id="t-df-orc-valor" oninput="window._tValidarConfirmar()">
-          <p class="t-df-ajuda" id="t-df-orc-sugestao"></p>
-          <label class="t-df-rotulo" for="t-df-orc-item">O que foi orçado</label>
-          <input class="t-df-input" id="t-df-orc-item" placeholder="Ex: Troca do compressor">
-        </div>
         <label class="t-df-rotulo" for="t-df-orc-nome">Nome do cliente</label>
         <input class="t-df-input" id="t-df-orc-nome" value="${esc(s.cliente || '')}">
         <label class="t-df-rotulo" for="t-df-orc-telefone">Telefone</label>
@@ -1311,6 +1298,11 @@
         <textarea class="t-df-input" id="t-df-orc-defeito" rows="2">${esc(s.descricao || '')}</textarea>
         <label class="t-df-rotulo" for="t-df-orc-solucao">Solução / diagnóstico</label>
         <textarea class="t-df-input" id="t-df-orc-solucao" rows="2" placeholder="O que foi identificado, o que precisa ser feito"></textarea>
+        <label class="t-df-rotulo" for="t-df-orc-item">Serviço orçado</label>
+        <input class="t-df-input" id="t-df-orc-item" placeholder="Ex: Troca do compressor">
+        <label class="t-df-rotulo" for="t-df-orc-valor">Valor do serviço (R$)</label>
+        <input class="t-df-input" type="number" step="0.01" min="0" inputmode="decimal" id="t-df-orc-valor">
+        <p class="t-df-ajuda" id="t-df-orc-sugestao"></p>
         <label class="t-df-rotulo" for="t-df-orc-taxa">Taxa de avaliação (R$)</label>
         <input class="t-df-input" type="number" step="0.01" min="0" inputmode="decimal" id="t-df-orc-taxa">
         ${blocoFoto(false)}
@@ -1321,6 +1313,7 @@
       // Mesmo motivo de fazer_os: chamada síncrona pra não perder o começo
       // do traço se o cliente já estiver com o dedo na tela.
       _tIniciarAssinatura();
+      _tCarregarSugestaoPreco();
     } else {
       extra.innerHTML = blocoFoto(false);
     }
@@ -1412,24 +1405,18 @@
       const checklistOk = checks.length > 0 && Array.from(checks).every(c => c.checked);
       ok = !!(nome && pagamento && _desfechoFotoPagamento && _assinaturaTemTraco && checklistOk);
     } else if (_desfechoTipo === 'orcamento') {
+      // Valor do serviço é OPCIONAL de propósito (pedido de 2026-09-17): se
+      // o técnico não souber o preço ainda, a OS cai em "aguardando
+      // orçamento" pro escritório terminar — não trava a conclusão do
+      // atendimento por isso.
       const nome = document.getElementById('t-df-orc-nome')?.value.trim();
-      const valorLocal = Number(document.getElementById('t-df-orc-valor')?.value);
-      ok = !!(nome && _assinaturaTemTraco && (!_orcamentoModoLocal || valorLocal > 0));
+      ok = !!(nome && _assinaturaTemTraco);
     } else if (_desfechoTipo === 'nao_atendido') {
       // Foto obrigatória — comprovante de que o técnico foi até o cliente.
       // Pedido de 2026-09-01, depois de reclamação sem comprovação.
       ok = !!_desfechoFoto;
     }
     btn.disabled = !ok;
-  };
-
-  window._tEscolherModoOrcamento = function (botao) {
-    document.querySelectorAll('#t-df-extra .t-df-motivo').forEach(b => b.classList.toggle('ativa', b === botao));
-    _orcamentoModoLocal = botao.dataset.modo === 'local';
-    const bloco = document.getElementById('t-df-orc-valor-bloco');
-    if (bloco) bloco.style.display = _orcamentoModoLocal ? '' : 'none';
-    if (_orcamentoModoLocal) _tCarregarSugestaoPreco();
-    window._tValidarConfirmar();
   };
 
   // Precificação inteligente (pedido de 2026-09-03) — média/mediana do que
@@ -1805,7 +1792,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v271';
+  const VERSAO_TELA = 'v272';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

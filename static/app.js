@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v271';
+const VERSAO_PAINEL = 'v272';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8699,6 +8699,9 @@ function osEscolherModelo(modelo) {
   // de Serviço" já tinha, sem tirar Itens/Valores (as duas coisas convivem;
   // quem só quer um número não precisa itemizar nada).
   document.getElementById('os-campos-taxa').style.display = (modelo === 'os' || modelo === 'orcamento') ? '' : 'none';
+  // Prazo prometido ao cliente (pedido de 2026-09-17): removido do modelo
+  // Orçamento, continua pros outros dois.
+  document.getElementById('os-campo-prazo-previsto').style.display = modelo === 'orcamento' ? 'none' : '';
   osTipoMudou();
 
   // Setor é obrigatório em "Ordens de Serviço" e "Chamado Técnico" — pedido
@@ -9413,7 +9416,6 @@ function _osDetalheCamposPorModelo(o, opcoesTipoOs, opcoesTecnico) {
     <div class="os-detalhe-secao">
       ${equipamento}
       ${defeito}
-      ${campoPrazoPrevisto}
       ${tipoOsOpcional}
       ${garantiaOrcamento}
       ${camposComuns}
