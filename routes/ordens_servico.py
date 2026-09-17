@@ -1602,6 +1602,21 @@ def obter(os_id):
              ORDER BY s.id DESC
         """, (os_id,))
 
+        # Comprovante de pagamento (pedido de 2026-09-17: "preciso q clientes
+        # que já pagaram [apareça] com a foto de comprovação" no detalhe da
+        # OS) — mesma foto que já alimenta a aba "Pagamentos dos técnicos"
+        # em Faturamento (routes/relatorios.py), só que aqui já mostrada
+        # junto com a visita certa, sem precisar ir procurar em outra aba.
+        if visitas:
+            marcadores = ",".join("?" * len(visitas))
+            fotos_pag = fetch_all(conn,
+                f"SELECT servico_id, foto FROM servico_foto "
+                f"WHERE servico_id IN ({marcadores}) AND legenda = 'comprovante_pagamento'",
+                tuple(v["id"] for v in visitas))
+            foto_por_servico = {f["servico_id"]: f["foto"] for f in fotos_pag}
+            for v in visitas:
+                v["comprovante_pagamento_foto"] = foto_por_servico.get(v["id"])
+
         pecas = _pecas_da_os(conn, os_id)
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — qualquer OS pode ter, ver criar().

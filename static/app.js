@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v286';
+const VERSAO_PAINEL = 'v287';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -9826,6 +9826,10 @@ async function abrirOSDetalhe(id) {
   // formulário, de propósito, porque ali é comum reagendar mesmo já tendo ido.
   const temVisitaPendente = r.visitas.some(v => v.status === 'pendente');
 
+  // Pagamento já recebido em campo (pedido de 2026-09-17: "preciso q
+  // clientes que já pagaram [apareça] com a foto de comprovação") — mesmo
+  // dado que já alimenta Faturamento > Pagamentos dos técnicos, mostrado
+  // aqui junto da visita certa em vez de precisar ir procurar noutra aba.
   const visitas = r.visitas.length === 0
     ? `<p class="ajuda-texto">Nenhuma visita agendada ainda.</p>`
     : r.visitas.map(v => `
@@ -9835,7 +9839,13 @@ async function abrirOSDetalhe(id) {
             <span class="conc-tag ${v.desfecho === 'resolvido' ? 'ok' : v.status === 'concluido' ? 'aviso' : 'neutro'}">${esc(v.desfecho ? (DESFECHO_ROTULO[v.desfecho]?.txt || v.desfecho) : (v.status === 'concluido' ? 'concluído' : 'pendente'))}</span>
             ${v.status === 'pendente' ? `<button class="btn-remove" title="Desagendar — escolheu técnico/dia errado" onclick="osDesagendar(${id}, ${v.id})">${icone('x', 'icone-11')}</button>` : ''}
           </span>
-        </div>`).join('');
+        </div>${v.desfecho_forma_pagamento ? `
+        <div class="os-visita-pagamento">
+          <span class="conc-tag ok">✓ Já pagou · ${esc(v.desfecho_forma_pagamento)}</span>
+          ${v.comprovante_pagamento_foto
+            ? `<img class="os-visita-comprovante" src="${v.comprovante_pagamento_foto}" alt="Comprovante de pagamento" onclick="ampliarFoto(this.src)">`
+            : `<span class="ajuda-texto" style="margin:0;">sem foto de comprovante</span>`}
+        </div>` : ''}`).join('');
 
   const opcoesStatus = Object.entries(OS_STATUS_ROTULO)
     .map(([v, t]) => `<option value="${v}"${o.status === v ? ' selected' : ''}>${t}</option>`).join('');
