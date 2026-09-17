@@ -3184,10 +3184,18 @@ select:focus-visible,
 .btn-sm { padding: 6px 12px; font-size: 10px; }
 
 /* ─── HISTÓRICO ──────────────────────────────────────────────────── */
+/* Pedido de 2026-09-17: "quero q a tela fique toda preenchida igual a aba
+   de roteiros, quero q o site todo fique assim" -- ESTA classe era a causa
+   real. Usada em praticamente toda aba (Faturamento, OS, Peças, Agendar
+   Clientes, Central do Cliente, Estoque, Vendas...) MENOS Roteiros, que
+   nunca passa por .historico-wrap e por isso sempre preencheu a tela
+   normalmente. max-width:720px+margin:auto prendia todo o resto numa
+   coluna estreita centralizada dentro do .main, que já é 1fr (o espaço
+   inteiro que sobra depois da barra lateral de 380px) -- não tinha nada
+   a ver com as páginas públicas que mexi antes, era essa UMA regra
+   compartilhada. Sem teto de largura agora, do jeito que Roteiros já era. */
 .historico-wrap {
   width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
 }
 .historico-header {
   display: flex;
