@@ -20,13 +20,18 @@
     .card { background: #10151a; border: 1px solid #1e252d; border-radius: 12px; padding: 14px 16px; }
     .card h2 { font-size: 13px; margin: 0 0 10px; color: #94a1ae; text-transform: uppercase; letter-spacing: .6px; }
 
-    /* Duas colunas em tela larga (pedido de 2026-09-17: "esticar a tela") —
-       no celular (quem realmente abre esse link, vindo do WhatsApp) continua
-       a coluna única de sempre. */
+    /* Tela larga = site preenchendo a janela de ponta a ponta, sem coluna
+       centralizada com moldura (pedido de 2026-09-17, segunda rodada: "quero
+       q o site preencha a pagina toda e n que seja centralizado"). Só a
+       partir de 860px — no celular (quem realmente abre esse link, vindo do
+       WhatsApp) fica exatamente como está, coluna única de sempre. */
     @media (min-width: 860px) {
-      header { max-width: 900px; }
-      main#tela-form { max-width: 900px; }
-      .grid-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+      header { max-width: none; padding-left: clamp(16px, 4vw, 64px); padding-right: clamp(16px, 4vw, 64px); }
+      main#tela-form { max-width: none; padding-left: clamp(16px, 4vw, 64px); padding-right: clamp(16px, 4vw, 64px); }
+      .grid-cards { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(14px, 2.5vw, 32px); align-items: start; }
+    }
+    @media (min-width: 1600px) {
+      header, main#tela-form { padding-left: 8vw; padding-right: 8vw; }
     }
 
     .grid-equip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

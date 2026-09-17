@@ -20,26 +20,40 @@
       background-image: radial-gradient(760px 380px at 50% -120px, rgba(26,111,212,.22), transparent 70%);
       background-repeat: no-repeat;
     }
-    .pagina { width: 100%; max-width: 600px; margin: 0 auto; padding: 0 16px 40px; }
+    /* Pedido de 2026-09-17, segunda rodada: "quero q o site preencha a
+       pagina toda e n que seja centralizado" — a v1 desta tela ainda tinha
+       max-width:960px com margin:auto, então em monitor grande sobrava
+       moldura enorme dos dois lados mesmo já em 2 colunas. Sem teto de
+       largura nenhum agora — só um padding lateral que cresce com a tela,
+       a página ocupa a janela inteira do navegador de ponta a ponta. */
+    .pagina { width: 100%; padding: 0 clamp(16px, 4vw, 64px) 40px; }
     header { padding: 22px 0 18px; }
     .marca { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #7c8a99; }
     .marca .ponto { width: 6px; height: 6px; border-radius: 50%; background: #1a6fd4; flex: none; }
     h1 { font-size: 20px; margin: 6px 0 0; font-weight: 700; overflow-wrap: anywhere; }
     main { display: flex; flex-direction: column; gap: 14px; width: 100%; }
 
-    /* Duas colunas em tela larga (pedido de 2026-09-17: "esticar a tela") —
-       no celular (a maioria dos acessos, vindo de link do WhatsApp) continua
-       a coluna única de sempre; só a partir de 860px vira um dashboard de
-       verdade em vez de uma tira estreita numa tela enorme. */
+    /* Duas colunas em tela larga — no celular (a maioria dos acessos, vindo
+       de link do WhatsApp) continua a coluna única de sempre. Sem max-width
+       na .pagina, estas duas colunas esticam pra preencher a janela real,
+       não um recorte fixo dela. */
     @media (min-width: 860px) {
-      .pagina { max-width: 960px; }
       main {
         display: grid; grid-template-columns: 1.3fr 1fr;
         grid-template-areas: "principal lateral" "principal lateral";
         align-items: start;
+        gap: clamp(14px, 2.5vw, 40px);
       }
       main > .col-principal { grid-area: principal; display: flex; flex-direction: column; gap: 14px; }
       main > .col-lateral { grid-area: lateral; display: flex; flex-direction: column; gap: 14px; }
+    }
+    /* Em telas MUITO largas, 2 colunas esticadas ao infinito ficam com
+       cartão vazio-parecendo-espaçoso e linha de texto absurdamente longa
+       (pior pra ler, não melhor) — trava num ponto generoso em vez de
+       deixar crescer sem fim, mas ainda MUITO mais largo que os 600/960px
+       de antes, e sem voltar a ser uma coluna centralizada com moldura. */
+    @media (min-width: 1600px) {
+      .pagina { padding-left: 8vw; padding-right: 8vw; }
     }
     .card {
       background: #10151a; border: 1px solid #1e252d; border-radius: 14px; padding: 16px 17px;
