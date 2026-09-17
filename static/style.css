@@ -646,7 +646,14 @@ header {
    (duas classes = especificidade maior que UMA classe só), que vence a
    regra base não importa a ordem no arquivo -- resolve de vez, não só até
    a próxima reorganização do CSS. */
-.modal.modal-lg { width: 90vw; max-width: none; max-height: 88vh; overflow-y: auto; }
+/* clamp(mínimo, fluido, máximo) — pedido de 2026-09-17: "quero q ele se
+   adapte pra cada tela, automático". Nunca menor que ~600px (formulário
+   não fica ilegível numa tela pequena) nem menor que 96vw (nunca estoura
+   OS um lado numa tela minúscula); no meio, acompanha 90% da largura real
+   de qualquer tela; nunca maior que 1600px (não vira uma linha de campo
+   absurdamente esticada num monitor gigante). Três faixas, uma regra só,
+   sem breakpoint nenhum pra adivinhar. */
+.modal.modal-lg { width: clamp(min(600px, 96vw), 90vw, 1600px); max-width: none; max-height: 88vh; overflow-y: auto; }
 .form-separador {
   font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
   color: var(--text-muted); margin: 18px 0 10px; padding-top: 12px;
