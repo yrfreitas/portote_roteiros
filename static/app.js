@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v290';
+const VERSAO_PAINEL = 'v291';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -9839,13 +9839,15 @@ async function abrirOSDetalhe(id) {
             <span class="conc-tag ${v.desfecho === 'resolvido' ? 'ok' : v.status === 'concluido' ? 'aviso' : 'neutro'}">${esc(v.desfecho ? (DESFECHO_ROTULO[v.desfecho]?.txt || v.desfecho) : (v.status === 'concluido' ? 'concluído' : 'pendente'))}</span>
             ${v.status === 'pendente' ? `<button class="btn-remove" title="Desagendar — escolheu técnico/dia errado" onclick="osDesagendar(${id}, ${v.id})">${icone('x', 'icone-11')}</button>` : ''}
           </span>
-        </div>${v.desfecho_forma_pagamento ? `
+        </div>
         <div class="os-visita-pagamento">
-          <span class="conc-tag ok">✓ Já pagou · ${esc(v.desfecho_forma_pagamento)}</span>
+          ${v.desfecho_forma_pagamento
+            ? `<span class="conc-tag ok">✓ Já pagou · ${esc(v.desfecho_forma_pagamento)}</span>`
+            : `<span class="conc-tag neutro">Pagamento não registrado</span>`}
           ${v.comprovante_pagamento_foto
             ? `<img class="os-visita-comprovante" src="${v.comprovante_pagamento_foto}" alt="Comprovante de pagamento" onclick="ampliarFoto(this.src)">`
             : `<span class="ajuda-texto" style="margin:0;">sem foto de comprovante</span>`}
-        </div>` : ''}`).join('');
+        </div>`).join('');
 
   const opcoesStatus = Object.entries(OS_STATUS_ROTULO)
     .map(([v, t]) => `<option value="${v}"${o.status === v ? ' selected' : ''}>${t}</option>`).join('');
@@ -12400,7 +12402,9 @@ function _atRenderizarDesfechos(r) {
         </div>
         <div class="at-oque">
           <span class="at-etiqueta ${t.classe}">${esc(t.curto || a.desfecho)}</span>
-          ${a.forma_pagamento ? `<span class="at-etiqueta at-etiqueta-pago">✓ Pago · ${esc(a.forma_pagamento)}</span>` : ''}
+          ${a.forma_pagamento
+            ? `<span class="at-etiqueta at-etiqueta-pago">✓ Pago · ${esc(a.forma_pagamento)}</span>`
+            : `<span class="conc-tag neutro">Pagamento não registrado</span>`}
           ${detalhe ? `<div class="at-detalhe">${esc(detalhe)}</div>` : ''}
           ${a.observacao ? `<div class="at-obs">${esc(a.observacao)}</div>` : ''}
         </div>
@@ -12415,7 +12419,7 @@ function _atRenderizarDesfechos(r) {
           ${a.peca_foto ? `<img class="at-thumb" src="${a.peca_foto}" alt="Foto da peça" onclick="ampliarFoto(this.src)">` : ''}
           ${a.comprovante_pagamento_foto
             ? `<img class="at-thumb" src="${a.comprovante_pagamento_foto}" alt="Comprovante de pagamento" onclick="ampliarFoto(this.src)">`
-            : ''}
+            : `<span class="ajuda-texto" style="margin:0;">sem comprovante</span>`}
         </div>
         <div class="at-baixa" id="at-baixa-${a.chave}">
           ${a.desfecho === 'precisa_peca' ? botaoBaixa(a) : ''}
