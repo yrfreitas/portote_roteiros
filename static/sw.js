@@ -297,7 +297,7 @@
 //        técnico cadastrado" — mentira nesse caso, parecia bug do sistema
 //        inteiro. Mensagem agora diz a causa certa e pra onde ir resolver
 //        (Diagnóstico → Acessos, vincular o login a um técnico).
-const CACHE_VERSAO = 'portotec-roteiros-v275';
+const CACHE_VERSAO = 'portotec-roteiros-v276';
 
 const ARQUIVOS_CASCA = [
   '/',
@@ -419,8 +419,17 @@ self.addEventListener('fetch', (evento) => {
     || url.pathname.startsWith('/tecnico/');
 
   if (ehCodigoDoApp) {
+    // BUG corrigido em 2026-09-17 (Kalebe testou várias vezes e continuava
+    // vendo o formulário antigo mesmo com a versão nova confirmada no
+    // servidor): "rede primeiro" aqui só evitava o Cache API DESTE service
+    // worker — mas fetch(evento.request) herda o modo de cache do pedido
+    // ORIGINAL (o <script src> da página), e o cache HTTP comum do
+    // navegador pode responder por heurística sem nunca chegar a perguntar
+    // pro servidor. `cache: 'reload'` força ignorar esse cache e ir na rede
+    // de verdade a cada vez — sem isso, o comentário acima ("rede primeiro")
+    // não era garantido, só o comportamento comum sem essa opção.
     evento.respondWith(
-      fetch(evento.request).then((resposta) => {
+      fetch(new Request(evento.request, { cache: 'reload' })).then((resposta) => {
         if (resposta.ok) {
           const clone = resposta.clone();
           caches.open(CACHE_VERSAO).then((cache) => cache.put(evento.request, clone));
