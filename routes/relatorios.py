@@ -306,17 +306,20 @@ def _marcar_disponivel_no_carro(conn, atendimentos):
 
 
 DESFECHOS_ORDEM = ["precisa_peca", "cotacao_peca", "fazer_os", "resolvido",
-                   "orcamento", "agendar_cliente"]
+                   "orcamento", "agendar_cliente", "resolvido_panasonic",
+                   "aprovado_executado", "aprovado_retirado",
+                   "garantia_resolvido", "garantia_voltar_depois"]
 
 
 def _grupo_efetivo(l):
     """"Não atendido" e "Reagendar Cliente" nunca tiveram card/aba própria em
     Atendimentos (ficavam ocultos, ver AT_TIPOS_OCULTOS no front) — pedido de
     2026-09-18: agora caem visíveis, junto com "Precisa de peça" já com a
-    peça chegada, num card único "Agendar cliente". Centraliza aqui pra
-    contagem e filtro usarem exatamente a mesma regra."""
+    peça chegada e "Aprovado/Agendar" (garantia Panasonic aprovada que
+    precisa marcar visita), num card único "Agendar cliente". Centraliza
+    aqui pra contagem e filtro usarem exatamente a mesma regra."""
     d = l.get("desfecho")
-    if d in ("nao_atendido", "volto_depois"):
+    if d in ("nao_atendido", "volto_depois", "aprovado_agendar"):
         return "agendar_cliente"
     if d == "precisa_peca" and l.get("chegou_em"):
         return "agendar_cliente"

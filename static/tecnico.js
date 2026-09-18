@@ -633,6 +633,14 @@
     { tipo: 'cotacao_peca', rotulo: 'Fazer Orçamento - Cotar peça', sub: 'não sei o preço ainda', icone: '💰' },
     { tipo: 'fazer_os',     rotulo: 'Enviar Ordem por Pdf', sub: 'dados + assinatura do cliente', icone: '📝' },
     { tipo: 'nao_atendido', rotulo: 'Cliente ausente', sub: 'não deu, precisa remarcar', icone: '!' },
+    // Garantia Panasonic (pedido de 2026-09-18) — separadas do Resolvido/
+    // Precisa de peça comuns pra fechar conta certa com a Panasonic depois.
+    { tipo: 'resolvido_panasonic', rotulo: 'Resolvido Panasonic', sub: 'garantia Panasonic, consertei na hora', icone: '✅' },
+    { tipo: 'aprovado_executado', rotulo: 'Aprovado - Executado', sub: 'garantia Panasonic aprovada, já executei', icone: '✅' },
+    { tipo: 'aprovado_retirado', rotulo: 'Aprovado - Retirado', sub: 'garantia Panasonic aprovada, retirei o produto', icone: '📦' },
+    { tipo: 'aprovado_agendar', rotulo: 'Aprovado - Agendar', sub: 'garantia Panasonic aprovada, preciso marcar visita', icone: '↻' },
+    { tipo: 'garantia_resolvido', rotulo: 'Garantia Resolvido', sub: 'retorno em garantia, resolvi', icone: '✅' },
+    { tipo: 'garantia_voltar_depois', rotulo: 'Garantia Voltar depois', sub: 'retorno em garantia, preciso voltar', icone: '↻' },
   ];
   const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                    'Aparelho sem defeito', 'Sem acesso ao local'];
@@ -1282,6 +1290,15 @@
         ${blocoFoto(true, 'Foto do comprovante', 'Comprova que você foi até o cliente — porta fechada, endereço, o que for.')}`;
     } else if (tipo === 'volto_depois') {
       extra.innerHTML = blocoFoto(false);
+    } else if (['resolvido_panasonic', 'aprovado_executado', 'aprovado_retirado', 'aprovado_agendar'].includes(tipo)) {
+      // Garantia Panasonic (pedido de 2026-09-18): sem pagamento — quem
+      // cobre é a Panasonic, não o cliente. Foto é só evidência, opcional.
+      extra.innerHTML = blocoFoto(false, 'Foto do produto/reparo', '');
+    } else if (tipo === 'garantia_resolvido' || tipo === 'garantia_voltar_depois') {
+      // Garantia nossa (pedido de 2026-09-18): "vai anexar as informações e
+      // fotos" — mesma exigência de foto obrigatória do "Não atendido".
+      extra.innerHTML = blocoFoto(true, 'Foto do comprovante',
+        'Anexe foto do produto ou do reparo — comprova o retorno em garantia.');
     } else if (tipo === 'fazer_os') {
       // Pedido de 2026-08-28: o técnico fecha o caso em campo — dados do
       // cliente, defeito, solução, forma de pagamento — e colhe a
@@ -1500,6 +1517,10 @@
     } else if (_desfechoTipo === 'nao_atendido') {
       // Foto obrigatória — comprovante de que o técnico foi até o cliente.
       // Pedido de 2026-09-01, depois de reclamação sem comprovação.
+      ok = !!_desfechoFoto;
+    } else if (_desfechoTipo === 'garantia_resolvido' || _desfechoTipo === 'garantia_voltar_depois') {
+      // Foto obrigatória — mesmo princípio do "Não atendido" (pedido de
+      // 2026-09-18: "vai anexar as informações e fotos").
       ok = !!_desfechoFoto;
     }
     btn.disabled = !ok;
@@ -1880,7 +1901,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v293';
+  const VERSAO_TELA = 'v294';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

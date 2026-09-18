@@ -295,7 +295,16 @@ def status_servico_tecnico(token, servico_id):
 # colhe assinatura em campo, e a OS nasce como Orçamento pra equipe do
 # escritório montar os itens/valores depois (ver _processar_orcamento).
 DESFECHOS_VALIDOS = {"resolvido", "precisa_peca", "volto_depois", "nao_atendido",
-                     "cotacao_peca", "fazer_os", "orcamento"}
+                     "cotacao_peca", "fazer_os", "orcamento",
+                     # Panasonic garantia (pedido de 2026-09-18): variantes que só
+                     # fazem sentido pra chamado de garantia Panasonic já aprovado
+                     # ou em andamento — ver _grupo_efetivo/AT_TIPOS em
+                     # routes/relatorios.py e static/app.js pra onde cada uma cai.
+                     "resolvido_panasonic", "aprovado_executado", "aprovado_retirado",
+                     "aprovado_agendar",
+                     # Garantia (nossa, não-Panasonic) — mesmo princípio de
+                     # nao_atendido/resolvido, mas com anexo obrigatório de fotos.
+                     "garantia_resolvido", "garantia_voltar_depois"}
 
 # Pedido de 2026-09-12: só nestes dois o atendimento termina com dinheiro na
 # mão do técnico ali mesmo — "resolvido" fecha o caso na hora (nada
@@ -306,8 +315,10 @@ TIPOS_EXIGEM_PAGAMENTO = {"resolvido", "fazer_os"}
 
 # Desfechos que fazem sentido levar pra um dia futuro (o cliente exige nova
 # visita). "resolvido" e "cotacao_peca" terminam o atendimento ali mesmo —
-# reagendar não se aplica a eles.
-DESFECHOS_REAGENDAVEIS = {"volto_depois", "nao_atendido"}
+# reagendar não se aplica a eles. "aprovado_agendar" entrou em 2026-09-18:
+# garantia Panasonic aprovada que ainda precisa marcar visita, mesmo
+# princípio de "volto_depois"/"nao_atendido".
+DESFECHOS_REAGENDAVEIS = {"volto_depois", "nao_atendido", "aprovado_agendar"}
 
 # Teto por foto. O navegador já reduz para 1280px de lado maior em JPEG antes
 # de enviar (ver tecnico.js), o que dá 150–350 KB em base64. 900 KB é folga
@@ -373,6 +384,7 @@ _STATUS_OS_POR_DESFECHO = {
 _MOTIVO_DESFECHO_ROTULO = {
     "volto_depois": "Técnico esteve no local e vai voltar depois",
     "nao_atendido": "Não atendido — precisa remarcar",
+    "aprovado_agendar": "Garantia Panasonic aprovada — precisa agendar visita",
 }
 
 

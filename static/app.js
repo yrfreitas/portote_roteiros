@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v293';
+const VERSAO_PAINEL = 'v294';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7056,6 +7056,14 @@ const DF_OPCOES = [
   { tipo: 'cotacao_peca', rotulo: 'Fazer Orçamento - Cotar peça', sub: 'não sei o preço ainda' },
   { tipo: 'fazer_os',     rotulo: 'Enviar Ordem por Pdf', sub: 'dados + assinatura do cliente' },
   { tipo: 'nao_atendido', rotulo: 'Cliente ausente', sub: 'não deu para fazer, precisa remarcar' },
+  // Garantia Panasonic (pedido de 2026-09-18) — separadas do Resolvido/
+  // Precisa de peça comuns pra fechar conta certa com a Panasonic depois.
+  { tipo: 'resolvido_panasonic', rotulo: 'Resolvido Panasonic', sub: 'garantia Panasonic, consertou na hora' },
+  { tipo: 'aprovado_executado', rotulo: 'Aprovado - Executado', sub: 'garantia Panasonic aprovada, já executado' },
+  { tipo: 'aprovado_retirado', rotulo: 'Aprovado - Retirado', sub: 'garantia Panasonic aprovada, produto retirado' },
+  { tipo: 'aprovado_agendar', rotulo: 'Aprovado - Agendar', sub: 'garantia Panasonic aprovada, precisa marcar visita' },
+  { tipo: 'garantia_resolvido', rotulo: 'Garantia Resolvido', sub: 'retorno em garantia, resolvido' },
+  { tipo: 'garantia_voltar_depois', rotulo: 'Garantia Voltar depois', sub: 'retorno em garantia, precisa voltar' },
 ];
 
 // Mesma lista de static/tecnico.js — checklist obrigatório antes de fechar
@@ -7329,6 +7337,11 @@ function escolherDesfecho(tipo) {
         `<button class="df-motivo" data-motivo="${esc(mo)}"
                  onclick="escolherMotivoDesfecho(this)">${esc(mo)}</button>`).join('')}</div>
       ${blocoFotoPainel('Foto do comprovante', 'Comprova que o técnico foi até o cliente — porta fechada, endereço, o que for.')}`;
+  } else if (tipo === 'garantia_resolvido' || tipo === 'garantia_voltar_depois') {
+    // Garantia nossa (pedido de 2026-09-18) — foto obrigatória, mesma regra
+    // do "Não atendido" acima e da tela do técnico.
+    extra.innerHTML = blocoFotoPainel('Foto do comprovante',
+      'Anexe foto do produto ou do reparo — comprova o retorno em garantia.');
   } else if (tipo === 'fazer_os') {
     // Mesma ideia da tela própria do técnico (static/tecnico.js) — dados do
     // cliente, defeito, solução, forma de pagamento e assinatura, tudo numa
@@ -7476,6 +7489,10 @@ function validarConfirmarDesfecho() {
   } else if (_dfTipo === 'nao_atendido') {
     // Foto obrigatória — comprovante de que o técnico foi até o cliente.
     // Pedido de 2026-09-01, depois de reclamação sem comprovação.
+    ok = !!_dfFoto;
+  } else if (_dfTipo === 'garantia_resolvido' || _dfTipo === 'garantia_voltar_depois') {
+    // Foto obrigatória — mesmo princípio do "Não atendido" (pedido de
+    // 2026-09-18: "vai anexar as informações e fotos").
     ok = !!_dfFoto;
   }
   btn.disabled = !ok;
@@ -8389,12 +8406,37 @@ async function carregarOS() {
       <div class="rot">${rotulo}</div>
     </button>`).join('');
 
+  // Fichas com número de chamado Panasonic mas SEM OS vinculada (pedido de
+  // 2026-09-18) — não têm linha de ordens_servico pra entrar em r.ordens,
+  // então são buscadas à parte e mostradas num bloco simples abaixo, só
+  // nesta aba, INDEPENDENTE de status escolhido ou busca (por isso vem antes
+  // dos returns antecipados abaixo). Erro aqui não pode travar a aba OS.
+  let fichasPanasonicSemOS = '';
+  if (_osOrigemTab === 'panasonic') {
+    try {
+      const rf = await api('/ordens-servico/panasonic-sem-os');
+      if (rf.fichas.length) {
+        fichasPanasonicSemOS = `
+          <div class="os-panasonic-sem-os">
+            <p class="form-separador">Fichas Panasonic sem OS vinculada (${rf.fichas.length})</p>
+            ${rf.fichas.map(f => `
+              <div class="os-panasonic-sem-os-linha">
+                <span class="cliente">${esc(f.cliente) || 'Cliente sem nome'}</span>
+                <span class="at-sub">${esc([f.tipo_aparelho, f.modelo].filter(Boolean).join(' · '))}</span>
+                <span class="at-sub">Chamado ${esc(f.numero_os)}</span>
+                <span class="at-sub">${esc(f.tecnico) || 'sem técnico'} · ${esc(f.data_referencia ? f.data_referencia.split('-').reverse().join('/') : f.dia_semana)}</span>
+              </div>`).join('')}
+          </div>`;
+      }
+    } catch { /* erro passageiro -- não trava a aba OS por causa disso */ }
+  }
+
   // Lista só aparece com um status escolhido (clicou num cartão) ou busca
   // ativa — pedido de 2026-08-28: com muita OS acumulada, a lista inteira
   // solta embaixo dos cartões ficava "bagunçada". Sem filtro nenhum, só os
   // cartões — clicar num deles é que revela as OS daquele status.
   if (!_osFiltroStatus && !_osBuscaTexto) {
-    mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>
+    mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${fichasPanasonicSemOS}
       <p class="ajuda-texto" style="text-align:center;padding:20px 0;">
         Clique num status acima pra ver as ordens de serviço dele, ou busque por nome/número.
       </p>`;
@@ -8402,7 +8444,7 @@ async function carregarOS() {
   }
 
   if (r.ordens.length === 0) {
-    mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>
+    mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${fichasPanasonicSemOS}
       <div class="historico-vazio">${icone('check', 'icone-24')}
         <p>${_osFiltroStatus ? 'Nenhuma OS nesse status.' : 'Nenhuma OS encontrada pra essa busca.'}</p></div>`;
     return;
@@ -8437,7 +8479,7 @@ async function carregarOS() {
     </div>`;
   }).join('');
 
-  mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${linhas}`;
+  mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${linhas}${fichasPanasonicSemOS}`;
 }
 
 // ─── Agendar Clientes: fila de quem está pronto pra ter visita marcada ──
@@ -12195,6 +12237,22 @@ const AT_TIPOS = [
   // remarcar uma visita cai neste card único.
   { tipo: 'agendar_cliente', rotulo: 'Agendar cliente', curto: 'Agendar cliente',
     classe: 'at-agendar', nota: 'precisa marcar ou remarcar visita' },
+  // Garantia Panasonic (pedido de 2026-09-18) — separado do "Resolvido"
+  // comum de propósito: Panasonic reembolsa por chamado de garantia
+  // resolvido, então precisa contar à parte pra fechar conta com eles.
+  { tipo: 'resolvido_panasonic', rotulo: 'Resolvido da Panasonic', curto: 'Resolvido Panasonic',
+    classe: 'at-panasonic-resolvido', nota: 'garantia Panasonic fechada na hora' },
+  { tipo: 'aprovado_executado', rotulo: 'Aprovado - Executado', curto: 'Aprovado Executado',
+    classe: 'at-aprovado-executado', nota: 'garantia Panasonic aprovada e executada' },
+  { tipo: 'aprovado_retirado', rotulo: 'Aprovado - Retirado', curto: 'Aprovado Retirado',
+    classe: 'at-aprovado-retirado', nota: 'garantia Panasonic aprovada, produto retirado' },
+  // Garantia nossa (não-Panasonic) — mesmo princípio de Resolvido/Não
+  // atendido, mas com anexo de foto obrigatório (mesma exigência do
+  // "Não atendido" já validada em tecnico.js).
+  { tipo: 'garantia_resolvido', rotulo: 'Garantia Resolvido', curto: 'Garantia Resolvido',
+    classe: 'at-garantia-resolvido', nota: 'retorno em garantia, resolvido' },
+  { tipo: 'garantia_voltar_depois', rotulo: 'Garantia Voltar depois', curto: 'Garantia Voltar depois',
+    classe: 'at-garantia-voltar', nota: 'retorno em garantia, precisa voltar' },
 ];
 // Antes escondia 'volto_depois'/'nao_atendido' da tela inteira — não esconde
 // mais nada (ver card "Agendar cliente" acima); mantido vazio em vez de

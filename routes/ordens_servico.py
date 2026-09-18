@@ -1034,6 +1034,20 @@ def remover_catalogo_servico(item_id):
     return jsonify({"mensagem": "Removido do catálogo"})
 
 
+# "OS Panasonic" tem DOIS caminhos de entrada, funções diferentes (pedido de
+# 2026-09-18 ampliou o que já existia de 2026-08-28): _POR_PECA é a peça que
+# chegou pelo robô de preços e casou com um pedido (pecas_chegada) — sobre
+# ESTOQUE. _POR_CHAMADO é o número do chamado que o técnico digita na ficha
+# (servicos.numero_os) bater com o formato da Panasonic — sobre GARANTIA. Não
+# tem um jeito confiável de achar o formato exato (o próprio Kalebe: "nem
+# sempre tem um padrão"), então a regra é só o que ele confirmou que É
+# sempre verdade: tem "2026" no meio E é mais comprido que o nosso próprio
+# número de 6 dígitos.
+_PANASONIC_POR_PECA = "EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = {alias}.id)"
+_PANASONIC_POR_CHAMADO = ("EXISTS (SELECT 1 FROM servicos s WHERE s.ordem_servico_id = {alias}.id "
+                          "AND s.numero_os LIKE '%2026%' AND LENGTH(s.numero_os) > 6)")
+
+
 @ordens_servico_bp.route("/ordens-servico", methods=["GET"])
 def listar():
     """?status filtra; ?cliente_id filtra por cliente; ?busca acha por número
@@ -1112,7 +1126,7 @@ def listar():
             SELECT 1 FROM servicos s
             JOIN servico_desfecho sd ON sd.servico_id = s.id
              WHERE s.ordem_servico_id = os.id
-               AND sd.desfecho IN ('nao_atendido', 'volto_depois')
+               AND sd.desfecho IN ('nao_atendido', 'volto_depois', 'aprovado_agendar')
         )""")
         condicoes.append("os.oculta_fila_em IS NULL")
     elif fonte == "publico":
@@ -1130,12 +1144,13 @@ def listar():
     # vá pra lá quando a gente jogar o cliente lá". "nossa" volta a ser
     # exatamente o que sempre foi (tudo que não é Panasonic), agora só
     # excluindo quem foi marcado como balcão à mão.
+    _eh_panasonic_os = f"({_PANASONIC_POR_PECA.format(alias='os')} OR {_PANASONIC_POR_CHAMADO.format(alias='os')})"
     if origem == "panasonic":
-        condicoes.append("EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+        condicoes.append(_eh_panasonic_os)
     elif origem == "balcao":
         condicoes.append("os.balcao_em IS NOT NULL")
     elif origem == "nossa":
-        condicoes.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = os.id)")
+        condicoes.append(f"NOT {_eh_panasonic_os}")
         condicoes.append("os.balcao_em IS NULL")
     where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
 
@@ -1177,13 +1192,15 @@ def listar():
         # filha nenhuma (de propósito, pra não empilhar linha do mesmo caso).
         # O cartão contava filha, a lista escondia — por isso o número nunca
         # batia com o que aparecia depois de clicar.
+        _eh_panasonic_contagem = (f"({_PANASONIC_POR_PECA.format(alias='ordens_servico')} OR "
+                                  f"{_PANASONIC_POR_CHAMADO.format(alias='ordens_servico')})")
         condicoes_contagem = ["ordens_servico.os_pai_id IS NULL"]
         if origem == "panasonic":
-            condicoes_contagem.append("EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)")
+            condicoes_contagem.append(_eh_panasonic_contagem)
         elif origem == "balcao":
             condicoes_contagem.append("ordens_servico.balcao_em IS NOT NULL")
         elif origem == "nossa":
-            condicoes_contagem.append("NOT EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = ordens_servico.id)")
+            condicoes_contagem.append(f"NOT {_eh_panasonic_contagem}")
             condicoes_contagem.append("ordens_servico.balcao_em IS NULL")
         if fonte == "publico":
             # Mesmo bug de 2026-09-09 (cartão contando o que a lista não
@@ -1221,6 +1238,28 @@ def listar():
         ]
 
     return jsonify({"ordens": ordens, "contagem": contagem, "total": len(ordens)})
+
+
+@ordens_servico_bp.route("/ordens-servico/panasonic-sem-os", methods=["GET"])
+def panasonic_sem_os():
+    """Fichas (visita de técnico) com número de chamado da Panasonic mas SEM
+    OS vinculada no nosso sistema — pedido de 2026-09-18 (obs do Kalebe:
+    "fichas que tiverem OS da Panasonic e não forem ligadas a OS do nosso
+    sistema devem cair na aba de OS Panasonic"). Endpoint à parte porque não
+    tem `ordens_servico` nenhuma pra listar aqui — é sobre `servicos` soltos,
+    a aba OS Panasonic mostra os dois juntos (ver carregarOS em app.js)."""
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT s.id, s.cliente, s.numero_os, s.tipo_aparelho, s.modelo,
+                   f.data_referencia, f.dia_semana, t.nome AS tecnico
+              FROM servicos s
+              JOIN fichas f ON f.id = s.ficha_id
+              LEFT JOIN tecnicos t ON t.id = f.tecnico_id
+             WHERE s.ordem_servico_id IS NULL
+               AND s.numero_os LIKE '%2026%' AND LENGTH(s.numero_os) > 6
+             ORDER BY f.data_referencia DESC
+        """)
+    return jsonify({"fichas": linhas})
 
 
 @ordens_servico_bp.route("/ordens-servico/exportar", methods=["GET"])

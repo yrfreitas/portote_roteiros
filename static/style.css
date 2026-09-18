@@ -700,6 +700,17 @@ header {
 .os-linha .cliente { font-weight: 650; font-size: 13.5px; }
 .os-linha .aparelho { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .os-linha .defeito { font-size: 12px; color: var(--text-secondary); }
+
+/* Fichas Panasonic sem OS vinculada (pedido de 2026-09-18) — não são OS de
+   verdade (sem id de ordens_servico pra abrir detalhe), por isso um cartão
+   mais simples, sem cursor de clique nem hover de navegação. */
+.os-panasonic-sem-os { margin-top: 18px; }
+.os-panasonic-sem-os-linha {
+  display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+  background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--accent-2);
+  border-radius: 13px; padding: 11px 16px; margin-bottom: 8px;
+}
+.os-panasonic-sem-os-linha .cliente { font-weight: 650; font-size: 13px; }
 .os-modelo-badge {
   display: inline-flex; align-items: center; font-size: 9.5px; font-weight: 700;
   letter-spacing: .3px; text-transform: uppercase; padding: 2px 8px; border-radius: 20px;
@@ -4466,6 +4477,11 @@ select:focus-visible,
 .at-linha.at-orcamento .at-etiqueta { background: var(--gold); }
 .at-linha.at-ok       .at-etiqueta { background: var(--success); }
 .at-linha.at-agendar  .at-etiqueta { background: var(--accent-2); }
+.at-linha.at-panasonic-resolvido  .at-etiqueta { background: var(--success); }
+.at-linha.at-aprovado-executado   .at-etiqueta { background: var(--success); }
+.at-linha.at-aprovado-retirado    .at-etiqueta { background: var(--accent-3); }
+.at-linha.at-garantia-resolvido   .at-etiqueta { background: var(--success); }
+.at-linha.at-garantia-voltar      .at-etiqueta { background: var(--danger); }
 
 /* Etiqueta de "já pagou" (pedido de 2026-09-17): tem que ter a MESMA força
    visual da etiqueta de desfecho, lado a lado com ela em .at-oque — não
