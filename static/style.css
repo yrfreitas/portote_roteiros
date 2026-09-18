@@ -4418,6 +4418,20 @@ select:focus-visible,
   color: var(--accent-text); font: inherit; text-decoration: underline;
 }
 
+/* Toggle "peças já pedidas" (pedido de 2026-09-18) — separa visualmente do
+   resto da tabela, mesma altura de linha pra não parecer outro componente. */
+.at-pedidas-toggle {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 11px 15px; background: var(--bg-panel); border-top: 1px solid var(--border);
+  font-size: 12px; font-weight: 650; color: var(--text-secondary);
+  transition: background .14s;
+}
+.at-pedidas-toggle:hover { background: var(--bg-hover); }
+.at-pedidas-seta {
+  display: inline-block; transition: transform .15s;
+}
+.at-pedidas-seta.fechada { transform: rotate(-90deg); }
+
 .at-barra-selecao {
   align-items: center; gap: 12px;
   padding: 10px 14px; margin-bottom: 12px; border-radius: 10px;

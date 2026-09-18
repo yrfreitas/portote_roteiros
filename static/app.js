@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v294';
+const VERSAO_PAINEL = 'v295';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -12270,6 +12270,10 @@ let _atBusca = '';       // normalizado (trim+minúsculo), só pra comparar
 let _atBuscaRaw = '';    // como a pessoa digitou — não "corrige" a caixa enquanto digita
 let _atUltimoResultado = null;
 let _atSelecionados = new Set();   // chaves marcadas pro "Remover selecionados"
+// Pedido de 2026-09-18: "Precisam de peça" recolhe as já pedidas por padrão
+// pra não acumular junto do que ainda precisa de ação. Reseta a cada
+// carregamento de página (não é preferência salva, só estado da sessão).
+let _atOcultarPedidas = true;
 
 // Filtro por nome digitado, aplicado sem nova ida ao servidor — a lista do
 // período já está na memória, então cada tecla só refaz o render local.
@@ -12371,7 +12375,14 @@ function _atRenderizarDesfechos(r) {
     return;
   }
 
-  const linhas = atendimentos.map(a => {
+  // "Peça já pedida" (pedido de 2026-09-18): dentro de "Precisam de peça" a
+  // lista só cresce enquanto ninguém marca "peça chegou" — o que já foi
+  // pedido continua tomando espaço mesmo sem exigir mais nenhuma ação. Junta
+  // essas linhas num bloco recolhível, junto do toggle logo abaixo.
+  const _atComPedida = atendimentos.filter(a => a.pedido_em && !a.chegou_em);
+  const _atSemPedida = atendimentos.filter(a => !(a.pedido_em && !a.chegou_em));
+
+  function _atLinhaHtml(a) {
     const t = AT_TIPOS.find(x => x.tipo === (a.grupo_efetivo || a.desfecho)) || {};
     const detalhe = a.peca || a.motivo || '';
     const aparelho = [a.tipo_aparelho, a.modelo].filter(Boolean).join(' · ');
@@ -12423,7 +12434,18 @@ function _atRenderizarDesfechos(r) {
         </div>
         ${alertaNoCarro(a)}
       </div>`;
-  }).join('');
+  }
+
+  const linhas = _atSemPedida.map(_atLinhaHtml).join('');
+  // Toggle recolhível (pedido de 2026-09-18): "oculta", não apaga — o botão
+  // só troca o ícone/rótulo e reaproveita o resultado já em mão, sem ida
+  // nova ao servidor.
+  const blocoPedidas = _atComPedida.length ? `
+    <div class="at-pedidas-toggle" onclick="atToggleOcultarPedidas()">
+      <span class="at-pedidas-seta ${_atOcultarPedidas ? 'fechada' : ''}">▾</span>
+      <span>${_atOcultarPedidas ? 'Mostrar' : 'Ocultar'} peças já pedidas (${_atComPedida.length})</span>
+    </div>
+    ${_atOcultarPedidas ? '' : _atComPedida.map(_atLinhaHtml).join('')}` : '';
 
   alvo.innerHTML = `
     <div class="at-cartoes">${cartoes}</div>
@@ -12438,11 +12460,20 @@ function _atRenderizarDesfechos(r) {
         <span>Técnico</span><span>Etiqueta</span><span>Pedido</span>
       </div>
       ${linhas}
+      ${blocoPedidas}
     </div>`;
 
   // Depois do render: o innerHTML acima substitui todo o conteúdo do painel
   // e apagaria o aviso se ele fosse inserido antes.
   avisarPecasNoCarro(r.atendimentos);
+}
+
+// Recolhe/mostra as fichas com peça já pedida dentro de "Precisam de peça"
+// (pedido de 2026-09-18) — só um toggle de exibição, os dados continuam
+// intactos e voltam a aparecer a qualquer momento; não some nada de verdade.
+function atToggleOcultarPedidas() {
+  _atOcultarPedidas = !_atOcultarPedidas;
+  if (_atUltimoResultado) _atRenderizarDesfechos(_atUltimoResultado);
 }
 
 // Busca a foto só quando alguém pede. Trazer as imagens junto da lista
