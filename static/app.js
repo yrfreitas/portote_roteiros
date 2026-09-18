@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v295';
+const VERSAO_PAINEL = 'v296';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7125,6 +7125,13 @@ const DF_MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                     'Aparelho sem defeito', 'Sem acesso ao local'];
 
 let _dfServico = null, _dfFicha = null, _dfTipo = null, _dfFoto = null;
+// Comprovante de pagamento do "Resolvido" no painel (pedido de 2026-09-18,
+// corrigindo um buraco real: essa opção não tinha NENHUM campo extra aqui,
+// diferente do app do técnico — dava pra concluir "Resolvido" sem forma de
+// pagamento nenhuma, o servidor recusava o desfecho (exige os dois pra
+// esse tipo) mas o status já tinha virado concluído, então sumia sem
+// erro nenhum. Ver DesfechoInvalido em routes/tecnico_api.py.
+let _dfFotoPagamento = null;
 let _dfOrcamentoModoLocal = false;
 // Itens/Valores do orçamento (pedido de 2026-09-17: "igual o orçamento das
 // OS") — mesmo padrão de _novosItensOrcamento (Nova OS) e _orcItensTecnico
@@ -7224,6 +7231,55 @@ function removerFotoDesfecho() {
   validarConfirmarDesfecho();
 }
 
+// Forma de pagamento + comprovante do "Resolvido" (pedido de 2026-09-18,
+// mesma regra e mesmos ids em espírito de static/tecnico.js:blocoPagamento
+// — "Resolvido"/"Fazer OS" são os únicos que terminam com o técnico
+// recebendo dinheiro na hora, exigência é dos dois, sem exceção).
+function blocoPagamentoPainel() {
+  return `
+    <label class="form-label" for="df-forma-pagamento">Forma de pagamento <span class="df-obrigatorio">*</span></label>
+    <select class="form-input" id="df-forma-pagamento" onchange="validarConfirmarDesfecho()">
+      <option value="">Selecione...</option>
+      <option value="Pix">Pix</option>
+      <option value="Dinheiro">Dinheiro</option>
+      <option value="Cartão de débito">Cartão de débito</option>
+      <option value="Cartão de crédito">Cartão de crédito</option>
+    </select>
+    <label class="form-label" style="margin-top:10px;">Comprovante de pagamento <span class="df-obrigatorio">*</span></label>
+    <p class="df-ajuda">Foto do Pix, do comprovante da maquininha, ou do dinheiro contado com o cliente.</p>
+    <label class="df-foto-botao">
+      Escolher foto
+      <input type="file" accept="image/*" onchange="escolherFotoPagamentoDesfecho(this)" hidden>
+    </label>
+    <div id="df-pagamento-previa" class="df-previa"></div>`;
+}
+
+async function escolherFotoPagamentoDesfecho(input) {
+  const arquivo = input.files && input.files[0];
+  if (!arquivo) return;
+  const previa = document.getElementById('df-pagamento-previa');
+  previa.innerHTML = '<span class="df-processando">preparando a foto...</span>';
+  try {
+    _dfFotoPagamento = await reduzirFotoInteira(arquivo);
+    previa.innerHTML = `
+      <img class="df-thumb" src="${_dfFotoPagamento}" alt="Comprovante de pagamento">
+      <button type="button" class="df-remover-foto" onclick="removerFotoPagamentoDesfecho()">remover</button>`;
+  } catch (e) {
+    _dfFotoPagamento = null;
+    previa.innerHTML = `<span class="df-erro">${esc(e.message)}</span>`;
+  } finally {
+    input.value = '';
+    validarConfirmarDesfecho();
+  }
+}
+
+function removerFotoPagamentoDesfecho() {
+  _dfFotoPagamento = null;
+  const previa = document.getElementById('df-pagamento-previa');
+  if (previa) previa.innerHTML = '';
+  validarConfirmarDesfecho();
+}
+
 // ─── Assinatura do cliente no "Fazer Ordem de Serviço" (painel) ────────
 // Mesmo canvas simples de static/tecnico.js, só que com mouse como
 // caso principal (aqui é o computador do escritório, não o celular em
@@ -7287,6 +7343,7 @@ function limparAssinaturaDesfecho() {
 
 function abrirDesfecho(servicoId, fichaId) {
   _dfServico = servicoId; _dfFicha = fichaId; _dfTipo = null; _dfFoto = null;
+  _dfFotoPagamento = null;
   _dfItensOrcamento = [];
   const m = document.getElementById('modal-desfecho');
   m.querySelector('.df-corpo').innerHTML = `
@@ -7308,10 +7365,20 @@ function fecharDesfecho() {
 
 function escolherDesfecho(tipo) {
   _dfTipo = tipo;
+  _dfFotoPagamento = null;
   document.querySelectorAll('.df-opcao').forEach(b =>
     b.classList.toggle('ativa', b.dataset.tipo === tipo));
   const extra = document.getElementById('df-extra');
-  if (tipo === 'precisa_peca') {
+  if (tipo === 'resolvido') {
+    // Pedido de 2026-09-12 (mesma regra do app do técnico) — faltava aqui
+    // no painel até 2026-09-18: ver blocoPagamentoPainel logo acima.
+    extra.innerHTML = blocoPagamentoPainel();
+  } else if (tipo === 'volto_depois' || ['resolvido_panasonic', 'aprovado_executado',
+             'aprovado_retirado', 'aprovado_agendar'].includes(tipo)) {
+    // Sem pagamento (Panasonic cobre a garantia, "Reagendar" não recebeu
+    // nada) — só uma foto opcional como evidência.
+    extra.innerHTML = blocoFotoPainel('Foto do produto/reparo (opcional)', '');
+  } else if (tipo === 'precisa_peca') {
     extra.innerHTML = `<label class="form-label" for="df-peca">Qual peça?</label>
       <input class="form-input" id="df-peca" autocomplete="off"
              placeholder="Código ou nome da peça">
@@ -7364,13 +7431,20 @@ function escolherDesfecho(tipo) {
       <textarea class="form-input" id="df-fos-defeito" rows="2">${esc(s.descricao || '')}</textarea>
       <label class="form-label" style="margin-top:10px;" for="df-fos-solucao">Nossa solução</label>
       <textarea class="form-input" id="df-fos-solucao" rows="3" placeholder="O que foi feito"></textarea>
-      <label class="form-label" style="margin-top:10px;" for="df-fos-pagamento">Forma de pagamento</label>
-      <select class="form-input" id="df-fos-pagamento">
+      <label class="form-label" style="margin-top:10px;" for="df-fos-pagamento">Forma de pagamento <span class="df-obrigatorio">*</span></label>
+      <select class="form-input" id="df-fos-pagamento" onchange="validarConfirmarDesfecho()">
         <option value="">Selecione...</option>
         <option value="Pix">Pix</option>
         <option value="Dinheiro">Dinheiro</option>
         <option value="Cartão">Cartão</option>
       </select>
+      <label class="form-label" style="margin-top:10px;">Comprovante de pagamento <span class="df-obrigatorio">*</span></label>
+      <p class="df-ajuda">Foto do Pix, do comprovante da maquininha, ou do dinheiro contado com o cliente.</p>
+      <label class="df-foto-botao">
+        Escolher foto
+        <input type="file" accept="image/*" onchange="escolherFotoPagamentoDesfecho(this)" hidden>
+      </label>
+      <div id="df-pagamento-previa" class="df-previa"></div>
       <label class="form-label" style="margin-top:10px;" for="df-fos-tipo-os">Tipo de OS / Termo (opcional)</label>
       <select class="form-input" id="df-fos-tipo-os">
         <option value="">Selecione...</option>
@@ -7469,17 +7543,25 @@ function validarConfirmarDesfecho() {
   const btn = document.getElementById('df-confirmar');
   if (!btn) return;
   let ok = true;
-  if (_dfTipo === 'cotacao_peca') {
+  if (_dfTipo === 'resolvido') {
+    // Pedido de 2026-09-12: recebeu do cliente, tem que provar como (mesma
+    // regra do app do técnico) — corrige o buraco de 2026-09-18.
+    const pagamento = document.getElementById('df-forma-pagamento')?.value;
+    ok = !!(pagamento && _dfFotoPagamento);
+  } else if (_dfTipo === 'cotacao_peca') {
     const codigo = document.getElementById('df-codigo')?.value.trim();
     const nome = document.getElementById('df-nome-peca')?.value.trim();
     ok = !!(codigo && nome && _dfFoto);
   } else if (_dfTipo === 'fazer_os') {
-    // Trava por nome do cliente + assinatura de verdade — sem isso não tem
-    // o que documentar (mesma regra da tela do técnico).
+    // Trava por nome do cliente + assinatura de verdade + pagamento — sem
+    // isso não tem o que documentar (mesma regra da tela do técnico).
+    // Pagamento entrou em 2026-09-18: faltava aqui, e o servidor recusa
+    // "fazer_os" sem forma de pagamento + comprovante (TIPOS_EXIGEM_PAGAMENTO).
     const nome = document.getElementById('df-fos-nome')?.value.trim();
+    const pagamento = document.getElementById('df-fos-pagamento')?.value;
     const checks = document.querySelectorAll('[data-checklist-painel]');
     const checklistOk = checks.length > 0 && Array.from(checks).every(c => c.checked);
-    ok = !!(nome && _dfAssinaturaTemTraco && checklistOk);
+    ok = !!(nome && pagamento && _dfFotoPagamento && _dfAssinaturaTemTraco && checklistOk);
   } else if (_dfTipo === 'orcamento') {
     // Itens/valor são opcionais de propósito (pedido de 2026-09-17): sem
     // nenhum lançado, a OS cai em "aguardando orçamento" pro escritório
@@ -7566,6 +7648,10 @@ async function confirmarDesfecho() {
     desfecho.nome_peca = document.getElementById('df-nome-peca')?.value.trim() || '';
   }
   if (_dfTipo === 'nao_atendido') desfecho.motivo = document.querySelector('.df-motivo.ativa')?.dataset.motivo || '';
+  if (_dfTipo === 'resolvido') {
+    desfecho.forma_pagamento = document.getElementById('df-forma-pagamento')?.value || '';
+    if (_dfFotoPagamento) desfecho.foto_pagamento = _dfFotoPagamento;
+  }
   if (_dfTipo === 'fazer_os') {
     desfecho.cliente_nome = document.getElementById('df-fos-nome')?.value.trim() || '';
     desfecho.cliente_telefone = document.getElementById('df-fos-telefone')?.value.trim() || '';
@@ -7574,6 +7660,7 @@ async function confirmarDesfecho() {
     desfecho.defeito_declarado = document.getElementById('df-fos-defeito')?.value.trim() || '';
     desfecho.solucao_os = document.getElementById('df-fos-solucao')?.value.trim() || '';
     desfecho.forma_pagamento = document.getElementById('df-fos-pagamento')?.value || '';
+    if (_dfFotoPagamento) desfecho.foto_pagamento = _dfFotoPagamento;
     desfecho.tipo_os = document.getElementById('df-fos-tipo-os')?.value || '';
     desfecho.checklist = JSON.stringify(_checklistAtual.map((item, i) => ({
       item, marcado: !!document.querySelector(`[data-checklist-painel="${i}"]`)?.checked,

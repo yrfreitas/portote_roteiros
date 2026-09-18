@@ -13,11 +13,12 @@
   // cliente e do endereço, e lê daqui em vez de bater no servidor de novo.
   let servicosAbertos = [];
 
-  function toast(msg) {
+  function toast(msg, duracaoMs = 2200) {
     const el = document.getElementById('toast');
     el.textContent = msg;
     el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 2200);
+    clearTimeout(toast._prazo);
+    toast._prazo = setTimeout(() => el.classList.remove('show'), duracaoMs);
   }
 
   // Guarda se a última leitura veio do cache offline e de quando ela é.
@@ -74,20 +75,39 @@
     if (fila.length === 0) return;
 
     const pendentes = [];
+    let falhas = 0;
     for (const item of fila) {
       try {
-        await fetch(`${API}${item.path}`, {
+        const resp = await fetch(`${API}${item.path}`, {
           headers: { 'Content-Type': 'application/json' },
           ...item.opts,
         });
+        // BUG corrigido em 2026-09-18: fetch() só rejeita em falha de REDE —
+        // um 400 (desfecho sem forma de pagamento, por exemplo) volta como
+        // resposta normal, "sincronizada com sucesso", e a ação some sem
+        // ninguém perceber. Foi assim que 4 fichas do Igor concluíram sem
+        // desfecho num só dia. Erro de regra de negócio não entra de volta
+        // na fila (reenviar dá o mesmo erro de novo), mas tem que AVISAR.
+        if (!resp.ok) {
+          falhas++;
+          continue;
+        }
       } catch {
         pendentes.push(item); // ainda sem rede: devolve para a fila
       }
     }
 
     gravarFila(pendentes);
-    if (pendentes.length === 0 && fila.length > 0) {
-      toast(`${fila.length} ação${fila.length !== 1 ? 'ões' : ''} sincronizada${fila.length !== 1 ? 's' : ''}`);
+    const sincronizadas = fila.length - pendentes.length - falhas;
+    if (sincronizadas > 0) {
+      toast(`${sincronizadas} ação${sincronizadas !== 1 ? 'ões' : ''} sincronizada${sincronizadas !== 1 ? 's' : ''}`);
+    }
+    if (falhas > 0) {
+      // Fica mais tempo na tela que o toast padrão — é um aviso que exige
+      // ação (reabrir e refazer), não só uma confirmação de "deu certo".
+      toast(`${falhas} ação${falhas !== 1 ? 'ões' : ''} não${falhas !== 1 ? '' : ''} pôde${falhas !== 1 ? 'ram' : ''} ser salva${falhas !== 1 ? 's' : ''} — reabra o atendimento e refaça a baixa`, 6000);
+    }
+    if (sincronizadas > 0 || falhas > 0) {
       if (fichaAbertaId !== null) abrirFicha(fichaAbertaId); else carregarFichas();
     }
   }
@@ -1901,7 +1921,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v295';
+  const VERSAO_TELA = 'v296';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

@@ -322,23 +322,31 @@ def alterar_status_servico(servico_id):
             "erro": f"Status inválido. Use um de: {', '.join(sorted(STATUS_SERVICO_VALIDOS))}"
         }), 400
 
-    with db_conn(commit=True) as conn:
-        servico = fetch_one(conn, """
-            SELECT sv.* FROM servicos sv JOIN fichas f ON f.id = sv.ficha_id
-             WHERE sv.id = ?
-        """, (servico_id,))
-        if not servico:
-            return jsonify({"erro": "Serviço não encontrado"}), 404
-        if _servico_de_outro_tecnico(conn, servico["ficha_id"]):
-            return jsonify({"erro": "Serviço não encontrado"}), 404
-        aplicar_status_servico(conn, servico_id, novo_status)
-        # Mesma função que o app do técnico usa: o desfecho tem de ser gravado
-        # igual venha de onde vier, senão as duas origens divergem e o
-        # relatório passa a depender de quem concluiu.
-        from routes.tecnico_api import _gravar_desfecho
-        desfecho = _gravar_desfecho(conn, servico, novo_status,
-                                    data.get("desfecho"),
-                                    (session.get("usuario_nome") or "").strip())
+    from routes.tecnico_api import _gravar_desfecho, DesfechoInvalido
+    try:
+        with db_conn(commit=True) as conn:
+            servico = fetch_one(conn, """
+                SELECT sv.* FROM servicos sv JOIN fichas f ON f.id = sv.ficha_id
+                 WHERE sv.id = ?
+            """, (servico_id,))
+            if not servico:
+                return jsonify({"erro": "Serviço não encontrado"}), 404
+            if _servico_de_outro_tecnico(conn, servico["ficha_id"]):
+                return jsonify({"erro": "Serviço não encontrado"}), 404
+            aplicar_status_servico(conn, servico_id, novo_status)
+            # Mesma função que o app do técnico usa: o desfecho tem de ser gravado
+            # igual venha de onde vier, senão as duas origens divergem e o
+            # relatório passa a depender de quem concluiu.
+            desfecho = _gravar_desfecho(conn, servico, novo_status,
+                                        data.get("desfecho"),
+                                        (session.get("usuario_nome") or "").strip())
+    except DesfechoInvalido as exc:
+        # Propaga PRA FORA do `with` de propósito: sem isso o rollback não
+        # desfaz o status que já tinha sido aplicado acima (ver
+        # DesfechoInvalido em tecnico_api.py — foi exatamente esse buraco
+        # que perdeu 4 desfechos do Igor em 2026-09-18, todos concluídos
+        # pelo painel sem o campo de pagamento aparecer).
+        return jsonify({"erro": str(exc)}), 400
 
     return jsonify({"mensagem": f"Serviço marcado como {novo_status}",
                     "status": novo_status, "desfecho": desfecho})

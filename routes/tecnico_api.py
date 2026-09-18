@@ -266,24 +266,30 @@ def status_servico_tecnico(token, servico_id):
             "erro": f"Status inválido. Use um de: {', '.join(sorted(STATUS_SERVICO_VALIDOS))}"
         }), 400
 
-    with db_conn(commit=True) as conn:
-        tecnico = _tecnico_por_token(conn, token)
-        if not tecnico:
-            return jsonify({"erro": "Link inválido"}), 404
+    try:
+        with db_conn(commit=True) as conn:
+            tecnico = _tecnico_por_token(conn, token)
+            if not tecnico:
+                return jsonify({"erro": "Link inválido"}), 404
 
-        servico = fetch_one(conn, """
-            SELECT s.* FROM servicos s
-            JOIN fichas f ON f.id = s.ficha_id
-            WHERE s.id = ? AND f.tecnico_id = ?
-        """, (servico_id, tecnico["id"]))
-        if not servico:
-            return jsonify({"erro": "Serviço não encontrado"}), 404
+            servico = fetch_one(conn, """
+                SELECT s.* FROM servicos s
+                JOIN fichas f ON f.id = s.ficha_id
+                WHERE s.id = ? AND f.tecnico_id = ?
+            """, (servico_id, tecnico["id"]))
+            if not servico:
+                return jsonify({"erro": "Serviço não encontrado"}), 404
 
-        aplicar_status_servico(conn, servico_id, novo_status)
-        desfecho_gravado = _gravar_desfecho(conn, servico, novo_status,
-                                            data.get("desfecho"),
-                                            tecnico.get("nome") or "",
-                                            tecnico["id"])
+            aplicar_status_servico(conn, servico_id, novo_status)
+            desfecho_gravado = _gravar_desfecho(conn, servico, novo_status,
+                                                data.get("desfecho"),
+                                                tecnico.get("nome") or "",
+                                                tecnico["id"])
+    except DesfechoInvalido as exc:
+        # Propaga PRA FORA do `with` de propósito (ver docstring da exceção):
+        # sem isso o rollback não desfaz o status que já tinha sido aplicado
+        # acima, e o atendimento fica concluído sem desfecho nenhum de novo.
+        return jsonify({"erro": str(exc)}), 400
 
     return jsonify({"mensagem": f"Serviço marcado como {novo_status}",
                     "status": novo_status, "desfecho": desfecho_gravado})
@@ -791,6 +797,23 @@ def _atualizar_status_os(conn, ordem_servico_id, tipo):
             (novo, agora, ordem_servico_id))
 
 
+class DesfechoInvalido(Exception):
+    """Erro de VALIDAÇÃO do desfecho (campo obrigatório faltando, tipo
+    desconhecido) — vira 400 pro cliente corrigir e reenviar, nunca um 500.
+
+    Existe porque até 2026-09-18 essa função só dava `return None` quando a
+    validação falhava, e quem chama (status_servico_tecnico/
+    alterar_status_servico) IGNORAVA esse None — a troca de status pro
+    'concluido' já tinha COMMITADO antes, então o atendimento ficava
+    concluído com desfecho nenhum, sem erro nenhum aparecer pro técnico. Foi
+    exatamente o que aconteceu com 4 fichas do Igor num só dia: "Resolvido"
+    tirado pelo painel (sem o campo de forma de pagamento, que só existe na
+    tela do app do técnico) sempre caía nesse buraco. Agora a validação
+    RAISE, e como está dentro do mesmo `with db_conn(commit=True)` da
+    troca de status (ver os dois chamadores), o rollback desfaz os dois
+    juntos — ou os dois valem, ou nenhum vale."""
+
+
 def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None):
     """Guarda o que aconteceu no atendimento, junto com a conclusão.
 
@@ -810,11 +833,11 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
         return None
 
     if not isinstance(desfecho, dict):
-        return None
+        raise DesfechoInvalido("Escolha o que aconteceu no atendimento antes de concluir.")
 
     tipo = (desfecho.get("tipo") or "").strip().lower()
     if tipo not in DESFECHOS_VALIDOS:
-        return None
+        raise DesfechoInvalido("Escolha o que aconteceu no atendimento antes de concluir.")
 
     motivo = (desfecho.get("motivo") or "").strip()[:120]
     peca = (desfecho.get("peca") or "").strip()[:200]
@@ -839,7 +862,7 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
         foto_valida = isinstance(foto, str) and foto.startswith(PREFIXOS_FOTO) \
             and len(foto) <= FOTO_MAXIMA
         if not codigo or not nome_peca or not foto_valida:
-            return None
+            raise DesfechoInvalido("Cotação de peça precisa do código, do nome da peça e de uma foto.")
         peca = f"{codigo} — {nome_peca}"
 
     # Pedido de 2026-09-12: quem recebe dinheiro do cliente ali na hora
@@ -852,7 +875,7 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
             and foto_pagamento.startswith(PREFIXOS_FOTO) \
             and len(foto_pagamento) <= FOTO_MAXIMA
         if not forma_pagamento or not foto_pagamento_valida:
-            return None
+            raise DesfechoInvalido("Esse desfecho precisa da forma de pagamento e do comprovante.")
 
     _gravar_foto(conn, servico_id, foto, quem, agora)
     if foto_pagamento:
