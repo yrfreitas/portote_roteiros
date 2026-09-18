@@ -4465,6 +4465,7 @@ select:focus-visible,
 .at-linha.at-fazer-os .at-etiqueta { background: var(--accent-3); }
 .at-linha.at-orcamento .at-etiqueta { background: var(--gold); }
 .at-linha.at-ok       .at-etiqueta { background: var(--success); }
+.at-linha.at-agendar  .at-etiqueta { background: var(--accent-2); }
 
 /* Etiqueta de "já pagou" (pedido de 2026-09-17): tem que ter a MESMA força
    visual da etiqueta de desfecho, lado a lado com ela em .at-oque — não
@@ -4522,6 +4523,10 @@ select:focus-visible,
 }
 .at-linha.pedida { background: rgba(52,211,153,.07); border-left-color: var(--success); }
 .at-linha.pedida:hover { background: rgba(52,211,153,.12); }
+/* "Peça chegou" (2026-09-18): estágio seguinte a "pedida" — cor diferente
+   pra distinguir de longe "já comprei" de "já está aqui". */
+.at-linha.chegou { background: rgba(79,141,251,.08); border-left-color: var(--accent); }
+.at-linha.chegou:hover { background: rgba(79,141,251,.14); }
 
 .at-baixa { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .at-btn-baixa {
@@ -4542,6 +4547,7 @@ select:focus-visible,
   font-size: 11.5px; font-weight: 650; color: var(--success-text);
   white-space: nowrap; cursor: help;
 }
+.at-pedida.at-chegou { color: var(--accent-text); }
 
 /* Formulário mini de "anexar comprovante" que abre dentro da própria
    célula ao clicar "Já pedi" — cabe na coluna estreita da tabela, por isso

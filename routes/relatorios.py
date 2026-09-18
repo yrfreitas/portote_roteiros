@@ -305,8 +305,22 @@ def _marcar_disponivel_no_carro(conn, atendimentos):
             a["no_carro"] = achados
 
 
-DESFECHOS_ORDEM = ["precisa_peca", "cotacao_peca", "volto_depois", "nao_atendido",
-                   "fazer_os", "resolvido"]
+DESFECHOS_ORDEM = ["precisa_peca", "cotacao_peca", "fazer_os", "resolvido",
+                   "orcamento", "agendar_cliente"]
+
+
+def _grupo_efetivo(l):
+    """"Não atendido" e "Reagendar Cliente" nunca tiveram card/aba própria em
+    Atendimentos (ficavam ocultos, ver AT_TIPOS_OCULTOS no front) — pedido de
+    2026-09-18: agora caem visíveis, junto com "Precisa de peça" já com a
+    peça chegada, num card único "Agendar cliente". Centraliza aqui pra
+    contagem e filtro usarem exatamente a mesma regra."""
+    d = l.get("desfecho")
+    if d in ("nao_atendido", "volto_depois"):
+        return "agendar_cliente"
+    if d == "precisa_peca" and l.get("chegou_em"):
+        return "agendar_cliente"
+    return d
 
 
 @relatorios_bp.route("/desfechos", methods=["GET"])
@@ -333,7 +347,7 @@ def listar_desfechos():
         # daqui").
         linhas = fetch_all(conn, sql("""
             SELECT d.servico_id, d.desfecho, d.motivo, d.peca, d.observacao,
-                   d.pedido_em, d.pedido_por,
+                   d.pedido_em, d.pedido_por, d.chegou_em, d.chegou_por,
                    COALESCE(d.forma_pagamento, os2.forma_pagamento) AS forma_pagamento,
                    d.registrado_em, d.registrado_por,
                    s.cliente, s.endereco_completo, s.tipo_aparelho, s.modelo,
@@ -371,6 +385,19 @@ def listar_desfechos():
             for l in linhas:
                 l["comprovante_pagamento_foto"] = foto_pag_por_servico.get(l.get("servico_id"))
 
+        # Comprovante de "peça chegou" (pedido de 2026-09-18) — mesmo padrão
+        # de comprovante_pagamento acima, legenda própria.
+        ids_com_chegada = [l["servico_id"] for l in linhas if l.get("chegou_em") and l.get("servico_id")]
+        if ids_com_chegada:
+            marcadores = ",".join("?" * len(ids_com_chegada))
+            fotos_chegada = fetch_all(conn, sql(
+                f"SELECT servico_id, foto FROM servico_foto "
+                f"WHERE servico_id IN ({marcadores}) AND legenda = 'comprovante_peca_chegou'"),
+                tuple(ids_com_chegada))
+            foto_chegada_por_servico = {f["servico_id"]: f["foto"] for f in fotos_chegada}
+            for l in linhas:
+                l["chegou_foto"] = foto_chegada_por_servico.get(l.get("servico_id"))
+
         # "Pedir peça" batido direto na OS (sem visita de técnico envolvida) —
         # mesma vitrine de Atendimentos, mas sem servico_desfecho por trás (ver
         # pedido_peca_os em database.py: servico_desfecho.servico_id é PRIMARY
@@ -379,6 +406,7 @@ def listar_desfechos():
             SELECT p.id, p.peca, p.descricao, p.foto AS peca_foto,
                    p.criado_em, p.criado_por,
                    p.pedido_em, p.pedido_por, p.pedido_foto,
+                   p.chegou_em, p.chegou_por, p.chegou_foto,
                    os.id AS ordem_servico_id, os.tipo_aparelho, os.modelo,
                    c.nome AS cliente
               FROM pedido_peca_os p
@@ -393,6 +421,8 @@ def listar_desfechos():
                 "peca": p["peca"], "observacao": p["descricao"],
                 "pedido_em": p["pedido_em"], "pedido_por": p["pedido_por"],
                 "pedido_foto": p["pedido_foto"],
+                "chegou_em": p["chegou_em"], "chegou_por": p["chegou_por"],
+                "chegou_foto": p["chegou_foto"],
                 "registrado_em": p["criado_em"], "registrado_por": p["criado_por"],
                 "cliente": p["cliente"], "endereco_completo": None,
                 "tipo_aparelho": p["tipo_aparelho"], "modelo": p["modelo"],
@@ -410,14 +440,15 @@ def listar_desfechos():
     # quando a lista abaixo está filtrada em um deles.
     contagem = {k: 0 for k in DESFECHOS_ORDEM}
     for l in linhas:
-        if l["desfecho"] in contagem:
-            contagem[l["desfecho"]] += 1
+        l["grupo_efetivo"] = _grupo_efetivo(l)
+        if l["grupo_efetivo"] in contagem:
+            contagem[l["grupo_efetivo"]] += 1
 
     with db_conn() as conn:
         _marcar_disponivel_no_carro(conn, linhas)
 
     if tipo in contagem:
-        linhas = [l for l in linhas if l["desfecho"] == tipo]
+        linhas = [l for l in linhas if l["grupo_efetivo"] == tipo]
 
     return jsonify({
         "dias": dias,
@@ -511,6 +542,60 @@ def desfazer_peca_pedida(servico_id):
     if not afetadas:
         return jsonify({"erro": "Atendimento não encontrado"}), 404
     return jsonify({"mensagem": "Pedido desfeito — volta a aparecer em Atendimentos"})
+
+
+@relatorios_bp.route("/desfechos/<int:servico_id>/chegou", methods=["POST"])
+def marcar_peca_chegou(servico_id):
+    """Segundo evento do ciclo da peça (pedido de 2026-09-18): "pedida" só diz
+    que foi encomendada — "chegou" é o evento que efetivamente tira o
+    atendimento de "Aguardando peça" e o leva pra "Agendar cliente" (ver
+    listar_desfechos, filtro tipo=agendar_cliente). Comprovante é
+    obrigatório aqui, diferente do "pedida": é a prova de que a peça está
+    fisicamente na mão, não só que foi encomendada."""
+    from flask import session
+
+    data = request.get_json(silent=True) or {}
+    foto = _foto_valida(data.get("foto"))
+    if not foto:
+        return jsonify({"erro": "Anexe o comprovante de que a peça chegou."}), 400
+
+    with db_conn() as conn:
+        dado = fetch_one(conn, sql(
+            "SELECT servico_id, pedido_em, chegou_em FROM servico_desfecho WHERE servico_id = ?"),
+            (servico_id,))
+
+    if not dado:
+        return jsonify({"erro": "Atendimento não encontrado"}), 404
+    if not dado["pedido_em"]:
+        return jsonify({"erro": "Marque que a peça foi pedida antes de marcar que chegou."}), 400
+    if dado["chegou_em"]:
+        return jsonify({"erro": "Esta peça já foi marcada como chegada.",
+                        "chegou_em": dado["chegou_em"]}), 409
+
+    quem = (session.get("usuario_nome") or "").strip()[:80]
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_conn(commit=True) as conn:
+        execute(conn, sql("UPDATE servico_desfecho SET chegou_em = ?, "
+                          "chegou_por = ? WHERE servico_id = ?"), (agora, quem, servico_id))
+        execute(conn, sql(
+            "INSERT INTO servico_foto (servico_id, foto, legenda, criado_em, enviado_por) "
+            "VALUES (?, ?, 'comprovante_peca_chegou', ?, ?)"), (servico_id, foto, agora, quem))
+
+    return jsonify({"chegou_em": agora, "chegou_por": quem})
+
+
+@relatorios_bp.route("/desfechos/<int:servico_id>/chegou", methods=["DELETE"])
+def desfazer_peca_chegou(servico_id):
+    """Desfaz a marcação de "chegou" — mesmo motivo de desfazer_peca_pedida:
+    comprovante errado anexado sem querer, volta pra "Aguardando peça"."""
+    with db_conn(commit=True) as conn:
+        afetadas = execute(conn, sql(
+            "UPDATE servico_desfecho SET chegou_em = NULL, chegou_por = NULL "
+            "WHERE servico_id = ?"), (servico_id,))
+    if not afetadas:
+        return jsonify({"erro": "Atendimento não encontrado"}), 404
+    return jsonify({"mensagem": "Desfeito — volta a aparecer em Aguardando peça"})
 
 
 @relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>/pedido", methods=["DELETE"])
@@ -1184,6 +1269,53 @@ def marcar_peca_os_pedida(pedido_id):
         aviso = f"Baixa registrada, mas não consegui escrever na planilha: {exc}"
 
     return jsonify({"pedido_em": agora, "pedido_por": quem, "tem_foto": bool(foto), "aviso": aviso})
+
+
+@relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>/chegou", methods=["POST"])
+def marcar_peca_os_chegou(pedido_id):
+    """Igual a marcar_peca_chegou, mas para pedido_peca_os (peça pedida direto
+    na OS, sem visita) — mesmo motivo de duplicação de marcar_peca_os_pedida:
+    tabela e id diferentes, junção exigiria id combinado em toda rota."""
+    from flask import session
+
+    data = request.get_json(silent=True) or {}
+    foto = _foto_valida(data.get("foto"))
+    if not foto:
+        return jsonify({"erro": "Anexe o comprovante de que a peça chegou."}), 400
+
+    with db_conn() as conn:
+        dado = fetch_one(conn, sql(
+            "SELECT id, pedido_em, chegou_em FROM pedido_peca_os WHERE id = ?"), (pedido_id,))
+
+    if not dado:
+        return jsonify({"erro": "Pedido de peça não encontrado"}), 404
+    if not dado["pedido_em"]:
+        return jsonify({"erro": "Marque que a peça foi pedida antes de marcar que chegou."}), 400
+    if dado["chegou_em"]:
+        return jsonify({"erro": "Esta peça já foi marcada como chegada.",
+                        "chegou_em": dado["chegou_em"]}), 409
+
+    quem = (session.get("usuario_nome") or "").strip()[:80]
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_conn(commit=True) as conn:
+        execute(conn, sql("UPDATE pedido_peca_os SET chegou_em = ?, "
+                          "chegou_por = ?, chegou_foto = ? WHERE id = ?"),
+                (agora, quem, foto, pedido_id))
+
+    return jsonify({"chegou_em": agora, "chegou_por": quem})
+
+
+@relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>/chegou", methods=["DELETE"])
+def desfazer_peca_os_chegou(pedido_id):
+    """Desfaz a marcação de "chegou" pro pedido batido direto na OS."""
+    with db_conn(commit=True) as conn:
+        afetadas = execute(conn, sql(
+            "UPDATE pedido_peca_os SET chegou_em = NULL, chegou_por = NULL, "
+            "chegou_foto = NULL WHERE id = ?"), (pedido_id,))
+    if not afetadas:
+        return jsonify({"erro": "Pedido de peça não encontrado"}), 404
+    return jsonify({"mensagem": "Desfeito — volta a aparecer em Aguardando peça"})
 
 
 @relatorios_bp.route("/desfechos/pedidos", methods=["GET"])

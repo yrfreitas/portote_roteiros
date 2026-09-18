@@ -627,12 +627,12 @@
   // propósito antes, mas quis de volta pra aparecer na aba Atendimentos.
   const DESFECHOS = [
     { tipo: 'resolvido',    rotulo: 'Resolvido',        sub: 'consertei na hora, nada pendente', icone: '✅' },
-    { tipo: 'orcamento',    rotulo: 'Orçamento',        sub: 'dados + assinatura, escritório monta o valor', icone: '📋' },
+    { tipo: 'orcamento',    rotulo: 'Enviar orçamento', sub: 'dados + assinatura, escritório monta o valor', icone: '📋' },
     { tipo: 'precisa_peca', rotulo: 'Fazer Pedido de Peça', sub: 'diagnosticado, falta peça', icone: '🔧' },
     { tipo: 'volto_depois', rotulo: 'Reagendar Cliente', sub: 'preciso retornar',      icone: '↻' },
-    { tipo: 'cotacao_peca', rotulo: 'Cotação de peça',  sub: 'não sei o preço ainda', icone: '💰' },
-    { tipo: 'fazer_os',     rotulo: 'Fazer Ordem de Serviço', sub: 'dados + assinatura do cliente', icone: '📝' },
-    { tipo: 'nao_atendido', rotulo: 'Cliente Ausente / Não foi possível atender', sub: 'não deu, precisa remarcar', icone: '!' },
+    { tipo: 'cotacao_peca', rotulo: 'Fazer Orçamento - Cotar peça', sub: 'não sei o preço ainda', icone: '💰' },
+    { tipo: 'fazer_os',     rotulo: 'Enviar Ordem por Pdf', sub: 'dados + assinatura do cliente', icone: '📝' },
+    { tipo: 'nao_atendido', rotulo: 'Cliente ausente', sub: 'não deu, precisa remarcar', icone: '!' },
   ];
   const MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                    'Aparelho sem defeito', 'Sem acesso ao local'];
@@ -1880,7 +1880,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v292';
+  const VERSAO_TELA = 'v293';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

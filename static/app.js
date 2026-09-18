@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v292';
+const VERSAO_PAINEL = 'v293';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7050,12 +7050,12 @@ async function aplicarConciliacao(fichaId) {
 // opções, senão quem usa o painel fica pra trás de quem usa o /t/<token>.
 const DF_OPCOES = [
   { tipo: 'resolvido',    rotulo: 'Resolvido',       sub: 'consertou na hora, nada pendente' },
-  { tipo: 'orcamento',    rotulo: 'Orçamento',       sub: 'dados + assinatura, escritório monta o valor' },
+  { tipo: 'orcamento',    rotulo: 'Enviar orçamento', sub: 'dados + assinatura, escritório monta o valor' },
   { tipo: 'precisa_peca', rotulo: 'Fazer Pedido de Peça', sub: 'diagnosticado, falta peça' },
   { tipo: 'volto_depois', rotulo: 'Reagendar Cliente', sub: 'precisa retornar' },
-  { tipo: 'cotacao_peca', rotulo: 'Cotação de peça', sub: 'não sei o preço ainda' },
-  { tipo: 'fazer_os',     rotulo: 'Fazer Ordem de Serviço', sub: 'dados + assinatura do cliente' },
-  { tipo: 'nao_atendido', rotulo: 'Cliente Ausente / Não foi possível atender', sub: 'não deu para fazer, precisa remarcar' },
+  { tipo: 'cotacao_peca', rotulo: 'Fazer Orçamento - Cotar peça', sub: 'não sei o preço ainda' },
+  { tipo: 'fazer_os',     rotulo: 'Enviar Ordem por Pdf', sub: 'dados + assinatura do cliente' },
+  { tipo: 'nao_atendido', rotulo: 'Cliente ausente', sub: 'não deu para fazer, precisa remarcar' },
 ];
 
 // Mesma lista de static/tecnico.js — checklist obrigatório antes de fechar
@@ -12179,19 +12179,27 @@ function toastDesfazer(msg, confirmar, cancelar, segundos = 6) {
 const AT_TIPOS = [
   { tipo: 'precisa_peca', rotulo: 'Precisam de peça', curto: 'Precisa de peça',
     classe: 'at-peca',  nota: 'esperando compra' },
-  { tipo: 'cotacao_peca', rotulo: 'Cotação de peça',  curto: 'Cotação de peça',
+  { tipo: 'cotacao_peca', rotulo: 'Fazer Orçamento - Cotar peça', curto: 'Cotação de peça',
     classe: 'at-cotacao', nota: 'aguardando preço' },
-  { tipo: 'fazer_os',     rotulo: 'OS feita em campo', curto: 'OS em campo',
+  { tipo: 'fazer_os',     rotulo: 'Enviar Ordem por Pdf', curto: 'OS em campo',
     classe: 'at-fazer-os', nota: 'assinada pelo cliente' },
-  { tipo: 'orcamento',    rotulo: 'Orçamentos',       curto: 'Orçamento',
-    classe: 'at-orcamento', nota: 'aguardando montar valor' },
+  { tipo: 'orcamento',    rotulo: 'Aguardando Aprovação de Orçamento', curto: 'Orçamento',
+    classe: 'at-orcamento', nota: 'aguardando aprovação/montar valor' },
   { tipo: 'resolvido',    rotulo: 'Resolvidos',       curto: 'Resolvido',
     classe: 'at-ok',    nota: 'fechados na hora' },
+  // Pedido de 2026-09-18: "Cliente ausente" e "Reagendar Cliente" ficavam
+  // OCULTOS daqui (ver AT_TIPOS_OCULTOS antigo) — o próprio desfecho
+  // desaparecia depois de registrado, sem ninguém acompanhar. Agora reúnem
+  // aqui, junto com "Precisa de peça" já com a peça chegada (ver
+  // _grupo_efetivo em routes/relatorios.py) — tudo que precisa marcar ou
+  // remarcar uma visita cai neste card único.
+  { tipo: 'agendar_cliente', rotulo: 'Agendar cliente', curto: 'Agendar cliente',
+    classe: 'at-agendar', nota: 'precisa marcar ou remarcar visita' },
 ];
-// Tipos que saíram dos cartões acima mas o servidor ainda devolve (histórico
-// antigo, ou o /desfechos é usado por outra tela) — filtrados da lista aqui,
-// não lá, porque só ESTA tela (Atendimentos) não quer mais mostrá-los.
-const AT_TIPOS_OCULTOS = ['volto_depois', 'nao_atendido'];
+// Antes escondia 'volto_depois'/'nao_atendido' da tela inteira — não esconde
+// mais nada (ver card "Agendar cliente" acima); mantido vazio em vez de
+// remover pra não quebrar a chamada em carregarDesfechos().
+const AT_TIPOS_OCULTOS = [];
 // Tipos com "✕ remover esta linha" + checkbox de seleção em lote. Pedido de
 // 2026-09-03: "Cotação de peça" também precisa disso — a mesma reclamação
 // de "entrou coisa errada, não tem como tirar" que já valeu pra "Precisa de
@@ -12306,11 +12314,11 @@ function _atRenderizarDesfechos(r) {
   }
 
   const linhas = atendimentos.map(a => {
-    const t = AT_TIPOS.find(x => x.tipo === a.desfecho) || {};
+    const t = AT_TIPOS.find(x => x.tipo === (a.grupo_efetivo || a.desfecho)) || {};
     const detalhe = a.peca || a.motivo || '';
     const aparelho = [a.tipo_aparelho, a.modelo].filter(Boolean).join(' · ');
     return `
-      <div class="at-linha ${t.classe}${a.pedido_em ? ' pedida' : ''}" id="at-linha-${a.chave}">
+      <div class="at-linha ${t.classe}${a.pedido_em ? ' pedida' : ''}${a.chegou_em ? ' chegou' : ''}" id="at-linha-${a.chave}">
         <div class="at-quando">
           ${AT_TIPOS_REMOVIVEIS.includes(a.desfecho) ? `
             <input type="checkbox" class="at-check" data-chave="${a.chave}"
@@ -12416,10 +12424,17 @@ async function verFotosDoAtendimento(servicoId, chave) {
 // A linha inteira fica verde, e não só o botão: com vinte linhas na tela, é a
 // cor da linha que responde a pergunta de longe.
 function botaoBaixa(a) {
+  if (a.chegou_em) {
+    const quando = parseDataBanco(a.chegou_em)?.toLocaleDateString('pt-BR') || '';
+    return `<span class="at-pedida at-chegou" title="Peça chegou em ${esc(a.chegou_em)}${
+      a.chegou_por ? ' por ' + esc(a.chegou_por) : ''}">✓ peça chegou ${esc(quando)}</span>`;
+  }
   if (a.pedido_em) {
-    const quando = parseDataBanco(a.pedido_em)?.toLocaleDateString('pt-BR') || '';
-    return `<span class="at-pedida" title="Pedida em ${esc(a.pedido_em)}${
-      a.pedido_por ? ' por ' + esc(a.pedido_por) : ''}">✓ pedida ${esc(quando)}</span>`;
+    const quando = a.pedido_em === true ? '' : parseDataBanco(a.pedido_em)?.toLocaleDateString('pt-BR') || '';
+    return `
+      <span class="at-pedida" title="Pedida${a.pedido_em !== true ? ' em ' + esc(a.pedido_em) : ''}${
+        a.pedido_por ? ' por ' + esc(a.pedido_por) : ''}">✓ pedida ${esc(quando)}</span>
+      <button class="at-btn-baixa" onclick="abrirAnexarChegada('${a.chave}')">Peça chegou</button>`;
   }
   return `<button class="at-btn-baixa" onclick="abrirAnexarPedido('${a.chave}')">
             Já pedi</button>`;
@@ -12751,7 +12766,7 @@ async function confirmarBaixaPeca(chave) {
       body: JSON.stringify({ foto: _pedidoFotoAtual || null }),
     });
     document.getElementById(`at-linha-${chave}`)?.classList.add('pedida');
-    slot.innerHTML = botaoBaixa({ pedido_em: r.pedido_em, pedido_por: r.pedido_por });
+    slot.innerHTML = botaoBaixa({ chave, pedido_em: r.pedido_em, pedido_por: r.pedido_por });
     // O aviso aparece quando a baixa foi gravada mas a planilha falhou. É
     // importante distinguir: a baixa VALEU, só a linha da planilha não saiu.
     toast(r.aviso || 'Peça marcada como pedida e registrada na planilha',
@@ -12762,6 +12777,92 @@ async function confirmarBaixaPeca(chave) {
   } finally {
     _pedidoServicoAtual = null;
     _pedidoFotoAtual = null;
+  }
+}
+
+// "Peça chegou" (pedido de 2026-09-18): segundo estágio, só liberado depois
+// de "pedida" — tira o atendimento de "Aguardando peça" e leva pra "Agendar
+// cliente" (ver _grupo_efetivo em routes/relatorios.py). Mesmo molde do
+// "Já pedi" acima, comprovante aqui é obrigatório (backend recusa sem foto).
+function _baixaUrlChegou(chave) {
+  return chave[0] === 'o'
+    ? `/pedidos-peca-os/${chave.slice(1)}/chegou`
+    : `/desfechos/${chave.slice(1)}/chegou`;
+}
+
+let _chegadaServicoAtual = null;
+let _chegadaFotoAtual = null;
+
+function abrirAnexarChegada(chave) {
+  const slot = document.getElementById(`at-baixa-${chave}`);
+  if (!slot) return;
+  _chegadaServicoAtual = chave;
+  _chegadaFotoAtual = null;
+  slot.innerHTML = `
+    <div class="at-pedido-form">
+      <label class="df-foto-botao df-foto-botao-mini">
+        Anexar comprovante
+        <input type="file" accept="image/*" onchange="escolherFotoChegada(this)" hidden>
+      </label>
+      <div id="at-chegada-previa-${chave}" class="df-previa"></div>
+      <div class="at-pedido-acoes">
+        <button class="at-btn-baixa" onclick="confirmarChegadaPeca('${chave}')">Confirmar chegada</button>
+        <button class="at-btn-cancelar-mini" onclick="cancelarAnexarChegada('${chave}')">cancelar</button>
+      </div>
+    </div>`;
+}
+
+function cancelarAnexarChegada(chave) {
+  _chegadaServicoAtual = null;
+  _chegadaFotoAtual = null;
+  const slot = document.getElementById(`at-baixa-${chave}`);
+  if (slot) slot.innerHTML = botaoBaixa({ chave, pedido_em: true });
+}
+
+async function escolherFotoChegada(input) {
+  const arquivo = input.files && input.files[0];
+  if (!arquivo) return;
+  const previa = document.getElementById(`at-chegada-previa-${_chegadaServicoAtual}`);
+  if (previa) previa.innerHTML = '<span class="df-processando">preparando a foto...</span>';
+  try {
+    _chegadaFotoAtual = await reduzirFotoInteira(arquivo);
+    if (previa) previa.innerHTML = `
+      <img class="df-thumb" src="${_chegadaFotoAtual}" alt="Comprovante da chegada">
+      <button type="button" class="df-remover-foto" onclick="removerFotoChegada()">remover</button>`;
+  } catch (e) {
+    _chegadaFotoAtual = null;
+    if (previa) previa.innerHTML = `<span class="df-erro">${esc(e.message)}</span>`;
+  } finally {
+    input.value = '';
+  }
+}
+
+function removerFotoChegada() {
+  _chegadaFotoAtual = null;
+  const previa = document.getElementById(`at-chegada-previa-${_chegadaServicoAtual}`);
+  if (previa) previa.innerHTML = '';
+}
+
+async function confirmarChegadaPeca(chave) {
+  const slot = document.getElementById(`at-baixa-${chave}`);
+  if (!slot) return;
+  if (!_chegadaFotoAtual) { toast('Anexe o comprovante de que a peça chegou.', 'error'); return; }
+  const original = slot.innerHTML;
+  slot.innerHTML = '<span class="at-sub">gravando...</span>';
+  try {
+    const r = await api(_baixaUrlChegou(chave), {
+      method: 'POST',
+      body: JSON.stringify({ foto: _chegadaFotoAtual }),
+    });
+    document.getElementById(`at-linha-${chave}`)?.classList.add('chegou');
+    slot.innerHTML = botaoBaixa({ pedido_em: true, chegou_em: r.chegou_em, chegou_por: r.chegou_por });
+    toast('Peça marcada como chegada — vai pra Agendar cliente', 'success');
+  } catch (e) {
+    slot.innerHTML = original;
+    toast(e.message, 'error');
+  } finally {
+    _chegadaServicoAtual = null;
+    _chegadaFotoAtual = null;
   }
 }
 
