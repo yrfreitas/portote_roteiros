@@ -385,6 +385,18 @@ _STATUS_OS_POR_DESFECHO = {
     "cotacao_peca": "aguardando_peca",
     "volto_depois": "aguardando_agendamento",
     "nao_atendido": "aguardando_agendamento",
+    # Panasonic/garantia (pedido de 2026-09-18) — faltavam aqui: sem entrada
+    # neste mapa, .get(tipo) devolve None e _atualizar_status_os não faz
+    # nada, então uma OS já vinculada ficaria PRA SEMPRE parada no status
+    # antigo mesmo com o desfecho gravado certo (achado na varredura de
+    # 2026-09-19, mesma classe do bug do Igor, mas sem perder o desfecho —
+    # só a OS que fica com status errado).
+    "resolvido_panasonic": "finalizada",
+    "aprovado_executado": "finalizada",
+    "aprovado_retirado": "em_atendimento",
+    "aprovado_agendar": "aguardando_agendamento",
+    "garantia_resolvido": "finalizada",
+    "garantia_voltar_depois": "aguardando_agendamento",
 }
 
 _MOTIVO_DESFECHO_ROTULO = {
