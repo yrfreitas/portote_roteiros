@@ -1044,8 +1044,16 @@ def remover_catalogo_servico(item_id):
 # sempre verdade: tem "2026" no meio E é mais comprido que o nosso próprio
 # número de 6 dígitos.
 _PANASONIC_POR_PECA = "EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = {alias}.id)"
+# LIKE ? (não literal): psycopg2 usa formatação %-estilo por baixo pra
+# encaixar parâmetro — um "%" literal direto no texto da query (não
+# escapado como "%%") quebra a contagem de posições e todo o resto dos
+# parâmetros da mesma query, com "IndexError: tuple index out of range"
+# (achado em produção em 2026-09-21, olhando só pela aba OS). Mesma
+# convenção já usada em routes/servicos.py (busca por nome/CEP): o "%"
+# entra como PARÂMETRO, nunca escrito na string da query.
 _PANASONIC_POR_CHAMADO = ("EXISTS (SELECT 1 FROM servicos s WHERE s.ordem_servico_id = {alias}.id "
-                          "AND s.numero_os LIKE '%2026%' AND LENGTH(s.numero_os) > 6)")
+                          "AND s.numero_os LIKE ? AND LENGTH(s.numero_os) > 6)")
+_PANASONIC_NUMERO_PADRAO = "%2026%"
 
 
 @ordens_servico_bp.route("/ordens-servico", methods=["GET"])
@@ -1147,10 +1155,12 @@ def listar():
     _eh_panasonic_os = f"({_PANASONIC_POR_PECA.format(alias='os')} OR {_PANASONIC_POR_CHAMADO.format(alias='os')})"
     if origem == "panasonic":
         condicoes.append(_eh_panasonic_os)
+        params.append(_PANASONIC_NUMERO_PADRAO)
     elif origem == "balcao":
         condicoes.append("os.balcao_em IS NOT NULL")
     elif origem == "nossa":
         condicoes.append(f"NOT {_eh_panasonic_os}")
+        params.append(_PANASONIC_NUMERO_PADRAO)
         condicoes.append("os.balcao_em IS NULL")
     where = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
 
@@ -1194,13 +1204,15 @@ def listar():
         # batia com o que aparecia depois de clicar.
         _eh_panasonic_contagem = (f"({_PANASONIC_POR_PECA.format(alias='ordens_servico')} OR "
                                   f"{_PANASONIC_POR_CHAMADO.format(alias='ordens_servico')})")
-        condicoes_contagem = ["ordens_servico.os_pai_id IS NULL"]
+        condicoes_contagem, params_contagem = ["ordens_servico.os_pai_id IS NULL"], []
         if origem == "panasonic":
             condicoes_contagem.append(_eh_panasonic_contagem)
+            params_contagem.append(_PANASONIC_NUMERO_PADRAO)
         elif origem == "balcao":
             condicoes_contagem.append("ordens_servico.balcao_em IS NOT NULL")
         elif origem == "nossa":
             condicoes_contagem.append(f"NOT {_eh_panasonic_contagem}")
+            params_contagem.append(_PANASONIC_NUMERO_PADRAO)
             condicoes_contagem.append("ordens_servico.balcao_em IS NULL")
         if fonte == "publico":
             # Mesmo bug de 2026-09-09 (cartão contando o que a lista não
@@ -1217,14 +1229,14 @@ def listar():
             # existe filtro nenhum que a traga de volta pra tela.
             contagem = {s: 0 for s in STATUS_LOJA}
             contagem["sem_status"] = 0
-            todas_status = fetch_all(conn, f"SELECT status_loja FROM ordens_servico {origem_sql}")
+            todas_status = fetch_all(conn, f"SELECT status_loja FROM ordens_servico {origem_sql}", tuple(params_contagem))
             for l in todas_status:
                 chave = l["status_loja"] or "sem_status"
                 if chave in contagem:
                     contagem[chave] += 1
         else:
             contagem = {s: 0 for s in STATUS_OS}
-            todas_status = fetch_all(conn, f"SELECT status FROM ordens_servico {origem_sql}")
+            todas_status = fetch_all(conn, f"SELECT status FROM ordens_servico {origem_sql}", tuple(params_contagem))
             for l in todas_status:
                 if l["status"] in contagem:
                     contagem[l["status"]] += 1
@@ -1249,6 +1261,9 @@ def panasonic_sem_os():
     tem `ordens_servico` nenhuma pra listar aqui — é sobre `servicos` soltos,
     a aba OS Panasonic mostra os dois juntos (ver carregarOS em app.js)."""
     with db_conn() as conn:
+        # LIKE ? (não literal) — mesmo motivo do _PANASONIC_POR_CHAMADO logo
+        # acima em listar(): "%" cru no texto da query quebra a formatação
+        # %-estilo do psycopg2 em produção (achado em 2026-09-21).
         linhas = fetch_all(conn, """
             SELECT s.id, s.cliente, s.numero_os, s.tipo_aparelho, s.modelo,
                    f.data_referencia, f.dia_semana, t.nome AS tecnico
@@ -1256,9 +1271,9 @@ def panasonic_sem_os():
               JOIN fichas f ON f.id = s.ficha_id
               LEFT JOIN tecnicos t ON t.id = f.tecnico_id
              WHERE s.ordem_servico_id IS NULL
-               AND s.numero_os LIKE '%2026%' AND LENGTH(s.numero_os) > 6
+               AND s.numero_os LIKE ? AND LENGTH(s.numero_os) > 6
              ORDER BY f.data_referencia DESC
-        """)
+        """, (_PANASONIC_NUMERO_PADRAO,))
     return jsonify({"fichas": linhas})
 
 
