@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v298';
+const VERSAO_PAINEL = 'v299';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -3853,44 +3853,68 @@ async function carregarPedidosComComprovante() {
     return;
   }
 
-  alvo.innerHTML = botaoNovo + pedidos.map(p => {
-    const aparelho = [p.tipo_aparelho, p.modelo].filter(Boolean).join(' · ');
-    const quando = parseDataBanco(p.pedido_em)?.toLocaleDateString('pt-BR') || '';
-    const chegou = !!p.chegou_em;
-    return `
-      <div class="pp-cartao ${chegou ? 'pp-chegou' : ''}">
-        <div class="pp-lado-dados">
-          <div class="pp-cliente">${p.cliente ? esc(p.cliente) : icone('caixa', 'icone-13') + ' Reposição de estoque'}</div>
-          ${p.endereco_completo ? `<div class="pp-sub">${esc(p.endereco_completo)}</div>` : ''}
-          ${aparelho ? `<div class="pp-sub">${esc(aparelho)}</div>` : ''}
-          ${p.peca ? `<div class="pp-peca">Peça: ${esc(p.peca)}</div>` : ''}
-          ${p.observacao ? `<div class="pp-sub">${esc(p.observacao)}</div>` : ''}
-          <div class="pp-rodape">
-            ${p.tecnico ? `<span class="at-ponto-cor" style="background:${escCor(p.tecnico_cor)}"></span>${esc(p.tecnico)} · ` : ''}
-            pedida ${esc(quando)}${p.pedido_por ? ' por ' + esc(p.pedido_por) : ''}
-            ${p.numero_os ? ` · OS ${esc(p.numero_os)}` : ''}
-          </div>
-          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
-            <button type="button" class="btn btn-sm pp-btn-chegou ${chegou ? 'ativo' : ''}"
-                    onclick="alternarPecaChegou('${p.chave_chegada}', ${!chegou}, this)"
-                    title="${chegou ? 'Peça já marcada como chegada — clique pra desmarcar' : 'Marcar que a peça chegou fisicamente'}">
-              ${chegou ? `✓ Chegou${p.chegou_em ? ' em ' + esc(parseDataBanco(p.chegou_em)?.toLocaleDateString('pt-BR') || '') : ''}` : 'Chegou?'}
-            </button>
-            ${_botaoAgendarPedidoComprovante(p)}
-            <button type="button" class="btn btn-ghost btn-sm"
-                    onclick="desfazerPedidoPeca(${p.servico_id ?? 'null'}, ${p.pedido_os_id ?? 'null'})"
-                    title="Volta pra Atendimentos como 'Precisa de peça', sem comprovante — pra corrigir e pedir de novo">
-              Desfazer pedido
-            </button>
-          </div>
+  // Organização igual "Precisam de peça" em Atendimentos (pedido de
+  // 2026-09-21): as já chegadas recolhem num bloco à parte, com seta pra
+  // mostrar/ocultar — não somem, só param de disputar espaço com quem
+  // ainda está esperando.
+  const naoChegados = pedidos.filter(p => !p.chegou_em);
+  const chegados = pedidos.filter(p => p.chegou_em);
+
+  const blocoChegados = chegados.length ? `
+    <div class="at-pedidas-toggle" onclick="ppToggleOcultarChegados()">
+      <span class="at-pedidas-seta ${_ppOcultarChegados ? 'fechada' : ''}">▾</span>
+      <span>${_ppOcultarChegados ? 'Mostrar' : 'Ocultar'} peças já chegadas (${chegados.length})</span>
+    </div>
+    ${_ppOcultarChegados ? '' : chegados.map(_ppCartaoHtml).join('')}` : '';
+
+  alvo.innerHTML = botaoNovo + naoChegados.map(_ppCartaoHtml).join('') + blocoChegados;
+}
+
+function _ppCartaoHtml(p) {
+  const aparelho = [p.tipo_aparelho, p.modelo].filter(Boolean).join(' · ');
+  const quando = parseDataBanco(p.pedido_em)?.toLocaleDateString('pt-BR') || '';
+  const chegou = !!p.chegou_em;
+  return `
+    <div class="pp-cartao ${chegou ? 'pp-chegou' : ''}">
+      <div class="pp-lado-dados">
+        <div class="pp-cliente">${p.cliente ? esc(p.cliente) : icone('caixa', 'icone-13') + ' Reposição de estoque'}</div>
+        ${p.endereco_completo ? `<div class="pp-sub">${esc(p.endereco_completo)}</div>` : ''}
+        ${aparelho ? `<div class="pp-sub">${esc(aparelho)}</div>` : ''}
+        ${p.peca ? `<div class="pp-peca">Peça: ${esc(p.peca)}</div>` : ''}
+        ${p.observacao ? `<div class="pp-sub">${esc(p.observacao)}</div>` : ''}
+        <div class="pp-rodape">
+          ${p.tecnico ? `<span class="at-ponto-cor" style="background:${escCor(p.tecnico_cor)}"></span>${esc(p.tecnico)} · ` : ''}
+          pedida ${esc(quando)}${p.pedido_por ? ' por ' + esc(p.pedido_por) : ''}
+          ${p.numero_os ? ` · OS ${esc(p.numero_os)}` : ''}
         </div>
-        <div class="pp-lado-imagem">
-          ${p.pedido_foto
-            ? `<img class="pp-foto" src="${p.pedido_foto}" alt="Comprovante do pedido" onclick="ampliarFoto(this.src)">`
-            : '<span class="pp-sem-foto">sem comprovante anexado</span>'}
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
+          <button type="button" class="btn btn-sm pp-btn-chegou ${chegou ? 'ativo' : ''}"
+                  onclick="alternarPecaChegou('${p.chave_chegada}', ${!chegou}, this)"
+                  title="${chegou ? 'Peça já marcada como chegada — clique pra desmarcar' : 'Marcar que a peça chegou fisicamente'}">
+            ${chegou ? `✓ Chegou${p.chegou_em ? ' em ' + esc(parseDataBanco(p.chegou_em)?.toLocaleDateString('pt-BR') || '') : ''}` : 'Chegou?'}
+          </button>
+          ${_botaoAgendarPedidoComprovante(p)}
+          <button type="button" class="btn btn-ghost btn-sm"
+                  onclick="desfazerPedidoPeca(${p.servico_id ?? 'null'}, ${p.pedido_os_id ?? 'null'})"
+                  title="Volta pra Atendimentos como 'Precisa de peça', sem comprovante — pra corrigir e pedir de novo">
+            Desfazer pedido
+          </button>
         </div>
-      </div>`;
-  }).join('');
+      </div>
+      <div class="pp-lado-imagem">
+        ${p.pedido_foto
+          ? `<img class="pp-foto" src="${p.pedido_foto}" alt="Comprovante do pedido" onclick="ampliarFoto(this.src)">`
+          : '<span class="pp-sem-foto">sem comprovante anexado</span>'}
+      </div>
+    </div>`;
+}
+
+// Pedido de 2026-09-21: mesmo padrão de atToggleOcultarPedidas em
+// Atendimentos — oculto por padrão, nada é apagado, só a exibição muda.
+let _ppOcultarChegados = true;
+function ppToggleOcultarChegados() {
+  _ppOcultarChegados = !_ppOcultarChegados;
+  carregarPedidosComComprovante();
 }
 
 // "Chegou?" pra Pedidos com comprovante (pedido de 2026-09-03) — mesma
@@ -12602,18 +12626,35 @@ async function verFotosDoAtendimento(servicoId, chave) {
 function botaoBaixa(a) {
   if (a.chegou_em) {
     const quando = parseDataBanco(a.chegou_em)?.toLocaleDateString('pt-BR') || '';
-    return `<span class="at-pedida at-chegou" title="Peça chegou em ${esc(a.chegou_em)}${
-      a.chegou_por ? ' por ' + esc(a.chegou_por) : ''}">✓ peça chegou ${esc(quando)}</span>`;
+    return `<span class="at-pedida at-chegou" title="Peça chegou em ${esc(a.chegou_em)}">✓ peça chegou ${esc(quando)}</span>`;
   }
   if (a.pedido_em) {
     const quando = a.pedido_em === true ? '' : parseDataBanco(a.pedido_em)?.toLocaleDateString('pt-BR') || '';
     return `
       <span class="at-pedida" title="Pedida${a.pedido_em !== true ? ' em ' + esc(a.pedido_em) : ''}${
         a.pedido_por ? ' por ' + esc(a.pedido_por) : ''}">✓ pedida ${esc(quando)}</span>
-      <button class="at-btn-baixa" onclick="abrirAnexarChegada('${a.chave}')">Peça chegou</button>`;
+      <button class="at-btn-baixa" onclick="marcarChegouAtendimento('${a.chave}', this)">Peça chegou</button>`;
   }
   return `<button class="at-btn-baixa" onclick="abrirAnexarPedido('${a.chave}')">
             Já pedi</button>`;
+}
+
+// "Peça chegou" (pedido de 2026-09-18, CORRIGIDO em 2026-09-21): reaproveita
+// POST /pedidos/chegada, a MESMA rota que "Peças > Pedidos com comprovante"
+// já usa (ver alternarPecaChegou acima) — a primeira versão tinha um modal
+// de foto próprio ligado a um endpoint duplicado; esse mecanismo não pede
+// foto (só "pedida" pede comprovante), então aqui é só uma confirmação
+// direta no botão, sem modal.
+async function marcarChegouAtendimento(chave, botao) {
+  botao.disabled = true;
+  try {
+    await api('/pedidos/chegada', { method: 'POST', body: JSON.stringify({ chave, chegou: true }) });
+    toast('Peça marcada como chegada — vai pra Agendar cliente', 'success');
+    carregarDesfechos();
+  } catch (e) {
+    toast(e.message, 'error');
+    botao.disabled = false;
+  }
 }
 
 // Tira a linha da lista de vez — pedido de 2026-09-02 (entrou cliente
@@ -12955,93 +12996,6 @@ async function confirmarBaixaPeca(chave) {
     _pedidoFotoAtual = null;
   }
 }
-
-// "Peça chegou" (pedido de 2026-09-18): segundo estágio, só liberado depois
-// de "pedida" — tira o atendimento de "Aguardando peça" e leva pra "Agendar
-// cliente" (ver _grupo_efetivo em routes/relatorios.py). Mesmo molde do
-// "Já pedi" acima, comprovante aqui é obrigatório (backend recusa sem foto).
-function _baixaUrlChegou(chave) {
-  return chave[0] === 'o'
-    ? `/pedidos-peca-os/${chave.slice(1)}/chegou`
-    : `/desfechos/${chave.slice(1)}/chegou`;
-}
-
-let _chegadaServicoAtual = null;
-let _chegadaFotoAtual = null;
-
-function abrirAnexarChegada(chave) {
-  const slot = document.getElementById(`at-baixa-${chave}`);
-  if (!slot) return;
-  _chegadaServicoAtual = chave;
-  _chegadaFotoAtual = null;
-  slot.innerHTML = `
-    <div class="at-pedido-form">
-      <label class="df-foto-botao df-foto-botao-mini">
-        Anexar comprovante
-        <input type="file" accept="image/*" onchange="escolherFotoChegada(this)" hidden>
-      </label>
-      <div id="at-chegada-previa-${chave}" class="df-previa"></div>
-      <div class="at-pedido-acoes">
-        <button class="at-btn-baixa" onclick="confirmarChegadaPeca('${chave}')">Confirmar chegada</button>
-        <button class="at-btn-cancelar-mini" onclick="cancelarAnexarChegada('${chave}')">cancelar</button>
-      </div>
-    </div>`;
-}
-
-function cancelarAnexarChegada(chave) {
-  _chegadaServicoAtual = null;
-  _chegadaFotoAtual = null;
-  const slot = document.getElementById(`at-baixa-${chave}`);
-  if (slot) slot.innerHTML = botaoBaixa({ chave, pedido_em: true });
-}
-
-async function escolherFotoChegada(input) {
-  const arquivo = input.files && input.files[0];
-  if (!arquivo) return;
-  const previa = document.getElementById(`at-chegada-previa-${_chegadaServicoAtual}`);
-  if (previa) previa.innerHTML = '<span class="df-processando">preparando a foto...</span>';
-  try {
-    _chegadaFotoAtual = await reduzirFotoInteira(arquivo);
-    if (previa) previa.innerHTML = `
-      <img class="df-thumb" src="${_chegadaFotoAtual}" alt="Comprovante da chegada">
-      <button type="button" class="df-remover-foto" onclick="removerFotoChegada()">remover</button>`;
-  } catch (e) {
-    _chegadaFotoAtual = null;
-    if (previa) previa.innerHTML = `<span class="df-erro">${esc(e.message)}</span>`;
-  } finally {
-    input.value = '';
-  }
-}
-
-function removerFotoChegada() {
-  _chegadaFotoAtual = null;
-  const previa = document.getElementById(`at-chegada-previa-${_chegadaServicoAtual}`);
-  if (previa) previa.innerHTML = '';
-}
-
-async function confirmarChegadaPeca(chave) {
-  const slot = document.getElementById(`at-baixa-${chave}`);
-  if (!slot) return;
-  if (!_chegadaFotoAtual) { toast('Anexe o comprovante de que a peça chegou.', 'error'); return; }
-  const original = slot.innerHTML;
-  slot.innerHTML = '<span class="at-sub">gravando...</span>';
-  try {
-    const r = await api(_baixaUrlChegou(chave), {
-      method: 'POST',
-      body: JSON.stringify({ foto: _chegadaFotoAtual }),
-    });
-    document.getElementById(`at-linha-${chave}`)?.classList.add('chegou');
-    slot.innerHTML = botaoBaixa({ pedido_em: true, chegou_em: r.chegou_em, chegou_por: r.chegou_por });
-    toast('Peça marcada como chegada — vai pra Agendar cliente', 'success');
-  } catch (e) {
-    slot.innerHTML = original;
-    toast(e.message, 'error');
-  } finally {
-    _chegadaServicoAtual = null;
-    _chegadaFotoAtual = null;
-  }
-}
-
 
 // ─── "Essa peça é de quem?" respondido pelo próprio sistema ────────────
 //

@@ -1226,17 +1226,12 @@ _MIGRACOES_PG = [
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS origem_publica_em TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS preferencia_data TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS preferencia_periodo TEXT",
-    # "Peça chegou" (pedido de 2026-09-18): até aqui só existia "pedida" —
-    # marcar que a peça pedida chegou de fato é um segundo evento, com seu
-    # próprio comprovante, que tira o atendimento de "Aguardando peça" e
-    # o leva pra "Agendar cliente" (ver routes/relatorios.py e
-    # routes/servicos.py, e o mesmo em pedido_peca_os pro pedido batido
-    # direto na OS sem visita).
-    "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS chegou_em TEXT",
-    "ALTER TABLE servico_desfecho ADD COLUMN IF NOT EXISTS chegou_por TEXT",
-    "ALTER TABLE pedido_peca_os ADD COLUMN IF NOT EXISTS chegou_em TEXT",
-    "ALTER TABLE pedido_peca_os ADD COLUMN IF NOT EXISTS chegou_por TEXT",
-    "ALTER TABLE pedido_peca_os ADD COLUMN IF NOT EXISTS chegou_foto TEXT",
+    # "chegou_em/chegou_por" em servico_desfecho/pedido_peca_os (2026-09-18)
+    # foram REMOVIDAS em 2026-09-21: duplicavam pecas_chegada, que já
+    # resolve essa mesma pergunta desde 2026-09-03 (ver routes/pedidos.py
+    # marcar_chegada). As colunas continuam existindo no banco de produção
+    # (coluna órfã inofensiva, ninguém lê/escreve nela mais) — só a migração
+    # que as criava saiu daqui, pra um banco novo não nascer com elas.
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1513,11 +1508,6 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE ordens_servico ADD COLUMN origem_publica_em TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN preferencia_data TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN preferencia_periodo TEXT",
-    "ALTER TABLE servico_desfecho ADD COLUMN chegou_em TEXT",
-    "ALTER TABLE servico_desfecho ADD COLUMN chegou_por TEXT",
-    "ALTER TABLE pedido_peca_os ADD COLUMN chegou_em TEXT",
-    "ALTER TABLE pedido_peca_os ADD COLUMN chegou_por TEXT",
-    "ALTER TABLE pedido_peca_os ADD COLUMN chegou_foto TEXT",
 ]
 
 
@@ -1618,8 +1608,7 @@ def _afrouxar_pedido_peca_os_sqlite(conn):
     # na vida do banco (idempotente, ver docstring acima), então qualquer
     # coluna adicionada por migração ANTES dela rodar precisa entrar nas
     # duas listas abaixo, senão some num banco novo -- já aconteceu com
-    # cliente_id (2026-09-02, nunca tinha sido copiada) e ia acontecer de
-    # novo com chegou_em/chegou_por/chegou_foto (2026-09-18).
+    # cliente_id (2026-09-02, nunca tinha sido copiada).
     conn.execute("""
         CREATE TABLE pedido_peca_os_novo (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1633,20 +1622,15 @@ def _afrouxar_pedido_peca_os_sqlite(conn):
             pedido_por       TEXT,
             pedido_foto      TEXT,
             cliente_id       INTEGER REFERENCES clientes(id),
-            chegou_em        TEXT,
-            chegou_por       TEXT,
-            chegou_foto      TEXT,
             FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id) ON DELETE CASCADE
         )
     """)
     conn.execute("""
         INSERT INTO pedido_peca_os_novo
             (id, ordem_servico_id, peca, descricao, foto, criado_em,
-             criado_por, pedido_em, pedido_por, pedido_foto, cliente_id,
-             chegou_em, chegou_por, chegou_foto)
+             criado_por, pedido_em, pedido_por, pedido_foto, cliente_id)
         SELECT id, ordem_servico_id, peca, descricao, foto, criado_em,
-               criado_por, pedido_em, pedido_por, pedido_foto, cliente_id,
-               chegou_em, chegou_por, chegou_foto
+               criado_por, pedido_em, pedido_por, pedido_foto, cliente_id
           FROM pedido_peca_os
     """)
     conn.execute("DROP TABLE pedido_peca_os")
