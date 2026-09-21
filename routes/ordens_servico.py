@@ -1096,7 +1096,20 @@ def listar():
     if pai_id:
         condicoes.append("os.os_pai_id = ?")
         params.append(pai_id)
-    else:
+    elif fonte not in ("peca", "reagendamento"):
+        # "Agendar Clientes" (?fonte=peca|reagendamento) é exceção de propósito
+        # (achado em 2026-09-21, relato do Kalebe: "dá baixa e o caminho fica
+        # errado, tá se perdendo"): uma OS FILHA (pendurada num caso já aberto
+        # do mesmo cliente — ver os_pai_id em criar()) pode voltar a precisar
+        # de agendamento depois, exatamente como uma OS comum — um técnico
+        # marca "Reagendar Cliente"/"Cliente ausente" numa visita de um caso
+        # que já é filha, e o desfecho atualiza o status dela certinho pra
+        # aguardando_agendamento. Só que a exclusão de filha aqui embaixo é
+        # INCONDICIONAL — sem esta exceção, essa OS nunca aparece em Agendar
+        # Clientes de novo, mesmo com status e desfecho corretos: o
+        # reagendamento existe no banco mas fica invisível pra sempre. Fora
+        # dessas duas fontes, filha continua de fora da lista principal —
+        # é assim que evita empilhar linha duplicada do mesmo caso.
         condicoes.append("os.os_pai_id IS NULL")
     if status:
         # "Produtos da loja" tem status PRÓPRIO (status_loja), independente
