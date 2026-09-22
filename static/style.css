@@ -3346,6 +3346,13 @@ select:focus-visible,
 .roteiro-item-concluido .roteiro-cliente,
 .roteiro-item-concluido .roteiro-endereco { text-decoration: line-through; text-decoration-color: var(--text-faint); }
 
+/* Parada travada (pedido de 2026-09-22) — não muda de posição quando a
+   rota é otimizada. Faixa lateral pra ficar visível na lista inteira sem
+   precisar ler o ícone de cada linha. */
+.roteiro-item-travado { box-shadow: inset 3px 0 0 var(--warning-text, #d97706); }
+.btn-travar-ativo { color: var(--warning-text, #d97706); }
+.btn-travar-ativo:hover { color: var(--warning-text, #d97706); border-color: currentColor; }
+
 /* ─── Link individual do técnico ────────────────────────────────── */
 .btn-link-tecnico {
   background: none;

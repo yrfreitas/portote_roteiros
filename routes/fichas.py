@@ -598,7 +598,8 @@ def simular_encaixe(ficha_id):
             return jsonify({"erro": "Ficha não encontrada"}), 404
 
         servicos = fetch_all(conn, """
-            SELECT id, cliente, endereco_completo, lat, lng, ordem
+            SELECT id, cliente, endereco_completo, lat, lng, ordem,
+                   ordem_travada AS travado
               FROM servicos
              WHERE ficha_id = ? AND lat IS NOT NULL AND lng IS NOT NULL
              ORDER BY ordem, id
@@ -778,8 +779,14 @@ def transferir_ficha(ficha_id):
 
 
 def recalcular_rota(conn, ficha_id, ficha) -> dict:
+    # ORDER BY ordem: o otimizador usa a sequência de entrada pra saber ONDE
+    # cada ponto travado está em relação aos outros (ver
+    # services/otimizador.py:_montar_ordem) -- sem isso, uma trava perderia
+    # a posição de verdade. Não muda o resultado sem trava nenhuma (nearest
+    # neighbor + 2-opt não dependem da ordem de entrada).
     servicos = fetch_all(
-        conn, "SELECT id, lat, lng FROM servicos WHERE ficha_id = ?", (ficha_id,)
+        conn, "SELECT id, lat, lng, ordem_travada FROM servicos WHERE ficha_id = ? "
+              "ORDER BY ordem, id", (ficha_id,)
     )
 
     validos = [s for s in servicos
@@ -802,7 +809,8 @@ def recalcular_rota(conn, ficha_id, ficha) -> dict:
         }
 
     partida = {"lat": ficha["ponto_partida_lat"], "lng": ficha["ponto_partida_lng"]}
-    pontos = [{"lat": s["lat"], "lng": s["lng"], "id": s["id"]} for s in validos]
+    pontos = [{"lat": s["lat"], "lng": s["lng"], "id": s["id"],
+              "travado": bool(s.get("ordem_travada"))} for s in validos]
 
     r = otimizar_rota(partida, pontos)
 

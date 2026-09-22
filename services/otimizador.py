@@ -79,23 +79,25 @@ def _dist(a: int, b: int, dp, db) -> float:
     return dp[a][b]
 
 
-def _nearest_neighbor(n: int, dp, db) -> list:
-    visitados = [False] * n
-    ordem = []
-    atual = _BASE
+def _nearest_neighbor(indices: list, dp, db, ancora=_BASE) -> list:
+    """Ganancioso: de onde está, vai sempre pro ponto livre mais perto.
 
-    for _ in range(n):
-        melhor_idx, melhor_dist = -1, float("inf")
-        for i in range(n):
-            if visitados[i]:
-                continue
+    `indices` é o subconjunto de pontos a visitar (pontos travados não
+    entram aqui — ver _montar_ordem). `ancora` é de onde a caminhada
+    começa: a partida real (_BASE, padrão) ou o índice de um ponto travado
+    que abre o trecho."""
+    restantes = list(indices)
+    ordem = []
+    atual = ancora
+
+    while restantes:
+        melhor_pos, melhor_idx, melhor_dist = -1, -1, float("inf")
+        for pos, i in enumerate(restantes):
             d = _dist(atual, i, dp, db)
             if d < melhor_dist:
-                melhor_dist, melhor_idx = d, i
-        if melhor_idx == -1:
-            break
-        visitados[melhor_idx] = True
+                melhor_dist, melhor_idx, melhor_pos = d, i, pos
         ordem.append(melhor_idx)
+        restantes.pop(melhor_pos)
         atual = melhor_idx
 
     return ordem
@@ -112,7 +114,7 @@ def _custo(ordem: list, dp, db, com_retorno: bool) -> float:
     return total
 
 
-def _dois_opt(ordem: list, dp, db, com_retorno: bool, max_passes: int = 40) -> list:
+def _dois_opt(ordem: list, dp, db, com_retorno: bool, max_passes: int = 40, ancora=_BASE) -> list:
     n = len(ordem)
     if n < 3:
         return ordem
@@ -122,7 +124,7 @@ def _dois_opt(ordem: list, dp, db, com_retorno: bool, max_passes: int = 40) -> l
         melhorou = False
 
         for i in range(n):
-            anterior = _BASE if i == 0 else ordem[i - 1]
+            anterior = ancora if i == 0 else ordem[i - 1]
 
             for j in range(i + 1, n):
                 if j + 1 < n:
@@ -146,6 +148,47 @@ def _dois_opt(ordem: list, dp, db, com_retorno: bool, max_passes: int = 40) -> l
             break
 
     return ordem
+
+
+def _montar_ordem(pontos: list, dp, db, com_2opt: bool, com_retorno: bool) -> list:
+    """Monta a ordem final caminhando pelos `pontos` NA ORDEM EM QUE
+    CHEGARAM (a `ordem` atual salva no banco): ponto travado (pedido de
+    2026-09-22, ver ordem_travada) fica exatamente onde está e vira a
+    âncora do próximo trecho; os pontos livres entre uma âncora e a
+    próxima (ou entre a partida e a 1ª trava) são otimizados entre si
+    com nearest-neighbor, com 2-opt por cima se `com_2opt`.
+
+    Sem NENHUM ponto travado isto é, passo a passo, exatamente o cálculo
+    de sempre: um único trecho, âncora = partida real (_BASE).
+
+    Limite conhecido, aceito de propósito: só otimiza a SAÍDA de cada
+    âncora, não a CHEGADA na próxima trava — o trecho não "mira" no
+    próximo ponto fixo, só caminha do mais próximo em mais próximo a
+    partir de onde começou. Um mini-TSP com destino fixo resolveria isso,
+    mas pelo ganho que traria não compensa a complexidade a mais; o que
+    importa (não mexer no que foi travado) já fica garantido assim.
+    """
+    final = []
+    ancora = _BASE
+    livres = []
+
+    def fechar_trecho(eh_ultimo: bool):
+        sub = _nearest_neighbor(livres, dp, db, ancora)
+        if com_2opt:
+            sub = _dois_opt(sub, dp, db, com_retorno=(com_retorno and eh_ultimo), ancora=ancora)
+        final.extend(sub)
+
+    for i, p in enumerate(pontos):
+        if p.get("travado"):
+            fechar_trecho(eh_ultimo=False)
+            final.append(i)
+            ancora = i
+            livres = []
+        else:
+            livres.append(i)
+    fechar_trecho(eh_ultimo=True)
+
+    return final
 
 
 def otimizar_rota(partida: dict, pontos: list) -> dict:
@@ -173,10 +216,10 @@ def otimizar_rota(partida: dict, pontos: list) -> dict:
 
     dp, db = _matrizes(partida, pontos, matriz_km_real)
 
-    ordem_nn = _nearest_neighbor(n, dp, db)
+    ordem_nn = _montar_ordem(pontos, dp, db, com_2opt=False, com_retorno=OTIMIZAR_COM_RETORNO)
     custo_nn = _custo(ordem_nn, dp, db, OTIMIZAR_COM_RETORNO)
 
-    ordem = _dois_opt(ordem_nn, dp, db, OTIMIZAR_COM_RETORNO)
+    ordem = _montar_ordem(pontos, dp, db, com_2opt=True, com_retorno=OTIMIZAR_COM_RETORNO)
     custo_final = _custo(ordem, dp, db, OTIMIZAR_COM_RETORNO)
 
     # Distância real já é a de rua -- sem o fator de fudge (FATOR_ROTA), que

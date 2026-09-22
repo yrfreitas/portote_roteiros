@@ -47,6 +47,9 @@ const ICONES = {
   clipe:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>',
   sol:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
   copiar:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  // Travar posição na rota (pedido de 2026-09-22, ver forcarOtimizacao).
+  cadeado:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+  'cadeado-aberto': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
 };
 
 function icone(nome, cls = '') {
@@ -276,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v304';
+const VERSAO_PAINEL = 'v305';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -5251,7 +5254,7 @@ async function renderFichaDetalhe(id) {
             <div class="panel-header"><div class="panel-icon">${icone('raio', 'icone-15')}</div><span class="panel-title">Otimização de Rota</span></div>
             <div class="panel-body">
               ${temPartida
-                ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">Nearest Neighbor + refinamento <strong>2-opt</strong>, recalculado ao adicionar ou remover atendimentos.<br><br><span style="color:var(--text-muted);font-size:11px;display:inline-flex;align-items:center;gap:4px;">${icone('info', 'icone-11')} Distância por ruas (linha reta × 1.4) · 40 km/h médios · 20 min por parada</span></div>
+                ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">Nearest Neighbor + refinamento <strong>2-opt</strong>, recalculado ao adicionar ou remover atendimentos. Paradas com <strong>${icone('cadeado', 'icone-11')} travado</strong> ficam onde estão — o resto se reorganiza ao redor delas.<br><br><span style="color:var(--text-muted);font-size:11px;display:inline-flex;align-items:center;gap:4px;">${icone('info', 'icone-11')} Distância por ruas de verdade (Google/OSRM) quando disponível, senão linha reta × 1,55 · 26 km/h médios · 20 min por parada</span></div>
                    <button class="btn btn-ghost btn-full" onclick="forcarOtimizacao(${ficha.id})">${icone('atualizar', 'icone-13')} Recalcular Rota Agora</button>`
                 : `<div style="font-size:12px;color:var(--text-muted);">Adicione um CEP de partida para ativar a otimização.</div>`}
             </div>
@@ -5348,7 +5351,7 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
     const aparelho = [s.tipo_aparelho, s.modelo].filter(Boolean).join(' — ');
     const feito = s.status === 'concluido';
     return `
-      <div class="roteiro-item ${feito ? 'roteiro-item-concluido' : ''}" id="svc-${s.id}" data-id="${s.id}">
+      <div class="roteiro-item ${feito ? 'roteiro-item-concluido' : ''} ${s.ordem_travada ? 'roteiro-item-travado' : ''}" id="svc-${s.id}" data-id="${s.id}">
         <div class="drag-handle" title="Arraste para reordenar">⠿</div>
         <!-- O NÚMERO conclui o atendimento. Pendente, abre a folha do desfecho
              ("o que aconteceu?"); concluído, reabre direto. É o alvo dentro da
@@ -5383,6 +5386,8 @@ function renderRoteiro(ficha, servicos, cor = 'var(--accent)') {
           ${(s.lat && s.lng) ? `<a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}&zoom=16" target="_blank" rel="noopener" title="Ver no mapa" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('externo', 'icone-13')}</a>` : ''}
           ${(s.lat && s.lng) ? `<a href="https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes" target="_blank" rel="noopener" title="Navegar com Waze" style="color:${cor};padding:4px 8px;display:inline-flex;">${icone('navegacao', 'icone-13')}</a>` : ''}
           <button class="btn-a-caminho" onclick="avisarACaminho(${s.id})" title="Avisar no WhatsApp que está a caminho deste cliente">A caminho</button>
+          <button class="btn-editar ${s.ordem_travada ? 'btn-travar-ativo' : ''}" onclick="alternarTravaServico(${s.id}, ${s.ordem_travada ? 'false' : 'true'})"
+                  title="${s.ordem_travada ? 'Travado — não muda ao otimizar a rota. Clique para destravar.' : 'Travar posição: essa parada não muda quando a rota for otimizada.'}">${icone(s.ordem_travada ? 'cadeado' : 'cadeado-aberto', 'icone-12')}</button>
           <button class="btn-editar" onclick="abrirModalEditarServico(${s.id})" title="Editar, reagendar ou mudar de técnico">${icone('editar', 'icone-12')}</button>
           <button class="btn-remove" onclick="removerServico(${s.id},${ficha.id})">${icone('x', 'icone-11')}</button>
         </div>
@@ -6839,6 +6844,22 @@ async function removerServico(servicoId, fichaId) {
     toast(e.message, 'error');
     if (row) row.style.opacity = '1';
   }
+}
+
+// Travar/destravar uma parada (pedido de 2026-09-22: "otimizar rota é
+// inútil" — a causa real era o otimizador reordenando por cima de
+// compromisso real do dia). Recalcula na hora: quem trava quer ver o
+// resto se ajustar ao redor, não clicar em "Recalcular" de novo depois.
+async function alternarTravaServico(servicoId, travar) {
+  try {
+    const r = await api(`/servicos/${servicoId}/travar-ordem`, {
+      method: 'PUT',
+      body: JSON.stringify({ travado: travar }),
+    });
+    toast(travar ? 'Parada travada — não muda mais sozinha.' : 'Parada destravada.', 'success');
+    if (fichaAtiva) await renderFichaDetalhe(fichaAtiva.id);
+    await carregarTecnicos();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function forcarOtimizacao(fichaId) {

@@ -1247,6 +1247,15 @@ _MIGRACOES_PG = [
     # marcar_chegada). As colunas continuam existindo no banco de produção
     # (coluna órfã inofensiva, ninguém lê/escreve nela mais) — só a migração
     # que as criava saiu daqui, pra um banco novo não nascer com elas.
+
+    # Trava de posição na rota (pedido de 2026-09-22: "otimizar rota é
+    # inútil"). Causa real: o otimizador reordena TUDO sempre que um ponto
+    # é adicionado/removido, inclusive por cima de compromisso real do dia
+    # ("só recebe às 14h", "primeira parada da manhã") -- ninguém confiava
+    # no botão porque ele também desfazia o que tinha sido ajustado à mão.
+    # Travado, o ponto fica onde está; o otimizador reorganiza só os
+    # outros ao redor dele (ver services/otimizador.py:_montar_ordem).
+    "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS ordem_travada BOOLEAN DEFAULT FALSE",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1531,6 +1540,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE ordens_servico ADD COLUMN origem_publica_em TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN preferencia_data TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN preferencia_periodo TEXT",
+    "ALTER TABLE servicos ADD COLUMN ordem_travada INTEGER DEFAULT 0",
 ]
 
 

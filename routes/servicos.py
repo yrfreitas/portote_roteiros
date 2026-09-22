@@ -352,6 +352,40 @@ def alterar_status_servico(servico_id):
                     "status": novo_status, "desfecho": desfecho})
 
 
+@servicos_bp.route("/servicos/<int:servico_id>/travar-ordem", methods=["PUT"])
+def travar_ordem_servico(servico_id):
+    """Trava/destrava a posição deste atendimento na rota (pedido de
+    2026-09-22: "otimizar rota é inútil"). Causa real: o otimizador
+    reordenava TUDO sempre que um ponto era adicionado/removido, inclusive
+    por cima de compromisso real do dia ("só recebe às 14h", "primeira
+    parada da manhã") -- ninguém confiava no botão porque ele também
+    desfazia o que tinha sido ajustado à mão. Travado, o ponto fica onde
+    está; o otimizador reorganiza só os outros ao redor dele (ver
+    services/otimizador.py:_montar_ordem).
+
+    Recalcula a rota na hora, na mesma transação: quem trava um ponto quer
+    ver o resto se reorganizar ao redor, não precisar clicar em "Recalcular
+    Rota Agora" depois."""
+    data = request.get_json(silent=True) or {}
+    travado = bool(data.get("travado"))
+
+    with db_conn(commit=True) as conn:
+        servico = fetch_one(conn, "SELECT ficha_id FROM servicos WHERE id = ?", (servico_id,))
+        if not servico:
+            return jsonify({"erro": "Atendimento não encontrado"}), 404
+        if _servico_de_outro_tecnico(conn, servico["ficha_id"]):
+            return jsonify({"erro": "Atendimento não encontrado"}), 404
+
+        execute(conn, "UPDATE servicos SET ordem_travada = ? WHERE id = ?",
+                (travado, servico_id))
+
+        ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (servico["ficha_id"],))
+        resultado = recalcular_rota(conn, servico["ficha_id"], ficha)
+
+    return jsonify({"mensagem": "Parada travada" if travado else "Parada destravada",
+                    "travado": travado, **resultado})
+
+
 @servicos_bp.route("/servicos/<int:servico_id>", methods=["DELETE"])
 def remover_servico(servico_id):
     with db_conn(commit=True) as conn:
