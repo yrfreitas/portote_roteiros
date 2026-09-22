@@ -1090,9 +1090,17 @@ def listar():
     dias = request.args.get("dias")
     fonte = (request.args.get("fonte") or "").strip().lower()
     origem = (request.args.get("origem") or "").strip().lower()
+    modelo_os_filtro = (request.args.get("modelo_os") or "").strip().lower()
     pai_id = request.args.get("pai_id")
 
     condicoes, params = [], []
+    if modelo_os_filtro in MODELOS_OS:
+        # Abas por tipo (pedido de 2026-09-22: "3 tipos de OS... criar direto
+        # na aba") -- eixo INDEPENDENTE de ?origem= (Panasonic/balcão/nossa):
+        # aqui filtra só pelo modelo escolhido na criação, não importa de
+        # onde a OS veio.
+        condicoes.append("os.modelo_os = ?")
+        params.append(modelo_os_filtro)
     if pai_id:
         condicoes.append("os.os_pai_id = ?")
         params.append(pai_id)
@@ -1218,6 +1226,9 @@ def listar():
         _eh_panasonic_contagem = (f"({_PANASONIC_POR_PECA.format(alias='ordens_servico')} OR "
                                   f"{_PANASONIC_POR_CHAMADO.format(alias='ordens_servico')})")
         condicoes_contagem, params_contagem = ["ordens_servico.os_pai_id IS NULL"], []
+        if modelo_os_filtro in MODELOS_OS:
+            condicoes_contagem.append("ordens_servico.modelo_os = ?")
+            params_contagem.append(modelo_os_filtro)
         if origem == "panasonic":
             condicoes_contagem.append(_eh_panasonic_contagem)
             params_contagem.append(_PANASONIC_NUMERO_PADRAO)

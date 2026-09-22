@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v305';
+const VERSAO_PAINEL = 'v306';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8342,13 +8342,36 @@ let _osBuscaClienteTimer = null;
 let _osIndicacoesCarregadas = false;
 // "Nossa" x "Panasonic" (peça chegou pela aba Peças) — pedido de 2026-08-28.
 let _osOrigemTab = 'nossa';
+// Aba por TIPO de OS (pedido de 2026-09-22) — eixo independente de
+// _osOrigemTab (ver comentário no HTML, #os-tabs-modelo). Vazio = nenhuma
+// aba de tipo ativa (mostra todos os modelos misturados, comportamento de
+// sempre dentro da aba de origem escolhida).
+let _osFiltroModeloTab = '';
+
+const OS_MODELO_TAB_ROTULO = {
+  os:              { aba: 'Ordens de Serviço', criar: '+ Nova OS' },
+  chamado_tecnico: { aba: 'Chamado Técnico',    criar: '+ Novo Chamado Técnico' },
+  orcamento:       { aba: 'Orçamento',          criar: '+ Novo Orçamento' },
+};
+
+function _osAtualizarBotaoCriar() {
+  const btn = document.getElementById('os-btn-criar');
+  if (!btn) return;
+  const info = OS_MODELO_TAB_ROTULO[_osFiltroModeloTab];
+  btn.textContent = info ? info.criar : '+ Nova OS';
+  btn.onclick = info ? () => abrirModalNovaOS(_osFiltroModeloTab) : () => abrirModalNovaOS();
+}
 
 function osSwitchOrigemTab(tab) {
   _osOrigemTab = tab;
+  _osFiltroModeloTab = '';
   document.getElementById('ostab-nossa')?.classList.toggle('active', tab === 'nossa');
   document.getElementById('ostab-panasonic')?.classList.toggle('active', tab === 'panasonic');
   document.getElementById('ostab-balcao')?.classList.toggle('active', tab === 'balcao');
   document.getElementById('ostab-clientes')?.classList.toggle('active', tab === 'clientes');
+  Object.keys(OS_MODELO_TAB_ROTULO).forEach(m =>
+    document.getElementById('ostab-modelo-' + m)?.classList.remove('active'));
+  _osAtualizarBotaoCriar();
   // Troca de aba é troca de conjunto de OS — filtro de status/busca da aba
   // anterior não faz sentido continuar aplicado na outra.
   _osFiltroStatus = '';
@@ -8361,6 +8384,7 @@ function osSwitchOrigemTab(tab) {
   // é específico de OS: métricas por status).
   const ehClientes = tab === 'clientes';
   document.getElementById('os-metricas-details').style.display = ehClientes ? 'none' : '';
+  document.getElementById('os-tabs-modelo').style.display = ehClientes ? 'none' : '';
   document.getElementById('os-busca').placeholder = ehClientes
     ? 'Buscar cliente por nome, CPF/CNPJ ou telefone...'
     : 'Buscar por número da OS ou nome do cliente...';
@@ -8372,6 +8396,34 @@ function osSwitchOrigemTab(tab) {
   } else {
     carregarOS();
   }
+}
+
+// Aba por tipo (Ordens de Serviço / Chamado Técnico / Orçamento) — pedido
+// de 2026-09-22: "3 tipos de OS... preciso que elas fiquem nas abas
+// criadas, pra criar direto na aba". Filtra por modelo_os não importa a
+// origem (Panasonic/balcão/nossa) — por isso limpa _osOrigemTab em vez de
+// combinar os dois filtros: "Chamado Técnico" aqui é TODO chamado técnico,
+// de qualquer origem, não só o da aba "Nossas OS".
+function osSwitchModeloTab(modelo) {
+  _osFiltroModeloTab = modelo;
+  _osOrigemTab = '';
+  document.getElementById('ostab-nossa')?.classList.remove('active');
+  document.getElementById('ostab-panasonic')?.classList.remove('active');
+  document.getElementById('ostab-balcao')?.classList.remove('active');
+  document.getElementById('ostab-clientes')?.classList.remove('active');
+  Object.keys(OS_MODELO_TAB_ROTULO).forEach(m =>
+    document.getElementById('ostab-modelo-' + m)?.classList.toggle('active', m === modelo));
+  _osAtualizarBotaoCriar();
+
+  _osFiltroStatus = '';
+  _osBuscaTexto = '';
+  document.getElementById('os-busca').value = '';
+  document.getElementById('os-busca').placeholder = 'Buscar por número da OS ou nome do cliente...';
+  document.getElementById('os-metricas-details').style.display = '';
+  const btnDup = document.getElementById('btn-clientes-duplicados');
+  if (btnDup) btnDup.style.display = 'none';
+
+  carregarOS();
 }
 
 function osBuscar(valor) {
@@ -8498,6 +8550,32 @@ async function abrirClienteDetalhe(clienteId) {
         </div>`).join('')}
     </div>` : '';
 
+  // Histórico completo, uma linha por OS (pedido de 2026-09-22: "tudo que
+  // foi feito com o nome da classificação que criarmos tem que ir pra
+  // parte de cliente, pra ter controle do que já fizemos nesse cliente")
+  // -- diferente do bloco de aparelhos acima (que agrupa e só guarda a
+  // ÚLTIMA), aqui é toda OS, sem juntar, marcada com o modelo (Ordens de
+  // Serviço/Chamado Técnico/Orçamento) pra dar pra ver de que aba ela saiu.
+  const historicoHtml = r.ordens_servico.length ? `
+    <div class="cliente-detalhe-secao">Histórico de Ordens de Serviço</div>
+    <div class="cliente-os-historico-lista">
+      ${r.ordens_servico.map(o => {
+        const modeloClasse = o.modelo_os === 'chamado_tecnico' ? 'chamado' : o.modelo_os === 'orcamento' ? 'orcamento' : '';
+        const statusClasse = o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso';
+        return `
+        <div class="cliente-os-historico-item" onclick="abrirOSDetalhe(${o.id})">
+          <div class="num-bloco">
+            <span class="num">OS #${String(o.id).padStart(6, '0')}</span>
+            ${modeloClasse ? `<span class="os-modelo-badge ${modeloClasse}">${esc(MODELOS_OS_ROTULO[o.modelo_os] || '')}</span>` : ''}
+            ${o.os_pai_id ? `<span class="ajuda-texto" title="Pendurada na OS #${String(o.os_pai_id).padStart(6, '0')}">↳ filha</span>` : ''}
+          </div>
+          <div class="aparelho">${esc([o.tipo_aparelho, o.modelo].filter(Boolean).join(' · ')) || '—'}</div>
+          <span class="conc-tag ${statusClasse}">${esc(OS_STATUS_ROTULO[o.status] || o.status || 'Sem status')}</span>
+          <span class="at-sub">${esc(parseDataBanco(o.criado_em)?.toLocaleDateString('pt-BR') || '')}</span>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+
   document.getElementById('cliente-detalhe-corpo').innerHTML = `
     ${linha('CPF/CNPJ', c.cpf_cnpj)}
     ${linhaEditavelCliente('Telefone', 'telefone', c.telefone)}
@@ -8514,7 +8592,8 @@ async function abrirClienteDetalhe(clienteId) {
       <span class="cliente-detalhe-rotulo">Ordens de serviço</span>
       <span class="cliente-detalhe-valor">${r.ordens_servico.length}</span>
     </div>
-    ${aparelhosHtml}`;
+    ${aparelhosHtml}
+    ${historicoHtml}`;
 }
 
 // Edição inline (pedido de 2026-09-02): telefone e observação são os campos
@@ -8598,6 +8677,7 @@ async function carregarOS() {
   if (_osBuscaTexto) params.set('busca', _osBuscaTexto);
   if (_osFiltroDias) params.set('dias', _osFiltroDias);
   if (_osOrigemTab) params.set('origem', _osOrigemTab);
+  if (_osFiltroModeloTab) params.set('modelo_os', _osFiltroModeloTab);
 
   let r;
   try {
@@ -8954,7 +9034,7 @@ let _novaOSModelo = 'os';
 let _novaOSFoto = null;
 let _novosItensOrcamento = [];
 
-async function abrirModalNovaOS() {
+async function abrirModalNovaOS(modeloPreSelecionado) {
   _osClienteSelecionado = null;
   ['os-nome','os-cpf','os-telefone','os-email','os-cep','os-numero','os-bairro',
    'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
@@ -8983,7 +9063,7 @@ async function abrirModalNovaOS() {
   _novaOSFoto = null;
   _novosItensOrcamento = [];
   osEscolherModoCliente('existente');
-  osEscolherModelo('os');
+  osEscolherModelo(MODELOS_OS_ROTULO[modeloPreSelecionado] ? modeloPreSelecionado : 'os');
   await preencherSelectSetorSeguro('os-setor');
 
   if (!_osIndicacoesCarregadas) {
