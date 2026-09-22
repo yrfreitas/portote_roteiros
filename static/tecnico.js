@@ -1207,11 +1207,13 @@
     if (valorEl) valorEl.value = '';
     nomeEl?.focus();
     _tRenderItensOrcamento();
+    window._tValidarConfirmar();
   };
 
   window._tRemoverItemOrcamento = function (indice) {
     _orcItensTecnico.splice(indice, 1);
     _tRenderItensOrcamento();
+    window._tValidarConfirmar();
   };
 
   function _tValorFmtOuVazio(valor) {
@@ -1368,34 +1370,33 @@
       // pendente do innerHTML na hora — o canvas já sai com o tamanho certo.
       _tIniciarAssinatura();
     } else if (tipo === 'orcamento') {
-      // Pedido de 2026-09-01, REFEITO em 2026-09-17 ("tire esse valor
-      // combinado com o cliente e coloque o q eu pedi"): o alternador
-      // "fazer na base / feito no local" saiu — confundia e escondia o
-      // campo de valor até escolher um modo. Agora solução, valor do
-      // serviço e taxa de avaliação ficam SEMPRE visíveis; a equipe só
-      // confere e manda o link pro cliente, sem redigitar nada. Se o
-      // técnico não souber o valor ainda, deixa em branco — a OS cai em
-      // "aguardando orçamento" pro escritório terminar, igual antes.
+      // Pedido de 2026-09-22 ("só está chegando a observação, os técnicos
+      // não estão preenchendo tudo"): igualado ao rigor de "Fazer OS" — tudo
+      // vira obrigatório, sem exceção de campo em branco. Antes (2026-09-17)
+      // valor/itens eram opcionais de propósito; essa flexibilidade foi
+      // exatamente o que deixou o formulário sair incompleto direto pro
+      // escritório. Ver window._tValidarConfirmar pra trava completa.
       const s = (servicosAbertos || []).find(x => x.id === _desfechoServicoId) || {};
       _orcamentoModoLocal = true;
       extra.innerHTML = `
-        <label class="t-df-rotulo" for="t-df-orc-nome">Nome do cliente</label>
-        <input class="t-df-input" id="t-df-orc-nome" value="${esc(s.cliente || '')}">
-        <label class="t-df-rotulo" for="t-df-orc-telefone">Telefone</label>
-        <input class="t-df-input" id="t-df-orc-telefone" value="${esc(s.telefone || '')}" oninput="window._tFormatarTelefone(this)">
+        <label class="t-df-rotulo" for="t-df-orc-nome">Nome do cliente <span class="t-df-obrigatorio">*</span></label>
+        <input class="t-df-input" id="t-df-orc-nome" value="${esc(s.cliente || '')}" oninput="window._tValidarConfirmar()">
+        <label class="t-df-rotulo" for="t-df-orc-telefone">Telefone <span class="t-df-obrigatorio">*</span></label>
+        <input class="t-df-input" id="t-df-orc-telefone" value="${esc(s.telefone || '')}" oninput="window._tFormatarTelefone(this); window._tValidarConfirmar()">
         <div class="t-df-linha-dupla">
-          <div><label class="t-df-rotulo" for="t-df-orc-aparelho">Aparelho</label>
-            <input class="t-df-input" id="t-df-orc-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
-          <div><label class="t-df-rotulo" for="t-df-orc-modelo">Modelo</label>
-            <input class="t-df-input" id="t-df-orc-modelo" value="${esc(s.modelo || '')}"></div>
+          <div><label class="t-df-rotulo" for="t-df-orc-aparelho">Aparelho <span class="t-df-obrigatorio">*</span></label>
+            <input class="t-df-input" id="t-df-orc-aparelho" value="${esc(s.tipo_aparelho || '')}" oninput="window._tValidarConfirmar()"></div>
+          <div><label class="t-df-rotulo" for="t-df-orc-modelo">Modelo <span class="t-df-obrigatorio">*</span></label>
+            <input class="t-df-input" id="t-df-orc-modelo" value="${esc(s.modelo || '')}" oninput="window._tValidarConfirmar()"></div>
         </div>
-        <label class="t-df-rotulo" for="t-df-orc-defeito">Defeito declarado</label>
-        <textarea class="t-df-input" id="t-df-orc-defeito" rows="2">${esc(s.descricao || '')}</textarea>
-        <label class="t-df-rotulo" for="t-df-orc-solucao">Solução / diagnóstico</label>
-        <textarea class="t-df-input" id="t-df-orc-solucao" rows="2" placeholder="O que foi identificado, o que precisa ser feito"></textarea>
+        <label class="t-df-rotulo" for="t-df-orc-defeito">Defeito declarado <span class="t-df-obrigatorio">*</span></label>
+        <textarea class="t-df-input" id="t-df-orc-defeito" rows="2" oninput="window._tValidarConfirmar()">${esc(s.descricao || '')}</textarea>
+        <label class="t-df-rotulo" for="t-df-orc-solucao">Solução / diagnóstico <span class="t-df-obrigatorio">*</span></label>
+        <textarea class="t-df-input" id="t-df-orc-solucao" rows="2" placeholder="O que foi identificado, o que precisa ser feito" oninput="window._tValidarConfirmar()"></textarea>
         <label class="t-df-rotulo" for="t-df-orc-taxa">Taxa de avaliação (R$)</label>
-        <input class="t-df-input" type="number" step="0.01" min="0" inputmode="decimal" id="t-df-orc-taxa">
-        <label class="t-df-rotulo">Itens / Valores</label>
+        <input class="t-df-input" type="number" step="0.01" min="0" inputmode="decimal" id="t-df-orc-taxa" oninput="window._tValidarConfirmar()">
+        <label class="t-df-rotulo">Itens / Valores <span class="t-df-obrigatorio">*</span></label>
+        <p class="t-df-ajuda">Pelo menos um item ou a taxa de avaliação preenchida — o escritório precisa de algum valor pra montar o orçamento.</p>
         <p class="t-df-ajuda" id="t-df-orc-sugestao"></p>
         <div id="t-df-orc-itens-lista"></div>
         <div class="t-df-linha-dupla">
@@ -1424,7 +1425,7 @@
           </label>
           <div id="t-df-pagamento-previa" class="t-df-previa"></div>
         </div>
-        ${blocoFoto(false)}
+        ${blocoFoto(true, 'Foto do produto', 'Ajuda o escritório a montar o orçamento certo.')}
         <label class="t-df-rotulo">Assinatura do cliente <span class="t-df-obrigatorio">*</span></label>
         <p class="t-df-ajuda">Passe o celular pro cliente assinar aqui com o dedo.</p>
         <canvas id="t-assinatura-canvas" class="t-assinatura-canvas"></canvas>
@@ -1525,15 +1526,22 @@
       const checklistOk = checks.length > 0 && Array.from(checks).every(c => c.checked);
       ok = !!(nome && pagamento && _desfechoFotoPagamento && _assinaturaTemTraco && checklistOk);
     } else if (_desfechoTipo === 'orcamento') {
-      // Valor do serviço é OPCIONAL de propósito (pedido de 2026-09-17): se
-      // o técnico não souber o preço ainda, a OS cai em "aguardando
-      // orçamento" pro escritório terminar — não trava a conclusão do
-      // atendimento por isso.
+      // Igualado ao rigor de "Fazer OS" (pedido de 2026-09-22): até aqui só
+      // nome+assinatura travavam, e "só está chegando a observação" — o
+      // resto saía em branco porque nada obrigava. Agora tudo trava, igual
+      // Fazer OS. Comprovante de pagamento continua condicional (só existe
+      // pagamento se uma forma foi escolhida).
       const nome = document.getElementById('t-df-orc-nome')?.value.trim();
+      const telefone = document.getElementById('t-df-orc-telefone')?.value.trim();
+      const aparelho = document.getElementById('t-df-orc-aparelho')?.value.trim();
+      const modelo = document.getElementById('t-df-orc-modelo')?.value.trim();
+      const defeito = document.getElementById('t-df-orc-defeito')?.value.trim();
+      const solucao = document.getElementById('t-df-orc-solucao')?.value.trim();
+      const taxa = Number(document.getElementById('t-df-orc-taxa')?.value) || 0;
+      const temValor = taxa > 0 || _orcItensTecnico.length > 0;
       const pagamentoOrc = document.getElementById('t-df-forma-pagamento')?.value;
-      // Comprovante só é obrigatório se uma forma de pagamento foi escolhida
-      // (recebeu na hora) — sem isso, pagamento continua opcional.
-      ok = !!(nome && _assinaturaTemTraco && (!pagamentoOrc || _desfechoFotoPagamento));
+      ok = !!(nome && telefone && aparelho && modelo && defeito && solucao && temValor
+              && _desfechoFoto && _assinaturaTemTraco && (!pagamentoOrc || _desfechoFotoPagamento));
     } else if (_desfechoTipo === 'nao_atendido') {
       // Foto obrigatória — comprovante de que o técnico foi até o cliente.
       // Pedido de 2026-09-01, depois de reclamação sem comprovação.
@@ -1921,7 +1929,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v300';
+  const VERSAO_TELA = 'v301';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

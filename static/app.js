@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v300';
+const VERSAO_PAINEL = 'v301';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7495,33 +7495,30 @@ function escolherDesfecho(tipo) {
     // nada — o canvas já está com o tamanho certo neste mesmo tick.
     iniciarAssinaturaDesfecho();
   } else if (tipo === 'orcamento') {
-    // Pedido de 2026-09-01, REFEITO em 2026-09-17 ("igual o orçamento das
-    // OS", mesma correção já aplicada na tela do técnico — este formulário
-    // aqui no painel é uma cópia separada que tinha ficado pra trás):
-    // solução, taxa, itens/valores (lista de verdade) e forma de pagamento
-    // ficam sempre visíveis, sem alternador nenhum. Continua opcional --
-    // sem valor nenhum lançado, a OS cai em "aguardando orçamento" pro
-    // escritório terminar, igual sempre foi.
+    // Igualado ao rigor de "Fazer OS" (pedido de 2026-09-22: "só está
+    // chegando a observação, os técnicos não estão preenchendo tudo") --
+    // tudo obrigatório agora, ver validarConfirmarDesfecho.
     const s = servicosAtuais.find(x => x.id === _dfServico) || {};
     _dfOrcamentoModoLocal = true;
     extra.innerHTML = `
-      <label class="form-label" for="df-orc-nome">Nome do cliente</label>
+      <label class="form-label" for="df-orc-nome">Nome do cliente <span class="df-obrigatorio">*</span></label>
       <input class="form-input" id="df-orc-nome" value="${esc(s.cliente || '')}" oninput="validarConfirmarDesfecho()">
-      <label class="form-label" style="margin-top:10px;" for="df-orc-telefone">Telefone</label>
-      <input class="form-input" id="df-orc-telefone" value="${esc(s.telefone || '')}" oninput="formatarTelefone(this)">
+      <label class="form-label" style="margin-top:10px;" for="df-orc-telefone">Telefone <span class="df-obrigatorio">*</span></label>
+      <input class="form-input" id="df-orc-telefone" value="${esc(s.telefone || '')}" oninput="formatarTelefone(this); validarConfirmarDesfecho()">
       <div class="form-row" style="margin-top:10px;">
-        <div class="form-group"><label class="form-label" for="df-orc-aparelho">Aparelho</label>
-          <input class="form-input" id="df-orc-aparelho" value="${esc(s.tipo_aparelho || '')}"></div>
-        <div class="form-group"><label class="form-label" for="df-orc-modelo">Modelo</label>
-          <input class="form-input" id="df-orc-modelo" value="${esc(s.modelo || '')}"></div>
+        <div class="form-group"><label class="form-label" for="df-orc-aparelho">Aparelho <span class="df-obrigatorio">*</span></label>
+          <input class="form-input" id="df-orc-aparelho" value="${esc(s.tipo_aparelho || '')}" oninput="validarConfirmarDesfecho()"></div>
+        <div class="form-group"><label class="form-label" for="df-orc-modelo">Modelo <span class="df-obrigatorio">*</span></label>
+          <input class="form-input" id="df-orc-modelo" value="${esc(s.modelo || '')}" oninput="validarConfirmarDesfecho()"></div>
       </div>
-      <label class="form-label" for="df-orc-defeito">Defeito declarado</label>
-      <textarea class="form-input" id="df-orc-defeito" rows="2">${esc(s.descricao || '')}</textarea>
-      <label class="form-label" style="margin-top:10px;" for="df-orc-solucao">Solução / diagnóstico</label>
-      <textarea class="form-input" id="df-orc-solucao" rows="2" placeholder="O que foi identificado, o que precisa ser feito"></textarea>
+      <label class="form-label" for="df-orc-defeito">Defeito declarado <span class="df-obrigatorio">*</span></label>
+      <textarea class="form-input" id="df-orc-defeito" rows="2" oninput="validarConfirmarDesfecho()">${esc(s.descricao || '')}</textarea>
+      <label class="form-label" style="margin-top:10px;" for="df-orc-solucao">Solução / diagnóstico <span class="df-obrigatorio">*</span></label>
+      <textarea class="form-input" id="df-orc-solucao" rows="2" placeholder="O que foi identificado, o que precisa ser feito" oninput="validarConfirmarDesfecho()"></textarea>
       <label class="form-label" style="margin-top:10px;" for="df-orc-taxa">Taxa de avaliação (R$)</label>
-      <input class="form-input" type="number" step="0.01" min="0" inputmode="decimal" id="df-orc-taxa">
-      <label class="form-label" style="margin-top:10px;">Itens / Valores</label>
+      <input class="form-input" type="number" step="0.01" min="0" inputmode="decimal" id="df-orc-taxa" oninput="validarConfirmarDesfecho()">
+      <label class="form-label" style="margin-top:10px;">Itens / Valores <span class="df-obrigatorio">*</span></label>
+      <p class="ajuda-texto" style="margin:0 0 6px;">Pelo menos um item ou a taxa de avaliação preenchida.</p>
       <p class="ajuda-texto" id="df-orc-sugestao" style="margin:0 0 6px;"></p>
       <div id="df-orc-itens-lista"></div>
       <div class="form-row">
@@ -7540,7 +7537,7 @@ function escolherDesfecho(tipo) {
         <option value="Dinheiro">Dinheiro</option>
         <option value="Cartão">Cartão</option>
       </select>
-      ${blocoFotoPainel('Foto do produto', 'Opcional — ajuda o escritório a montar o orçamento certo.')}
+      ${blocoFotoPainel('Foto do produto', 'Ajuda o escritório a montar o orçamento certo.')}
       <label class="form-label" style="margin-top:14px;">Assinatura do cliente <span class="df-obrigatorio">*</span></label>
       <p class="df-ajuda">Peça pro cliente assinar aqui com o dedo ou o mouse.</p>
       <canvas id="df-assinatura-canvas" class="df-assinatura-canvas"></canvas>
@@ -7587,11 +7584,18 @@ function validarConfirmarDesfecho() {
     const checklistOk = checks.length > 0 && Array.from(checks).every(c => c.checked);
     ok = !!(nome && pagamento && _dfFotoPagamento && _dfAssinaturaTemTraco && checklistOk);
   } else if (_dfTipo === 'orcamento') {
-    // Itens/valor são opcionais de propósito (pedido de 2026-09-17): sem
-    // nenhum lançado, a OS cai em "aguardando orçamento" pro escritório
-    // terminar depois -- não trava a conclusão do atendimento por isso.
+    // Igualado ao rigor de "Fazer OS" (pedido de 2026-09-22: "só está
+    // chegando a observação, os técnicos não estão preenchendo tudo").
     const nome = document.getElementById('df-orc-nome')?.value.trim();
-    ok = !!(nome && _dfAssinaturaTemTraco);
+    const telefone = document.getElementById('df-orc-telefone')?.value.trim();
+    const aparelho = document.getElementById('df-orc-aparelho')?.value.trim();
+    const modelo = document.getElementById('df-orc-modelo')?.value.trim();
+    const defeito = document.getElementById('df-orc-defeito')?.value.trim();
+    const solucao = document.getElementById('df-orc-solucao')?.value.trim();
+    const taxa = Number(document.getElementById('df-orc-taxa')?.value) || 0;
+    const temValor = taxa > 0 || _dfItensOrcamento.length > 0;
+    ok = !!(nome && telefone && aparelho && modelo && defeito && solucao
+            && temValor && _dfFoto && _dfAssinaturaTemTraco);
   } else if (_dfTipo === 'nao_atendido') {
     // Foto obrigatória — comprovante de que o técnico foi até o cliente.
     // Pedido de 2026-09-01, depois de reclamação sem comprovação.
@@ -7622,11 +7626,13 @@ function _dfAdicionarItemOrcamento() {
   if (valorEl) valorEl.value = '';
   nomeEl?.focus();
   _dfRenderItensOrcamento();
+  validarConfirmarDesfecho();
 }
 
 function _dfRemoverItemOrcamento(indice) {
   _dfItensOrcamento.splice(indice, 1);
   _dfRenderItensOrcamento();
+  validarConfirmarDesfecho();
 }
 
 function _dfRenderItensOrcamento() {

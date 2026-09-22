@@ -889,6 +889,33 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
         if not forma_pagamento or not foto_pagamento_valida:
             raise DesfechoInvalido("Esse desfecho precisa da forma de pagamento e do comprovante.")
 
+    # Pedido de 2026-09-22 ("só está chegando a observação, os técnicos não
+    # estão preenchendo tudo"): até aqui só cliente_nome + assinatura eram
+    # cobrados, e só no CLIENTE (o servidor aceitava qualquer coisa) — um
+    # técnico com o app desatualizado ou um bug no front passava batido.
+    # Igualado ao rigor pedido: tudo obrigatório, travado no servidor
+    # também, não só no botão.
+    if tipo == "orcamento":
+        orc_cliente_nome = (desfecho.get("cliente_nome") or "").strip()
+        orc_telefone = (desfecho.get("cliente_telefone") or "").strip()
+        orc_aparelho = (desfecho.get("tipo_aparelho") or "").strip()
+        orc_modelo = (desfecho.get("modelo") or "").strip()
+        orc_defeito = (desfecho.get("defeito_declarado") or "").strip()
+        orc_solucao = (desfecho.get("solucao_os") or "").strip()
+        orc_itens = _itens_orcamento_local_validos(desfecho)
+        orc_taxa = desfecho.get("taxa_avaliacao") or 0
+        orc_foto_produto = desfecho.get("foto_produto")
+        orc_foto_valida = isinstance(orc_foto_produto, str) \
+            and orc_foto_produto.startswith(PREFIXOS_FOTO) \
+            and len(orc_foto_produto) <= FOTO_MAXIMA
+        orc_assinatura = desfecho.get("assinatura")
+        if not (orc_cliente_nome and orc_telefone and orc_aparelho and orc_modelo
+                and orc_defeito and orc_solucao and (orc_taxa or orc_itens)
+                and orc_foto_valida and orc_assinatura):
+            raise DesfechoInvalido(
+                "Preencha tudo no orçamento: cliente, telefone, aparelho, modelo, "
+                "defeito, solução, valor (taxa ou item), foto do produto e assinatura.")
+
     _gravar_foto(conn, servico_id, foto, quem, agora)
     if foto_pagamento:
         _gravar_foto(conn, servico_id, foto_pagamento, quem, agora, legenda="comprovante_pagamento")
