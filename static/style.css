@@ -723,7 +723,10 @@ header {
   .os-linha { grid-template-columns: 1fr; }
 }
 
-/* ─── Modo de OS (Nova OS): três documentos, um seletor só ────────────── */
+/* Reclassificar o modelo de uma OS já existente, no detalhe (osTrocarModelo)
+   -- removida da Nova OS (pedido de 2026-09-22: tipo já vem escolhido de
+   fora, seletor ali só confundia), mas continua aqui: corrigir uma OS que
+   nasceu classificada errada é caso de uso diferente e continua útil. */
 .modelo-os-botoes { display: flex; gap: 8px; flex-wrap: wrap; }
 .modelo-os-btn {
   flex: 1 1 150px; padding: 11px 14px; border-radius: 10px; cursor: pointer;

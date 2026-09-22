@@ -347,17 +347,23 @@
           <button class="at-per"       data-dias="30" onclick="osMudarPeriodo(30)">30 dias</button>
           <button class="at-per"       data-dias="90" onclick="osMudarPeriodo(90)">90 dias</button>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="osExportar()">Exportar</button>
-        <!-- Pedido de 2026-09-22 (revisão do mesmo dia): tentativa anterior
-             criou uma SEGUNDA fileira de abas (por modelo_os) do lado da de
-             origem -- duas fileiras de aba confundiam ("não ficar
-             confundindo"). Removida: a separação por origem volta a ser a
-             única, exatamente como sempre foi. O pedido de "criar direto,
-             sem escolher tipo escondido dentro do modal" fica resolvido só
-             com os 3 botões abaixo (ver abrirModalNovaOS(modelo)). -->
-        <button class="btn btn-primary btn-sm" onclick="abrirModalNovaOS('os')">+ Nova OS</button>
-        <button class="btn btn-primary btn-sm" onclick="abrirModalNovaOS('chamado_tecnico')">+ Chamado Técnico</button>
-        <button class="btn btn-primary btn-sm" onclick="abrirModalNovaOS('orcamento')">+ Orçamento</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="btn btn-ghost btn-sm" onclick="osExportar()">Exportar</button>
+          <!-- Pedido de 2026-09-22 (revisão do mesmo dia): tentativa anterior
+               criou uma SEGUNDA fileira de abas (por modelo_os) do lado da de
+               origem -- duas fileiras de aba confundiam ("não ficar
+               confundindo"). Removida: a separação por origem volta a ser a
+               única, exatamente como sempre foi. O pedido de "criar direto,
+               sem escolher tipo escondido dentro do modal" fica resolvido só
+               com os 3 botões abaixo (ver abrirModalNovaOS(modelo)). Agrupados
+               numa div própria com gap pequeno -- soltos direto no
+               .historico-header (que é `justify-content:space-between`) cada
+               botão virava um item espalhado pela largura toda ("não precisa
+               deixar o botão tão espaçado assim"). -->
+          <button class="btn btn-primary btn-sm" onclick="abrirModalNovaOS('os')">+ Nova OS</button>
+          <button class="btn btn-primary btn-sm" onclick="abrirModalNovaOS('chamado_tecnico')">+ Chamado Técnico</button>
+          <button class="btn btn-primary btn-sm" onclick="abrirModalNovaOS('orcamento')">+ Orçamento</button>
+        </div>
       </div>
 
       <!-- Separa OS que nasceu de peça chegando da Panasonic (aba Peças) das
@@ -1565,19 +1571,15 @@
 
 <div class="modal-overlay" id="modal-nova-os" role="dialog" aria-modal="true" aria-label="Nova Ordem de Serviço">
   <div class="modal modal-lg">
-    <div class="modal-title">Nova Ordem de Serviço</div>
-
-    <div class="form-group">
-      <label class="form-label">O que é este documento? <span class="form-obrigatorio">*</span></label>
-      <div class="modelo-os-botoes">
-        <button type="button" class="modelo-os-btn" data-modelo="chamado_tecnico"
-                onclick="osEscolherModelo('chamado_tecnico')">Chamado Técnico</button>
-        <button type="button" class="modelo-os-btn ativo" data-modelo="os"
-                onclick="osEscolherModelo('os')">Ordens de Serviço</button>
-        <button type="button" class="modelo-os-btn" data-modelo="orcamento"
-                onclick="osEscolherModelo('orcamento')">Orçamento</button>
-      </div>
-    </div>
+    <!-- Pedido de 2026-09-22: "se eu cliquei em um, quero só ele, não
+         outros" -- o tipo já vem escolhido de fora (um dos 3 botões do
+         cabeçalho da aba OS, ou de osAbrirNovoFilho), então o seletor
+         interno que deixava trocar de novo aqui dentro foi removido: só
+         confundia, parecendo que a escolha de fora não tinha valido.
+         osEscolherModelo(modelo) continua fazendo o trabalho de mostrar/
+         esconder os campos certos -- só não tem mais botão pra chamá-la
+         de outro tipo depois de aberto. -->
+    <div class="modal-title" id="os-modal-titulo">Nova Ordem de Serviço</div>
 
     <div class="form-group" id="os-setor-grupo">
       <label class="form-label" for="os-setor">Setor <span class="form-obrigatorio">*</span></label>

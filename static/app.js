@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v307';
+const VERSAO_PAINEL = 'v308';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -9039,8 +9039,14 @@ async function abrirModalNovaOS(modeloPreSelecionado) {
 // "Ordens de Serviço" é o padrão de sempre; os outros dois nem usam tipo_os.
 function osEscolherModelo(modelo) {
   _novaOSModelo = modelo;
-  document.querySelectorAll('.modelo-os-btn').forEach(b =>
-    b.classList.toggle('ativo', b.dataset.modelo === modelo));
+  // Título do modal reflete o tipo (pedido de 2026-09-22: sem seletor
+  // visível dentro do modal, é o título que confirma "isto aqui é um
+  // Chamado Técnico" pra quem entrou por um dos 3 botões do cabeçalho.
+  const titulo = document.getElementById('os-modal-titulo');
+  const TITULO_POR_MODELO = {
+    os: 'Nova Ordem de Serviço', chamado_tecnico: 'Novo Chamado Técnico', orcamento: 'Novo Orçamento',
+  };
+  if (titulo) titulo.textContent = TITULO_POR_MODELO[modelo] || 'Nova Ordem de Serviço';
 
   // Tipo de OS/termo fica disponível nos três modelos — só a OBRIGAÇÃO de
   // escolher (ver validação em osCriar) muda: "Ordens de Serviço" exige,
