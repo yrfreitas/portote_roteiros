@@ -925,9 +925,19 @@
 
   let _desfechoServicoId = null;
   let _desfechoTipo = null;
+  // Foto ÚNICA — só cotação de peça continua usando (pedido de 2026-09-22
+  // "só conseguimos colocar 1 foto" não pediu pra mexer nela: identificar
+  // UMA peça pontual não precisa de galeria). Todo o resto do fluxo de
+  // baixa usa _desfechoFotos (array) logo abaixo.
   let _desfechoFoto = null;
+  // Fotos do anexo genérico (etiqueta/produto/reparo/comprovante) e do
+  // "foto_produto" de Fazer OS/Orçamento — pedido de 2026-09-22: os campos
+  // que viraram obrigatórios só aceitavam 1 foto, e um aparelho às vezes
+  // precisa de mais de um ângulo pra ficar claro pro escritório.
+  let _desfechoFotos = [];
+  const FOTOS_MAXIMO_CLIENTE = 6;   // mesmo teto do servidor (FOTOS_MAXIMO em tecnico_api.py)
   // Comprovante de pagamento (pedido de 2026-09-12) — separado de
-  // _desfechoFoto de propósito: "Resolvido" e "Fazer OS" podem também usar
+  // _desfechoFotos de propósito: "Resolvido" e "Fazer OS" podem também usar
   // a foto normal (etiqueta/produto) pra outra coisa, então precisa de um
   // slot próprio pra não misturar as duas fotos numa só.
   let _desfechoFotoPagamento = null;
@@ -1115,20 +1125,72 @@
     document.getElementById('t-modal-scan')?.classList.remove('aberta');
   };
 
-  function blocoFoto(destaque, rotulo, ajuda) {
+  // multiplo=true (padrão) permite anexar várias fotos (pedido de
+  // 2026-09-22). Cotação de peça passa false de propósito — ali é uma
+  // peça pontual, uma foto já identifica.
+  function blocoFoto(destaque, rotulo, ajuda, multiplo = true) {
     rotulo = rotulo || 'Foto da etiqueta';
     const textoAjuda = ajuda !== undefined ? ajuda
       : (destaque ? 'É dela que sai o modelo e o número de série para pedir a peça.' : '');
+    if (!multiplo) {
+      return `
+        <label class="t-df-rotulo">${rotulo} ${destaque ? '' : '(opcional)'}</label>
+        ${textoAjuda ? `<p class="t-df-ajuda">${textoAjuda}</p>` : ''}
+        <label class="t-df-foto-botao">
+          Tirar foto
+          <input type="file" accept="image/*" capture="environment"
+                 onchange="window._tEscolherFoto(this)" hidden>
+        </label>
+        <div id="t-df-previa" class="t-df-previa"></div>`;
+    }
     return `
       <label class="t-df-rotulo">${rotulo} ${destaque ? '' : '(opcional)'}</label>
       ${textoAjuda ? `<p class="t-df-ajuda">${textoAjuda}</p>` : ''}
+      <p class="t-df-ajuda">Pode tirar mais de uma foto (até ${FOTOS_MAXIMO_CLIENTE}).</p>
       <label class="t-df-foto-botao">
         Tirar foto
         <input type="file" accept="image/*" capture="environment"
-               onchange="window._tEscolherFoto(this)" hidden>
+               onchange="window._tEscolherFotos(this)" hidden>
       </label>
-      <div id="t-df-previa" class="t-df-previa"></div>`;
+      <div id="t-df-fotos-previa" class="t-df-previa"></div>`;
   }
+
+  function _tRenderFotosPreview(carregando) {
+    const previa = document.getElementById('t-df-fotos-previa');
+    if (!previa) return;
+    previa.innerHTML = _desfechoFotos.map((f, i) => `
+      <div class="t-df-foto-item">
+        <img class="t-df-thumb" src="${f}" alt="Foto ${i + 1}">
+        <button type="button" class="t-df-remover-foto"
+                onclick="window._tRemoverFotoIndice(${i})">remover</button>
+      </div>`).join('') + (carregando ? '<span class="t-df-processando">preparando a foto...</span>' : '');
+  }
+
+  window._tEscolherFotos = async function (input) {
+    const arquivo = input.files && input.files[0];
+    if (!arquivo) return;
+    if (_desfechoFotos.length >= FOTOS_MAXIMO_CLIENTE) {
+      toast(`Máximo de ${FOTOS_MAXIMO_CLIENTE} fotos.`);
+      input.value = '';
+      return;
+    }
+    _tRenderFotosPreview(true);
+    try {
+      _desfechoFotos.push(await reduzirFoto(arquivo));
+    } catch (e) {
+      toast(e.message, 3200);
+    } finally {
+      input.value = '';   // permite escolher a MESMA foto de novo
+      _tRenderFotosPreview();
+      window._tValidarConfirmar();
+    }
+  };
+
+  window._tRemoverFotoIndice = function (indice) {
+    _desfechoFotos.splice(indice, 1);
+    _tRenderFotosPreview();
+    window._tValidarConfirmar();
+  };
 
   // Forma de pagamento + comprovante — pedido de 2026-09-12: todo desfecho
   // que termina com o técnico recebendo dinheiro do cliente ali na hora
@@ -1242,6 +1304,7 @@
     _desfechoServicoId = servicoId;
     _desfechoTipo = null;
     _desfechoFoto = null;
+    _desfechoFotos = [];
     _desfechoFotoPagamento = null;
     _orcItensTecnico = [];
     const folha = document.getElementById('t-folha-desfecho');
@@ -1269,6 +1332,8 @@
 
   window._tEscolherDesfecho = function (tipo) {
     _desfechoTipo = tipo;
+    _desfechoFoto = null;
+    _desfechoFotos = [];
     _desfechoFotoPagamento = null;
     document.querySelectorAll('.t-df-opcao').forEach(b =>
       b.classList.toggle('ativa', b.dataset.tipo === tipo));
@@ -1300,7 +1365,7 @@
         <label class="t-df-rotulo" for="t-df-nome-peca">Nome da peça</label>
         <input class="t-df-input" id="t-df-nome-peca" autocomplete="off"
                placeholder="Ex: Placa eletrônica" oninput="window._tValidarConfirmar()">
-        ${blocoFoto(true)}`;
+        ${blocoFoto(true, undefined, undefined, false)}`;
     } else if (tipo === 'nao_atendido') {
       extra.innerHTML = `
         <label class="t-df-rotulo">Por quê?</label>
@@ -1545,27 +1610,27 @@
       const temValor = taxa > 0 || _orcItensTecnico.length > 0;
       const pagamentoOrc = document.getElementById('t-df-forma-pagamento')?.value;
       ok = !!(nome && telefone && aparelho && modelo && defeito && solucao && temValor
-              && _desfechoFoto && _assinaturaTemTraco && (!pagamentoOrc || _desfechoFotoPagamento));
+              && _desfechoFotos.length && _assinaturaTemTraco && (!pagamentoOrc || _desfechoFotoPagamento));
     } else if (_desfechoTipo === 'nao_atendido') {
       // Foto obrigatória — comprovante de que o técnico foi até o cliente.
       // Pedido de 2026-09-01, depois de reclamação sem comprovação. Motivo
       // obrigatório entrou em 2026-09-22 ("deixe tudo obrigatório") — antes
       // dava pra confirmar sem escolher nenhum motivo.
       const motivoEscolhido = document.querySelector('.t-df-motivo.ativa');
-      ok = !!(motivoEscolhido && _desfechoFoto);
+      ok = !!(motivoEscolhido && _desfechoFotos.length);
     } else if (_desfechoTipo === 'garantia_resolvido' || _desfechoTipo === 'garantia_voltar_depois') {
       // Foto obrigatória — mesmo princípio do "Não atendido" (pedido de
       // 2026-09-18: "vai anexar as informações e fotos").
-      ok = !!_desfechoFoto;
+      ok = !!_desfechoFotos.length;
     } else if (_desfechoTipo === 'precisa_peca') {
       // Pedido de 2026-09-22 ("deixe tudo obrigatório"): peça + foto viravam
       // opcionais até aqui — dava pra confirmar sem preencher nada.
       const peca = document.getElementById('t-df-peca')?.value.trim();
-      ok = !!(peca && _desfechoFoto);
+      ok = !!(peca && _desfechoFotos.length);
     } else if (_desfechoTipo === 'volto_depois'
                || ['resolvido_panasonic', 'aprovado_executado', 'aprovado_retirado', 'aprovado_agendar'].includes(_desfechoTipo)) {
       // Pedido de 2026-09-22: mesma trava — só a foto, mas agora obrigatória.
-      ok = !!_desfechoFoto;
+      ok = !!_desfechoFotos.length;
     }
     btn.disabled = !ok;
   };
@@ -1622,7 +1687,7 @@
       desfecho.checklist = JSON.stringify(_checklistAtual.map((item, i) => ({
         item, marcado: !!document.querySelector(`[data-checklist="${i}"]`)?.checked,
       })));
-      if (_desfechoFoto) desfecho.foto_produto = _desfechoFoto;
+      if (_desfechoFotos.length) desfecho.fotos_produto = _desfechoFotos;
       if (_assinaturaTemTraco && _assinaturaCanvas) {
         desfecho.assinatura = _assinaturaCanvas.toDataURL('image/png');
       }
@@ -1642,17 +1707,21 @@
       const pagamentoOrc = document.getElementById('t-df-forma-pagamento')?.value || '';
       if (pagamentoOrc) desfecho.forma_pagamento = pagamentoOrc;
       if (_desfechoFotoPagamento) desfecho.foto_pagamento = _desfechoFotoPagamento;
-      // Foto vai como foto_produto (na OS, igual Fazer OS) -- é o que ajuda o
-      // escritório a montar o orçamento certo, não um registro solto do
+      // Fotos vão como fotos_produto (na OS, igual Fazer OS) -- é o que ajuda
+      // o escritório a montar o orçamento certo, não um registro solto do
       // atendimento.
-      if (_desfechoFoto) desfecho.foto_produto = _desfechoFoto;
+      if (_desfechoFotos.length) desfecho.fotos_produto = _desfechoFotos;
       if (_assinaturaTemTraco && _assinaturaCanvas) {
         desfecho.assinatura = _assinaturaCanvas.toDataURL('image/png');
       }
     }
     const obs = document.getElementById('t-df-obs')?.value.trim();
     if (obs) desfecho.observacao = obs;
-    if (_desfechoFoto && _desfechoTipo !== 'fazer_os' && _desfechoTipo !== 'orcamento') desfecho.foto = _desfechoFoto;
+    if (_desfechoTipo === 'cotacao_peca') {
+      if (_desfechoFoto) desfecho.foto = _desfechoFoto;
+    } else if (_desfechoTipo !== 'fazer_os' && _desfechoTipo !== 'orcamento' && _desfechoFotos.length) {
+      desfecho.fotos = _desfechoFotos;
+    }
     const id = _desfechoServicoId;
     window._tFecharDesfecho();
     window._tConcluirPonto(id, 'concluido', desfecho);
@@ -1946,7 +2015,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v303';
+  const VERSAO_TELA = 'v304';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

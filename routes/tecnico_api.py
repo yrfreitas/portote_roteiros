@@ -12,6 +12,7 @@ from database import (bump_revisao, db_conn, execute, fetch_all, fetch_one,
 from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
                            recalcular_distancia_ordem_fixa)
 from routes.ordens_servico import TIPOS_OS, TIPOS_GARANTIA_FIXA
+from services.fotos_extra import adicionar_foto_extra
 
 # tipo_os que carregam garantia — mesmo conjunto usado em services/garantia.py
 # pra decidir se _GARANTIA_MESES tem uma entrada (saida_oficina cai lá com
@@ -335,6 +336,14 @@ FOTO_MAXIMA = 900 * 1024
 PREFIXOS_FOTO = ("data:image/jpeg;base64,", "data:image/png;base64,",
                  "data:image/webp;base64,")
 
+# Teto de fotos por anexo de UM desfecho — pedido de 2026-09-22 ("só
+# conseguimos colocar 1 foto"). Não é "sem limite" de propósito: sem teto,
+# uma pessoa anexando a galeria inteira do celular (ou um bug repetindo
+# envio) vira um desfecho com dezenas de imagens de 300-900KB cada, o que é
+# exatamente o tipo de "porta para despejar arquivo grande no banco" que
+# FOTO_MAXIMA já evita por foto individual.
+FOTOS_MAXIMO = 6
+
 
 def _gravar_foto(conn, servico_id, foto, quem, agora, legenda="etiqueta"):
     """Guarda uma foto ligada ao atendimento (etiqueta do aparelho por
@@ -473,6 +482,27 @@ def _imagem_valida(imagem):
     return imagem
 
 
+def _fotos_validas(desfecho, campo_lista, campo_unico):
+    """Lista de fotos válidas de um anexo do desfecho (pedido de 2026-09-22:
+    "só conseguimos colocar 1 foto" — os campos de anexo viraram array).
+
+    Aceita o formato novo (`campo_lista`, ex. "fotos"/"fotos_produto") ou,
+    por compatibilidade com uma requisição da fila offline do técnico que
+    ficou pendente de sincronizar de antes deste deploy, o campo antigo
+    (`campo_unico`, uma string só) — sem isso, um atendimento gravado
+    offline ANTES da atualização perderia a foto ao sincronizar DEPOIS."""
+    brutas = desfecho.get(campo_lista)
+    if not isinstance(brutas, list):
+        unica = desfecho.get(campo_unico)
+        brutas = [unica] if unica else []
+    validas = []
+    for item in brutas[:FOTOS_MAXIMO]:
+        v = _imagem_valida(item)
+        if v:
+            validas.append(v)
+    return validas
+
+
 def _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     """"Fazer Ordem de Serviço" direto no atendimento — pedido de
     2026-08-28: o site deixou de ser só roteirização, e o técnico pode
@@ -529,7 +559,8 @@ def _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     defeito = (desfecho.get("defeito_declarado") or servico.get("descricao") or "").strip()
     solucao = (desfecho.get("solucao_os") or "").strip()
     forma_pagamento = (desfecho.get("forma_pagamento") or "").strip()
-    foto = _imagem_valida(desfecho.get("foto_produto"))
+    fotos_produto = _fotos_validas(desfecho, "fotos_produto", "foto_produto")
+    foto = fotos_produto[0] if fotos_produto else None
     assinatura = _imagem_valida(desfecho.get("assinatura"))
     # Opcional — pedido de 2026-08-28: o técnico escolhe qual termo jurídico
     # vai impresso na OS que ele mesmo está fechando em campo, do jeito que
@@ -557,6 +588,13 @@ def _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
            (os_id, servico["id"]))
 
+    # A 1ª foto virou a "capa" (coluna `foto` acima, é o que o documento
+    # impresso usa). As demais vão pra fotos_extra — mesma tabela/mecanismo
+    # que o painel já usa pra "Mais fotos" na tela de OS, então aparecem lá
+    # sem precisar de nenhuma UI nova.
+    for extra in fotos_produto[1:]:
+        adicionar_foto_extra(conn, "os", os_id, extra)
+
     return {"os_id": os_id, "token_cliente": token_cliente}
 
 
@@ -573,9 +611,11 @@ def _fechar_os_existente(conn, ordem_servico_id, desfecho, quem):
     forma_pagamento = (desfecho.get("forma_pagamento") or "").strip()
     if forma_pagamento:
         campos.append("forma_pagamento = ?"); valores.append(forma_pagamento)
-    foto = _imagem_valida(desfecho.get("foto_produto"))
-    if foto:
-        campos.append("foto = ?"); valores.append(foto)
+    fotos_produto = _fotos_validas(desfecho, "fotos_produto", "foto_produto")
+    if fotos_produto:
+        campos.append("foto = ?"); valores.append(fotos_produto[0])
+        for extra in fotos_produto[1:]:
+            adicionar_foto_extra(conn, "os", ordem_servico_id, extra)
     assinatura = _imagem_valida(desfecho.get("assinatura"))
     if assinatura:
         campos.append("assinatura_cliente = ?"); valores.append(assinatura)
@@ -665,7 +705,8 @@ def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     # QUALQUER tipo que mande foto_pagamento, não só resolvido/fazer_os).
     forma_pagamento = (desfecho.get("forma_pagamento") or "").strip()
     assinatura = _imagem_valida(desfecho.get("assinatura"))
-    foto = _imagem_valida(desfecho.get("foto_produto"))
+    fotos_produto = _fotos_validas(desfecho, "fotos_produto", "foto_produto")
+    foto = fotos_produto[0] if fotos_produto else None
     token_cliente = secrets.token_urlsafe(24)
 
     # Pedido de 2026-09-02: se o técnico já combinou o valor com o cliente na
@@ -687,6 +728,9 @@ def _criar_os_orcamento_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
            (os_id, servico["id"]))
 
     _lancar_item_orcamento_local(conn, os_id, desfecho, agora)
+
+    for extra in fotos_produto[1:]:
+        adicionar_foto_extra(conn, "os", os_id, extra)
 
     return {"os_id": os_id, "token_cliente": token_cliente}
 
@@ -760,10 +804,12 @@ def _atualizar_os_orcamento_existente(conn, ordem_servico_id, desfecho, quem):
     if assinatura:
         campos.append("assinatura_cliente = ?")
         valores.append(assinatura)
-    foto = _imagem_valida(desfecho.get("foto_produto"))
-    if foto:
+    fotos_produto = _fotos_validas(desfecho, "fotos_produto", "foto_produto")
+    if fotos_produto:
         campos.append("foto = ?")
-        valores.append(foto)
+        valores.append(fotos_produto[0])
+        for extra in fotos_produto[1:]:
+            adicionar_foto_extra(conn, "os", ordem_servico_id, extra)
 
     existente = fetch_one(conn, "SELECT token_cliente FROM ordens_servico WHERE id = ?",
                           (ordem_servico_id,))
@@ -905,14 +951,11 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
         orc_solucao = (desfecho.get("solucao_os") or "").strip()
         orc_itens = _itens_orcamento_local_validos(desfecho)
         orc_taxa = desfecho.get("taxa_avaliacao") or 0
-        orc_foto_produto = desfecho.get("foto_produto")
-        orc_foto_valida = isinstance(orc_foto_produto, str) \
-            and orc_foto_produto.startswith(PREFIXOS_FOTO) \
-            and len(orc_foto_produto) <= FOTO_MAXIMA
+        orc_fotos_produto = _fotos_validas(desfecho, "fotos_produto", "foto_produto")
         orc_assinatura = desfecho.get("assinatura")
         if not (orc_cliente_nome and orc_telefone and orc_aparelho and orc_modelo
                 and orc_defeito and orc_solucao and (orc_taxa or orc_itens)
-                and orc_foto_valida and orc_assinatura):
+                and orc_fotos_produto and orc_assinatura):
             raise DesfechoInvalido(
                 "Preencha tudo no orçamento: cliente, telefone, aparelho, modelo, "
                 "defeito, solução, valor (taxa ou item), foto do produto e assinatura.")
@@ -920,22 +963,25 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
     # Pedido de 2026-09-22 ("deixe tudo obrigatório de preencher ou anexar"):
     # ampliado de "orçamento" pra TODA a aba de dar baixa. Cada tipo tem seu
     # próprio texto de erro pra ficar claro o que falta.
-    foto_valida_generica = isinstance(foto, str) and foto.startswith(PREFIXOS_FOTO) \
-        and len(foto) <= FOTO_MAXIMA
+    # Pedido de 2026-09-22 ("só conseguimos colocar 1 foto"): campo de
+    # anexo virou array (`fotos`) em vez de uma string só — ver
+    # _fotos_validas. `foto` (singular, acima) continua existindo por causa
+    # de cotacao_peca, que não entrou nesse pedido e mantém 1 foto só.
+    fotos_genericas = _fotos_validas(desfecho, "fotos", "foto")
     if tipo == "precisa_peca":
-        if not peca or not foto_valida_generica:
+        if not peca or not fotos_genericas:
             raise DesfechoInvalido("Fazer Pedido de Peça precisa do nome/código da peça e de uma foto.")
     elif tipo == "volto_depois":
-        if not foto_valida_generica:
+        if not fotos_genericas:
             raise DesfechoInvalido("Reagendar Cliente precisa de uma foto.")
     elif tipo == "nao_atendido":
-        if not motivo or not foto_valida_generica:
+        if not motivo or not fotos_genericas:
             raise DesfechoInvalido("Cliente ausente precisa do motivo e de uma foto.")
     elif tipo in ("resolvido_panasonic", "aprovado_executado", "aprovado_retirado", "aprovado_agendar"):
-        if not foto_valida_generica:
+        if not fotos_genericas:
             raise DesfechoInvalido("Esse desfecho precisa de uma foto do produto/reparo.")
     elif tipo in ("garantia_resolvido", "garantia_voltar_depois"):
-        if not foto_valida_generica:
+        if not fotos_genericas:
             raise DesfechoInvalido("Esse desfecho de garantia precisa de uma foto.")
     elif tipo == "fazer_os":
         fos_nome = (desfecho.get("cliente_nome") or "").strip()
@@ -950,7 +996,8 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
                 "Preencha tudo em Enviar Ordem por Pdf: nome do cliente, checklist "
                 "completo e assinatura.")
 
-    _gravar_foto(conn, servico_id, foto, quem, agora)
+    for item in fotos_genericas:
+        _gravar_foto(conn, servico_id, item, quem, agora)
     if foto_pagamento:
         _gravar_foto(conn, servico_id, foto_pagamento, quem, agora, legenda="comprovante_pagamento")
 

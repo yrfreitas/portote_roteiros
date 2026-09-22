@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v303';
+const VERSAO_PAINEL = 'v304';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7148,7 +7148,17 @@ let _checklistAtual = CHECKLIST_PADRAO;
 const DF_MOTIVOS = ['Cliente ausente', 'Endereço errado', 'Cliente recusou',
                     'Aparelho sem defeito', 'Sem acesso ao local'];
 
-let _dfServico = null, _dfFicha = null, _dfTipo = null, _dfFoto = null;
+let _dfServico = null, _dfFicha = null, _dfTipo = null;
+// Foto ÚNICA — só cotação de peça continua usando (pedido de 2026-09-22
+// "só conseguimos colocar 1 foto" não pediu pra mexer nela: identificar
+// UMA peça pontual não precisa de galeria). O resto do fluxo de baixa usa
+// _dfFotos (array) logo abaixo.
+let _dfFoto = null;
+// Fotos do anexo genérico (etiqueta/produto/reparo/comprovante) e do
+// "foto_produto" de Fazer OS/Orçamento — pedido de 2026-09-22: os campos
+// que viraram obrigatórios só aceitavam 1 foto.
+let _dfFotos = [];
+const DF_FOTOS_MAXIMO = 6;   // mesmo teto do servidor (FOTOS_MAXIMO em tecnico_api.py)
 // Comprovante de pagamento do "Resolvido" no painel (pedido de 2026-09-18,
 // corrigindo um buraco real: essa opção não tinha NENHUM campo extra aqui,
 // diferente do app do técnico — dava pra concluir "Resolvido" sem forma de
@@ -7218,15 +7228,29 @@ async function reduzirFotoInteira(arquivo, ladoMaximo = 1280, qualidade = 0.72) 
   });
 }
 
-function blocoFotoPainel(rotulo = 'Foto da etiqueta', ajuda = 'É dela que sai o modelo e o número de série para pedir a peça.') {
+// multiplo=true (padrão) permite anexar várias fotos (pedido de
+// 2026-09-22). Cotação de peça passa false de propósito — ali é uma peça
+// pontual, uma foto já identifica.
+function blocoFotoPainel(rotulo = 'Foto da etiqueta', ajuda = 'É dela que sai o modelo e o número de série para pedir a peça.', multiplo = true) {
+  if (!multiplo) {
+    return `
+      <label class="form-label" style="margin-top:14px;">${rotulo}</label>
+      <p class="df-ajuda">${ajuda}</p>
+      <label class="df-foto-botao">
+        Escolher foto
+        <input type="file" accept="image/*" onchange="escolherFotoDesfecho(this)" hidden>
+      </label>
+      <div id="df-previa" class="df-previa"></div>`;
+  }
   return `
     <label class="form-label" style="margin-top:14px;">${rotulo}</label>
     <p class="df-ajuda">${ajuda}</p>
+    <p class="df-ajuda">Pode anexar mais de uma foto (até ${DF_FOTOS_MAXIMO}).</p>
     <label class="df-foto-botao">
       Escolher foto
-      <input type="file" accept="image/*" onchange="escolherFotoDesfecho(this)" hidden>
+      <input type="file" accept="image/*" onchange="escolherFotosDesfecho(this)" hidden>
     </label>
-    <div id="df-previa" class="df-previa"></div>`;
+    <div id="df-fotos-previa" class="df-previa"></div>`;
 }
 
 async function escolherFotoDesfecho(input) {
@@ -7252,6 +7276,42 @@ function removerFotoDesfecho() {
   _dfFoto = null;
   const previa = document.getElementById('df-previa');
   if (previa) previa.innerHTML = '';
+  validarConfirmarDesfecho();
+}
+
+function _dfRenderFotosPreview(carregando) {
+  const previa = document.getElementById('df-fotos-previa');
+  if (!previa) return;
+  previa.innerHTML = _dfFotos.map((f, i) => `
+    <div class="df-foto-item">
+      <img class="df-thumb" src="${f}" alt="Foto ${i + 1}">
+      <button type="button" class="df-remover-foto" onclick="removerFotoDesfechoIndice(${i})">remover</button>
+    </div>`).join('') + (carregando ? '<span class="df-processando">preparando a foto...</span>' : '');
+}
+
+async function escolherFotosDesfecho(input) {
+  const arquivo = input.files && input.files[0];
+  if (!arquivo) return;
+  if (_dfFotos.length >= DF_FOTOS_MAXIMO) {
+    toast(`Máximo de ${DF_FOTOS_MAXIMO} fotos.`, 'error');
+    input.value = '';
+    return;
+  }
+  _dfRenderFotosPreview(true);
+  try {
+    _dfFotos.push(await reduzirFotoInteira(arquivo));
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    input.value = '';   // permite escolher a MESMA foto de novo
+    _dfRenderFotosPreview();
+    validarConfirmarDesfecho();
+  }
+}
+
+function removerFotoDesfechoIndice(indice) {
+  _dfFotos.splice(indice, 1);
+  _dfRenderFotosPreview();
   validarConfirmarDesfecho();
 }
 
@@ -7367,6 +7427,7 @@ function limparAssinaturaDesfecho() {
 
 function abrirDesfecho(servicoId, fichaId) {
   _dfServico = servicoId; _dfFicha = fichaId; _dfTipo = null; _dfFoto = null;
+  _dfFotos = [];
   _dfFotoPagamento = null;
   _dfItensOrcamento = [];
   const m = document.getElementById('modal-desfecho');
@@ -7389,6 +7450,8 @@ function fecharDesfecho() {
 
 function escolherDesfecho(tipo) {
   _dfTipo = tipo;
+  _dfFoto = null;
+  _dfFotos = [];
   _dfFotoPagamento = null;
   document.querySelectorAll('.df-opcao').forEach(b =>
     b.classList.toggle('ativa', b.dataset.tipo === tipo));
@@ -7420,7 +7483,7 @@ function escolherDesfecho(tipo) {
       <label class="form-label" style="margin-top:10px;" for="df-nome-peca">Nome da peça</label>
       <input class="form-input" id="df-nome-peca" autocomplete="off"
              placeholder="Ex: Placa eletrônica" oninput="validarConfirmarDesfecho()">
-      ${blocoFotoPainel()}`;
+      ${blocoFotoPainel(undefined, undefined, false)}`;
     setTimeout(() => document.getElementById('df-codigo')?.focus(), 60);
   } else if (tipo === 'nao_atendido') {
     extra.innerHTML = `<label class="form-label">Por quê?</label>
@@ -7595,25 +7658,25 @@ function validarConfirmarDesfecho() {
     const taxa = Number(document.getElementById('df-orc-taxa')?.value) || 0;
     const temValor = taxa > 0 || _dfItensOrcamento.length > 0;
     ok = !!(nome && telefone && aparelho && modelo && defeito && solucao
-            && temValor && _dfFoto && _dfAssinaturaTemTraco);
+            && temValor && _dfFotos.length && _dfAssinaturaTemTraco);
   } else if (_dfTipo === 'nao_atendido') {
     // Foto obrigatória — comprovante de que o técnico foi até o cliente.
     // Motivo obrigatório entrou em 2026-09-22 ("deixe tudo obrigatório").
     const motivoEscolhido = document.querySelector('.df-motivo.ativa');
-    ok = !!(motivoEscolhido && _dfFoto);
+    ok = !!(motivoEscolhido && _dfFotos.length);
   } else if (_dfTipo === 'garantia_resolvido' || _dfTipo === 'garantia_voltar_depois') {
     // Foto obrigatória — mesmo princípio do "Não atendido" (pedido de
     // 2026-09-18: "vai anexar as informações e fotos").
-    ok = !!_dfFoto;
+    ok = !!_dfFotos.length;
   } else if (_dfTipo === 'precisa_peca') {
     // Pedido de 2026-09-22 ("deixe tudo obrigatório"): peça + foto viravam
     // opcionais até aqui.
     const peca = document.getElementById('df-peca')?.value.trim();
-    ok = !!(peca && _dfFoto);
+    ok = !!(peca && _dfFotos.length);
   } else if (_dfTipo === 'volto_depois'
              || ['resolvido_panasonic', 'aprovado_executado', 'aprovado_retirado', 'aprovado_agendar'].includes(_dfTipo)) {
     // Pedido de 2026-09-22: mesma trava — só a foto, mas agora obrigatória.
-    ok = !!_dfFoto;
+    ok = !!_dfFotos.length;
   }
   btn.disabled = !ok;
 }
@@ -7706,7 +7769,7 @@ async function confirmarDesfecho() {
     desfecho.checklist = JSON.stringify(_checklistAtual.map((item, i) => ({
       item, marcado: !!document.querySelector(`[data-checklist-painel="${i}"]`)?.checked,
     })));
-    if (_dfFoto) desfecho.foto_produto = _dfFoto;
+    if (_dfFotos.length) desfecho.fotos_produto = _dfFotos;
     if (_dfAssinaturaTemTraco && _dfAssinaturaCanvas) desfecho.assinatura = _dfAssinaturaCanvas.toDataURL('image/png');
   }
   if (_dfTipo === 'orcamento') {
@@ -7721,12 +7784,16 @@ async function confirmarDesfecho() {
     desfecho.taxa_avaliacao = Number(document.getElementById('df-orc-taxa')?.value) || 0;
     const pagamentoOrc = document.getElementById('df-orc-pagamento')?.value || '';
     if (pagamentoOrc) desfecho.forma_pagamento = pagamentoOrc;
-    if (_dfFoto) desfecho.foto_produto = _dfFoto;
+    if (_dfFotos.length) desfecho.fotos_produto = _dfFotos;
     if (_dfAssinaturaTemTraco && _dfAssinaturaCanvas) desfecho.assinatura = _dfAssinaturaCanvas.toDataURL('image/png');
   }
   const obs = document.getElementById('df-obs')?.value.trim();
   if (obs) desfecho.observacao = obs;
-  if (_dfFoto && _dfTipo !== 'fazer_os' && _dfTipo !== 'orcamento') desfecho.foto = _dfFoto;
+  if (_dfTipo === 'cotacao_peca') {
+    if (_dfFoto) desfecho.foto = _dfFoto;
+  } else if (_dfTipo !== 'fazer_os' && _dfTipo !== 'orcamento' && _dfFotos.length) {
+    desfecho.fotos = _dfFotos;
+  }
   const svc = _dfServico, ficha = _dfFicha;
   fecharDesfecho();
   await alternarStatusServico(svc, 'concluido', ficha, desfecho);

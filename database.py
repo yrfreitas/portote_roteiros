@@ -1144,6 +1144,21 @@ _MIGRACOES_PG = [
         detalhe    TEXT,
         criado_em  TEXT
     )""",
+    # Log de remoção de Atendimentos (pedido de 2026-09-22, achado
+    # investigando o sumiço de uma baixa do Igor pra descobrir que não era
+    # bug: alguém clicou "remover da lista" — ação real, existente, mas sem
+    # NENHUM registro de quem. "DELETE FROM servico_desfecho"/"pedido_peca_os"
+    # apaga a linha de vez, então o registro tem que ser feito ANTES, num
+    # log à parte (mesmo padrão de log_exportacoes) — não em cada linha (não
+    # sobra linha pra anotar depois que ela já foi apagada).
+    """CREATE TABLE IF NOT EXISTS log_remocoes_atendimento (
+        id         SERIAL PRIMARY KEY,
+        origem     TEXT NOT NULL,
+        origem_id  INTEGER NOT NULL,
+        detalhe    TEXT,
+        usuario    TEXT,
+        criado_em  TEXT
+    )""",
     # Histórico de posição do técnico (rastreios só guarda a ÚLTIMA) — pra
     # calcular quilometragem REAL rodada (soma de trecho a trecho) vs a
     # planejada (fichas.distancia_total). Poda própria: sem isso a tabela
@@ -1468,6 +1483,14 @@ _MIGRACOES_SQLITE = [
         detalhe    TEXT,
         criado_em  TEXT
     )""",
+    """CREATE TABLE IF NOT EXISTS log_remocoes_atendimento (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        origem     TEXT NOT NULL,
+        origem_id  INTEGER NOT NULL,
+        detalhe    TEXT,
+        usuario    TEXT,
+        criado_em  TEXT
+    )""",
     """CREATE TABLE IF NOT EXISTS rastreio_pings (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         token      TEXT NOT NULL,
@@ -1519,6 +1542,21 @@ def registrar_exportacao(conn, usuario: str, rota: str, detalhe: str = "") -> No
         "INSERT INTO log_exportacoes (usuario, rota, detalhe, criado_em) "
         "VALUES (?, ?, ?, ?)"),
         (usuario, rota, detalhe[:300], datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+
+
+def registrar_remocao_atendimento(conn, usuario: str, origem: str, origem_id: int,
+                                   detalhe: str = "") -> None:
+    """Log de quem removeu uma linha de Atendimentos (pedido de 2026-09-22,
+    depois de não dar pra responder "quem apagou" numa baixa do Igor — o
+    delete em si não deixa rastro nenhum). Chamar só DEPOIS de confirmar que
+    o DELETE de verdade afetou uma linha (senão vira log de uma remoção que
+    não aconteceu) — mas na MESMA conexão/transação dele, pro registro subir
+    junto com o commit."""
+    execute(conn, sql(
+        "INSERT INTO log_remocoes_atendimento (origem, origem_id, detalhe, "
+        "usuario, criado_em) VALUES (?, ?, ?, ?, ?)"),
+        (origem, origem_id, (detalhe or "")[:300], usuario,
+         datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
 
 def sincronizar_sequences(conn):

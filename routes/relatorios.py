@@ -9,7 +9,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 from database import (db_conn, execute, fetch_all, fetch_one,
-                      insert_returning_id, sql)
+                      insert_returning_id, registrar_remocao_atendimento, sql)
 
 relatorios_bp = Blueprint("relatorios", __name__)
 
@@ -572,10 +572,24 @@ def apagar_desfecho(servico_id):
     entrou coisa errada em "Precisam de peça" sem jeito de remover.
 
     Apaga só o DESFECHO (o que foi registrado sobre a visita), não a visita
-    nem a OS por trás — a linha some daqui, o resto do sistema não muda."""
+    nem a OS por trás — a linha some daqui, o resto do sistema não muda.
+
+    Log ANTES do delete (pedido de 2026-09-22): sem isso, "quem removeu essa
+    linha" não tinha resposta nenhuma — achado investigando um caso real que
+    parecia baixa perdida e era só isso."""
+    from flask import session
+
     with db_conn(commit=True) as conn:
+        antes = fetch_one(conn, sql(
+            "SELECT sd.desfecho, s.cliente FROM servico_desfecho sd "
+            "JOIN servicos s ON s.id = sd.servico_id WHERE sd.servico_id = ?"),
+            (servico_id,))
         afetadas = execute(conn, sql(
             "DELETE FROM servico_desfecho WHERE servico_id = ?"), (servico_id,))
+        if afetadas and antes:
+            registrar_remocao_atendimento(
+                conn, session.get("usuario_nome") or "", "desfecho", servico_id,
+                f"{antes['cliente']} — {antes['desfecho']}")
     if not afetadas:
         return jsonify({"erro": "Atendimento não encontrado"}), 404
     return jsonify({"mensagem": "Removido de Atendimentos"})
@@ -583,10 +597,23 @@ def apagar_desfecho(servico_id):
 
 @relatorios_bp.route("/pedidos-peca-os/<int:pedido_id>", methods=["DELETE"])
 def apagar_pedido_peca_os(pedido_id):
-    """Mesma coisa, pro pedido de peça batido direto na OS (sem visita)."""
+    """Mesma coisa, pro pedido de peça batido direto na OS (sem visita).
+
+    Log ANTES do delete — ver comentário em apagar_desfecho."""
+    from flask import session
+
     with db_conn(commit=True) as conn:
+        antes = fetch_one(conn, sql(
+            "SELECT p.peca, p.descricao, c.nome AS cliente FROM pedido_peca_os p "
+            "JOIN ordens_servico o ON o.id = p.ordem_servico_id "
+            "LEFT JOIN clientes c ON c.id = o.cliente_id WHERE p.id = ?"),
+            (pedido_id,))
         afetadas = execute(conn, sql(
             "DELETE FROM pedido_peca_os WHERE id = ?"), (pedido_id,))
+        if afetadas and antes:
+            registrar_remocao_atendimento(
+                conn, session.get("usuario_nome") or "", "pedido_peca_os", pedido_id,
+                f"{antes['cliente'] or ''} — {antes['peca'] or antes['descricao'] or ''}")
     if not afetadas:
         return jsonify({"erro": "Pedido não encontrado"}), 404
     return jsonify({"mensagem": "Removido de Atendimentos"})
