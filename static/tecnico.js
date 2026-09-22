@@ -1281,9 +1281,9 @@
       extra.innerHTML = blocoPagamento();
     } else if (tipo === 'precisa_peca') {
       extra.innerHTML = `
-        <label class="t-df-rotulo" for="t-df-peca">Qual peça?</label>
+        <label class="t-df-rotulo" for="t-df-peca">Qual peça? <span class="t-df-obrigatorio">*</span></label>
         <input class="t-df-input" id="t-df-peca" autocomplete="off"
-               placeholder="Código ou nome da peça">
+               placeholder="Código ou nome da peça" oninput="window._tValidarConfirmar()">
         ${blocoFoto(true)}`;
       // Sem foco automático: abrir o teclado por cima da folha esconde o
       // botão de confirmar, e o técnico fica sem saber o que fazer.
@@ -1311,11 +1311,15 @@
         </div>
         ${blocoFoto(true, 'Foto do comprovante', 'Comprova que você foi até o cliente — porta fechada, endereço, o que for.')}`;
     } else if (tipo === 'volto_depois') {
-      extra.innerHTML = blocoFoto(false);
+      // Pedido de 2026-09-22 ("deixe tudo obrigatório"): foto virou
+      // obrigatória aqui também — antes era o único desfecho sem NENHUMA
+      // exigência.
+      extra.innerHTML = blocoFoto(true, 'Foto do produto', 'Registra o estado do aparelho antes de voltar.');
     } else if (['resolvido_panasonic', 'aprovado_executado', 'aprovado_retirado', 'aprovado_agendar'].includes(tipo)) {
-      // Garantia Panasonic (pedido de 2026-09-18): sem pagamento — quem
-      // cobre é a Panasonic, não o cliente. Foto é só evidência, opcional.
-      extra.innerHTML = blocoFoto(false, 'Foto do produto/reparo', '');
+      // Garantia Panasonic — sem pagamento (quem cobre é a Panasonic, não o
+      // cliente), mas a foto virou obrigatória em 2026-09-22 ("deixe tudo
+      // obrigatório"), como evidência pra eventual reembolso.
+      extra.innerHTML = blocoFoto(true, 'Foto do produto/reparo', '');
     } else if (tipo === 'garantia_resolvido' || tipo === 'garantia_voltar_depois') {
       // Garantia nossa (pedido de 2026-09-18): "vai anexar as informações e
       // fotos" — mesma exigência de foto obrigatória do "Não atendido".
@@ -1544,11 +1548,23 @@
               && _desfechoFoto && _assinaturaTemTraco && (!pagamentoOrc || _desfechoFotoPagamento));
     } else if (_desfechoTipo === 'nao_atendido') {
       // Foto obrigatória — comprovante de que o técnico foi até o cliente.
-      // Pedido de 2026-09-01, depois de reclamação sem comprovação.
-      ok = !!_desfechoFoto;
+      // Pedido de 2026-09-01, depois de reclamação sem comprovação. Motivo
+      // obrigatório entrou em 2026-09-22 ("deixe tudo obrigatório") — antes
+      // dava pra confirmar sem escolher nenhum motivo.
+      const motivoEscolhido = document.querySelector('.t-df-motivo.ativa');
+      ok = !!(motivoEscolhido && _desfechoFoto);
     } else if (_desfechoTipo === 'garantia_resolvido' || _desfechoTipo === 'garantia_voltar_depois') {
       // Foto obrigatória — mesmo princípio do "Não atendido" (pedido de
       // 2026-09-18: "vai anexar as informações e fotos").
+      ok = !!_desfechoFoto;
+    } else if (_desfechoTipo === 'precisa_peca') {
+      // Pedido de 2026-09-22 ("deixe tudo obrigatório"): peça + foto viravam
+      // opcionais até aqui — dava pra confirmar sem preencher nada.
+      const peca = document.getElementById('t-df-peca')?.value.trim();
+      ok = !!(peca && _desfechoFoto);
+    } else if (_desfechoTipo === 'volto_depois'
+               || ['resolvido_panasonic', 'aprovado_executado', 'aprovado_retirado', 'aprovado_agendar'].includes(_desfechoTipo)) {
+      // Pedido de 2026-09-22: mesma trava — só a foto, mas agora obrigatória.
       ok = !!_desfechoFoto;
     }
     btn.disabled = !ok;
@@ -1573,6 +1589,7 @@
   window._tEscolherMotivo = function (botao) {
     document.querySelectorAll('.t-df-motivo').forEach(b => b.classList.remove('ativa'));
     botao.classList.add('ativa');
+    window._tValidarConfirmar();
   };
 
   window._tConfirmarDesfecho = function () {
@@ -1929,7 +1946,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v302';
+  const VERSAO_TELA = 'v303';
 
   (function marcarVersao() {
     const selo = document.createElement('div');

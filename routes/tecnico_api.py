@@ -1,3 +1,4 @@
+import json
 import logging
 import secrets
 from datetime import datetime, timezone
@@ -915,6 +916,39 @@ def _gravar_desfecho(conn, servico, novo_status, desfecho, quem, tecnico_id=None
             raise DesfechoInvalido(
                 "Preencha tudo no orçamento: cliente, telefone, aparelho, modelo, "
                 "defeito, solução, valor (taxa ou item), foto do produto e assinatura.")
+
+    # Pedido de 2026-09-22 ("deixe tudo obrigatório de preencher ou anexar"):
+    # ampliado de "orçamento" pra TODA a aba de dar baixa. Cada tipo tem seu
+    # próprio texto de erro pra ficar claro o que falta.
+    foto_valida_generica = isinstance(foto, str) and foto.startswith(PREFIXOS_FOTO) \
+        and len(foto) <= FOTO_MAXIMA
+    if tipo == "precisa_peca":
+        if not peca or not foto_valida_generica:
+            raise DesfechoInvalido("Fazer Pedido de Peça precisa do nome/código da peça e de uma foto.")
+    elif tipo == "volto_depois":
+        if not foto_valida_generica:
+            raise DesfechoInvalido("Reagendar Cliente precisa de uma foto.")
+    elif tipo == "nao_atendido":
+        if not motivo or not foto_valida_generica:
+            raise DesfechoInvalido("Cliente ausente precisa do motivo e de uma foto.")
+    elif tipo in ("resolvido_panasonic", "aprovado_executado", "aprovado_retirado", "aprovado_agendar"):
+        if not foto_valida_generica:
+            raise DesfechoInvalido("Esse desfecho precisa de uma foto do produto/reparo.")
+    elif tipo in ("garantia_resolvido", "garantia_voltar_depois"):
+        if not foto_valida_generica:
+            raise DesfechoInvalido("Esse desfecho de garantia precisa de uma foto.")
+    elif tipo == "fazer_os":
+        fos_nome = (desfecho.get("cliente_nome") or "").strip()
+        fos_assinatura = desfecho.get("assinatura")
+        try:
+            fos_checklist = json.loads(desfecho.get("checklist") or "[]")
+        except (TypeError, ValueError):
+            fos_checklist = []
+        fos_checklist_ok = bool(fos_checklist) and all(i.get("marcado") for i in fos_checklist)
+        if not (fos_nome and fos_assinatura and fos_checklist_ok):
+            raise DesfechoInvalido(
+                "Preencha tudo em Enviar Ordem por Pdf: nome do cliente, checklist "
+                "completo e assinatura.")
 
     _gravar_foto(conn, servico_id, foto, quem, agora)
     if foto_pagamento:

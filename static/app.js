@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v302';
+const VERSAO_PAINEL = 'v303';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -7400,12 +7400,12 @@ function escolherDesfecho(tipo) {
   } else if (tipo === 'volto_depois' || ['resolvido_panasonic', 'aprovado_executado',
              'aprovado_retirado', 'aprovado_agendar'].includes(tipo)) {
     // Sem pagamento (Panasonic cobre a garantia, "Reagendar" não recebeu
-    // nada) — só uma foto opcional como evidência.
-    extra.innerHTML = blocoFotoPainel('Foto do produto/reparo (opcional)', '');
+    // nada) — foto virou obrigatória em 2026-09-22 ("deixe tudo obrigatório").
+    extra.innerHTML = blocoFotoPainel('Foto do produto/reparo', '');
   } else if (tipo === 'precisa_peca') {
-    extra.innerHTML = `<label class="form-label" for="df-peca">Qual peça?</label>
+    extra.innerHTML = `<label class="form-label" for="df-peca">Qual peça? <span class="df-obrigatorio">*</span></label>
       <input class="form-input" id="df-peca" autocomplete="off"
-             placeholder="Código ou nome da peça">
+             placeholder="Código ou nome da peça" oninput="validarConfirmarDesfecho()">
       ${blocoFotoPainel()}`;
     setTimeout(() => document.getElementById('df-peca')?.focus(), 60);
   } else if (tipo === 'cotacao_peca') {
@@ -7598,11 +7598,21 @@ function validarConfirmarDesfecho() {
             && temValor && _dfFoto && _dfAssinaturaTemTraco);
   } else if (_dfTipo === 'nao_atendido') {
     // Foto obrigatória — comprovante de que o técnico foi até o cliente.
-    // Pedido de 2026-09-01, depois de reclamação sem comprovação.
-    ok = !!_dfFoto;
+    // Motivo obrigatório entrou em 2026-09-22 ("deixe tudo obrigatório").
+    const motivoEscolhido = document.querySelector('.df-motivo.ativa');
+    ok = !!(motivoEscolhido && _dfFoto);
   } else if (_dfTipo === 'garantia_resolvido' || _dfTipo === 'garantia_voltar_depois') {
     // Foto obrigatória — mesmo princípio do "Não atendido" (pedido de
     // 2026-09-18: "vai anexar as informações e fotos").
+    ok = !!_dfFoto;
+  } else if (_dfTipo === 'precisa_peca') {
+    // Pedido de 2026-09-22 ("deixe tudo obrigatório"): peça + foto viravam
+    // opcionais até aqui.
+    const peca = document.getElementById('df-peca')?.value.trim();
+    ok = !!(peca && _dfFoto);
+  } else if (_dfTipo === 'volto_depois'
+             || ['resolvido_panasonic', 'aprovado_executado', 'aprovado_retirado', 'aprovado_agendar'].includes(_dfTipo)) {
+    // Pedido de 2026-09-22: mesma trava — só a foto, mas agora obrigatória.
     ok = !!_dfFoto;
   }
   btn.disabled = !ok;
@@ -7611,6 +7621,7 @@ function validarConfirmarDesfecho() {
 function escolherMotivoDesfecho(botao) {
   document.querySelectorAll('.df-motivo').forEach(b => b.classList.remove('ativa'));
   botao.classList.add('ativa');
+  validarConfirmarDesfecho();
 }
 
 // Itens/Valores do orçamento (desfecho no painel) — mesmo padrão de
