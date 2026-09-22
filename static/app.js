@@ -276,7 +276,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v301';
+const VERSAO_PAINEL = 'v302';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -9889,6 +9889,13 @@ async function abrirOSDetalhe(id) {
   document.getElementById('os-detalhe-titulo').textContent =
     `OS #${String(o.id).padStart(6, '0')} · ${o.cliente_nome}`;
 
+  // "Copiar link do cliente" fixo no rodapé do modal (pedido de 2026-09-22:
+  // "gostaria de enviar para o cliente" e só dava pra fazer isso pela aba
+  // Central do Cliente, sem jeito de mandar direto de dentro do detalhe da
+  // OS) — mesma função/mesmo link (/central/<token>) que já existe lá.
+  const btnLinkCliente = document.getElementById('os-detalhe-btn-link');
+  if (btnLinkCliente) btnLinkCliente.onclick = () => copiarLinkCentral(o.id, o.token_cliente);
+
   // Quantas vezes já atendemos esse cliente — pedido de 2026-08-31, mesma
   // ideia do histórico que já existia na Nova OS (ver osHistoricoCliente),
   // só que aqui dentro do detalhe de uma OS já aberta.
@@ -12546,7 +12553,7 @@ function _atRenderizarDesfechos(r) {
           ${AT_TIPOS_REMOVIVEIS.includes(a.desfecho) ? `
             <button class="at-btn-remover" title="Remover esta linha — entrou errado"
                     onclick="removerAtendimento('${a.chave}')">✕</button>` : ''}
-          ${(a.desfecho === 'fazer_os' || a.origem === 'os') && a.ordem_servico_id ? `
+          ${(a.desfecho === 'fazer_os' || a.desfecho === 'orcamento' || a.origem === 'os') && a.ordem_servico_id ? `
             <button class="btn btn-ghost btn-sm" onclick="abrirOSDetalhe(${a.ordem_servico_id})">Abrir OS</button>` : ''}
         </div>
         ${alertaNoCarro(a)}
