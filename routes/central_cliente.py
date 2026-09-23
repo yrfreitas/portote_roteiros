@@ -28,11 +28,15 @@ central_cliente_bp = Blueprint("central_cliente", __name__)
 _ROTULOS_CLIENTE = {
     "aguardando_agendamento": "Aguardando agendamento",
     "agendada": "Visita agendada",
-    "em_atendimento": "Técnico em atendimento",
     "aguardando_peca": "Aguardando peça",
     "aguardando_orcamento": "Orçamento em elaboração",
     "aguardando_aprovacao": "Aguardando sua aprovação",
+    "reprovada": "Orçamento não aprovado",
     "aprovada": "Orçamento aprovado",
+    "aprovada_aguardando_agendamento": "Orçamento aprovado — aguardando agendamento",
+    "aprovada_agendada": "Orçamento aprovado — visita agendada",
+    "aguardando_entrega": "Equipamento pronto para retirada",
+    "retirada": "Equipamento retirado",
     "finalizada": "Serviço concluído",
 }
 _TIMELINE = [s for s in STATUS_OS if s != "cancelada"]

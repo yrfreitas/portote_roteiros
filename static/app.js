@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v308';
+const VERSAO_PAINEL = 'v309';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1073,7 +1073,7 @@ function _renderCentralCliente() {
   }
 
   const linhas = ordens.map(o => {
-    const statusClasse = o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso';
+    const statusClasse = _osStatusClasse(o.status);
     const recente = _centralClienteRecente(o.criado_em);
     return `
     <div class="agendar-card" onclick="abrirOSDetalhe(${o.id})">
@@ -8268,16 +8268,29 @@ async function salvarEdicaoServico() {
 // QUANDO continuam sendo o sistema de fichas/técnicos — a OS só se liga a um
 // servico (ver rotas/ordens_servico.py) em vez de duplicar agenda.
 const OS_STATUS_ROTULO = {
-  aguardando_agendamento: 'Aguardando agendamento',
-  agendada:               'Agendada',
-  em_atendimento:         'Em atendimento',
-  aguardando_peca:        'Aguardando peça',
-  aguardando_orcamento:   'Aguardando orçamento',
-  aguardando_aprovacao:   'Aguardando aprovação',
-  aprovada:               'Aprovada',
-  finalizada:             'Finalizada',
-  cancelada:              'Cancelada',
+  aguardando_agendamento:          'Aguardando agendamento',
+  agendada:                        'Agendada',
+  aguardando_peca:                 'Aguardando peça',
+  aguardando_orcamento:            'Aguardando orçamento',
+  aguardando_aprovacao:            'Aguardando aprovação',
+  reprovada:                       'Reprovada',
+  aprovada:                        'Aprovada',
+  aprovada_aguardando_agendamento: 'Aprovada, aguardando agendamento',
+  aprovada_agendada:               'Aprovada e agendada',
+  aguardando_entrega:              'Aguardando entrega',
+  retirada:                        'Retirada',
+  finalizada:                      'Finalizada',
+  cancelada:                       'Cancelada',
 };
+
+// Classe visual do status de uma OS — pedido de 2026-09-23 junto dos status
+// novos: "retirada" e "reprovada" são desfecho FECHADO (não tem mais nada
+// pendente ali), não "aviso" como um status realmente em andamento.
+function _osStatusClasse(status) {
+  if (status === 'finalizada' || status === 'retirada') return 'ok';
+  if (status === 'cancelada' || status === 'reprovada') return 'neutro';
+  return 'aviso';
+}
 
 // Cartões clicáveis da aba "Ordens de Serviço" NÃO mostram "Aguardando
 // agendamento" — pedido de 2026-09-14: toda OS nesse status já aparece na
@@ -8509,7 +8522,7 @@ async function abrirClienteDetalhe(clienteId) {
     <div class="cliente-os-historico-lista">
       ${r.ordens_servico.map(o => {
         const modeloClasse = o.modelo_os === 'chamado_tecnico' ? 'chamado' : o.modelo_os === 'orcamento' ? 'orcamento' : '';
-        const statusClasse = o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso';
+        const statusClasse = _osStatusClasse(o.status);
         return `
         <div class="cliente-os-historico-item" onclick="abrirOSDetalhe(${o.id})">
           <div class="num-bloco">
@@ -8699,7 +8712,7 @@ async function carregarOS() {
     const statusRotulo = ehBalcao ? STATUS_LOJA_ROTULO[statusChave] : OS_STATUS_ROTULO[statusChave];
     const statusClasse = ehBalcao
       ? (statusChave === 'aprovado' ? 'ok' : statusChave === 'reprovado' || statusChave === 'abandonado' ? 'neutro' : 'aviso')
-      : (o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso');
+      : (_osStatusClasse(o.status));
     const modeloClasse = o.modelo_os === 'chamado_tecnico' ? 'chamado' : o.modelo_os === 'orcamento' ? 'orcamento' : '';
     return `
     <div class="os-linha status-${statusClasse}" onclick="abrirOSDetalhe(${o.id})">
@@ -8987,10 +9000,16 @@ async function abrirModalNovaOS(modeloPreSelecionado) {
    'os-cidade','os-endereco','os-estado','os-tipo-aparelho','os-marca','os-modelo',
    'os-serie','os-voltagem','os-acessorios','os-defeito','os-obs','os-tipo','os-solucao',
    'os-chamado-tecnico','os-forma-pagamento','os-chamado-tecnico-solo',
-   'os-garantia-inicio'].forEach(id => {
+   'os-garantia-inicio','os-numero-chamado'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  // Toda OS nova nasce "aguardando agendamento" — mesmo padrão que o
+  // backend já usava sozinho antes de existir este seletor (pedido de
+  // 2026-09-23: dar pra já abrir num status diferente, ex. uma OS que já
+  // chega aprovada de outro canal).
+  document.getElementById('os-status').innerHTML = Object.entries(OS_STATUS_ROTULO)
+    .map(([v, t]) => `<option value="${v}"${v === 'aguardando_agendamento' ? ' selected' : ''}>${t}</option>`).join('');
   document.getElementById('os-garantia-inicio-grupo').style.display = 'none';
   document.getElementById('os-garantia-meses').value = '3';
   document.getElementById('os-taxa').value = '0';
@@ -9328,7 +9347,7 @@ async function osSelecionarCliente(id, nome) {
       ${anteriores.map(o => `
         <div class="os-visita-linha">
           <span>OS #${String(o.id).padStart(6, '0')} · ${esc([o.tipo_aparelho, o.modelo].filter(Boolean).join(' ')) || 'sem aparelho'} — ${esc(o.defeito_declarado || '')}</span>
-          <span class="conc-tag ${o.status === 'finalizada' ? 'ok' : o.status === 'cancelada' ? 'neutro' : 'aviso'}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
+          <span class="conc-tag ${_osStatusClasse(o.status)}">${esc(OS_STATUS_ROTULO[o.status] || o.status)}</span>
         </div>`).join('')}`;
 
     // Só oferece pendurar em casos de PRIMEIRO NÍVEL (uma filha não tem
@@ -9423,6 +9442,8 @@ async function osCriar() {
   const modo = document.querySelector('#os-cliente-modo .pecas-filtro.ativo')?.dataset.modo;
   const corpo = {
     modelo_os: _novaOSModelo,
+    status: document.getElementById('os-status').value,
+    numero_os: document.getElementById('os-numero-chamado').value.trim(),
     tipo_aparelho: document.getElementById('os-tipo-aparelho').value.trim(),
     marca: document.getElementById('os-marca').value.trim(),
     modelo: document.getElementById('os-modelo').value.trim(),
@@ -10107,6 +10128,13 @@ async function abrirOSDetalhe(id) {
                   onclick="osReexibirFila(${o.id})">Devolver pra fila</button>
         </p>` : ''}
     </div>
+    <div class="os-detalhe-secao">
+      <label class="form-label" for="os-detalhe-numero-chamado">Número do chamado Panasonic (opcional)</label>
+      <input class="form-input" id="os-detalhe-numero-chamado" autocomplete="off"
+             value="${esc(o.numero_os || '')}" placeholder="Ex: 2109202622401"
+             onblur="osAtualizarNumeroChamado(${o.id}, this.value)">
+      <p class="ajuda-texto" style="margin:6px 0 0;">Preencher aqui é o que classifica esta OS como "OS Panasonic" quando ela nasce direto na aba OS, sem passar por peça chegando ou visita agendada com esse número.</p>
+    </div>
     ${o.balcao_em ? `
     <div class="os-detalhe-secao">
       <label class="form-label">Status na loja</label>
@@ -10124,7 +10152,7 @@ async function abrirOSDetalhe(id) {
               <span class="os-modelo-badge ${f.modelo_os === 'chamado_tecnico' ? 'chamado' : 'orcamento'}">${esc(MODELOS_OS_ROTULO[f.modelo_os])}</span>
               &nbsp;OS #${String(f.id).padStart(6, '0')} — ${esc(f.defeito_declarado || 'sem defeito informado')}
             </span>
-            <span class="conc-tag ${f.status === 'finalizada' ? 'ok' : f.status === 'cancelada' ? 'neutro' : 'aviso'}">${esc(OS_STATUS_ROTULO[f.status] || f.status)}</span>
+            <span class="conc-tag ${_osStatusClasse(f.status)}">${esc(OS_STATUS_ROTULO[f.status] || f.status)}</span>
           </div>`).join('')}
       <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;"
               onclick="osAbrirNovoFilho(${o.id}, ${o.cliente_id}, ${JSON.stringify(o.cliente_nome)})">
@@ -10543,6 +10571,23 @@ async function osAtualizarStatus(id, status) {
     toast('Status atualizado', 'success');
     carregarOS();
     carregarSeloAgendar();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// Número do chamado Panasonic direto na OS (pedido de 2026-09-23) — fecha o
+// buraco de classificação: antes só existia sinal de "OS Panasonic" quando
+// a peça já tinha chegado (pecas_chegada) ou o técnico já tinha agendado
+// visita com o número na ficha (servicos.numero_os). Uma OS aberta direto
+// na aba OS, sem nenhuma das duas coisas ainda, não tinha como ser
+// reconhecida como Panasonic e caía sempre em "Nossas OS" — ver
+// _eh_panasonic_os em routes/ordens_servico.py.
+async function osAtualizarNumeroChamado(id, valor) {
+  try {
+    await api(`/ordens-servico/${id}`, { method: 'PUT', body: JSON.stringify({ numero_os: valor.trim() }) });
+    toast('Número do chamado salvo', 'success');
+    carregarOS();
   } catch (e) {
     toast(e.message, 'error');
   }

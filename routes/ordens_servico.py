@@ -28,10 +28,24 @@ from services.geo import geocode_cep
 ordens_servico_bp = Blueprint("ordens_servico", __name__)
 
 # Lista fechada — mesma razão de sempre: status alimenta filtro e contagem.
+#
+# "em_atendimento" saiu em 2026-09-23 (pedido do Kalebe) — zero OS em
+# produção usava esse status (o "atendimento" de verdade é acompanhado pela
+# visita em servicos/fichas, não por um status próprio aqui), então a
+# remoção não precisou de nenhuma migração de dado.
+#
+# Os cinco novos cobrem o que faltava depois de "aguardando_aprovacao":
+# reprovada (orçamento recusado), aprovada_aguardando_agendamento/
+# aprovada_agendada (separam "já aprovou" de "já tem visita marcada" —
+# "aprovada" sozinha não dizia isso), aguardando_entrega e retirada
+# (equipamento pronto x equipamento já retirado pelo cliente).
 STATUS_OS = [
-    "aguardando_agendamento", "agendada", "em_atendimento",
+    "aguardando_agendamento", "agendada",
     "aguardando_peca", "aguardando_orcamento", "aguardando_aprovacao",
-    "aprovada", "finalizada", "cancelada",
+    "reprovada",
+    "aprovada", "aprovada_aguardando_agendamento", "aprovada_agendada",
+    "aguardando_entrega", "retirada",
+    "finalizada", "cancelada",
 ]
 
 # Status PRÓPRIO da aba "Produtos da loja" — pedido de 2026-09-01. Campo
@@ -827,6 +841,9 @@ def _campos_os(d: dict) -> dict:
         "acessorios": (d.get("acessorios") or "").strip(),
         "defeito_declarado": (d.get("defeito_declarado") or "").strip(),
         "observacao": (d.get("observacao") or "").strip(),
+        # Número do chamado Panasonic digitado direto na OS (pedido de
+        # 2026-09-23) — ver comentário em cima de _eh_panasonic_os pro porquê.
+        "numero_os": (d.get("numero_os") or "").strip(),
     }
 
 
@@ -1034,23 +1051,33 @@ def remover_catalogo_servico(item_id):
     return jsonify({"mensagem": "Removido do catálogo"})
 
 
-# "OS Panasonic" tem DOIS caminhos de entrada, funções diferentes (pedido de
-# 2026-09-18 ampliou o que já existia de 2026-08-28): _POR_PECA é a peça que
-# chegou pelo robô de preços e casou com um pedido (pecas_chegada) — sobre
-# ESTOQUE. _POR_CHAMADO é o número do chamado que o técnico digita na ficha
-# (servicos.numero_os) bater com o formato da Panasonic — sobre GARANTIA. Não
-# tem um jeito confiável de achar o formato exato (o próprio Kalebe: "nem
-# sempre tem um padrão"), então a regra é só o que ele confirmou que É
-# sempre verdade: tem "2026" no meio E é mais comprido que o nosso próprio
-# número de 6 dígitos.
+# "OS Panasonic" tem TRÊS caminhos de entrada, funções diferentes: _POR_PECA
+# é a peça que chegou pelo robô de preços e casou com um pedido
+# (pecas_chegada) — sobre ESTOQUE. _POR_CHAMADO é o número do chamado que o
+# TÉCNICO digita na ficha (servicos.numero_os) bater com o formato da
+# Panasonic — sobre GARANTIA. Nenhum dos dois existe pra uma OS recém-criada
+# direto na aba OS (sem peça e sem visita agendada ainda) — o Kalebe
+# reportou em 2026-09-23 que casos assim (ex: garantia Panasonic aberta na
+# mão, ainda sem técnico) caíam sempre em "Nossas OS" por falta de qualquer
+# sinal. _POR_NUMERO_PROPRIO fecha esse buraco: número do chamado digitado
+# na PRÓPRIA ordens_servico (ver campo "Número do chamado Panasonic" na
+# Nova OS / detalhe) já basta, sem precisar do heurística de "contém 2026"
+# — aqui foi o STAFF que escolheu preencher esse campo, então a intenção
+# já está explícita, diferente do numero_os de servicos (campo genérico que
+# também serve pra outra coisa, daí a heurística abaixo continuar necessária
+# só pra ele).
 _PANASONIC_POR_PECA = "EXISTS (SELECT 1 FROM pecas_chegada pc WHERE pc.ordem_servico_id = {alias}.id)"
+_PANASONIC_POR_NUMERO_PROPRIO = "({alias}.numero_os IS NOT NULL AND {alias}.numero_os <> '')"
 # LIKE ? (não literal): psycopg2 usa formatação %-estilo por baixo pra
 # encaixar parâmetro — um "%" literal direto no texto da query (não
 # escapado como "%%") quebra a contagem de posições e todo o resto dos
 # parâmetros da mesma query, com "IndexError: tuple index out of range"
 # (achado em produção em 2026-09-21, olhando só pela aba OS). Mesma
 # convenção já usada em routes/servicos.py (busca por nome/CEP): o "%"
-# entra como PARÂMETRO, nunca escrito na string da query.
+# entra como PARÂMETRO, nunca escrito na string da query. Não tem um jeito
+# confiável de achar o formato exato (o próprio Kalebe: "nem sempre tem um
+# padrão"), então a regra é só o que ele confirmou que É sempre verdade: tem
+# "2026" no meio E é mais comprido que o nosso próprio número de 6 dígitos.
 _PANASONIC_POR_CHAMADO = ("EXISTS (SELECT 1 FROM servicos s WHERE s.ordem_servico_id = {alias}.id "
                           "AND s.numero_os LIKE ? AND LENGTH(s.numero_os) > 6)")
 _PANASONIC_NUMERO_PADRAO = "%2026%"
@@ -1173,7 +1200,9 @@ def listar():
     # vá pra lá quando a gente jogar o cliente lá". "nossa" volta a ser
     # exatamente o que sempre foi (tudo que não é Panasonic), agora só
     # excluindo quem foi marcado como balcão à mão.
-    _eh_panasonic_os = f"({_PANASONIC_POR_PECA.format(alias='os')} OR {_PANASONIC_POR_CHAMADO.format(alias='os')})"
+    _eh_panasonic_os = (f"({_PANASONIC_POR_PECA.format(alias='os')} OR "
+                        f"{_PANASONIC_POR_CHAMADO.format(alias='os')} OR "
+                        f"{_PANASONIC_POR_NUMERO_PROPRIO.format(alias='os')})")
     if origem == "panasonic":
         condicoes.append(_eh_panasonic_os)
         params.append(_PANASONIC_NUMERO_PADRAO)
@@ -1224,7 +1253,8 @@ def listar():
         # O cartão contava filha, a lista escondia — por isso o número nunca
         # batia com o que aparecia depois de clicar.
         _eh_panasonic_contagem = (f"({_PANASONIC_POR_PECA.format(alias='ordens_servico')} OR "
-                                  f"{_PANASONIC_POR_CHAMADO.format(alias='ordens_servico')})")
+                                  f"{_PANASONIC_POR_CHAMADO.format(alias='ordens_servico')} OR "
+                                  f"{_PANASONIC_POR_NUMERO_PROPRIO.format(alias='ordens_servico')})")
         condicoes_contagem, params_contagem = ["ordens_servico.os_pai_id IS NULL"], []
         if modelo_os_filtro in MODELOS_OS:
             condicoes_contagem.append("ordens_servico.modelo_os = ?")
@@ -1744,6 +1774,15 @@ def criar():
     if erro_modelo:
         return jsonify({"erro": erro_modelo}), 400
 
+    # Status inicial escolhível (pedido de 2026-09-23) — antes vinha sempre
+    # fixo em "aguardando_agendamento" no INSERT. Continua sendo o padrão
+    # quando não vier nada, só que agora dá pra abrir uma OS já noutro
+    # estágio (ex: um caso que chega já aprovado de outro canal).
+    status_bruto = (d.get("status") or "").strip()
+    if status_bruto and status_bruto not in STATUS_OS:
+        return jsonify({"erro": f"Status inválido. Use um de: {', '.join(STATUS_OS)}"}), 400
+    status_inicial = status_bruto or "aguardando_agendamento"
+
     # Setor obrigatório em "Ordens de Serviço" e "Chamado Técnico" — pedido de
     # 2026-08-31, mesma régua que já existe no atendimento de Roteiros
     # (routes/servicos.py): sem classificar por fabricante o relatório por
@@ -1832,15 +1871,15 @@ def criar():
                  status, observacao, criado_em, criado_por, tipo_os,
                  modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
                  token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio,
-                 garantia_meses, setor_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 garantia_meses, setor_id, numero_os)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, _quem(), campos["tipo_aparelho"], campos["marca"],
               campos["modelo"], campos["numero_serie"], campos["voltagem"], campos["acessorios"],
               campos["defeito_declarado"], _num(d.get("taxa_avaliacao")),
-              "aguardando_agendamento", campos["observacao"], agora, _quem(),
+              status_inicial, campos["observacao"], agora, _quem(),
               tipo_os, modelo_os, solucao, foto, tecnico_atendeu_id, os_pai_id, forma_pagamento,
               token_cliente, taxa_vistoria, oculta_fila_em, imprimir_ocultar, garantia_inicio,
-              garantia_meses, setor_id))
+              garantia_meses, setor_id, campos["numero_os"] or None))
 
         # Itens (Serviço/Peças/Mão de obra) não são mais exclusivos do
         # Orçamento — pedido de 2026-08-27, baseado no modelo impresso que
@@ -1875,7 +1914,7 @@ def editar(os_id):
         campos, valores = [], []
         for chave in ("tipo_aparelho", "marca", "modelo", "numero_serie", "voltagem",
                      "acessorios", "defeito_declarado", "observacao", "solucao",
-                     "forma_pagamento"):
+                     "forma_pagamento", "numero_os"):
             if chave in d:
                 campos.append(f"{chave} = ?")
                 valores.append((d.get(chave) or "").strip())

@@ -403,7 +403,10 @@ _STATUS_OS_POR_DESFECHO = {
     # só a OS que fica com status errado).
     "resolvido_panasonic": "finalizada",
     "aprovado_executado": "finalizada",
-    "aprovado_retirado": "em_atendimento",
+    # "em_atendimento" saiu do STATUS_OS em 2026-09-23 — "retirada" (status
+    # novo) é o destino certo pra esse desfecho, que já significava "cliente
+    # aprovou e retirou o equipamento".
+    "aprovado_retirado": "retirada",
     "aprovado_agendar": "aguardando_agendamento",
     "garantia_resolvido": "finalizada",
     "garantia_voltar_depois": "aguardando_agendamento",

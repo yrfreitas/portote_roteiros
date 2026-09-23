@@ -1256,6 +1256,14 @@ _MIGRACOES_PG = [
     # Travado, o ponto fica onde está; o otimizador reorganiza só os
     # outros ao redor dele (ver services/otimizador.py:_montar_ordem).
     "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS ordem_travada BOOLEAN DEFAULT FALSE",
+    # Número do chamado Panasonic digitado DIRETO na OS (pedido de
+    # 2026-09-23) — antes o único jeito de uma OS ser reconhecida como
+    # "Panasonic" era via pecas_chegada (peça já chegou) ou servicos.numero_os
+    # (técnico já agendou visita e digitou o número na ficha). Uma OS aberta
+    # direto na aba OS, sem nenhum dos dois ainda, não tinha sinal nenhum e
+    # caía sempre em "Nossas OS" — ver _PANASONIC_POR_NUMERO_PROPRIO em
+    # routes/ordens_servico.py.
+    "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS numero_os TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1541,6 +1549,7 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE ordens_servico ADD COLUMN preferencia_data TEXT",
     "ALTER TABLE ordens_servico ADD COLUMN preferencia_periodo TEXT",
     "ALTER TABLE servicos ADD COLUMN ordem_travada INTEGER DEFAULT 0",
+    "ALTER TABLE ordens_servico ADD COLUMN numero_os TEXT",
 ]
 
 
