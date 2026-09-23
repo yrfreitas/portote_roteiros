@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request
 
 from database import db_conn, execute, fetch_all, fetch_one
-from routes.ordens_servico import STATUS_OS
+from routes.ordens_servico import STATUS_OS, STATUS_OS_FINALIZADORES
 from routes.rastreio import montar_payload_rastreio, rastreio_ativo_para_os
 from services.garantia import calcular_garantia
 
@@ -27,17 +27,19 @@ central_cliente_bp = Blueprint("central_cliente", __name__)
 # timeline (uma OS cancelada não "progride" até lá).
 _ROTULOS_CLIENTE = {
     "aguardando_agendamento": "Aguardando agendamento",
+    "aguardando_agendamento_garantia": "Aguardando agendamento (retorno em garantia)",
     "agendada": "Visita agendada",
     "aguardando_peca": "Aguardando peça",
     "aguardando_orcamento": "Orçamento em elaboração",
     "aguardando_aprovacao": "Aguardando sua aprovação",
     "reprovada": "Orçamento não aprovado",
     "aprovada": "Orçamento aprovado",
-    "aprovada_aguardando_agendamento": "Orçamento aprovado — aguardando agendamento",
-    "aprovada_agendada": "Orçamento aprovado — visita agendada",
-    "aguardando_entrega": "Equipamento pronto para retirada",
-    "retirada": "Equipamento retirado",
+    "aprovado_agendar": "Garantia aprovada — aguardando agendamento",
+    "aprovado_retirado": "Equipamento retirado",
+    "enviar_ordem_pdf": "Serviço concluído",
     "finalizada": "Serviço concluído",
+    "finalizada_garantia": "Serviço concluído (garantia)",
+    "finalizada_panasonic": "Serviço concluído (garantia Panasonic)",
 }
 _TIMELINE = [s for s in STATUS_OS if s != "cancelada"]
 
@@ -97,7 +99,7 @@ def status(token):
         r = rastreio_ativo_para_os(conn, ordem["id"])
         tecnico_a_caminho = montar_payload_rastreio(r) if r else None
 
-    garantia = calcular_garantia(ordem) if ordem.get("status") == "finalizada" else None
+    garantia = calcular_garantia(ordem) if ordem.get("status") in STATUS_OS_FINALIZADORES else None
 
     return jsonify({
         "cliente_nome": (ordem.get("cliente_nome") or "").split(" ")[0],

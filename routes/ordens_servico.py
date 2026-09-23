@@ -30,43 +30,60 @@ ordens_servico_bp = Blueprint("ordens_servico", __name__)
 # Lista fechada — mesma razão de sempre: status alimenta filtro e contagem.
 #
 # "em_atendimento" saiu em 2026-09-23 (pedido do Kalebe) — zero OS em
-# produção usava esse status (o "atendimento" de verdade é acompanhado pela
-# visita em servicos/fichas, não por um status próprio aqui), então a
-# remoção não precisou de nenhuma migração de dado.
+# produção usava esse status.
 #
-# Os cinco novos cobrem o que faltava depois de "aguardando_aprovacao":
-# reprovada (orçamento recusado), aprovada_aguardando_agendamento/
-# aprovada_agendada (separam "já aprovou" de "já tem visita marcada" —
-# "aprovada" sozinha não dizia isso), aguardando_entrega e retirada
-# (equipamento pronto x equipamento já retirado pelo cliente).
+# Reescrito em 2026-09-23 (segunda rodada, depois do Kalebe mandar o guia
+# real de desfecho do técnico — "GUIA RÁPIDO — Como dar baixa certo") pra
+# corrigir dois erros da primeira tentativa:
+#   1) "garantia Panasonic" e "garantia Porto Tec" (retorno de um serviço
+#      NOSSO) tinham virado uma coisa só — são desfechos diferentes no
+#      guia do técnico e continuam diferentes aqui: garantia Porto Tec é
+#      Nossas OS, só garantia Panasonic é OS Panasonic.
+#   2) Nomes inventados por mim (aprovada_agendada etc.) viraram o nome
+#      literal do botão que o técnico aperta — pedido explícito: "sempre
+#      que voltar das baixas do técnico, tem que vir falando de onde ela
+#      veio". Por isso "finalizada" não é mais o destino de TODO desfecho
+#      concluído: cada origem tem a sua (ver _STATUS_OS_POR_DESFECHO em
+#      routes/tecnico_api.py, que é quem realmente grava isto).
 STATUS_OS = [
-    "aguardando_agendamento", "agendada",
+    "aguardando_agendamento", "aguardando_agendamento_garantia", "agendada",
     "aguardando_peca", "aguardando_orcamento", "aguardando_aprovacao",
-    "reprovada",
-    "aprovada", "aprovada_aguardando_agendamento", "aprovada_agendada",
-    "aguardando_entrega", "retirada",
-    "finalizada", "cancelada",
+    "reprovada", "aprovada",
+    "aprovado_agendar", "aprovado_retirado",
+    "enviar_ordem_pdf",
+    "finalizada", "finalizada_garantia", "finalizada_panasonic",
+    "cancelada",
 ]
 
-# Quais status aparecem como cartão/filtro em cada aba de origem (pedido de
-# 2026-09-23: "não vai colocar nada da Panasonic na aba Nossas OS, só vai
-# colocar na aba OS Panasonic" — e das duas, só finalizada/reprovada/
-# cancelada continuam em comum). STATUS_OS (acima) continua sendo a lista
-# de VALIDAÇÃO cheia — uma OS pode em tese carregar qualquer um desses 13
-# valores no banco, isto aqui é só sobre o que cada aba OFERECE pra
-# escolher/filtrar. Espelha exatamente a mesma divisão que a tela do
-# técnico já faz nos desfechos (DESFECHOS em tecnico.js): "Resolvido",
-# "Fazer Pedido de Peça" etc. de um lado, "Aprovado - Executado",
-# "Garantia Resolvido" etc. do outro.
-STATUS_OS_COMUNS = ["finalizada", "reprovada", "cancelada"]
+# Quais status aparecem como cartão/filtro em cada aba de origem. STATUS_OS
+# (acima) continua sendo a lista de VALIDAÇÃO cheia — isto aqui é só sobre
+# o que cada aba OFERECE pra escolher/filtrar. Espelha a mesma divisão de
+# 3 categorias do guia do técnico:
+#   1) atendimento comum + garantia PORTO TEC -> Nossas OS
+#   2) garantia PANASONIC (fábrica)           -> OS Panasonic
+# "Fazer Pedido de Peça" é o único botão comum às duas categorias do guia
+# (garantia Panasonic usa o mesmo, sem botão próprio) — por isso
+# aguardando_peca é comum às duas abas, não exclusivo de Nossas OS.
+STATUS_OS_COMUNS = ["finalizada", "reprovada", "cancelada", "aguardando_peca"]
 STATUS_OS_NOSSA = [
-    "aguardando_agendamento", "agendada", "aguardando_peca",
+    "aguardando_agendamento", "aguardando_agendamento_garantia", "agendada",
     "aguardando_orcamento", "aguardando_aprovacao", "aprovada",
+    "enviar_ordem_pdf", "finalizada_garantia",
 ] + STATUS_OS_COMUNS
 STATUS_OS_PANASONIC = [
-    "aprovada_aguardando_agendamento", "aprovada_agendada",
-    "aguardando_entrega", "retirada",
+    "aprovado_agendar", "aprovado_retirado", "finalizada_panasonic",
 ] + STATUS_OS_COMUNS
+
+# Todo status que representa "esse caso encerrou" — usado onde antes só
+# "finalizada" contava (marcar finalizada_em, iniciar contagem de garantia,
+# mostrar garantia pro cliente). "aprovado_retirado" entra porque significa
+# o cliente já retirou o produto consertado (mesmo raciocínio do pedido
+# original de 2026-09-22: "retirado" é fim de linha, não etapa
+# intermediária).
+STATUS_OS_FINALIZADORES = (
+    "finalizada", "finalizada_garantia", "finalizada_panasonic",
+    "enviar_ordem_pdf", "aprovado_retirado",
+)
 
 # Status PRÓPRIO da aba "Produtos da loja" — pedido de 2026-09-01. Campo
 # separado (status_loja), não reaproveita STATUS_OS de propósito: o ciclo de
@@ -1198,11 +1215,17 @@ def listar():
         # dia marcado", o que também trazia qualquer OS nova recém-aberta
         # pelo escritório que simplesmente ainda não tinha visita agendada
         # (isso não é reagendamento, é a PRIMEIRA vez — não devia misturar).
+        # 'garantia_voltar_depois' entrou aqui em 2026-09-23: era o único
+        # dos desfechos que "precisam de nova visita" fora desta lista —
+        # um retorno de garantia Porto Tec pra remarcar ficava com o status
+        # certo (aguardando_agendamento_garantia) mas invisível pra fila de
+        # quem organiza a agenda.
         condicoes.append("""EXISTS (
             SELECT 1 FROM servicos s
             JOIN servico_desfecho sd ON sd.servico_id = s.id
              WHERE s.ordem_servico_id = os.id
-               AND sd.desfecho IN ('nao_atendido', 'volto_depois', 'aprovado_agendar')
+               AND sd.desfecho IN ('nao_atendido', 'volto_depois', 'aprovado_agendar',
+                                    'garantia_voltar_depois')
         )""")
         condicoes.append("os.oculta_fila_em IS NULL")
     elif fonte == "publico":
@@ -1953,7 +1976,7 @@ def editar(os_id):
                 return jsonify({"erro": f"Status inválido. Use um de: {', '.join(STATUS_OS)}"}), 400
             campos.append("status = ?")
             valores.append(status)
-            if status == "finalizada":
+            if status in STATUS_OS_FINALIZADORES:
                 campos.append("finalizada_em = ?")
                 valores.append(_agora())
         if "status_loja" in d:
@@ -2024,7 +2047,8 @@ def editar(os_id):
             campos.append("garantia_inicio = ?")
             valores.append(_validar_data_iso(d.get("garantia_inicio"))
                            if _usa_garantia_efetivo else None)
-        elif _usa_garantia_efetivo and d.get("status") == "finalizada" and not existe.get("garantia_inicio"):
+        elif (_usa_garantia_efetivo and d.get("status") in STATUS_OS_FINALIZADORES
+              and not existe.get("garantia_inicio")):
             # Pedido de 2026-09-16 ("não quero que fique pra por manual"): a
             # garantia deixa de exigir lembrar de digitar a data à parte —
             # finalizar a OS já marca o início no dia de hoje sozinho. Só

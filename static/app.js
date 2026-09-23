@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v310';
+const VERSAO_PAINEL = 'v311';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8267,27 +8267,38 @@ async function salvarEdicaoServico() {
 // A OS é o documento (cliente, equipamento, defeito, status). QUEM atende e
 // QUANDO continuam sendo o sistema de fichas/técnicos — a OS só se liga a um
 // servico (ver rotas/ordens_servico.py) em vez de duplicar agenda.
+// Reescrito em 2026-09-23 (2a rodada) pra bater com o guia real de desfecho
+// do técnico -- ver comentário grande em STATUS_OS, routes/ordens_servico.py.
 const OS_STATUS_ROTULO = {
   aguardando_agendamento:          'Aguardando agendamento',
+  aguardando_agendamento_garantia: 'Aguardando agendamento (retorno em garantia)',
   agendada:                        'Agendada',
   aguardando_peca:                 'Aguardando peça',
   aguardando_orcamento:            'Aguardando orçamento',
   aguardando_aprovacao:            'Aguardando aprovação',
   reprovada:                       'Reprovada',
   aprovada:                        'Aprovada',
-  aprovada_aguardando_agendamento: 'Aprovada, aguardando agendamento',
-  aprovada_agendada:               'Aprovada e agendada',
-  aguardando_entrega:              'Aguardando entrega',
-  retirada:                        'Retirada',
+  aprovado_agendar:                'Aprovado - Agendar',
+  aprovado_retirado:               'Aprovado - Retirado',
+  enviar_ordem_pdf:                'Enviar Ordem por Pdf',
   finalizada:                      'Finalizada',
+  finalizada_garantia:             'Finalizada (garantia)',
+  finalizada_panasonic:            'Finalizada (garantia Panasonic)',
   cancelada:                       'Cancelada',
 };
 
-// Classe visual do status de uma OS — pedido de 2026-09-23 junto dos status
-// novos: "retirada" e "reprovada" são desfecho FECHADO (não tem mais nada
-// pendente ali), não "aviso" como um status realmente em andamento.
+// Todo status "encerrado" — espelha STATUS_OS_FINALIZADORES em
+// routes/ordens_servico.py.
+const STATUS_OS_FINALIZADORES = [
+  'finalizada', 'finalizada_garantia', 'finalizada_panasonic',
+  'enviar_ordem_pdf', 'aprovado_retirado',
+];
+
+// Classe visual do status de uma OS: "ok" pra quem encerrou bem, "neutro"
+// pra quem encerrou sem sucesso (reprovada/cancelada), "aviso" pro resto
+// (ainda em andamento).
 function _osStatusClasse(status) {
-  if (status === 'finalizada' || status === 'retirada') return 'ok';
+  if (STATUS_OS_FINALIZADORES.includes(status)) return 'ok';
   if (status === 'cancelada' || status === 'reprovada') return 'neutro';
   return 'aviso';
 }
@@ -8297,26 +8308,31 @@ function _osStatusClasse(status) {
 // aba Agendar Clientes > Reagendamento, e listar nos dois lugares fazia a
 // recepcionista ver o mesmo cliente pra agendar em dois cantos diferentes.
 // OS_STATUS_ROTULO continua completo pra rótulo individual (detalhe da OS,
-// busca, diagnóstico) — só o cartão de navegação some daqui.
+// busca, diagnóstico) — só o cartão de navegação some daqui. A variante de
+// garantia (aguardando_agendamento_garantia) some pelo mesmo motivo: entrou
+// na mesma fila de reagendamento em 2026-09-23 (ver listar() em
+// routes/ordens_servico.py).
 const OS_STATUS_ROTULO_CARTOES = Object.fromEntries(
-  Object.entries(OS_STATUS_ROTULO).filter(([chave]) => chave !== 'aguardando_agendamento')
+  Object.entries(OS_STATUS_ROTULO).filter(([chave]) =>
+    chave !== 'aguardando_agendamento' && chave !== 'aguardando_agendamento_garantia')
 );
 
-// Cartões PRÓPRIOS de cada aba de origem (pedido de 2026-09-23) — espelha
-// STATUS_OS_NOSSA/STATUS_OS_PANASONIC em routes/ordens_servico.py. Só
-// finalizada/reprovada/cancelada aparecem nas duas; o resto é exclusivo de
-// uma aba (mesma divisão que os desfechos do técnico já fazem: genérico x
-// garantia Panasonic). Reaproveita OS_STATUS_ROTULO_CARTOES (que já tira
-// "aguardando_agendamento" dos cartões) como base.
+// Cartões PRÓPRIOS de cada aba de origem — espelha STATUS_OS_NOSSA/
+// STATUS_OS_PANASONIC/STATUS_OS_COMUNS em routes/ordens_servico.py. Mesma
+// divisão de 3 categorias do guia do técnico: atendimento comum + garantia
+// PORTO TEC ficam em Nossas OS, só garantia PANASONIC (fábrica) fica na
+// aba própria. "Fazer Pedido de Peça" é o único botão comum às duas
+// categorias do guia, por isso aguardando_peca é comum às duas abas.
+const STATUS_OS_COMUNS = ['finalizada', 'reprovada', 'cancelada', 'aguardando_peca'];
 const STATUS_OS_NOSSA = [
-  'aguardando_agendamento', 'agendada', 'aguardando_peca',
+  'aguardando_agendamento', 'aguardando_agendamento_garantia', 'agendada',
   'aguardando_orcamento', 'aguardando_aprovacao', 'aprovada',
-  'finalizada', 'reprovada', 'cancelada',
+  'enviar_ordem_pdf', 'finalizada_garantia',
+  ...STATUS_OS_COMUNS,
 ];
 const STATUS_OS_PANASONIC = [
-  'aprovada_aguardando_agendamento', 'aprovada_agendada',
-  'aguardando_entrega', 'retirada',
-  'finalizada', 'reprovada', 'cancelada',
+  'aprovado_agendar', 'aprovado_retirado', 'finalizada_panasonic',
+  ...STATUS_OS_COMUNS,
 ];
 const OS_STATUS_ROTULO_CARTOES_NOSSA = Object.fromEntries(
   Object.entries(OS_STATUS_ROTULO_CARTOES).filter(([chave]) => STATUS_OS_NOSSA.includes(chave))

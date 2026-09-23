@@ -11,7 +11,7 @@ from database import (bump_revisao, db_conn, execute, fetch_all, fetch_one,
                       insert_returning_id, ler_revisao, sql)
 from routes.fichas import (STATUS_VALIDOS, ordenar_por_semana,
                            recalcular_distancia_ordem_fixa)
-from routes.ordens_servico import TIPOS_OS, TIPOS_GARANTIA_FIXA
+from routes.ordens_servico import TIPOS_OS, TIPOS_GARANTIA_FIXA, STATUS_OS_FINALIZADORES
 from services.fotos_extra import adicionar_foto_extra
 
 # tipo_os que carregam garantia — mesmo conjunto usado em services/garantia.py
@@ -389,27 +389,30 @@ def _criar_cotacao_do_desfecho(conn, servico_id, codigo, nome_peca, foto, quem):
 # tecnico.js). Isso saiu — quem decide o dia agora é o escritório, olhando a
 # aba Agendar Clientes, não o técnico na calçada com uma mão ocupada. O
 # desfecho só marca "precisa de nova visita"; agendar virou ação separada.
+# Reescrito em 2026-09-23 junto do STATUS_OS novo (ver comentário lá) —
+# cada desfecho agora tem o status que diz de onde ele veio, em vez de
+# várias origens diferentes caindo todas em "finalizada"/"aguardando_
+# agendamento" genéricos. "orcamento" e "fazer_os" não aparecem aqui de
+# propósito: não passam por _atualizar_status_os, o status deles é gravado
+# direto no INSERT/UPDATE de dentro de _processar_fazer_os/_gravar_orcamento
+# (fazer_os grava "enviar_ordem_pdf" — ver _criar_os_do_tecnico/
+# _fechar_os_existente).
 _STATUS_OS_POR_DESFECHO = {
     "resolvido": "finalizada",
     "precisa_peca": "aguardando_peca",
     "cotacao_peca": "aguardando_peca",
     "volto_depois": "aguardando_agendamento",
     "nao_atendido": "aguardando_agendamento",
-    # Panasonic/garantia (pedido de 2026-09-18) — faltavam aqui: sem entrada
-    # neste mapa, .get(tipo) devolve None e _atualizar_status_os não faz
-    # nada, então uma OS já vinculada ficaria PRA SEMPRE parada no status
-    # antigo mesmo com o desfecho gravado certo (achado na varredura de
-    # 2026-09-19, mesma classe do bug do Igor, mas sem perder o desfecho —
-    # só a OS que fica com status errado).
-    "resolvido_panasonic": "finalizada",
-    "aprovado_executado": "finalizada",
-    # "em_atendimento" saiu do STATUS_OS em 2026-09-23 — "retirada" (status
-    # novo) é o destino certo pra esse desfecho, que já significava "cliente
-    # aprovou e retirou o equipamento".
-    "aprovado_retirado": "retirada",
-    "aprovado_agendar": "aguardando_agendamento",
-    "garantia_resolvido": "finalizada",
-    "garantia_voltar_depois": "aguardando_agendamento",
+    # Garantia PANASONIC (fábrica) — aba "OS Panasonic".
+    "resolvido_panasonic": "finalizada_panasonic",
+    "aprovado_executado": "finalizada_panasonic",
+    "aprovado_retirado": "aprovado_retirado",
+    "aprovado_agendar": "aprovado_agendar",
+    # Garantia PORTO TEC (retorno de serviço nosso, NÃO é Panasonic) — aba
+    # "Nossas OS". Antes de 2026-09-23 estava junto com a Panasonic por
+    # engano; o guia do técnico trata as duas como categorias diferentes.
+    "garantia_resolvido": "finalizada_garantia",
+    "garantia_voltar_depois": "aguardando_agendamento_garantia",
 }
 
 _MOTIVO_DESFECHO_ROTULO = {
@@ -572,9 +575,10 @@ def _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
     tipo_os = tipo_os_bruto if tipo_os_bruto in TIPOS_OS else None
     token_cliente = secrets.token_urlsafe(24)
     # Pedido de 2026-09-16 ("não quero que fique pra por manual"): a OS já
-    # nasce FINALIZADA aqui (o técnico fechou tudo em campo) — se o termo
-    # escolhido carrega garantia, o início já é o dia de hoje, sem exigir
-    # que alguém abra a OS depois no painel só pra digitar essa data.
+    # nasce concluída aqui (status "enviar_ordem_pdf" — o técnico fechou
+    # tudo em campo) — se o termo escolhido carrega garantia, o início já é
+    # o dia de hoje, sem exigir que alguém abra a OS depois no painel só
+    # pra digitar essa data.
     garantia_inicio = agora[:10] if tipo_os in _TIPOS_COM_GARANTIA else None
 
     os_id = insert_returning_id(conn, sql("""
@@ -585,7 +589,7 @@ def _criar_os_do_tecnico(conn, servico, tecnico_id, desfecho, quem):
              criado_em, criado_por, finalizada_em, token_cliente, garantia_inicio)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """), (cliente_id, quem, tipo_aparelho, modelo, defeito, solucao,
-          forma_pagamento, foto, assinatura, tecnico_id, 0, "finalizada",
+          forma_pagamento, foto, assinatura, tecnico_id, 0, "enviar_ordem_pdf",
           "chamado_tecnico", tipo_os, agora, quem, agora, token_cliente, garantia_inicio))
 
     execute(conn, sql("UPDATE servicos SET ordem_servico_id = ? WHERE id = ?"),
@@ -606,7 +610,11 @@ def _fechar_os_existente(conn, ordem_servico_id, desfecho, quem):
     antes), "Fazer Ordem de Serviço" fecha ESSA OS em vez de criar outra
     solta — evita duplicar o caso do cliente."""
     agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    campos, valores = ["status = ?", "finalizada_em = ?", "atualizado_em = ?"], ["finalizada", agora, agora]
+    # "enviar_ordem_pdf" tem status próprio (pedido de 2026-09-23: "crie uma
+    # aba pra ele com o nome dele") em vez de cair em "finalizada" genérica —
+    # é o técnico fechando tudo em campo com assinatura, diferente de um
+    # "Resolvido" comum.
+    campos, valores = ["status = ?", "finalizada_em = ?", "atualizado_em = ?"], ["enviar_ordem_pdf", agora, agora]
 
     solucao = (desfecho.get("solucao_os") or "").strip()
     if solucao:
@@ -849,7 +857,11 @@ def _atualizar_status_os(conn, ordem_servico_id, tipo):
     # (routes/ordens_servico.py), e a métrica de tempo médio até finalizar
     # compara os dois — hora local aqui faria a duração dar negativa.
     agora = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    if novo == "finalizada":
+    # Qualquer variante "encerrada" (STATUS_OS_FINALIZADORES em
+    # routes/ordens_servico.py) marca finalizada_em igual — a métrica de
+    # tempo médio até finalizar não deve distinguir a ORIGEM da conclusão,
+    # só se concluiu ou não.
+    if novo in STATUS_OS_FINALIZADORES:
         execute(conn, sql(
             "UPDATE ordens_servico SET status = ?, atualizado_em = ?, "
             "finalizada_em = ? WHERE id = ?"), (novo, agora, agora, ordem_servico_id))
