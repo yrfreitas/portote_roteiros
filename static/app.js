@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v309';
+const VERSAO_PAINEL = 'v310';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8302,6 +8302,29 @@ const OS_STATUS_ROTULO_CARTOES = Object.fromEntries(
   Object.entries(OS_STATUS_ROTULO).filter(([chave]) => chave !== 'aguardando_agendamento')
 );
 
+// Cartões PRÓPRIOS de cada aba de origem (pedido de 2026-09-23) — espelha
+// STATUS_OS_NOSSA/STATUS_OS_PANASONIC em routes/ordens_servico.py. Só
+// finalizada/reprovada/cancelada aparecem nas duas; o resto é exclusivo de
+// uma aba (mesma divisão que os desfechos do técnico já fazem: genérico x
+// garantia Panasonic). Reaproveita OS_STATUS_ROTULO_CARTOES (que já tira
+// "aguardando_agendamento" dos cartões) como base.
+const STATUS_OS_NOSSA = [
+  'aguardando_agendamento', 'agendada', 'aguardando_peca',
+  'aguardando_orcamento', 'aguardando_aprovacao', 'aprovada',
+  'finalizada', 'reprovada', 'cancelada',
+];
+const STATUS_OS_PANASONIC = [
+  'aprovada_aguardando_agendamento', 'aprovada_agendada',
+  'aguardando_entrega', 'retirada',
+  'finalizada', 'reprovada', 'cancelada',
+];
+const OS_STATUS_ROTULO_CARTOES_NOSSA = Object.fromEntries(
+  Object.entries(OS_STATUS_ROTULO_CARTOES).filter(([chave]) => STATUS_OS_NOSSA.includes(chave))
+);
+const OS_STATUS_ROTULO_CARTOES_PANASONIC = Object.fromEntries(
+  Object.entries(OS_STATUS_ROTULO_CARTOES).filter(([chave]) => STATUS_OS_PANASONIC.includes(chave))
+);
+
 // Status PRÓPRIO da aba "Produtos da loja" (pedido de 2026-09-01) — espelha
 // STATUS_LOJA_ROTULO em routes/ordens_servico.py. Campo separado do status
 // normal de OS, ciclo de vida diferente (não tem agendamento de visita).
@@ -8655,7 +8678,9 @@ async function carregarOS() {
   // nenhum filtro que a trouxesse de volta pra tela.
   const rotulosCartoes = _osOrigemTab === 'balcao'
     ? { sem_status: 'Selecionar status', ...STATUS_LOJA_ROTULO }
-    : OS_STATUS_ROTULO_CARTOES;
+    : _osOrigemTab === 'panasonic'
+    ? OS_STATUS_ROTULO_CARTOES_PANASONIC
+    : OS_STATUS_ROTULO_CARTOES_NOSSA;
   const cartoes = Object.entries(rotulosCartoes).map(([chave, rotulo]) => `
     <button class="os-cartao${_osFiltroStatus === chave ? ' ativo' : ''}" onclick="osFiltrar('${chave}')">
       <div class="n">${r.contagem[chave] ?? 0}</div>

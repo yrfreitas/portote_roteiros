@@ -48,6 +48,26 @@ STATUS_OS = [
     "finalizada", "cancelada",
 ]
 
+# Quais status aparecem como cartão/filtro em cada aba de origem (pedido de
+# 2026-09-23: "não vai colocar nada da Panasonic na aba Nossas OS, só vai
+# colocar na aba OS Panasonic" — e das duas, só finalizada/reprovada/
+# cancelada continuam em comum). STATUS_OS (acima) continua sendo a lista
+# de VALIDAÇÃO cheia — uma OS pode em tese carregar qualquer um desses 13
+# valores no banco, isto aqui é só sobre o que cada aba OFERECE pra
+# escolher/filtrar. Espelha exatamente a mesma divisão que a tela do
+# técnico já faz nos desfechos (DESFECHOS em tecnico.js): "Resolvido",
+# "Fazer Pedido de Peça" etc. de um lado, "Aprovado - Executado",
+# "Garantia Resolvido" etc. do outro.
+STATUS_OS_COMUNS = ["finalizada", "reprovada", "cancelada"]
+STATUS_OS_NOSSA = [
+    "aguardando_agendamento", "agendada", "aguardando_peca",
+    "aguardando_orcamento", "aguardando_aprovacao", "aprovada",
+] + STATUS_OS_COMUNS
+STATUS_OS_PANASONIC = [
+    "aprovada_aguardando_agendamento", "aprovada_agendada",
+    "aguardando_entrega", "retirada",
+] + STATUS_OS_COMUNS
+
 # Status PRÓPRIO da aba "Produtos da loja" — pedido de 2026-09-01. Campo
 # separado (status_loja), não reaproveita STATUS_OS de propósito: o ciclo de
 # vida de balcão é outro (aprovação de orçamento de peça avulsa, conserto
