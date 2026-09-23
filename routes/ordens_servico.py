@@ -32,24 +32,28 @@ ordens_servico_bp = Blueprint("ordens_servico", __name__)
 # "em_atendimento" saiu em 2026-09-23 (pedido do Kalebe) — zero OS em
 # produção usava esse status.
 #
-# Reescrito em 2026-09-23 (segunda rodada, depois do Kalebe mandar o guia
-# real de desfecho do técnico — "GUIA RÁPIDO — Como dar baixa certo") pra
-# corrigir dois erros da primeira tentativa:
+# Reescrito em 2026-09-23 (terceira rodada) depois de três correções do
+# Kalebe em sequência:
 #   1) "garantia Panasonic" e "garantia Porto Tec" (retorno de um serviço
 #      NOSSO) tinham virado uma coisa só — são desfechos diferentes no
-#      guia do técnico e continuam diferentes aqui: garantia Porto Tec é
-#      Nossas OS, só garantia Panasonic é OS Panasonic.
-#   2) Nomes inventados por mim (aprovada_agendada etc.) viraram o nome
-#      literal do botão que o técnico aperta — pedido explícito: "sempre
-#      que voltar das baixas do técnico, tem que vir falando de onde ela
-#      veio". Por isso "finalizada" não é mais o destino de TODO desfecho
-#      concluído: cada origem tem a sua (ver _STATUS_OS_POR_DESFECHO em
-#      routes/tecnico_api.py, que é quem realmente grava isto).
+#      guia do técnico: garantia Porto Tec é Nossas OS, só garantia
+#      PANASONIC (fábrica) é OS Panasonic.
+#   2) Nomes viraram o nome literal do botão que o técnico aperta — pedido
+#      explícito: "sempre que voltar das baixas do técnico, tem que vir
+#      falando de onde ela veio". "finalizada" não é mais destino único de
+#      todo desfecho concluído (ver _STATUS_OS_POR_DESFECHO em
+#      routes/tecnico_api.py).
+#   3) "Aprovado" e "Aprovado - Retirado" NÃO são conceito de OS — são
+#      vocabulário da aba "Produtos da loja" (ver STATUS_LOJA/"retirado"
+#      logo abaixo). "Aprovado - Executado"/"Aprovado - Retirado" (desfecho
+#      de garantia Panasonic que o técnico registra em campo) colapsam em
+#      "finalizada_panasonic" — o produto ainda passa pela Panasonic, não
+#      pelo balcão da loja.
 STATUS_OS = [
     "aguardando_agendamento", "aguardando_agendamento_garantia", "agendada",
     "aguardando_peca", "aguardando_orcamento", "aguardando_aprovacao",
     "reprovada", "aprovada",
-    "aprovado_agendar", "aprovado_retirado",
+    "aprovado_agendar",
     "enviar_ordem_pdf",
     "finalizada", "finalizada_garantia", "finalizada_panasonic",
     "cancelada",
@@ -58,7 +62,7 @@ STATUS_OS = [
 # Quais status aparecem como cartão/filtro em cada aba de origem. STATUS_OS
 # (acima) continua sendo a lista de VALIDAÇÃO cheia — isto aqui é só sobre
 # o que cada aba OFERECE pra escolher/filtrar. Espelha a mesma divisão de
-# 3 categorias do guia do técnico:
+# categorias do guia do técnico:
 #   1) atendimento comum + garantia PORTO TEC -> Nossas OS
 #   2) garantia PANASONIC (fábrica)           -> OS Panasonic
 # "Fazer Pedido de Peça" é o único botão comum às duas categorias do guia
@@ -71,18 +75,15 @@ STATUS_OS_NOSSA = [
     "enviar_ordem_pdf", "finalizada_garantia",
 ] + STATUS_OS_COMUNS
 STATUS_OS_PANASONIC = [
-    "aprovado_agendar", "aprovado_retirado", "finalizada_panasonic",
+    "aprovado_agendar", "finalizada_panasonic",
 ] + STATUS_OS_COMUNS
 
 # Todo status que representa "esse caso encerrou" — usado onde antes só
 # "finalizada" contava (marcar finalizada_em, iniciar contagem de garantia,
-# mostrar garantia pro cliente). "aprovado_retirado" entra porque significa
-# o cliente já retirou o produto consertado (mesmo raciocínio do pedido
-# original de 2026-09-22: "retirado" é fim de linha, não etapa
-# intermediária).
+# mostrar garantia pro cliente).
 STATUS_OS_FINALIZADORES = (
     "finalizada", "finalizada_garantia", "finalizada_panasonic",
-    "enviar_ordem_pdf", "aprovado_retirado",
+    "enviar_ordem_pdf",
 )
 
 # Status PRÓPRIO da aba "Produtos da loja" — pedido de 2026-09-01. Campo
@@ -92,9 +93,15 @@ STATUS_OS_FINALIZADORES = (
 # agendamento de visita/técnico — misturar os dois no mesmo campo deixaria
 # "aguardando_agendamento" selecionável num produto de balcão, que nunca
 # agenda nada.
+#
+# "retirado" entrou em 2026-09-23 (pedido do Kalebe: "aprovado e retirado é
+# da loja") — cliente aprovou o orçamento do balcão, produto ficou pronto,
+# e por fim o cliente retirou. Fecha o ciclo que "aprovado" sozinho não
+# fechava (não tinha como marcar "já foi retirado", só "aprovado" parado).
 STATUS_LOJA = [
     "aprovado", "reprovado", "aguardando_aprovacao", "aguardando_orcamento",
-    "conserto_atrasado", "aguardando_peca", "abandonado", "finalizado",
+    "conserto_atrasado", "aguardando_peca", "abandonado", "retirado",
+    "finalizado",
 ]
 STATUS_LOJA_ROTULO = {
     "aprovado": "Aprovado",
@@ -104,6 +111,7 @@ STATUS_LOJA_ROTULO = {
     "conserto_atrasado": "Conserto Atrasado",
     "aguardando_peca": "Aguardando peça",
     "abandonado": "Produtos abandonados",
+    "retirado": "Retirado",
     "finalizado": "Finalizado",
 }
 

@@ -403,10 +403,14 @@ _STATUS_OS_POR_DESFECHO = {
     "cotacao_peca": "aguardando_peca",
     "volto_depois": "aguardando_agendamento",
     "nao_atendido": "aguardando_agendamento",
-    # Garantia PANASONIC (fábrica) — aba "OS Panasonic".
+    # Garantia PANASONIC (fábrica) — aba "OS Panasonic". "Executado" e
+    # "Retirado" colapsam no mesmo "finalizada_panasonic" (pedido de
+    # 2026-09-23: "aprovado e retirado é da loja" — não são conceito de
+    # OS, são vocabulário de STATUS_LOJA; o produto de garantia Panasonic
+    # não passa pelo balcão da loja).
     "resolvido_panasonic": "finalizada_panasonic",
     "aprovado_executado": "finalizada_panasonic",
-    "aprovado_retirado": "aprovado_retirado",
+    "aprovado_retirado": "finalizada_panasonic",
     "aprovado_agendar": "aprovado_agendar",
     # Garantia PORTO TEC (retorno de serviço nosso, NÃO é Panasonic) — aba
     # "Nossas OS". Antes de 2026-09-23 estava junto com a Panasonic por

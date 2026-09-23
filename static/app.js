@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v311';
+const VERSAO_PAINEL = 'v312';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8279,7 +8279,6 @@ const OS_STATUS_ROTULO = {
   reprovada:                       'Reprovada',
   aprovada:                        'Aprovada',
   aprovado_agendar:                'Aprovado - Agendar',
-  aprovado_retirado:               'Aprovado - Retirado',
   enviar_ordem_pdf:                'Enviar Ordem por Pdf',
   finalizada:                      'Finalizada',
   finalizada_garantia:             'Finalizada (garantia)',
@@ -8291,7 +8290,7 @@ const OS_STATUS_ROTULO = {
 // routes/ordens_servico.py.
 const STATUS_OS_FINALIZADORES = [
   'finalizada', 'finalizada_garantia', 'finalizada_panasonic',
-  'enviar_ordem_pdf', 'aprovado_retirado',
+  'enviar_ordem_pdf',
 ];
 
 // Classe visual do status de uma OS: "ok" pra quem encerrou bem, "neutro"
@@ -8331,7 +8330,7 @@ const STATUS_OS_NOSSA = [
   ...STATUS_OS_COMUNS,
 ];
 const STATUS_OS_PANASONIC = [
-  'aprovado_agendar', 'aprovado_retirado', 'finalizada_panasonic',
+  'aprovado_agendar', 'finalizada_panasonic',
   ...STATUS_OS_COMUNS,
 ];
 const OS_STATUS_ROTULO_CARTOES_NOSSA = Object.fromEntries(
@@ -8352,6 +8351,7 @@ const STATUS_LOJA_ROTULO = {
   conserto_atrasado:     'Conserto Atrasado',
   aguardando_peca:       'Aguardando peça',
   abandonado:            'Produtos abandonados',
+  retirado:              'Retirado',
   finalizado:            'Finalizado',
 };
 
@@ -8752,7 +8752,8 @@ async function carregarOS() {
     const statusChave = ehBalcao ? o.status_loja : o.status;
     const statusRotulo = ehBalcao ? STATUS_LOJA_ROTULO[statusChave] : OS_STATUS_ROTULO[statusChave];
     const statusClasse = ehBalcao
-      ? (statusChave === 'aprovado' ? 'ok' : statusChave === 'reprovado' || statusChave === 'abandonado' ? 'neutro' : 'aviso')
+      ? (['aprovado', 'retirado', 'finalizado'].includes(statusChave) ? 'ok'
+         : statusChave === 'reprovado' || statusChave === 'abandonado' ? 'neutro' : 'aviso')
       : (_osStatusClasse(o.status));
     const modeloClasse = o.modelo_os === 'chamado_tecnico' ? 'chamado' : o.modelo_os === 'orcamento' ? 'orcamento' : '';
     return `

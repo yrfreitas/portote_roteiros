@@ -35,7 +35,6 @@ _ROTULOS_CLIENTE = {
     "reprovada": "Orçamento não aprovado",
     "aprovada": "Orçamento aprovado",
     "aprovado_agendar": "Garantia aprovada — aguardando agendamento",
-    "aprovado_retirado": "Equipamento retirado",
     "enviar_ordem_pdf": "Serviço concluído",
     "finalizada": "Serviço concluído",
     "finalizada_garantia": "Serviço concluído (garantia)",
