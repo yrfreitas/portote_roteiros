@@ -27,6 +27,7 @@ central_cliente_bp = Blueprint("central_cliente", __name__)
 # timeline (uma OS cancelada não "progride" até lá).
 _ROTULOS_CLIENTE = {
     "aguardando_agendamento": "Aguardando agendamento",
+    "agendar_cliente": "Aguardando novo agendamento",
     "aguardando_agendamento_garantia": "Aguardando agendamento (retorno em garantia)",
     "agendada": "Visita agendada",
     "aguardando_peca": "Aguardando peça",
@@ -34,6 +35,10 @@ _ROTULOS_CLIENTE = {
     "aguardando_aprovacao": "Aguardando sua aprovação",
     "reprovada": "Orçamento não aprovado",
     "aprovada": "Orçamento aprovado",
+    "resolvido": "Serviço concluído",
+    "resolvido_panasonic": "Serviço concluído (garantia Panasonic)",
+    "aprovado_executado": "Serviço concluído (garantia Panasonic)",
+    "aprovado_retirado": "Serviço concluído (garantia Panasonic)",
     "aprovado_agendar": "Garantia aprovada — aguardando agendamento",
     "enviar_ordem_pdf": "Serviço concluído",
     "finalizada": "Serviço concluído",

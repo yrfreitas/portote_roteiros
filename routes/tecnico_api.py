@@ -398,19 +398,30 @@ def _criar_cotacao_do_desfecho(conn, servico_id, codigo, nome_peca, foto, quem):
 # (fazer_os grava "enviar_ordem_pdf" — ver _criar_os_do_tecnico/
 # _fechar_os_existente).
 _STATUS_OS_POR_DESFECHO = {
-    "resolvido": "finalizada",
+    # "resolvido" ganhou status próprio ("Resolvidos", pedido de 2026-09-23
+    # — mesma escrita do cartão AT_TIPOS em Atendimentos) em vez de cair na
+    # "finalizada" genérica.
+    "resolvido": "resolvido",
+    # precisa_peca/cotacao_peca continuam colapsando em "aguardando_peca" —
+    # é o botão COMPARTILHADO com garantia Panasonic (ver comentário em
+    # STATUS_OS, routes/ordens_servico.py); dar status próprio a eles
+    # quebraria o cartão "Aguardando peça" de OS Panasonic.
     "precisa_peca": "aguardando_peca",
     "cotacao_peca": "aguardando_peca",
-    "volto_depois": "aguardando_agendamento",
-    "nao_atendido": "aguardando_agendamento",
-    # Garantia PANASONIC (fábrica) — aba "OS Panasonic". Resolvido/Executado/
-    # Retirado colapsam na "finalizada" comum (pedido de 2026-09-23: tirou
-    # "Finalizada (garantia Panasonic)" — "Aprovado"/"Retirado" também não
-    # são conceito de OS, são vocabulário de STATUS_LOJA). Só "Aprovado -
-    # Agendar" continua com status próprio, porque ainda falta agendar.
-    "resolvido_panasonic": "finalizada",
-    "aprovado_executado": "finalizada",
-    "aprovado_retirado": "finalizada",
+    # "Agendar cliente" (pedido de 2026-09-23, mesma escrita de Atendimentos)
+    # — antes caía em "aguardando_agendamento" genérico, que também é o
+    # status de toda OS RECÉM-CRIADA sem visita ainda; separar os dois evita
+    # confundir "nunca teve visita" com "já teve visita, precisa remarcar".
+    "volto_depois": "agendar_cliente",
+    "nao_atendido": "agendar_cliente",
+    # Garantia PANASONIC (fábrica). Pedido de 2026-09-23 (4a rodada): "tudo
+    # que tem na aba Atendimentos tem que estar em Nossas OS, mesma
+    # escrita" — cada um ganhou status próprio de novo (igual ao nome do
+    # botão), mas agora aparecem como cartão em NOSSAS OS, não em OS
+    # Panasonic (que ficou "do jeito que está", sem esses três).
+    "resolvido_panasonic": "resolvido_panasonic",
+    "aprovado_executado": "aprovado_executado",
+    "aprovado_retirado": "aprovado_retirado",
     "aprovado_agendar": "aprovado_agendar",
     # Garantia PORTO TEC (retorno de serviço nosso, NÃO é Panasonic) — aba
     # "Nossas OS". Antes de 2026-09-23 estava junto com a Panasonic por

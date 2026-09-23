@@ -46,36 +46,52 @@ ordens_servico_bp = Blueprint("ordens_servico", __name__)
 #   3) "Aprovado" e "Aprovado - Retirado" NÃO são conceito de OS — são
 #      vocabulário da aba "Produtos da loja" (ver STATUS_LOJA/"retirado"
 #      logo abaixo).
-#   4) "Finalizada (garantia Panasonic)" saiu (pedido de 2026-09-23) —
-#      Resolvido Panasonic/Aprovado - Executado/Aprovado - Retirado
-#      (desfecho de garantia Panasonic) colapsam na "finalizada" comum,
-#      igual ao resto. Só "finalizada_garantia" (garantia PORTO TEC)
-#      continua com rótulo próprio.
+#   4) "Finalizada (garantia Panasonic)" saiu — Resolvido Panasonic/
+#      Aprovado - Executado/Aprovado - Retirado (desfecho de garantia
+#      Panasonic) colapsavam na "finalizada" comum.
+#   5) Pedido de 2026-09-23 (quarta rodada): "tudo o que tem lá [na aba
+#      Atendimentos] tem que estar em Nossas OS, mesma escrita" — cada
+#      cartão de AT_TIPOS (static/app.js) ganhou o status/rótulo
+#      correspondente aqui, verbatim. "OS Panasonic" foi pedido pra ficar
+#      "do jeito que está" (não mexi em STATUS_OS_PANASONIC) — por isso
+#      resolvido_panasonic/aprovado_executado/aprovado_retirado aparecem
+#      como cartão em Nossas OS, não em OS Panasonic, mesmo sendo
+#      desfecho de garantia Panasonic: é o que a instrução pediu
+#      literalmente. "precisa_peca"/"cotacao_peca" continuam colapsando
+#      em "aguardando_peca" (não viraram cartão próprio) porque esse
+#      botão é COMPARTILHADO com a Panasonic (ver comentário mais abaixo)
+#      — dar a ele status novo quebraria o cartão "Aguardando peça" de
+#      OS Panasonic, que era pra ficar intocado.
 STATUS_OS = [
-    "aguardando_agendamento", "aguardando_agendamento_garantia", "agendada",
+    "aguardando_agendamento", "agendada", "agendar_cliente",
+    "aguardando_agendamento_garantia",
     "aguardando_peca", "aguardando_orcamento", "aguardando_aprovacao",
     "reprovada", "aprovada",
-    "aprovado_agendar",
+    "resolvido", "resolvido_panasonic", "aprovado_executado",
+    "aprovado_retirado", "aprovado_agendar",
+    "finalizada_garantia",
     "enviar_ordem_pdf",
-    "finalizada", "finalizada_garantia",
+    "finalizada",
     "cancelada",
 ]
 
 # Quais status aparecem como cartão/filtro em cada aba de origem. STATUS_OS
 # (acima) continua sendo a lista de VALIDAÇÃO cheia — isto aqui é só sobre
-# o que cada aba OFERECE pra escolher/filtrar. Espelha a mesma divisão de
-# categorias do guia do técnico:
-#   1) atendimento comum + garantia PORTO TEC -> Nossas OS
-#   2) garantia PANASONIC (fábrica)           -> OS Panasonic
+# o que cada aba OFERECE pra escolher/filtrar.
 # "Fazer Pedido de Peça" é o único botão comum às duas categorias do guia
 # (garantia Panasonic usa o mesmo, sem botão próprio) — por isso
 # aguardando_peca é comum às duas abas, não exclusivo de Nossas OS.
 STATUS_OS_COMUNS = ["finalizada", "reprovada", "cancelada", "aguardando_peca"]
 STATUS_OS_NOSSA = [
-    "aguardando_agendamento", "aguardando_agendamento_garantia", "agendada",
+    "aguardando_agendamento", "agendada", "agendar_cliente",
+    "aguardando_agendamento_garantia",
     "aguardando_orcamento", "aguardando_aprovacao", "aprovada",
-    "enviar_ordem_pdf", "finalizada_garantia",
+    "resolvido", "resolvido_panasonic", "aprovado_executado",
+    "aprovado_retirado",
+    "finalizada_garantia", "enviar_ordem_pdf",
 ] + STATUS_OS_COMUNS
+# Deixado exatamente como estava antes deste pedido — "OS Panasonic você
+# deixa do jeito que está".
 STATUS_OS_PANASONIC = [
     "aprovado_agendar",
 ] + STATUS_OS_COMUNS
@@ -84,8 +100,9 @@ STATUS_OS_PANASONIC = [
 # "finalizada" contava (marcar finalizada_em, iniciar contagem de garantia,
 # mostrar garantia pro cliente).
 STATUS_OS_FINALIZADORES = (
-    "finalizada", "finalizada_garantia",
-    "enviar_ordem_pdf",
+    "finalizada", "finalizada_garantia", "enviar_ordem_pdf",
+    "resolvido", "resolvido_panasonic", "aprovado_executado",
+    "aprovado_retirado",
 )
 
 # Status PRÓPRIO da aba "Produtos da loja" — pedido de 2026-09-01. Campo
