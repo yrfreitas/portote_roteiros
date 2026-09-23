@@ -38,7 +38,6 @@ _ROTULOS_CLIENTE = {
     "enviar_ordem_pdf": "Serviço concluído",
     "finalizada": "Serviço concluído",
     "finalizada_garantia": "Serviço concluído (garantia)",
-    "finalizada_panasonic": "Serviço concluído (garantia Panasonic)",
 }
 _TIMELINE = [s for s in STATUS_OS if s != "cancelada"]
 

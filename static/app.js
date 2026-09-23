@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v312';
+const VERSAO_PAINEL = 'v313';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8282,14 +8282,13 @@ const OS_STATUS_ROTULO = {
   enviar_ordem_pdf:                'Enviar Ordem por Pdf',
   finalizada:                      'Finalizada',
   finalizada_garantia:             'Finalizada (garantia)',
-  finalizada_panasonic:            'Finalizada (garantia Panasonic)',
   cancelada:                       'Cancelada',
 };
 
 // Todo status "encerrado" — espelha STATUS_OS_FINALIZADORES em
 // routes/ordens_servico.py.
 const STATUS_OS_FINALIZADORES = [
-  'finalizada', 'finalizada_garantia', 'finalizada_panasonic',
+  'finalizada', 'finalizada_garantia',
   'enviar_ordem_pdf',
 ];
 
@@ -8330,7 +8329,7 @@ const STATUS_OS_NOSSA = [
   ...STATUS_OS_COMUNS,
 ];
 const STATUS_OS_PANASONIC = [
-  'aprovado_agendar', 'finalizada_panasonic',
+  'aprovado_agendar',
   ...STATUS_OS_COMUNS,
 ];
 const OS_STATUS_ROTULO_CARTOES_NOSSA = Object.fromEntries(

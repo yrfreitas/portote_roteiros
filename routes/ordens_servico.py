@@ -45,17 +45,19 @@ ordens_servico_bp = Blueprint("ordens_servico", __name__)
 #      routes/tecnico_api.py).
 #   3) "Aprovado" e "Aprovado - Retirado" NÃO são conceito de OS — são
 #      vocabulário da aba "Produtos da loja" (ver STATUS_LOJA/"retirado"
-#      logo abaixo). "Aprovado - Executado"/"Aprovado - Retirado" (desfecho
-#      de garantia Panasonic que o técnico registra em campo) colapsam em
-#      "finalizada_panasonic" — o produto ainda passa pela Panasonic, não
-#      pelo balcão da loja.
+#      logo abaixo).
+#   4) "Finalizada (garantia Panasonic)" saiu (pedido de 2026-09-23) —
+#      Resolvido Panasonic/Aprovado - Executado/Aprovado - Retirado
+#      (desfecho de garantia Panasonic) colapsam na "finalizada" comum,
+#      igual ao resto. Só "finalizada_garantia" (garantia PORTO TEC)
+#      continua com rótulo próprio.
 STATUS_OS = [
     "aguardando_agendamento", "aguardando_agendamento_garantia", "agendada",
     "aguardando_peca", "aguardando_orcamento", "aguardando_aprovacao",
     "reprovada", "aprovada",
     "aprovado_agendar",
     "enviar_ordem_pdf",
-    "finalizada", "finalizada_garantia", "finalizada_panasonic",
+    "finalizada", "finalizada_garantia",
     "cancelada",
 ]
 
@@ -75,14 +77,14 @@ STATUS_OS_NOSSA = [
     "enviar_ordem_pdf", "finalizada_garantia",
 ] + STATUS_OS_COMUNS
 STATUS_OS_PANASONIC = [
-    "aprovado_agendar", "finalizada_panasonic",
+    "aprovado_agendar",
 ] + STATUS_OS_COMUNS
 
 # Todo status que representa "esse caso encerrou" — usado onde antes só
 # "finalizada" contava (marcar finalizada_em, iniciar contagem de garantia,
 # mostrar garantia pro cliente).
 STATUS_OS_FINALIZADORES = (
-    "finalizada", "finalizada_garantia", "finalizada_panasonic",
+    "finalizada", "finalizada_garantia",
     "enviar_ordem_pdf",
 )
 
