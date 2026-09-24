@@ -29,13 +29,31 @@
      mas ficou "muito pequeno" pro Kalebe ler, revertida no mesmo dia.
      Se um caso muito cheio (itens + texto longo em tudo) voltar a estourar
      pra 2 folhas, é o preço de manter isto legível — não vale mexer de
-     novo sem pedido explícito. */
+     novo sem pedido explícito.
+
+     2026-09-24 (pedido explícito, "sem ficar feio e muito pequeno"):
+     apertadas margens de h2/divisória/campo/rodapé (medido com Playwright +
+     PDF real, não no olho) e a seção Termos virou 2 colunas (mesma fonte,
+     só usa a largura melhor — corta ~130px sozinha). Resultado medido:
+     caso leve (sem foto/observação, termos padrão) foi de ~1,25 folha de
+     conteúdo pra ~1,05 — sobra só a seção Termos numa 2ª página quase em
+     branco, ~75px faltando pra fechar em 1. Caso pesado (foto + textos
+     longos + 4 itens) foi de ~1,58 pra ~1,23 folha.
+     NÃO fecha 100% em 1 página sempre: qualquer OS com tipo_os (que imprime
+     Termos) tem ~250-300px de texto jurídico que não dá pra cortar (não é
+     conteúdo nosso pra editar) — testado remover a 3ª coluna nas grades
+     (Cliente/Equipamento/Atendimento) e o ganho real foi pequeno (13px) e
+     deixava célula vazia cinza feia, reincorporado 2 colunas. Pra fechar de
+     verdade os ~75px que faltam no caso leve só reduzindo fonte de novo —
+     e isso já foi tentado e rejeitado em 2026-08-28 (comentário acima).
+     Não mexer de novo sem decidir explicitamente abrir mão da legibilidade
+     atual. */
   @page { size: A4; margin: 9mm 12mm; }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: #f4f5f7; color: var(--tinta);
     font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif;
-    font-size: 10px; line-height: 1.38; -webkit-font-smoothing: antialiased;
+    font-size: 10px; line-height: 1.3; -webkit-font-smoothing: antialiased;
   }
   .folha { max-width: 720px; margin: 16px auto 24px; padding: 0 16px; }
 
@@ -53,7 +71,7 @@
 
   .os-numero {
     text-align: right; flex-shrink: 0;
-    border: 1px solid var(--linha); border-radius: 6px; padding: 6px 12px;
+    border: 1px solid var(--linha); border-radius: 6px; padding: 5px 12px;
   }
   .os-numero .rot { font-size: 7.5px; font-weight: 700; letter-spacing: .4px; color: var(--tinta-3); text-transform: uppercase; }
   .os-numero .n {
@@ -68,7 +86,7 @@
   .contato-barra {
     display: flex; flex-wrap: wrap; gap: 13px; align-items: center;
     font-size: 8.5px; color: var(--tinta-2);
-    margin: 9px 0 8px; padding: 6px 0; border-top: 1px solid var(--linha); border-bottom: 1px solid var(--linha);
+    margin: 6px 0 6px; padding: 4px 0; border-top: 1px solid var(--linha); border-bottom: 1px solid var(--linha);
   }
   .contato-barra .item { display: flex; align-items: center; gap: 5px; }
   .contato-barra svg { flex-shrink: 0; width: 10px; height: 10px; }
@@ -81,7 +99,7 @@
   .tarja-tipo {
     display: inline-block; font-size: 8.5px; font-weight: 700; letter-spacing: .3px;
     color: var(--tinta-2); background: var(--linha); padding: 3px 10px;
-    border-radius: 20px; margin: 0 0 10px 6px;
+    border-radius: 20px; margin: 0 0 6px 6px;
   }
 
   /* Seções em barra cheia (fundo azul clarinho, borda) em vez da bolinha
@@ -93,7 +111,7 @@
     display: flex; align-items: center; gap: 6px;
     font-size: 9px; font-weight: 800; color: var(--azul);
     text-transform: uppercase; letter-spacing: .6px;
-    margin: 12px 0 7px; padding: 5px 9px;
+    margin: 6px 0 4px; padding: 3.5px 9px;
     background: var(--azul-fundo); border: 1px solid var(--linha); border-radius: 5px;
   }
   h2:first-of-type { margin-top: 0; }
@@ -103,7 +121,7 @@
     background: var(--azul); flex-shrink: 0;
   }
 
-  .linha-divisoria { border: 0; border-top: 1px solid var(--linha); margin: 11px 0 0; }
+  .linha-divisoria { border: 0; border-top: 1px solid var(--linha); margin: 4px 0 0; }
 
   /* Grade de campos ganhou moldura de tabela (pedido de 2026-09-16, "fica
      exatamente assim" do checklist em tabela do modelo de referência) —
@@ -116,17 +134,17 @@
     background: var(--linha);
     gap: 1px;
   }
-  .campo { background: #fff; padding: 5px 9px; }
+  .campo { background: #fff; padding: 3px 9px; }
   .campo .rot { font-size: 8px; color: var(--tinta-3); margin-bottom: 1px; }
   .campo .val { font-size: 10px; font-weight: 500; color: var(--tinta); }
   .largura-total { grid-column: 1 / -1; }
 
   .caixa-texto {
-    font-size: 10px; color: var(--tinta); white-space: pre-wrap; line-height: 1.4;
-    min-height: 24px; border: 1px solid var(--linha); border-radius: 6px; padding: 6px 8px;
+    font-size: 10px; color: var(--tinta); white-space: pre-wrap; line-height: 1.32;
+    min-height: 20px; border: 1px solid var(--linha); border-radius: 6px; padding: 5px 8px;
   }
 
-  .campo-manual { font-size: 9.5px; color: var(--tinta-2); display: flex; align-items: baseline; gap: 6px; margin-bottom: 5px; }
+  .campo-manual { font-size: 9.5px; color: var(--tinta-2); display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; }
   .campo-manual .linha-preenchimento { flex: 1; border-bottom: 1px dotted var(--tinta-4); min-width: 40px; height: 11px; }
 
   .taxa-bloco { display: flex; align-items: baseline; gap: 6px; }
@@ -138,7 +156,15 @@
   .opcao-pagamento { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; font-size: 9.5px; }
   .marcador { display: inline-block; width: 9px; height: 9px; border: 1.2px solid #000; flex-shrink: 0; }
 
-  .termos { font-size: 7.8px; color: var(--tinta-3); line-height: 1.45; text-align: justify; white-space: pre-line; }
+  /* Duas colunas em vez de uma — mesmo tamanho de fonte e mesma largura de
+     folha, só aproveitando melhor o espaço horizontal (igual termo impresso
+     de verdade costuma fazer). Corta a altura do bloco praticamente pela
+     metade sem mexer em legibilidade nenhuma — ver pedido de 2026-09-23
+     ("caber numa folha só, mas sem ficar feio e muito pequeno"). */
+  .termos {
+    font-size: 7.8px; color: var(--tinta-3); line-height: 1.32; text-align: justify;
+    white-space: pre-line; column-count: 2; column-gap: 16px;
+  }
 
   .foto-produto { max-width: 200px; max-height: 150px; border-radius: 8px; border: 1px solid var(--linha); display: block; margin-top: 3px; }
   /* Foto ao lado da observação em vez de empilhada — pedido de 2026-08-28
@@ -154,8 +180,8 @@
     color: var(--tinta-3); font-weight: 700; padding: 0 0 4px; border-bottom: 1px solid var(--linha);
   }
   .tabela-itens th.col-valor, .tabela-itens td.col-valor { text-align: right; }
-  .tabela-itens td { font-size: 10px; padding: 5px 0; border-bottom: 1px solid var(--linha); }
-  .tabela-itens tfoot td { border-bottom: 0; padding-top: 7px; font-weight: 700; font-size: 11px; }
+  .tabela-itens td { font-size: 10px; padding: 3.5px 0; border-bottom: 1px solid var(--linha); }
+  .tabela-itens tfoot td { border-bottom: 0; padding-top: 5px; font-weight: 700; font-size: 11px; }
 
   /* Espaço em branco ACIMA da linha aumentado de propósito (pedido de
      2026-09-16: "não tem espaço pra assinar") — 22px (~6mm impresso) não
@@ -174,7 +200,7 @@
   .assinatura-imagem { max-height: 54px; max-width: 100%; display: block; position: absolute; bottom: 100%; left: 0; }
 
   .rodape {
-    margin-top: 14px; text-align: center; font-size: 8.5px; color: var(--tinta);
+    margin-top: 8px; text-align: center; font-size: 8.5px; color: var(--tinta);
   }
   .rodape .agradecimento { font-weight: 700; color: var(--azul); margin-bottom: 3px; }
   .rodape .gerado { font-size: 7.5px; color: var(--tinta-3); }
