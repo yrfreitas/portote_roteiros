@@ -3507,25 +3507,39 @@ select:focus-visible,
 }
 .manual-pecas-pagina:hover { transform: scale(1.03); box-shadow: var(--shadow-card-hi); }
 
-/* Lista de códigos em texto normal (substituiu 3 tentativas de overlay em
-   cima da imagem — nenhuma se provou confiável na mão de quem usa de
-   verdade). Sem posição calculada, sem depender de escala de tela: é só
-   texto e botão, o básico que qualquer navegador sabe fazer. */
-.manual-pecas-codigos {
-  display: flex; flex-wrap: wrap; gap: 8px;
+/* Lista de peças (código + descrição) em texto normal (substituiu 3
+   tentativas de overlay em cima da imagem — nenhuma se provou confiável
+   na mão de quem usa de verdade). Sem posição calculada, sem depender de
+   escala de tela: é só texto e botão.
+   v246 (2026-09-24): virou lista vertical com descrição ao lado do código
+   (antes só tinha o código solto, sem contexto nenhum — impossível achar
+   "qual é o motor" numa parede de 100+ códigos parecidos) + campo de
+   busca por cima (#manual-pecas-filtro/_filtrarPecasManual). Scroll
+   próprio com altura máxima pra não esticar a página inteira quando o
+   manual tem 100+ peças. */
+.manual-pecas-lista-itens {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
+  max-height: 420px; overflow-y: auto; padding-right: 4px;
 }
-.manual-pecas-codigo-item {
-  display: flex; align-items: center; gap: 7px;
+.manual-pecas-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
   background: var(--bg-card); border: 1px solid var(--border-bright);
-  border-radius: 8px; padding: 7px 11px;
+  border-radius: 8px; padding: 8px 11px;
   font-family: inherit; color: var(--text-primary); cursor: pointer;
   transition: background .12s, border-color .12s;
 }
-.manual-pecas-codigo-item:hover { background: var(--bg-hover); border-color: var(--accent); }
-.manual-pecas-codigo-item.copiado {
+.manual-pecas-item:hover { background: var(--bg-hover); border-color: var(--accent); }
+.manual-pecas-item.copiado {
   background: var(--success-dim); border-color: rgba(52,211,153,0.6); color: var(--success-text);
 }
-.manual-pecas-codigo-texto { font-family: var(--font-mono, monospace); font-size: 12.5px; font-weight: 600; }
+.manual-pecas-item-codigo {
+  font-family: var(--font-mono, monospace); font-size: 12.5px; font-weight: 600;
+  flex: 0 0 auto; min-width: 150px;
+}
+.manual-pecas-item-descricao {
+  font-size: 12.5px; color: var(--text-muted); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .substituicao-cartao {
   background: var(--bg-panel); border: 1px solid var(--border-bright);

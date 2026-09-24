@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v315';
+const VERSAO_PAINEL = 'v316';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -11006,7 +11006,17 @@ async function carregarPaginasManual(resultado) {
   // não do mecanismo em si. Trocado por texto NORMAL de verdade, visível,
   // fora da imagem: sem posição calculada, sem overlay, sem depender de
   // zoom/escala de tela nenhuma -- só uma lista com botão de copiar.
-  const codigos = _extrairCodigosManual(paginas);
+  //
+  // v246 (pedido de 2026-09-24, "está uma merda... veja de outro jeito"):
+  // a lista virou 101 botões só com o CÓDIGO, sem descrição nenhuma, num
+  // grid que quebra linha sem critério -- pra achar "qual código é o
+  // motor" a pessoa tinha que abrir a imagem em zoom, achar a linha na
+  // tabela, decorar o código, e catar ele numa parede de 101 botões
+  // parecidos. A tabela do manual já tem código E descrição lado a lado
+  // (mesma linha, ou a linha logo abaixo) -- _extrairPecasManual junta os
+  // dois, e a lista virou uma busca de verdade (digita "motor", "correia"
+  // etc. e filtra em vez de precisar saber o código de cor).
+  const pecas = _extrairPecasManual(paginas);
 
   alvo.innerHTML = `
     <p class="ajuda-texto">${esc(CATEGORIA_MANUAL_ROTULO[resultado.categoria] || '')} — ${esc(resultado.arquivo)} · clique numa página pra ampliar</p>
@@ -11015,36 +11025,76 @@ async function carregarPaginasManual(resultado) {
         <img class="manual-pecas-pagina" src="${p.imagem}" alt="Página ${i + 1} do manual"
              onclick="ampliarFoto('${p.imagem}')">`).join('')}
     </div>
-    ${codigos.length ? `
-      <p class="form-separador" style="margin-top:16px;">Códigos encontrados (${codigos.length}) — clique pra copiar</p>
-      <div class="manual-pecas-codigos">
-        ${codigos.map(c => `
-          <button type="button" class="manual-pecas-codigo-item" onclick="_copiarTrechoManual('${esc(c).replace(/'/g, "\\'")}', this)">
-            <span class="manual-pecas-codigo-texto">${esc(c)}</span>
-            ${icone('copiar', 'icone-12')}
-          </button>`).join('')}
-      </div>` : ''}`;
+    ${pecas.length ? `
+      <p class="form-separador" style="margin-top:16px;">Peças encontradas (${pecas.length})</p>
+      <input class="form-input" id="manual-pecas-filtro" autocomplete="off"
+             placeholder="Filtrar por código ou descrição... (ex: motor, correia, W024C)"
+             oninput="_filtrarPecasManual(this.value)">
+      <div class="manual-pecas-lista-itens" id="manual-pecas-lista-itens">
+        ${pecas.map(_pecaManualLinhaHtml).join('')}
+      </div>
+      <p class="ajuda-texto" id="manual-pecas-sem-resultado" style="display:none;">Nenhuma peça bate com esse filtro.</p>
+    ` : ''}`;
 }
 
-// Isola só o que parece CÓDIGO DE PEÇA de verdade entre as linhas de texto
-// extraídas (título, aviso legal e descrição de peça também vêm no mesmo
-// JSON) — código de peça não tem espaço e mistura letra maiúscula/número,
-// quase sempre com um hífen no meio (ex: "W024C-6B502", "0164-6P510VH1").
-function _extrairCodigosManual(paginas) {
+function _pecaManualLinhaHtml(peca) {
+  const chave = `${peca.codigo} ${peca.descricao}`.toLowerCase();
+  return `
+    <button type="button" class="manual-pecas-item" data-filtro="${esc(chave)}"
+            onclick="_copiarTrechoManual('${esc(peca.codigo).replace(/'/g, "\\'")}', this)">
+      <span class="manual-pecas-item-codigo">${esc(peca.codigo)}</span>
+      <span class="manual-pecas-item-descricao">${esc(peca.descricao) || '—'}</span>
+      ${icone('copiar', 'icone-12')}
+    </button>`;
+}
+
+function _filtrarPecasManual(valor) {
+  const termo = valor.trim().toLowerCase();
+  const itens = document.querySelectorAll('#manual-pecas-lista-itens .manual-pecas-item');
+  let visiveis = 0;
+  itens.forEach(el => {
+    const bate = !termo || el.dataset.filtro.includes(termo);
+    el.style.display = bate ? '' : 'none';
+    if (bate) visiveis++;
+  });
+  const semResultado = document.getElementById('manual-pecas-sem-resultado');
+  if (semResultado) semResultado.style.display = visiveis === 0 ? '' : 'none';
+}
+
+// Junta CÓDIGO + DESCRIÇÃO de cada peça da tabela do manual (antes só
+// pegava o código solto). Layout padrão Panasonic: às vezes as duas
+// vêm na MESMA linha ("AWS3232A5XA0-0J1-B SUPORTE DA ENGRENAGEM"), às
+// vezes o código sozinho numa linha e a descrição na linha logo abaixo
+// -- os dois casos precisam de tratamento, senão metade das peças perde
+// a descrição (ou pior, some da lista inteira, que era o bug antigo:
+// linha com espaço era descartada de propósito).
+function _extrairPecasManual(paginas) {
+  // (?:-[A-Z])? no final: alguns códigos têm um sufixo de UMA letra só
+  // ("AWS0420C41C0-0J1-B") — sem isso o "-B" ficava cortado, grudado na
+  // descrição ("-B ARRUELA DO MOTOR A" em vez de código completo).
+  const RE_CODIGO_INICIO = /^([A-Z0-9]{2,}(?:-[A-Z0-9]{2,})+(?:-[A-Z])?|[A-Z]{1,3}[0-9][A-Z0-9]{2,})\b\s*(.*)$/;
+  const RE_SO_NUMERO = /^\d+(-\d+)?$/;  // número de referência do desenho ("30", "48-1"), não é código
   const vistos = new Set();
-  const codigos = [];
-  const RE_CODIGO = /^[A-Z0-9]{2,}(-[A-Z0-9]{2,})+$|^[A-Z]{1,3}[0-9][A-Z0-9]{2,}$/;
+  const pecas = [];
   for (const pagina of paginas) {
-    for (const p of (pagina.palavras || [])) {
-      const t = (p.t || '').trim();
-      if (t.includes(' ') || vistos.has(t)) continue;
-      if (RE_CODIGO.test(t)) {
-        vistos.add(t);
-        codigos.push(t);
+    const linhas = (pagina.palavras || []).map(p => (p.t || '').trim()).filter(Boolean);
+    for (let i = 0; i < linhas.length; i++) {
+      const m = linhas[i].match(RE_CODIGO_INICIO);
+      if (!m) continue;
+      const codigo = m[1];
+      if (vistos.has(codigo)) continue;
+      let descricao = m[2].trim();
+      if (!descricao) {
+        const proxima = linhas[i + 1] || '';
+        if (proxima && !RE_SO_NUMERO.test(proxima) && !RE_CODIGO_INICIO.test(proxima)) {
+          descricao = proxima;
+        }
       }
+      vistos.add(codigo);
+      pecas.push({ codigo, descricao });
     }
   }
-  return codigos;
+  return pecas;
 }
 
 async function carregarCotacoes() {
