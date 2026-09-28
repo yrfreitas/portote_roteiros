@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v316';
+const VERSAO_PAINEL = 'v318';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -334,6 +334,25 @@ async function _lerRevisao() {
 //
 // Só recarrega com a tela OCIOSA — mesma disciplina do auto-refresh: jogar
 // fora um formulário meio preenchido seria pior que esperar o próximo ciclo.
+// Bug real reportado em 2026-09-28 (mesmo sintoma no app do técnico, ver
+// tecnico.js::recarregarSemPiscar): um location.reload() comum ainda é
+// respondido pelo service worker ANTIGO, que continua ativo até terminar de
+// reativar sozinho -- o que não é instantâneo nem garantido dentro de uma
+// única carga. Resultado visível: clica em "Recarregar", a tela pisca, e o
+// aviso de versão nova continua ali porque o reload rodou sob o código
+// velho de novo. Desregistrar antes de recarregar tira o SW velho do
+// caminho por essa uma carga; ele se re-registra sozinho (register() roda
+// direto na subida do painel) assim que a página nova terminar de carregar.
+async function _recarregarSemPiscar() {
+  try {
+    if ('serviceWorker' in navigator) {
+      const registros = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registros.map((r) => r.unregister()));
+    }
+  } catch { /* pior caso: reload comum */ }
+  location.reload();
+}
+
 function _conferirVersaoDoPainel(versaoServidor) {
   if (!versaoServidor || versaoServidor === VERSAO_PAINEL) return;
   if (document.getElementById('aviso-versao')) return;
@@ -351,7 +370,7 @@ function _conferirVersaoDoPainel(versaoServidor) {
     <button type="button" class="aviso-btn aviso-btn-ghost" id="aviso-versao-changelog">O que mudou?</button>
     <button type="button" class="aviso-btn" id="aviso-versao-btn">Recarregar</button>`;
   document.body.appendChild(aviso);
-  document.getElementById('aviso-versao-btn').onclick = () => location.reload();
+  document.getElementById('aviso-versao-btn').onclick = _recarregarSemPiscar;
   document.getElementById('aviso-versao-changelog').onclick = () => abrirChangelogPopup();
 }
 

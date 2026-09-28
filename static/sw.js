@@ -297,7 +297,13 @@
 //        técnico cadastrado" — mentira nesse caso, parecia bug do sistema
 //        inteiro. Mensagem agora diz a causa certa e pra onde ir resolver
 //        (Diagnóstico → Acessos, vincular o login a um técnico).
-const CACHE_VERSAO = 'portotec-roteiros-v316';
+// v318 = corrige "aperto recarregar e nao acontece nada, mensagem continua":
+//        o botao de atualizar so fazia location.reload(), que ainda era
+//        respondido pelo service worker ANTIGO (troca pro novo nao e
+//        instantanea) -- agora desregistra o SW antes de recarregar, pra
+//        essa carga ir direto na rede em vez de poder cair sob o codigo
+//        velho de novo (tecnico.js::recarregarSemPiscar, app.js::_recarregarSemPiscar).
+const CACHE_VERSAO = 'portotec-roteiros-v318';
 
 const ARQUIVOS_CASCA = [
   '/',

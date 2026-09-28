@@ -1907,6 +1907,28 @@
   // A recarga espera a tela estar OCIOSA, mesma disciplina do auto-refresh do
   // painel: recarregar com um campo preenchido ou uma folha aberta jogaria
   // fora o que o técnico estava fazendo, e ele está no meio da rua.
+  // Recarrega de verdade, sem depender do service worker antigo ainda estar
+  // no comando. Bug real reportado em 2026-09-28: "aperto recarregar, pisca
+  // e não acontece nada, a mensagem continua" -- um location.reload() comum
+  // é interceptado pelo MESMO service worker antigo que já está ativo
+  // (a troca pro novo só termina depois que ele reativa, o que não é
+  // instantâneo nem garantido dentro de um recarregamento só) — então o
+  // recarregamento inteiro pode rodar de novo sob o código velho, ver que a
+  // versão continua desatualizada, e mostrar o mesmo aviso de novo: parece
+  // que o botão não faz nada. Desregistrar o service worker antes de
+  // recarregar tira ele do caminho por essa uma carga — a página busca tudo
+  // direto da rede, e o SW se re-registra sozinho (register() já roda na
+  // subida do app) assim que a página nova carrega, sem perder o offline.
+  async function recarregarSemPiscar() {
+    try {
+      if ('serviceWorker' in navigator) {
+        const registros = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registros.map((r) => r.unregister()));
+      }
+    } catch { /* pior caso: reload comum, que já era o que tínhamos antes */ }
+    location.reload();
+  }
+
   function conferirVersaoDoApp(versaoServidor) {
     if (!versaoServidor || versaoServidor === VERSAO_TELA) return;
 
@@ -1928,7 +1950,7 @@
     // continua mostrando a versão velha e o diagnóstico não mente.
     sessionStorage.setItem('tRecarregouPara', versaoServidor);
     toast('Atualizando o aplicativo...');
-    setTimeout(() => location.reload(), 600);
+    setTimeout(recarregarSemPiscar, 600);
   }
 
   function avisarVersaoTravada() {
@@ -1939,8 +1961,14 @@
     aviso.setAttribute('role', 'status');
     aviso.innerHTML = `
       <span>Nova versão disponível</span>
-      <button type="button" onclick="location.reload()">Recarregar</button>`;
+      <button type="button" id="t-aviso-versao-btn">Recarregar</button>`;
     document.body.appendChild(aviso);
+    // Clicar aqui já falhou uma vez em silêncio (é por isso que a trava
+    // acima chegou a mostrar este aviso) — reafirmar a mesma versão em
+    // tRecarregouPara faz sentido: se o desregistro abaixo resolver, o
+    // próximo /api/versao já bate; se não resolver, mantém a trava de uma
+    // tentativa em vez de entrar num laço de recarregar pra sempre.
+    document.getElementById('t-aviso-versao-btn').onclick = recarregarSemPiscar;
   }
 
   async function verificarRevisao() {
@@ -2015,7 +2043,7 @@
   // técnico, se o código novo chegou ou se o service worker ainda está
   // servindo o antigo do cache — e sem essa resposta qualquer diagnóstico de
   // "não está indo" vira adivinhação. Subir junto com o CACHE_VERSAO do sw.js.
-  const VERSAO_TELA = 'v316';
+  const VERSAO_TELA = 'v318';
 
   (function marcarVersao() {
     const selo = document.createElement('div');
