@@ -998,14 +998,33 @@
       // hoje, não só o ponto onde está agora.
       let _marcadorReplay = null;
       let _replayTimer = null;
+      let _sombraTimer = null;
+      let _sombraTecnicoId = null;
+
+      // "Modo sombra" (item #27 da lista de melhorias, 2026-09-28): o painel
+      // de foco já existia (pedido de 2026-09-04) mas era uma FOTO -- abria,
+      // buscava uma vez, parava. Virou live: recarrega sozinho a cada 8s
+      // enquanto estiver aberto, como se o admin estivesse "olhando por
+      // cima do ombro" o app do técnico mudando em tempo real. Pausa
+      // durante o replay pra não resetar o texto do botão no meio da
+      // animação (ver iniciarReplay).
       async function abrirPainelFoco(tecnicoId) {
         const painel = document.getElementById('painel-foco');
-        const corpo = document.getElementById('foco-corpo');
         const t = _ultimosTecnicos.find(x => x.tecnico_id === tecnicoId);
         document.getElementById('foco-nome').textContent = t ? t.nome : 'Técnico';
         painel.classList.add('aberto');
-        corpo.innerHTML = '<div class="vazio">Carregando rota do dia...</div>';
+        _sombraTecnicoId = tecnicoId;
 
+        await _carregarFocoConteudo(tecnicoId);
+        clearInterval(_sombraTimer);
+        _sombraTimer = setInterval(() => {
+          if (!_replayTimer) _carregarFocoConteudo(tecnicoId);
+        }, 8000);
+      }
+
+      async function _carregarFocoConteudo(tecnicoId) {
+        const corpo = document.getElementById('foco-corpo');
+        if (!corpo.innerHTML) corpo.innerHTML = '<div class="vazio">Carregando rota do dia...</div>';
         try {
           const fichas = await fetch(`/api/fichas?tecnico_id=${tecnicoId}`, { cache: 'no-store' }).then(r => r.json());
           const hojeISO = new Date().toISOString().slice(0, 10);
@@ -1024,6 +1043,7 @@
                     ${s.tipo_aparelho ? ' · ' + esc(s.tipo_aparelho) : ''}</div>
                 </div>`).join('')
             : '<div class="vazio">Nenhum atendimento na ficha de hoje.</div>')
+            + `<div style="font-size:11px;color:var(--text-muted,#8892a0);margin:8px 0;">🔴 ao vivo — atualiza sozinho a cada 8s</div>`
             + `<button type="button" class="btn-replay" id="btn-replay-agora">▶ Replay do trajeto de hoje</button>`;
 
           document.getElementById('btn-replay-agora').addEventListener('click', () => iniciarReplay(tecnicoId));
@@ -1033,6 +1053,9 @@
       }
       document.getElementById('foco-fechar').addEventListener('click', () => {
         document.getElementById('painel-foco').classList.remove('aberto');
+        document.getElementById('foco-corpo').innerHTML = '';
+        clearInterval(_sombraTimer);
+        _sombraTimer = null;
         pararReplay();
       });
 

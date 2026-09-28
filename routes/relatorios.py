@@ -740,6 +740,18 @@ def baixar_backup():
     if not pode("gerenciar_usuarios"):
         return jsonify({"erro": "Sem permissão"}), 403
 
+    conteudo = gerar_dump_banco().encode("utf-8")
+    nome_arquivo = f"backup_portotec_{datetime.now().strftime('%Y-%m-%d_%H%M')}.json"
+    return send_file(io.BytesIO(conteudo), mimetype="application/json",
+                     as_attachment=True, download_name=nome_arquivo)
+
+
+def gerar_dump_banco() -> str:
+    """Retrato completo do banco em JSON — extraído de baixar_backup() em
+    2026-09-28 (item #4 da lista de melhorias) pra ser reaproveitado pelo
+    backup AUTOMÁTICO diário (ver services/backup_automatico.py), não só
+    pelo botão sob demanda. Tabelas descobertas pelo catálogo do próprio
+    banco, não uma lista fixa — tabela nova de amanhã já entra sozinha."""
     import json
 
     from database import IS_PG
@@ -755,17 +767,42 @@ def baixar_backup():
         dump = {}
         for t in tabelas:
             nome = t["nome"]
-            if nome.startswith("sqlite_"):
-                continue
+            if nome.startswith("sqlite_") or nome == "backups_automaticos":
+                continue  # backup de si mesmo é redundante e só cresce a cada rodada
             try:
                 dump[nome] = fetch_all(conn, f"SELECT * FROM {nome}")
             except Exception as exc:
                 log.warning("Backup: falha lendo tabela %s: %s", nome, exc)
                 dump[nome] = {"erro_ao_ler": str(exc)}
 
-    conteudo = json.dumps(dump, default=str, ensure_ascii=False, indent=2).encode("utf-8")
-    nome_arquivo = f"backup_portotec_{datetime.now().strftime('%Y-%m-%d_%H%M')}.json"
-    return send_file(io.BytesIO(conteudo), mimetype="application/json",
+    return json.dumps(dump, default=str, ensure_ascii=False, indent=2)
+
+
+@relatorios_bp.route("/backups", methods=["GET"])
+def listar_backups_automaticos():
+    """Backups diários automáticos (item #4) -- só metadado (id/data/tamanho),
+    nunca o conteúdo inteiro aqui (isso é MB de JSON, ver GET /backups/<id>)."""
+    from permissoes import pode
+    if not pode("gerenciar_usuarios"):
+        return jsonify({"erro": "Sem permissão"}), 403
+    with db_conn() as conn:
+        linhas = fetch_all(conn, sql(
+            "SELECT id, tamanho, criado_em FROM backups_automaticos ORDER BY id DESC"))
+    return jsonify({"backups": linhas})
+
+
+@relatorios_bp.route("/backups/<int:backup_id>", methods=["GET"])
+def baixar_backup_automatico(backup_id):
+    from permissoes import pode
+    if not pode("gerenciar_usuarios"):
+        return jsonify({"erro": "Sem permissão"}), 403
+    with db_conn() as conn:
+        linha = fetch_one(conn, sql(
+            "SELECT conteudo, criado_em FROM backups_automaticos WHERE id = ?"), (backup_id,))
+    if not linha:
+        return jsonify({"erro": "Backup não encontrado"}), 404
+    nome_arquivo = f"backup_automatico_{(linha['criado_em'] or '')[:10]}.json"
+    return send_file(io.BytesIO(linha["conteudo"].encode("utf-8")), mimetype="application/json",
                      as_attachment=True, download_name=nome_arquivo)
 
 

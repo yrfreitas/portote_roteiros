@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v319';
+const VERSAO_PAINEL = 'v320';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2089,6 +2089,36 @@ function _linhaDiag(titulo, estado, texto, detalhe = '') {
     </div>`;
 }
 
+// Lista de backups automáticos (item #4) -- overlay simples criado na hora,
+// mesmo molde de ampliarFoto() (sem modal fixo no HTML só pra isso).
+async function abrirListaBackups() {
+  const fundo = document.createElement('div');
+  fundo.className = 'lupa-fundo';
+  fundo.innerHTML = `
+    <div class="cliente-detalhe-modal" style="max-width:480px;width:90%;background:var(--bg-card,#fff);border-radius:10px;padding:18px;max-height:70vh;overflow:auto;" onclick="event.stopPropagation()">
+      <h3 style="margin:0 0 10px;">Backups automáticos</h3>
+      <div id="lista-backups-corpo"><div class="ajuda-texto">Carregando...</div></div>
+    </div>`;
+  fundo.onclick = () => fundo.remove();
+  document.body.appendChild(fundo);
+
+  let r;
+  try { r = await api('/backups'); }
+  catch (e) {
+    fundo.querySelector('#lista-backups-corpo').innerHTML = `<p class="vcep-erro">${esc(e.message)}</p>`;
+    return;
+  }
+  const linhas = r.backups || [];
+  fundo.querySelector('#lista-backups-corpo').innerHTML = linhas.length ? linhas.map(b => `
+    <div class="os-visita-linha">
+      <span>${esc(dataHoraCompleta(b.criado_em))}</span>
+      <span style="display:flex;align-items:center;gap:10px;">
+        <span class="ajuda-texto" style="margin:0;">${((b.tamanho || 0) / 1024 / 1024).toFixed(1)} MB</span>
+        <a class="btn btn-ghost btn-sm" href="/api/backups/${b.id}" download>Baixar</a>
+      </span>
+    </div>`).join('') : `<p class="ajuda-texto">Nenhum backup automático gravado ainda — o primeiro sai na próxima subida do servidor.</p>`;
+}
+
 async function carregarDiagnostico() {
   const alvo = document.getElementById('diagnostico-corpo');
   if (!alvo) return;
@@ -2166,6 +2196,33 @@ async function carregarDiagnostico() {
     em.configurado ? 'ok' : 'aviso',
     em.configurado ? 'configurada' : 'não configurada'));
 
+  // ── Robôs locais (item #2, 2026-09-28): rodam no PC do Kalebe via Task
+  // Scheduler -- se o PC desligar ou o robô travar, a fila para sem
+  // ninguém perceber até alguém reclamar "não retorna preço".
+  const robos = d.robos || [];
+  if (robos.length) {
+    partes.push(`<div class="diag-secao">Robôs locais</div>`);
+    robos.forEach(r => {
+      const min = r.minutos_atras;
+      // Robô roda a cada 2min (ver robo_precos_panasonic.py) -- 15min sem
+      // aparecer já é sinal real de travado/PC desligado, não ruído.
+      const status = min == null ? 'aviso' : (min > 15 ? 'ruim' : 'ok');
+      const texto = min == null ? 'nunca reportou'
+        : min < 2 ? 'agora mesmo' : `há ${min} min`;
+      partes.push(_linhaDiag(r.robo, status, texto, esc(r.detalhe || '')));
+    });
+  }
+
+  // ── Backup automático diário (item #4, 2026-09-28).
+  const bk = d.backups || {};
+  const bkMin = bk.ultimo_em
+    ? Math.round((Date.now() - new Date(bk.ultimo_em.replace(' ', 'T') + 'Z')) / 60000) : null;
+  partes.push(`<div class="diag-secao">Backup automático</div>`);
+  partes.push(_linhaDiag('Último backup diário',
+    bk.ultimo_em ? (bkMin > 60 * 30 ? 'aviso' : 'ok') : 'aviso',
+    bk.ultimo_em ? `gravado ${dataHoraCompleta(bk.ultimo_em)}` : 'ainda nenhum gravado',
+    `<a href="#" onclick="event.preventDefault(); abrirListaBackups()">Ver todos os backups →</a>`));
+
   // ── Higiene dos dados
   partes.push(`<div class="diag-secao">Dados</div>`);
   const semSetor = (d.setores && d.setores.sem_setor) || 0;
@@ -2173,6 +2230,13 @@ async function carregarDiagnostico() {
     semSetor === 0 ? 'ok' : 'aviso',
     semSetor === 0 ? 'todos classificados' : `${semSetor} sem classificação`,
     semSetor ? `<button class="btn btn-primary btn-sm" onclick="abrirClassificacaoEmLote()">Classificar agora</button>` : ''));
+
+  // ── 2FA (item #17, 2026-09-28): opt-in, por conta -- cada um ativa a
+  // própria. Some cedo (não espera a resposta de /api/2fa/status) porque
+  // não bloqueia nada mais nesta tela.
+  partes.push(`
+    <div class="diag-secao">Verificação em duas etapas</div>
+    <div id="diag-2fa-corpo"><div class="ajuda-texto">Carregando...</div></div>`);
 
   partes.push(_linhaDiag('Chave de sessão',
     d.secret_fixa ? 'ok' : 'ruim',
@@ -2188,6 +2252,15 @@ async function carregarDiagnostico() {
     partes.push(_linhaDiag('Nenhum erro registrado', 'ok', 'limpo'));
   } else {
     partes.push((er.ultimos || []).map(e => _renderErroDiag(e)).join(''));
+  }
+
+  // ── Log de auditoria (item #16, 2026-09-28) -- só o admin-mestre vê,
+  // de propósito (ver routes/auditoria.py::eh_admin_mestre). Nem a seção
+  // aparece pra login nomeado, mesmo papel='admin'.
+  if (usuarioLogado.admin_mestre) {
+    partes.push(`
+      <div class="diag-secao">Log de auditoria <span class="ajuda-texto" style="font-weight:400;">— só você vê isso</span></div>
+      <div id="auditoria-corpo"><div class="ajuda-texto">Carregando...</div></div>`);
   }
 
   // ── O que já mudou (changelog) — pedido de 2026-08-29.
@@ -2209,6 +2282,86 @@ async function carregarDiagnostico() {
   if (podeUsuario('gerenciar_usuarios')) carregarAcessos();
   carregarChangelog();
   carregarLogExportacoes();
+  if (usuarioLogado.admin_mestre) carregarAuditoria();
+  carregarStatus2FA();
+}
+
+async function carregarStatus2FA() {
+  const alvo = document.getElementById('diag-2fa-corpo');
+  if (!alvo) return;
+  let r;
+  try { r = await api('/2fa/status'); }
+  catch (e) { alvo.innerHTML = `<div class="ajuda-texto">${esc(e.message)}</div>`; return; }
+
+  alvo.innerHTML = r.ativo ? `
+    <p class="ajuda-texto" style="margin:0 0 8px;">Ativada para esta conta — o login pede um código do app autenticador.</p>
+    <button class="btn btn-ghost btn-sm" onclick="desativar2FA()">Desativar</button>`
+    : `
+    <p class="ajuda-texto" style="margin:0 0 8px;">Desativada. Ative pra exigir um código do celular (Google Authenticator, Authy...) além da senha nesta conta.</p>
+    <button class="btn btn-primary btn-sm" onclick="ativar2FA()">Ativar 2FA</button>`;
+}
+
+async function ativar2FA() {
+  let r;
+  try { r = await api('/2fa/ativar', { method: 'POST' }); }
+  catch (e) { toast(e.message, 'error'); return; }
+
+  const fundo = document.createElement('div');
+  fundo.className = 'lupa-fundo';
+  fundo.innerHTML = `
+    <div class="cliente-detalhe-modal" style="max-width:340px;width:90%;background:var(--bg-card,#fff);border-radius:10px;padding:20px;text-align:center;" onclick="event.stopPropagation()">
+      <h3 style="margin:0 0 10px;">Escaneie no app autenticador</h3>
+      <img src="${r.qr}" alt="QR code do 2FA" style="width:220px;height:220px;margin:0 auto 10px;display:block;">
+      <p class="ajuda-texto" style="margin:0 0 10px;">Não consegue escanear? Digite manualmente: <b style="user-select:all;">${esc(r.secret)}</b></p>
+      <input class="form-input" id="2fa-confirmar-codigo" placeholder="Código de 6 dígitos" inputmode="numeric" maxlength="6"
+             style="text-align:center;letter-spacing:4px;font-size:18px;margin-bottom:10px;">
+      <button class="btn btn-primary btn-full" onclick="confirmar2FA(this)">Confirmar e ativar</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:8px;" onclick="this.closest('.lupa-fundo').remove()">Cancelar</button>
+    </div>`;
+  document.body.appendChild(fundo);
+}
+
+async function confirmar2FA(botao) {
+  const codigo = document.getElementById('2fa-confirmar-codigo')?.value.trim();
+  if (!codigo) return;
+  botao.disabled = true; botao.textContent = 'Confirmando...';
+  try {
+    const r = await api('/2fa/confirmar', { method: 'POST', body: JSON.stringify({ codigo }) });
+    toast(r.mensagem, 'success');
+    document.querySelector('.lupa-fundo')?.remove();
+    carregarStatus2FA();
+  } catch (e) {
+    toast(e.message, 'error');
+    botao.disabled = false; botao.textContent = 'Confirmar e ativar';
+  }
+}
+
+async function desativar2FA() {
+  if (!confirm('Desativar a verificação em duas etapas desta conta?')) return;
+  try {
+    const r = await api('/2fa/desativar', { method: 'POST' });
+    toast(r.mensagem, 'success');
+    carregarStatus2FA();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function carregarAuditoria() {
+  const alvo = document.getElementById('auditoria-corpo');
+  if (!alvo) return;
+  try {
+    const r = await api('/auditoria');
+    const linhas = r.linhas || [];
+    alvo.innerHTML = !linhas.length
+      ? '<div class="ajuda-texto">Nada registrado ainda.</div>'
+      : linhas.map(l => `
+        <div class="changelog-linha">
+          <span class="changelog-versao">${esc(l.quem || '—')}</span>
+          <span class="changelog-resumo">${esc(l.acao)}${l.entidade ? ` · ${esc(l.entidade)}${l.entidade_id ? ' #' + esc(l.entidade_id) : ''}` : ''}${l.detalhe ? ' — ' + esc(l.detalhe) : ''}</span>
+          <span class="changelog-data">${esc(dataHoraCompleta(l.criado_em))}</span>
+        </div>`).join('');
+  } catch (e) {
+    alvo.innerHTML = `<div class="ajuda-texto">${esc(e.message)}</div>`;
+  }
 }
 
 async function carregarLogExportacoes() {
@@ -10311,6 +10464,7 @@ async function abrirOSDetalhe(id) {
     <div class="os-detalhe-secao">
       <p class="form-separador">Peças usadas</p>
       <div id="os-pecas-lista">${osRenderPecas(r.pecas)}</div>
+      <div id="os-pecas-sugestao"></div>
       <div class="form-row" style="margin-top:8px;">
         <div class="form-group">
           <label class="form-label" for="os-peca-codigo">Código (do estoque)</label>
@@ -10373,6 +10527,7 @@ async function abrirOSDetalhe(id) {
     await preencherSelectSetorSeguro('os-ed-setor', o.setor_id);
   }
   osCarregarTiposAparelho();
+  if (document.getElementById('os-pecas-sugestao')) _carregarSugestaoPeca(o.tipo_aparelho, o.defeito_declarado);
 
   const fotosExtraId = `os-fotos-extra-${o.id}`;
   fotosExtraRegistrar(fotosExtraId, `/ordens-servico/${o.id}/fotos`, '/ordens-servico/fotos');
@@ -10394,6 +10549,30 @@ function osRenderPecas(pecas) {
       <span><b>${esc(p.codigo)}</b>${p.descricao ? ' — ' + esc(p.descricao) : ''} · ${Number(p.quantidade)}x</span>
       <span style="color:var(--text-muted);font-size:11px;">${esc(parseDataBanco(p.criado_em)?.toLocaleDateString('pt-BR') || '')}</span>
     </div>`).join('');
+}
+
+// Sugestão de peça provável (item #29, 2026-09-28) -- cruza tipo de
+// aparelho + defeito declarado com o histórico de peças já usadas em
+// atendimentos parecidos (ver GET /estoque/sugestao-peca). Não é IA (a
+// chave do servidor segue inválida) -- é contagem de palavra em comum +
+// frequência de uso, mas já poupa o técnico de digitar o código de cabeça.
+async function _carregarSugestaoPeca(tipoAparelho, defeito) {
+  const alvo = document.getElementById('os-pecas-sugestao');
+  if (!alvo || !tipoAparelho) return;
+  let r;
+  try {
+    r = await api(`/estoque/sugestao-peca?tipo_aparelho=${encodeURIComponent(tipoAparelho)}&defeito=${encodeURIComponent(defeito || '')}`);
+  } catch { return; }
+  const sugestoes = r.sugestoes || [];
+  alvo.innerHTML = sugestoes.length ? `
+    <p class="ajuda-texto" style="margin:8px 0 4px;">Peças usadas antes em ${esc(tipoAparelho)} com defeito parecido:</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+      ${sugestoes.map(s => `
+        <button type="button" class="btn btn-ghost btn-xs" title="${esc(s.descricao || '')} · usada ${s.usos}x"
+                onclick="document.getElementById('os-peca-codigo').value = '${esc(s.codigo).replace(/'/g, "\\'")}'; document.getElementById('os-peca-codigo').focus();">
+          ${esc(s.codigo)}${s.descricao ? ' — ' + esc(s.descricao) : ''}
+        </button>`).join('')}
+    </div>` : '';
 }
 
 async function osAdicionarPeca(id) {
@@ -11065,14 +11244,15 @@ async function buscarManualPecas() {
     </div>`;
 }
 
-async function carregarPaginasManual(resultado) {
+async function carregarPaginasManual(resultado, forcar = false) {
   const alvo = document.getElementById('manual-pecas-resultado');
   if (!alvo) return;
-  alvo.innerHTML = `<div class="loading-row" style="display:flex;align-items:center;gap:10px;padding:16px 0;"><div class="spinner"></div> Abrindo ${esc(resultado.arquivo)} — a primeira vez demora um pouco, as próximas saem na hora...</div>`;
+  alvo.innerHTML = `<div class="loading-row" style="display:flex;align-items:center;gap:10px;padding:16px 0;"><div class="spinner"></div> ${forcar ? 'Baixando o manual de novo' : `Abrindo ${esc(resultado.arquivo)} — a primeira vez demora um pouco, as próximas saem na hora`}...</div>`;
 
   let r;
   try {
-    r = await api(`/manuais-pecas/${encodeURIComponent(resultado.id)}/paginas`, {}, 90000);
+    const q = forcar ? '?forcar=1' : '';
+    r = await api(`/manuais-pecas/${encodeURIComponent(resultado.id)}/paginas${q}`, {}, 90000);
   } catch (e) {
     alvo.innerHTML = `<p class="vcep-erro" style="margin:0;">${esc(e.message)}</p>`;
     return;
@@ -11108,7 +11288,10 @@ async function carregarPaginasManual(resultado) {
   const pecas = _extrairPecasManual(paginas);
 
   alvo.innerHTML = `
-    <p class="ajuda-texto">${esc(CATEGORIA_MANUAL_ROTULO[resultado.categoria] || '')} — ${esc(resultado.arquivo)} · clique numa página pra ampliar</p>
+    <p class="ajuda-texto">${esc(CATEGORIA_MANUAL_ROTULO[resultado.categoria] || '')} — ${esc(resultado.arquivo)} · clique numa página pra ampliar
+      <button type="button" class="btn btn-ghost btn-xs" style="margin-left:8px;"
+              title="Se a Panasonic atualizou este manual no Drive, o cache não percebe sozinho -- força baixar de novo"
+              onclick='carregarPaginasManual(${JSON.stringify(resultado)}, true)'>↻ Recarregar manual</button></p>
     <div class="manual-pecas-grade">
       ${paginas.map((p, i) => `
         <img class="manual-pecas-pagina" src="${p.imagem}" alt="Página ${i + 1} do manual"
@@ -11505,7 +11688,9 @@ async function abrirEstoqueRaiz() {
     'para ver e adicionar as peças dele. Isso é o saldo de verdade — ' +
     'diferente da aba "Peças", que só concilia compra com cliente.';
   document.getElementById('estoque-topo-acoes').innerHTML = podeUsuario('estoque_editar')
-    ? `<button class="btn btn-ghost btn-sm" onclick="abrirReposicaoEstoque()">${icone('caixa', 'icone-13')} Repor peça</button>`
+    ? `<a class="btn btn-ghost btn-sm" href="/api/estoque/catalogo/imprimir" target="_blank" rel="noopener"
+         title="Catálogo em PDF com toda peça do estoque que já tem foto -- item #12, 2026-09-28">${icone('caixa', 'icone-13')} Gerar catálogo</a>`
+      + `<button class="btn btn-ghost btn-sm" onclick="abrirReposicaoEstoque()">${icone('caixa', 'icone-13')} Repor peça</button>`
       + `<button class="btn btn-ghost btn-sm" onclick="abrirBiparNota()">${icone('camera', 'icone-13')} Bipar nota fiscal</button>`
       + '<button class="btn btn-primary btn-sm" onclick="abrirCriarGrupo()">+ Criar estoque</button>'
     : '';

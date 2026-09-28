@@ -243,6 +243,106 @@ def _completar_thumbs_faltantes(conn, itens, limite_por_chamada=15):
             i["foto_thumb"] = thumb
 
 
+_PALAVRAS_IGNORADAS = {
+    "de", "da", "do", "das", "dos", "e", "o", "a", "os", "as", "em", "no", "na",
+    "com", "sem", "que", "não", "esta", "está", "muito", "pra", "para", "um", "uma",
+}
+
+
+def _palavras_significativas(texto: str) -> set:
+    import re
+    return {p for p in re.findall(r"[a-zà-ú]+", (texto or "").lower()) if len(p) >= 4} - _PALAVRAS_IGNORADAS
+
+
+@estoque_bp.route("/estoque/catalogo/imprimir")
+def catalogo_imprimir():
+    """Catálogo de peças com foto, pronto pra imprimir/exportar em PDF pelo
+    próprio navegador (item #12 da lista de melhorias, 2026-09-28) --
+    antes disso era eu (Bia) montando na mão toda vez que alguém pedia pra
+    "adicionar mais peça no catálogo" (ver conversa de 2026-09-28: v7 do
+    catálogo Panasonic). Agora é um botão só, sempre com o que estiver no
+    Estoque HOJE -- sem esperar alguém pedir de novo.
+
+    Foto em resolução CHEIA aqui de propósito (diferente de GET /estoque,
+    que usa foto_thumb) -- isto não é uma lista carregada toda hora, é uma
+    ação explícita e rara (gerar catálogo), e o catálogo impresso precisa
+    de qualidade de verdade, não uma miniatura de 160px borrada.
+    """
+    if not session.get("admin"):
+        return "Não autenticado", 401
+
+    from flask import render_template
+
+    with db_conn() as conn:
+        itens = fetch_all(conn, """
+            SELECT codigo, descricao, marca, aparelho, foto
+              FROM estoque_itens
+             WHERE foto IS NOT NULL
+             ORDER BY COALESCE(NULLIF(marca, ''), 'Sem marca'), aparelho, descricao
+        """)
+
+    grupos = {}
+    for i in itens:
+        chave = (i.get("marca") or "Sem marca").strip() or "Sem marca"
+        grupos.setdefault(chave, []).append(i)
+
+    return render_template("catalogo_imprimir.html", grupos=grupos, total=len(itens),
+                           gerado_em=datetime.now().strftime("%d/%m/%Y %H:%M"))
+
+
+@estoque_bp.route("/estoque/sugestao-peca", methods=["GET"])
+def sugestao_peca():
+    """Sugestão de peça provável (item #29 da lista de melhorias, 2026-09-28)
+    cruzando o defeito declarado com o histórico de peças usadas em
+    atendimentos do MESMO tipo de aparelho -- pedido original era "por IA",
+    mas a ANTHROPIC_API_KEY do servidor segue inválida (mesmo bloqueio de
+    outras ideias de IA desta sessão). Esta versão não depende de chave
+    nenhuma: pontua por PALAVRA em comum entre o defeito de agora e o
+    defeito de cada atendimento passado que usou aquela peça, com empate
+    resolvido por frequência de uso. Dá pra trocar por IA de verdade depois
+    sem mudar o formato que o front espera (lista ordenada de {codigo,
+    descricao, pontos}).
+    """
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+
+    tipo_aparelho = (request.args.get("tipo_aparelho") or "").strip()
+    defeito = (request.args.get("defeito") or "").strip()
+    if not tipo_aparelho:
+        return jsonify({"sugestoes": []})
+
+    with db_conn() as conn:
+        linhas = fetch_all(conn, """
+            SELECT ei.codigo, ei.descricao, os.defeito_declarado
+              FROM estoque_movimentos em
+              JOIN estoque_itens ei ON ei.id = em.item_id
+              JOIN ordens_servico os ON CAST(os.id AS TEXT) = em.referencia
+             WHERE em.origem = 'ordem_servico' AND em.tipo = 'saida'
+                   AND LOWER(os.tipo_aparelho) = LOWER(?)
+        """, (tipo_aparelho,))
+
+    palavras_alvo = _palavras_significativas(defeito)
+    agregado = {}   # (codigo, descricao) -> {"usos": n, "pontos": n}
+    for l in linhas:
+        chave = (l["codigo"], l["descricao"] or "")
+        info = agregado.setdefault(chave, {"usos": 0, "pontos": 0})
+        info["usos"] += 1
+        if palavras_alvo:
+            palavras_passado = _palavras_significativas(l.get("defeito_declarado"))
+            info["pontos"] += len(palavras_alvo & palavras_passado)
+
+    # Sem defeito pra comparar (campo ainda vazio na tela) ou nenhuma
+    # palavra bateu: cai pra "mais usada nesse aparelho", que já é
+    # melhor que nada -- é a mesma peça que qualquer técnico experiente
+    # chutaria de cabeça pra esse tipo de aparelho.
+    ranking = sorted(agregado.items(), key=lambda kv: (kv[1]["pontos"], kv[1]["usos"]), reverse=True)
+    sugestoes = [
+        {"codigo": codigo, "descricao": descricao, "usos": info["usos"], "pontos": info["pontos"]}
+        for (codigo, descricao), info in ranking[:5] if info["usos"] > 0
+    ]
+    return jsonify({"sugestoes": sugestoes})
+
+
 @estoque_bp.route("/estoque/<int:item_id>/foto", methods=["GET"])
 def obter_foto(item_id):
     """Foto em resolução cheia, sob demanda -- só quando alguém clica pra

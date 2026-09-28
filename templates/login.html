@@ -109,6 +109,22 @@
   </div>
   <div class="login-lado-form">
     <div class="login-card">
+      {% if pedir_2fa %}
+      <div class="login-titulo">Código de verificação</div>
+      <div class="login-sub">Abra o app autenticador e digite o código de 6 dígitos.</div>
+
+      {% if erro %}
+      <div class="login-erro">{{ erro }}</div>
+      {% endif %}
+
+      <form method="POST" action="{{ url_for('auth.login_2fa') }}">
+        <label class="login-label" for="codigo">Código</label>
+        <input class="form-input" type="text" id="codigo" name="codigo" autofocus required
+               inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code"
+               style="margin-bottom:18px;letter-spacing:4px;font-size:20px;text-align:center;">
+        <button class="btn btn-primary btn-full" type="submit">Confirmar</button>
+      </form>
+      {% else %}
       <div class="login-titulo">Portotec — Roteiros</div>
       <div class="login-sub">Entre com o seu usuário e senha.</div>
 
@@ -127,6 +143,7 @@
                autocomplete="current-password" style="margin-bottom:18px;">
         <button class="btn btn-primary btn-full" type="submit">Entrar</button>
       </form>
+      {% endif %}
     </div>
   </div>
 </body>

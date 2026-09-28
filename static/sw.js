@@ -308,7 +308,15 @@
 //        INTEIRAS em base64 de TODO item da lista, mesmo a lista nunca
 //        desenhando essas fotos (só o detalhe de UM item usa). Só a lista
 //        de OS já eram ~5MB de foto que ninguém via. Ver services/imagem.py.
-const CACHE_VERSAO = 'portotec-roteiros-v319';
+// v320 = lote de 10 melhorias pedidas em 2026-09-28: heartbeat dos robos
+//        locais, backup automatico diario, log de auditoria (so admin-
+//        mestre), 2FA opcional (TOTP), detector de cliente duplicado
+//        proativo, selo de pendencia na lista de clientes, sugestao de
+//        peca por historico (sem IA -- chave continua invalida), gerador
+//        de catalogo de pecas direto do painel, forcar releitura de
+//        manual, e "modo sombra" (painel de foco da Torre de Controle
+//        virou ao vivo). #14/#24/#26/#9 ja existiam de sessoes anteriores.
+const CACHE_VERSAO = 'portotec-roteiros-v320';
 
 const ARQUIVOS_CASCA = [
   '/',

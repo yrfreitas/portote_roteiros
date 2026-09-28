@@ -226,6 +226,9 @@ def mesclar():
         execute(conn, "UPDATE pedido_peca_os SET cliente_id = ? WHERE cliente_id = ?",
                (manter_id, remover_id))
         execute(conn, "DELETE FROM clientes WHERE id = ?", (remover_id,))
+        from routes.auditoria import registrar
+        registrar(conn, "mesclar_clientes", "clientes", manter_id,
+                  f"absorveu cliente_id={remover_id}")
 
     return jsonify({"mensagem": "Cadastros mesclados"})
 

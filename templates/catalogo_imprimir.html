@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Catálogo de Peças — Porto Tec</title>
+<style>
+  @page { size: A4; margin: 10mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    margin: 0;
+    color: #1c2b3a;
+    background: #fff;
+  }
+  .cabecalho {
+    background: linear-gradient(120deg, #0e2f5c 0%, #1c56a3 60%, #2c6fc4 100%);
+    color: #fff;
+    padding: 16px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 8px;
+    margin-bottom: 14px;
+  }
+  .cabecalho h1 { font-size: 20px; margin: 0; font-weight: 800; }
+  .cabecalho .sub { font-size: 11px; color: #cfe0f7; margin-top: 2px; }
+  .cabecalho .meta { font-size: 10px; color: #cfe0f7; text-align: right; }
+  .categoria {
+    background: #2c6fc4; color: #fff; font-weight: 700; font-size: 12px;
+    letter-spacing: .4px; padding: 6px 14px; border-radius: 14px;
+    display: inline-block; margin: 14px 0 8px 0;
+    break-after: avoid; page-break-after: avoid; break-inside: avoid;
+  }
+  .grade { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .card {
+    border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;
+    background: #fafcff; position: relative;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .foto-wrap {
+    position: relative; height: 84px; border-bottom: 3px solid #f5b300;
+    display: flex; align-items: center; justify-content: center; background: #fff;
+  }
+  .foto-wrap img { max-width: 88%; max-height: 78px; object-fit: contain; }
+  .badge-codigo {
+    position: absolute; top: 5px; right: 5px; background: #0e2f5c; color: #fff;
+    font-size: 7.5px; font-weight: 700; padding: 2px 5px; border-radius: 4px;
+  }
+  .nome { font-size: 9.5px; color: #1c2b3a; padding: 6px 8px 8px; line-height: 1.25; }
+  .rodape {
+    margin-top: 16px; background: #0e2f5c; color: #fff; border-radius: 8px;
+    padding: 10px 16px; font-size: 11px;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .barra-acoes { padding: 10px 0 16px; text-align: right; }
+  .barra-acoes button {
+    font: inherit; font-weight: 700; padding: 8px 16px; border-radius: 8px;
+    border: none; background: #1c56a3; color: #fff; cursor: pointer;
+  }
+  @media print { .barra-acoes { display: none; } }
+</style>
+</head>
+<body>
+  <div class="barra-acoes"><button onclick="window.print()">Salvar como PDF / Imprimir</button></div>
+
+  <div class="cabecalho">
+    <div>
+      <h1>CATÁLOGO DE PEÇAS</h1>
+      <div class="sub">Porto Tec Assistência Técnica — {{ total }} peça{{ 's' if total != 1 else '' }} com foto no estoque</div>
+    </div>
+    <div class="meta">Gerado em {{ gerado_em }}</div>
+  </div>
+
+  {% for marca, itens in grupos.items() %}
+  <div class="categoria">{{ marca.upper() }} ({{ itens|length }})</div>
+  <div class="grade">
+    {% for i in itens %}
+    <div class="card">
+      <div class="foto-wrap">
+        <img src="{{ i.foto }}" alt="{{ i.descricao }}">
+        <span class="badge-codigo">{{ i.codigo }}</span>
+      </div>
+      <div class="nome">{{ i.descricao or '—' }}{% if i.aparelho %} · {{ i.aparelho }}{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  {% if total == 0 %}
+  <p style="padding:20px;color:#6b7280;">Nenhuma peça com foto cadastrada no Estoque ainda.</p>
+  {% endif %}
+
+  <div class="rodape">Consulte disponibilidade e valores pelo WhatsApp</div>
+</body>
+</html>

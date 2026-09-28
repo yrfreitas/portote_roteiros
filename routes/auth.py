@@ -72,12 +72,25 @@ def login():
                 conn, "SELECT * FROM usuarios WHERE LOWER(login) = ?",
                 (login_digitado,))
 
+    destino = request.args.get("next") or ""
+    if not destino.startswith("/") or destino.startswith("//"):
+        destino = url_for("index")
+
     if usuario:
         if not usuario.get("ativo"):
             return render_template("login.html",
                                    erro="Este acesso está desativado."), 401
         if not check_password_hash(usuario["senha_hash"], senha):
             return render_template("login.html", erro="Usuário ou senha incorretos."), 401
+
+        # 2FA (item #17, opt-in -- totp_ativo nasce falso pra todo mundo,
+        # ver database.py). Senha já validada; falta só o código antes de
+        # abrir a sessão de verdade.
+        if usuario.get("totp_ativo"):
+            session.clear()
+            session["_2fa_usuario_id"] = usuario["id"]
+            session["_2fa_destino"] = destino
+            return render_template("login.html", pedir_2fa=True, erro=None)
 
         session.clear()
         session["admin"] = True            # mantém o before_request existente
@@ -102,16 +115,73 @@ def login():
         if not check_password_hash(hash_configurado, senha):
             return render_template("login.html", erro="Usuário ou senha incorretos."), 401
 
+        with db_conn() as conn:
+            cfg_2fa = fetch_one(conn, "SELECT totp_ativo FROM admin_mestre_2fa WHERE id = 1")
+        if cfg_2fa and cfg_2fa.get("totp_ativo"):
+            session.clear()
+            session["_2fa_admin_mestre"] = True
+            session["_2fa_destino"] = destino
+            return render_template("login.html", pedir_2fa=True, erro=None)
+
         session.clear()
         session["admin"] = True
         session["papel"] = "admin"
         session["usuario_nome"] = "Administrador"
         session.permanent = True
 
-    destino = request.args.get("next") or ""
-    if not destino.startswith("/") or destino.startswith("//"):
-        destino = url_for("index")
     return redirect(destino)
+
+
+@auth_bp.route("/login/2fa", methods=["POST"])
+@limiter.limit("10 per minute")
+def login_2fa():
+    """Segundo passo do login quando a conta tem 2FA ativado (ver login()
+    acima). Código errado NÃO revela se o problema foi o código ou a
+    sessão pendente ter expirado -- mesma mensagem genérica pros dois."""
+    from services.totp import verificar_codigo
+
+    codigo = (request.form.get("codigo") or "").strip()
+    destino = session.get("_2fa_destino") or url_for("index")
+
+    usuario_id = session.get("_2fa_usuario_id")
+    admin_mestre_pendente = session.get("_2fa_admin_mestre")
+
+    if usuario_id:
+        with db_conn() as conn:
+            usuario = fetch_one(conn, "SELECT * FROM usuarios WHERE id = ?", (usuario_id,))
+        if not usuario or not usuario.get("totp_ativo") \
+                or not verificar_codigo(usuario.get("totp_secret"), codigo):
+            return render_template("login.html", pedir_2fa=True, erro="Código inválido."), 401
+
+        session.clear()
+        session["admin"] = True
+        session["usuario_id"] = usuario["id"]
+        session["usuario_nome"] = usuario["nome"]
+        session["papel"] = usuario["papel"]
+        session["tecnico_id"] = usuario.get("tecnico_id")
+        session.permanent = True
+        with db_conn(commit=True) as conn:
+            execute(conn, "UPDATE usuarios SET ultimo_acesso = ? WHERE id = ?",
+                    (_agora(), usuario["id"]))
+        return redirect(destino)
+
+    if admin_mestre_pendente:
+        with db_conn() as conn:
+            cfg = fetch_one(conn, "SELECT totp_secret, totp_ativo FROM admin_mestre_2fa WHERE id = 1")
+        if not cfg or not cfg.get("totp_ativo") or not verificar_codigo(cfg.get("totp_secret"), codigo):
+            return render_template("login.html", pedir_2fa=True, erro="Código inválido."), 401
+
+        session.clear()
+        session["admin"] = True
+        session["papel"] = "admin"
+        session["usuario_nome"] = "Administrador"
+        session.permanent = True
+        return redirect(destino)
+
+    # Sessão pendente expirou ou nunca existiu (ex: recarregou a página de
+    # código depois de muito tempo) -- volta pro login normal em vez de
+    # mostrar um formulário de código que não leva a lugar nenhum.
+    return redirect(url_for("auth.login"))
 
 
 @auth_bp.route("/logout", methods=["POST"])
@@ -127,6 +197,10 @@ def eu():
     from permissoes import _caps_do_request
     dados = usuario_atual()
     dados["permissoes"] = _caps_do_request()
+    # Log de auditoria (#16) é visível só pro admin-mestre -- ver
+    # routes/auditoria.py::eh_admin_mestre pro porquê de não usar só
+    # session['admin'] (isso também é True pra login nomeado com papel=admin).
+    dados["admin_mestre"] = bool(session.get("admin")) and not session.get("usuario_id")
 
     # Token do próprio técnico, só pra quem é técnico — o painel usa pra
     # chamar as MESMAS rotas de almoço do celular de campo (/api/t/<token>/
@@ -140,6 +214,78 @@ def eu():
         dados["tecnico_token"] = tecnico["token"] if tecnico else None
 
     return jsonify(dados)
+
+
+def _alvo_2fa():
+    """(tabela, filtro) da CONTA LOGADA AGORA -- usuário nomeado ou
+    admin-mestre. 2FA é por conta, cada um ativa a própria; não existe
+    "ativar 2FA de outra pessoa" nesta feature."""
+    usuario_id = session.get("usuario_id")
+    if usuario_id:
+        return "usuarios", usuario_id
+    return "admin_mestre_2fa", 1
+
+
+@auth_bp.route("/api/2fa/status", methods=["GET"])
+def status_2fa():
+    tabela, filtro = _alvo_2fa()
+    with db_conn() as conn:
+        linha = fetch_one(conn, f"SELECT totp_ativo FROM {tabela} WHERE id = ?", (filtro,))
+    return jsonify({"ativo": bool(linha and linha.get("totp_ativo"))})
+
+
+@auth_bp.route("/api/2fa/ativar", methods=["POST"])
+def ativar_2fa():
+    """Gera um segredo NOVO (ainda não ativa -- só ativa depois de
+    /api/2fa/confirmar provar que a pessoa escaneou certo). Gerar de novo
+    invalida qualquer QR mostrado antes e nunca confirmado -- sem isso, um
+    QR esquecido aberto numa aba velha continuaria válido pra sempre."""
+    from services.totp import gerar_secret, qr_data_uri, uri_provisionamento
+
+    tabela, filtro = _alvo_2fa()
+    secret = gerar_secret()
+    conta = session.get("usuario_nome") or "Administrador"
+
+    with db_conn(commit=True) as conn:
+        if tabela == "admin_mestre_2fa":
+            existe = fetch_one(conn, "SELECT id FROM admin_mestre_2fa WHERE id = 1")
+            if existe:
+                execute(conn, "UPDATE admin_mestre_2fa SET totp_secret = ?, totp_ativo = ? WHERE id = 1",
+                       (secret, False))
+            else:
+                execute(conn, "INSERT INTO admin_mestre_2fa (id, totp_secret, totp_ativo) VALUES (1, ?, ?)",
+                       (secret, False))
+        else:
+            execute(conn, "UPDATE usuarios SET totp_secret = ?, totp_ativo = ? WHERE id = ?",
+                   (secret, False, filtro))
+
+    uri = uri_provisionamento(secret, conta)
+    return jsonify({"secret": secret, "qr": qr_data_uri(uri), "uri": uri})
+
+
+@auth_bp.route("/api/2fa/confirmar", methods=["POST"])
+def confirmar_2fa():
+    from services.totp import verificar_codigo
+
+    codigo = (request.get_json(silent=True) or {}).get("codigo", "").strip()
+    tabela, filtro = _alvo_2fa()
+    with db_conn() as conn:
+        linha = fetch_one(conn, f"SELECT totp_secret FROM {tabela} WHERE id = ?", (filtro,))
+    if not linha or not verificar_codigo(linha.get("totp_secret"), codigo):
+        return jsonify({"erro": "Código inválido. Confira o horário do celular e tente de novo."}), 400
+
+    with db_conn(commit=True) as conn:
+        execute(conn, f"UPDATE {tabela} SET totp_ativo = ? WHERE id = ?", (True, filtro))
+    return jsonify({"mensagem": "2FA ativado. Da próxima vez, o login vai pedir o código."})
+
+
+@auth_bp.route("/api/2fa/desativar", methods=["POST"])
+def desativar_2fa():
+    tabela, filtro = _alvo_2fa()
+    with db_conn(commit=True) as conn:
+        execute(conn, f"UPDATE {tabela} SET totp_ativo = ?, totp_secret = NULL WHERE id = ?",
+               (False, filtro))
+    return jsonify({"mensagem": "2FA desativado."})
 
 
 @auth_bp.route("/api/permissoes/catalogo", methods=["GET"])
@@ -277,6 +423,8 @@ def salvar_permissoes(usuario_id):
                             "Baixe o papel para 'técnico' antes de restringir."}), 400
         execute(conn, "UPDATE usuarios SET permissoes = ? WHERE id = ?",
                 (_json.dumps(limpo), usuario_id))
+        from routes.auditoria import registrar
+        registrar(conn, "alterar_permissoes", "usuarios", usuario_id, _json.dumps(limpo))
 
     return jsonify({"mensagem": "Permissões atualizadas"})
 
@@ -290,6 +438,9 @@ def remover_usuario(usuario_id):
 
     with db_conn(commit=True) as conn:
         apagados = execute(conn, "DELETE FROM usuarios WHERE id = ?", (usuario_id,))
+        if apagados:
+            from routes.auditoria import registrar
+            registrar(conn, "remover_usuario", "usuarios", usuario_id)
 
     if not apagados:
         return jsonify({"erro": "Usuário não encontrado"}), 404

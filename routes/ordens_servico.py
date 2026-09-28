@@ -2119,10 +2119,13 @@ def apagar(os_id):
     (os_pai_id) só perdem a referência (ON DELETE SET NULL) — apagar uma OS
     não pode apagar atendimento que aconteceu de verdade nem outra OS."""
     with db_conn(commit=True) as conn:
-        existe = fetch_one(conn, "SELECT id FROM ordens_servico WHERE id = ?", (os_id,))
+        existe = fetch_one(conn, "SELECT id, cliente_id FROM ordens_servico WHERE id = ?", (os_id,))
         if not existe:
             return jsonify({"erro": "Ordem de serviço não encontrada"}), 404
         execute(conn, "DELETE FROM ordens_servico WHERE id = ?", (os_id,))
+        from routes.auditoria import registrar
+        registrar(conn, "apagar_os", "ordens_servico", os_id,
+                  f"cliente_id={existe.get('cliente_id')}")
     return jsonify({"mensagem": "Ordem de serviço apagada"})
 
 

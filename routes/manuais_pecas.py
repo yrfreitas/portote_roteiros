@@ -26,8 +26,12 @@ def rota_buscar():
 
 @manuais_pecas_bp.route("/manuais-pecas/<drive_id>/paginas", methods=["GET"])
 def rota_paginas(drive_id):
+    # ?forcar=1 (item #8, 2026-09-28): ignora o cache e baixa o PDF de novo
+    # do Drive -- pro caso da Panasonic ter atualizado o manual e o cache
+    # não ter como perceber sozinho (mesmo drive_id, conteúdo novo).
+    forcar = (request.args.get("forcar") or "").strip() in ("1", "true")
     with db_conn(commit=True) as conn:
-        paginas = obter_paginas(conn, drive_id)
+        paginas = obter_paginas(conn, drive_id, forcar=forcar)
 
     if paginas is None:
         return jsonify({"erro": "Não consegui obter esse manual — tenta de novo em instantes"}), 502

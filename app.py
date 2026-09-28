@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import HTTPException
@@ -27,6 +27,7 @@ from routes.fichas import fichas_bp
 from routes.manuais_pecas import manuais_pecas_bp
 from routes.central_cliente import central_cliente_bp
 from routes.novo_atendimento import novo_atendimento_bp
+from routes.auditoria import auditoria_bp
 from routes.pedidos import pedidos_bp
 from routes.rastreio import rastreio_bp
 from routes.relatorios import relatorios_bp
@@ -97,6 +98,9 @@ init_db()
 from services.nfe import iniciar_sincronizacao_em_segundo_plano
 iniciar_sincronizacao_em_segundo_plano()
 
+from services.backup_automatico import iniciar_backup_automatico_em_segundo_plano
+iniciar_backup_automatico_em_segundo_plano()
+
 app.register_blueprint(auth_bp)
 app.register_blueprint(fichas_bp, url_prefix="/api")
 app.register_blueprint(servicos_bp, url_prefix="/api")
@@ -117,13 +121,18 @@ app.register_blueprint(substituicoes_bp, url_prefix="/api")
 app.register_blueprint(manuais_pecas_bp, url_prefix="/api")
 app.register_blueprint(central_cliente_bp, url_prefix="/api/central")
 app.register_blueprint(novo_atendimento_bp, url_prefix="/api/novo-atendimento")
+app.register_blueprint(auditoria_bp, url_prefix="/api")
 
 
 def _e_api() -> bool:
     return request.path.startswith("/api")
 
 
-_CAMINHOS_PUBLICOS = {"/login", "/api/health", "/api/erro-cliente"}
+_CAMINHOS_PUBLICOS = {"/login", "/login/2fa", "/api/health", "/api/erro-cliente"}
+# /login/2fa é público na camada de sessão pelo MESMO motivo de /login: quem
+# está ali ainda não tem session['admin'] (só o marcador pendente _2fa_*,
+# ver routes/auth.py::login/login_2fa) -- a proteção real é esse marcador
+# dentro da própria rota, não a sessão completa.
 # /acompanhar/ e /api/rastreio/ são públicos porque quem abre é o CLIENTE, que
 # não tem conta no sistema. O link de 16 bytes é a credencial — mesmo modelo do
 # link do técnico. Só expõem posição e destino daquele atendimento.
@@ -135,11 +144,11 @@ _PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
                       # /novo-atendimento usa pra autopreencher endereço, mesmo
                       # endpoint que o formulário de cliente do painel já usa.
                       "/api/clientes/cep/",
-                      "/api/precos-panasonic")
-# /api/precos-panasonic* é público na camada de sessão porque quem chama é o
-# robô local (Portotec/Softwear para Pedidos), sem cookie de usuário — a
-# proteção real é o token compartilhado (_token_valido em substituicoes.py),
-# checado dentro da própria rota.
+                      "/api/precos-panasonic", "/api/robos/heartbeat")
+# /api/precos-panasonic* e /api/robos/heartbeat são públicos na camada de
+# sessão porque quem chama é robô local (Portotec/Softwear para Pedidos),
+# sem cookie de usuário — a proteção real é o token compartilhado
+# (_token_valido em substituicoes.py), checado dentro da própria rota.
 
 
 # Controle de acesso por AÇÃO (ver permissoes.py), no lugar do antigo "só
@@ -298,6 +307,33 @@ def diagnostico_geral():
         from services.ia import MODELO, configurado
         return {"configurado": configurado(), "modelo": MODELO}
 
+    def _robos():
+        # #2 da lista de melhorias (2026-09-28): robôs locais (preço
+        # Panasonic etc.) rodam no PC do Kalebe via Task Scheduler -- se o
+        # PC desligar ou o robô travar, a fila para sem ninguém perceber
+        # até alguém reclamar "não retorna preço". Cada ciclo do robô grava
+        # "ainda vivo" em POST /api/robos/heartbeat; aqui só lê e calcula há
+        # quanto tempo cada um não aparece.
+        with db_conn() as conn:
+            linhas = fetch_all(conn, "SELECT robo, visto_em, detalhe FROM robos_heartbeat")
+        agora = datetime.now(timezone.utc)
+        resultado = []
+        for l in linhas:
+            minutos = None
+            if l.get("visto_em"):
+                try:
+                    visto = datetime.strptime(l["visto_em"][:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    minutos = round((agora - visto).total_seconds() / 60)
+                except ValueError:
+                    pass
+            resultado.append({"robo": l["robo"], "minutos_atras": minutos, "detalhe": l.get("detalhe")})
+        return resultado
+
+    def _backups():
+        with db_conn() as conn:
+            linhas = fetch_all(conn, "SELECT criado_em FROM backups_automaticos ORDER BY id DESC LIMIT 1")
+        return {"ultimo_em": (linhas[0]["criado_em"] if linhas else None)}
+
     def _operacional():
         # Pedido de 2026-08-29: "coisas reais" no Diagnóstico — números do
         # dia a dia, não só saúde de integração. LIKE em vez de função de
@@ -336,6 +372,8 @@ def diagnostico_geral():
     bloco("ia", _ia)
     bloco("erros", _erros)
     bloco("operacional", _operacional)
+    bloco("robos", _robos)
+    bloco("backups", _backups)
 
     return jsonify(saida)
 

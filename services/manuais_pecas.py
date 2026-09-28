@@ -142,10 +142,16 @@ como se fosse igual:
 _FORMATO_CACHE = 3
 
 
-def obter_paginas(conn, drive_id):
+def obter_paginas(conn, drive_id, forcar=False):
     """Retorna as páginas ({imagem, palavras}) do manual. Usa o cache se já
-    existe NO FORMATO ATUAL; senão baixa do Drive, renderiza e grava."""
-    linha = fetch_one(conn, "SELECT imagens FROM manual_pecas_cache WHERE drive_id = ?", (drive_id,))
+    existe NO FORMATO ATUAL; senão baixa do Drive, renderiza e grava.
+
+    `forcar=True` (item #8 da lista de melhorias, 2026-09-28) ignora o
+    cache existente e baixa de novo -- pra quando a Panasonic atualiza o
+    PDF no Drive e o cache nunca teria como saber sozinho que o conteúdo
+    mudou (drive_id continua o mesmo, só o arquivo por trás muda)."""
+    linha = None if forcar else fetch_one(
+        conn, "SELECT imagens FROM manual_pecas_cache WHERE drive_id = ?", (drive_id,))
     if linha and linha.get("imagens"):
         dados = json.loads(linha["imagens"])
         if isinstance(dados, dict) and dados.get("formato") == _FORMATO_CACHE:

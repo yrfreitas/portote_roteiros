@@ -242,6 +242,35 @@ def gravar_precos():
     return jsonify({"mensagem": f"{len(itens)} preço(s) atualizado(s)"})
 
 
+@substituicoes_bp.route("/robos/heartbeat", methods=["POST"])
+def robo_heartbeat():
+    """"Ainda vivo" que cada robô local manda a cada ciclo (item #2 da lista
+    de melhorias, 2026-09-28) -- mesmo token dos preços Panasonic porque é o
+    MESMO robô/máquina falando com o servidor, não vale criar segredo novo
+    só pra isso. Body: {robo: 'precos_panasonic', detalhe: '3 pendentes'}.
+
+    UPDATE-e-só-se-preciso-INSERT, mesmo padrão de gravar_precos() logo
+    abaixo -- ON CONFLICT tem diferença de dialeto entre SQLite/Postgres.
+    """
+    if not _token_valido():
+        return jsonify({"erro": "Token inválido"}), 401
+    d = request.get_json(silent=True) or {}
+    robo = (d.get("robo") or "").strip()
+    if not robo:
+        return jsonify({"erro": "Informe 'robo'"}), 400
+    detalhe = (d.get("detalhe") or "").strip()[:200]
+    agora = _agora()
+    with db_conn(commit=True) as conn:
+        afetadas = execute(conn, sql(
+            "UPDATE robos_heartbeat SET visto_em = ?, detalhe = ? WHERE robo = ?"),
+            (agora, detalhe, robo))
+        if not afetadas:
+            execute(conn, sql(
+                "INSERT INTO robos_heartbeat (robo, visto_em, detalhe) VALUES (?, ?, ?)"),
+                (robo, agora, detalhe))
+    return jsonify({"mensagem": "ok"})
+
+
 @substituicoes_bp.route("/pecas-substituicao/importar", methods=["POST"])
 def importar():
     """Sobe a planilha da Panasonic e SUBSTITUI a tabela inteira por ela."""
