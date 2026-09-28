@@ -776,15 +776,38 @@ _CHAVE_SERVICO_DESFECHO = re.compile(r"^t(\d+)$")
 _CHAVE_PEDIDO_OS = re.compile(r"^o(\d+)$")
 
 
-def _criar_os_para_peca_chegada(conn, cliente_nome, tipo_aparelho, modelo, peca, observacao):
+def _criar_os_para_peca_chegada(conn, cliente_nome, tipo_aparelho, modelo, peca, observacao,
+                                 telefone=None, cep=None, numero=None, endereco_completo=None):
     """Mesma forma mínima de OS que agendar_cliente_email/agendar_cliente_planilha
     já usam pra 'peça chegou' virar cliente em Agendar Clientes — reaproveitado
     aqui pra 'Pedidos com comprovante' fazer a MESMA coisa, sem exigir passo
-    manual de digitar peça/cliente de novo (já vem tudo do pedido)."""
+    manual de digitar peça/cliente de novo (já vem tudo do pedido).
+
+    telefone/cep/numero/endereco_completo: bug real reportado em 2026-09-28
+    ("agenda o cliente pela OS e não puxa nada, temos que preencher de
+    novo") -- o cliente nascia SÓ com nome, então quando alguém ia marcar a
+    visita (POST /ordens-servico/<id>/agendar) não tinha telefone/endereço
+    nenhum pra puxar: nunca foi salvo, não é bug de "não estar puxando".
+    Esses dados já existem em `servicos` (o técnico digita telefone/CEP ao
+    criar a parada na rota) -- só não estavam sendo copiados pro cadastro de
+    cliente na hora de criar um novo. `endereco_completo` já vem GEOCODIFICADO
+    (rua+número+bairro+cidade concatenado), sem separação em campos -- não dá
+    pra decompor de volta em endereco/bairro/cidade sem adivinhar, então cai
+    em `obs` como texto corrido: melhor que sumir, e continua visível pra
+    quem for completar o cadastro depois."""
     from routes.clientes import criar_cliente
 
     existente = fetch_one(conn, sql("SELECT id FROM clientes WHERE LOWER(nome) = LOWER(?)"), (cliente_nome,))
-    cliente_id = existente["id"] if existente else criar_cliente(conn, {"nome": cliente_nome})
+    if existente:
+        cliente_id = existente["id"]
+    else:
+        cliente_id = criar_cliente(conn, {
+            "nome": cliente_nome,
+            "telefone": telefone or "",
+            "cep": cep or "",
+            "numero": numero or "",
+            "obs": f"Endereço (da rota): {endereco_completo}" if endereco_completo else "",
+        })
 
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     quem = (session.get("usuario_nome") or "Administrador").strip()[:80]
@@ -817,6 +840,7 @@ def _resolver_os_da_peca_pedida(conn, chave):
     if m:
         s = fetch_one(conn, sql("""
             SELECT s.ordem_servico_id, s.cliente, s.tipo_aparelho, s.modelo,
+                   s.telefone, s.cep, s.numero, s.endereco_completo,
                    d.peca, d.observacao
               FROM servicos s
               LEFT JOIN servico_desfecho d ON d.servico_id = s.id
@@ -830,7 +854,9 @@ def _resolver_os_da_peca_pedida(conn, chave):
             return None
         return _criar_os_para_peca_chegada(
             conn, s["cliente"], s.get("tipo_aparelho"), s.get("modelo"),
-            s.get("peca"), s.get("observacao"))
+            s.get("peca"), s.get("observacao"),
+            telefone=s.get("telefone"), cep=s.get("cep"), numero=s.get("numero"),
+            endereco_completo=s.get("endereco_completo"))
 
     m = _CHAVE_PEDIDO_OS.match(chave)
     if m:
