@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, session
 
 from database import db_conn, execute, fetch_all, fetch_one, insert_returning_id
+from services.imagem import gerar_thumb
 
 cotacoes_bp = Blueprint("cotacoes", __name__)
 
@@ -46,17 +47,55 @@ def _foto_valida(foto) -> str:
     return foto
 
 
+_COLUNAS_LISTA = """id, codigo, modelo, descricao, quantidade, status, valor_cotado,
+                     fornecedor, criado_em, criado_por, atualizado_em, servico_id,
+                     foto_thumb, (foto IS NOT NULL) AS tem_foto"""
+
+
+def _completar_thumbs_faltantes(conn, itens, limite_por_chamada=15):
+    """Mesma ideia de routes/estoque.py::_completar_thumbs_faltantes -- ver
+    lá e em services/imagem.py o raciocínio completo (site pesado no
+    celular por causa de foto grande em toda lista)."""
+    faltando = [i for i in itens if i.get("tem_foto") and not i.get("foto_thumb")][:limite_por_chamada]
+    for i in faltando:
+        linha = fetch_one(conn, "SELECT foto FROM cotacoes WHERE id = ?", (i["id"],))
+        thumb = gerar_thumb((linha or {}).get("foto")) if linha else None
+        if thumb:
+            execute(conn, "UPDATE cotacoes SET foto_thumb = ? WHERE id = ?", (thumb, i["id"]))
+            i["foto_thumb"] = thumb
+
+
+@cotacoes_bp.route("/cotacoes/<int:item_id>/foto", methods=["GET"])
+def obter_foto(item_id):
+    """Foto da etiqueta em resolução cheia, sob demanda -- a lista usa
+    foto_thumb (ver listar() abaixo)."""
+    with db_conn() as conn:
+        item = fetch_one(conn, "SELECT foto FROM cotacoes WHERE id = ?", (item_id,))
+    if not item or not item.get("foto"):
+        return jsonify({"erro": "Sem foto"}), 404
+    return jsonify({"foto": item["foto"]})
+
+
 @cotacoes_bp.route("/cotacoes", methods=["GET"])
 def listar():
-    """?status=pendente|cotado filtra; sem parâmetro, traz tudo (mais recente primeiro)."""
+    """?status=pendente|cotado filtra; sem parâmetro, traz tudo (mais recente primeiro).
+
+    SEM a coluna `foto` de propósito (achado de 2026-09-28, "site pesado no
+    celular"): ver services/imagem.py. `foto_thumb` faz o papel visual da
+    miniatura da lista; a foto cheia da etiqueta vem por GET .../foto,
+    só quando alguém de fato clica pra ampliar.
+    """
     status = (request.args.get("status") or "").strip()
     with db_conn() as conn:
         if status:
-            itens = fetch_all(conn, """
-                SELECT * FROM cotacoes WHERE status = ? ORDER BY id DESC
+            itens = fetch_all(conn, f"""
+                SELECT {_COLUNAS_LISTA} FROM cotacoes WHERE status = ? ORDER BY id DESC
             """, (status,))
         else:
-            itens = fetch_all(conn, "SELECT * FROM cotacoes ORDER BY id DESC")
+            itens = fetch_all(conn, f"SELECT {_COLUNAS_LISTA} FROM cotacoes ORDER BY id DESC")
+        _completar_thumbs_faltantes(conn, itens)
+    for i in itens:
+        i["foto"] = i.pop("foto_thumb", None)
     return jsonify({
         "itens": itens,
         "pendentes": sum(1 for i in itens if i["status"] == "pendente"),

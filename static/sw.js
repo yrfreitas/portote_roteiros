@@ -303,7 +303,12 @@
 //        instantanea) -- agora desregistra o SW antes de recarregar, pra
 //        essa carga ir direto na rede em vez de poder cair sob o codigo
 //        velho de novo (tecnico.js::recarregarSemPiscar, app.js::_recarregarSemPiscar).
-const CACHE_VERSAO = 'portotec-roteiros-v318';
+// v319 = achado real investigando "site pesado e travando no celular":
+//        GET /ordens-servico, /estoque e /cotacoes mandavam foto/assinatura
+//        INTEIRAS em base64 de TODO item da lista, mesmo a lista nunca
+//        desenhando essas fotos (só o detalhe de UM item usa). Só a lista
+//        de OS já eram ~5MB de foto que ninguém via. Ver services/imagem.py.
+const CACHE_VERSAO = 'portotec-roteiros-v319';
 
 const ARQUIVOS_CASCA = [
   '/',

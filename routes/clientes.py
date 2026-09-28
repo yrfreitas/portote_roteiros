@@ -7,6 +7,7 @@ outros usos futuros (histórico, marketing, financeiro) que texto solto nunca
 serviria.
 """
 import re
+import unicodedata
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request, session
@@ -136,6 +137,69 @@ def duplicados():
     return jsonify({"grupos": resultado})
 
 
+def _normalizar_nome(nome: str) -> str:
+    """Sem acento, minúsculo, espaço colapsado — pra "Outlet Líquida eletro"
+    e "Outlet liquida eletro" caírem na mesma chave de comparação."""
+    sem_acento = unicodedata.normalize("NFKD", nome or "").encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", sem_acento.lower()).strip()
+
+
+def _distancia_levenshtein(a: str, b: str) -> int:
+    """Edição mínima entre duas strings curtas (nome de cliente, poucas
+    dezenas de caracteres) -- dataset pequeno (centenas de clientes), não
+    vale trazer uma lib só pra isso."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    anterior = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        atual = [i]
+        for j, cb in enumerate(b, 1):
+            custo = 0 if ca == cb else 1
+            atual.append(min(anterior[j] + 1, atual[j - 1] + 1, anterior[j - 1] + custo))
+        anterior = atual
+    return anterior[-1]
+
+
+@clientes_bp.route("/clientes/parecidos", methods=["GET"])
+def parecidos():
+    """Detector de duplicado PROATIVO (pedido de 2026-09-28, item #11) --
+    `/clientes/duplicados` já existe e agrupa por TELEFONE igual, mas só
+    ajuda depois que o duplicado já foi criado. Este endpoint roda ANTES,
+    no momento de digitar um nome novo (abas Peças, Cliente Rápido), pra
+    avisar "já existe parecido" em vez de deixar nascer um segundo cadastro
+    da mesma pessoa por causa de acento/maiúscula diferente -- foi
+    exatamente o caso real achado em 2026-09-28 (Outlet Liquida Eletro /
+    Outlet Líquida eletro, clientes 140 e 141).
+
+    Distância de edição pequena (<=2) sobre o nome NORMALIZADO (sem acento,
+    minúsculo) pega isso sem incomodar com nome genuinamente diferente --
+    dois nomes de pessoas reais raramente ficam a 2 letras de distância por
+    acaso quando já têm 10+ caracteres.
+    """
+    nome = (request.args.get("nome") or "").strip()
+    if len(nome) < 4:
+        return jsonify({"parecidos": []})
+
+    alvo = _normalizar_nome(nome)
+    with db_conn() as conn:
+        clientes = fetch_all(conn, "SELECT id, nome, telefone, cidade FROM clientes")
+
+    achados = []
+    for c in clientes:
+        candidato = _normalizar_nome(c["nome"])
+        if candidato == alvo:
+            continue  # é o mesmo, não "parecido" -- os fluxos já reaproveitam por match exato
+        limite = 2 if len(alvo) <= 20 else 3
+        if _distancia_levenshtein(alvo, candidato) <= limite:
+            achados.append({"id": c["id"], "nome": c["nome"], "telefone": c["telefone"], "cidade": c["cidade"]})
+
+    return jsonify({"parecidos": achados[:5]})
+
+
 @clientes_bp.route("/clientes/mesclar", methods=["POST"])
 def mesclar():
     """Junta dois cadastros do mesmo cliente num só. Body: {manter_id,
@@ -205,7 +269,53 @@ def listar():
         ]
 
     pagina = _aplicar_mascara_cpf(clientes[:limite])
+    _marcar_pendencias(pagina)
     return jsonify({"clientes": pagina, "total": len(clientes)})
+
+
+# Status que significam "tem algo parado esperando ação" -- pedido de
+# 2026-09-28 (item #23): hoje só dava pra saber isso abrindo a OS de cada
+# cliente um por um. Marcar direto na lista poupa esse abre-fecha.
+_STATUS_PENDENCIA = ("aguardando_peca", "aguardando_agendamento", "aguardando_aprovacao")
+
+
+def _marcar_pendencias(clientes: list) -> None:
+    """Anota `pendencia_dias`/`pendencia_status` em cada dict de cliente,
+    IN-PLACE, pra quem chama poder mostrar um selo tipo "aguardando peça há
+    9 dias" ao lado do nome. Uma query só pra todo mundo da página (não uma
+    por cliente) -- página típica tem só dezenas de linhas."""
+    ids = [c["id"] for c in clientes if c.get("id")]
+    if not ids:
+        return
+    marcador = ",".join(["?"] * len(ids))
+    with db_conn() as conn:
+        linhas = fetch_all(conn, f"""
+            SELECT cliente_id, status, MIN(criado_em) AS desde
+              FROM ordens_servico
+             WHERE cliente_id IN ({marcador}) AND status IN ({",".join(["?"] * len(_STATUS_PENDENCIA))})
+             GROUP BY cliente_id, status
+        """, tuple(ids) + _STATUS_PENDENCIA)
+
+    # Se o cliente tem mais de um tipo de pendência, mostra a mais ANTIGA --
+    # é a que mais precisa de atenção.
+    por_cliente = {}
+    for l in linhas:
+        atual = por_cliente.get(l["cliente_id"])
+        if not atual or (l["desde"] or "") < (atual["desde"] or ""):
+            por_cliente[l["cliente_id"]] = l
+
+    agora = datetime.now(timezone.utc)
+    for c in clientes:
+        info = por_cliente.get(c["id"])
+        if not info or not info.get("desde"):
+            continue
+        try:
+            desde = datetime.strptime(info["desde"][:19], "%Y-%m-%d %H:%M:%S")
+            dias = (agora.replace(tzinfo=None) - desde).days
+        except (ValueError, TypeError):
+            dias = None
+        c["pendencia_status"] = info["status"]
+        c["pendencia_dias"] = dias
 
 
 @clientes_bp.route("/clientes/<int:cliente_id>", methods=["GET"])

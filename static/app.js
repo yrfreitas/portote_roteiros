@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v318';
+const VERSAO_PAINEL = 'v319';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4088,6 +4088,11 @@ function _htmlPedidosEmitidosEmail(pedidos) {
               <button type="button" class="peca-cliente-add" title="Cadastrar cliente novo (nome + telefone)"
                       onclick="abrirClienteRapidoEmail('${p.chave}')">+</button>
             </div>
+            <!-- Telefone opcional -- mesmo motivo do campo irmão na aba
+                 planilha (ver comentário lá): sem isso, cliente NOVO digitado
+                 direto aqui nascia sem telefone/endereço nenhum. -->
+            <input class="form-input peca-input" id="peca-email-cliente-tel-${p.chave}"
+                   placeholder="Telefone do cliente (opcional)" style="margin-top:6px;">
           </div>
 
           <div class="peca-acoes">
@@ -4174,6 +4179,7 @@ function botaoAgendarPecaEmail(p) {
 async function enviarParaAgendarEmail(chave) {
   const linhaEl = document.getElementById(`peca-email-${chave}`);
   const cliente = document.getElementById(`peca-email-cliente-${chave}`)?.value.trim();
+  const telefone = document.getElementById(`peca-email-cliente-tel-${chave}`)?.value.trim() || '';
   const peca = document.getElementById(`peca-email-desc-${chave}`)?.value.trim() || '';
   if (!cliente) {
     toast('Preencha o cliente antes de mandar pra Agendar Clientes.', 'error');
@@ -4185,7 +4191,7 @@ async function enviarParaAgendarEmail(chave) {
   try {
     const r = await api('/pedidos/email/agendar-cliente', {
       method: 'POST',
-      body: JSON.stringify({ chave, cliente, peca }),
+      body: JSON.stringify({ chave, cliente, telefone, peca }),
     });
     toast(r.mensagem, 'success');
     if (btn) {
@@ -4302,7 +4308,7 @@ async function carregarPecas() {
           <input class="form-input peca-input" list="lista-clientes"
                  id="peca-cliente-${p.linha}" value="${esc(p.cliente_final)}"
                  placeholder="Nome do cliente"
-                 onchange="salvarPecaInline(${p.linha})">
+                 onchange="salvarPecaInline(${p.linha}); _pecaCheckarDuplicado(this, ${p.linha})">
           <!-- A lista sugere quem já apareceu num roteiro de técnico, mas o
                dono da peça nem sempre é essa pessoa (pode ser cliente de
                balcão, de outra marca, sem atendimento nenhum ainda) — daqui
@@ -4310,6 +4316,16 @@ async function carregarPecas() {
           <button type="button" class="peca-cliente-add" title="Cadastrar um cliente novo"
                   onclick="abrirClienteRapido(${p.linha})">+</button>
         </div>
+        <!-- Telefone opcional (2026-09-28): sem isso, se o nome digitado for
+             de um cliente NOVO (não achar match em "lista-clientes"), o
+             cadastro nascia só com nome — na hora de agendar a visita não
+             tinha telefone/endereço nenhum pra puxar (mesmo bug corrigido em
+             routes/pedidos.py::_criar_os_para_peca_chegada). Aqui não dá pra
+             pedir endereço completo sem inchar a linha; telefone já resolve
+             a maior parte ("liga e confirma o endereço na hora de marcar"). -->
+        <input class="form-input peca-input" id="peca-cliente-tel-${p.linha}"
+               placeholder="Telefone do cliente (opcional)" style="margin-top:6px;">
+        <div class="peca-duplicado-aviso" id="peca-duplicado-${p.linha}"></div>
       </div>
 
       <!-- Estado da gravação. Fica NA LINHA, e não num toast, porque o toast
@@ -4451,9 +4467,34 @@ function botaoAgendarPeca(p) {
     </button>`;
 }
 
+// Detector de duplicado PROATIVO (item #11): avisa ANTES de criar um
+// cliente novo, em vez de só depois (ver /clientes/duplicados, que só
+// agrupa por telefone igual e roda sob demanda em Clientes). Debounce de
+// 400ms -- não dispara uma busca a cada tecla.
+let _pecaDupTimer = null;
+async function _pecaCheckarDuplicado(inputEl, linha) {
+  const alvo = document.getElementById(`peca-duplicado-${linha}`);
+  if (!alvo) return;
+  clearTimeout(_pecaDupTimer);
+  const nome = (inputEl.value || '').trim();
+  if (nome.length < 4) { alvo.innerHTML = ''; return; }
+  _pecaDupTimer = setTimeout(async () => {
+    let r;
+    try { r = await api(`/clientes/parecidos?nome=${encodeURIComponent(nome)}`); }
+    catch { return; }
+    const parecidos = r.parecidos || [];
+    alvo.innerHTML = parecidos.length ? `
+      <p class="ajuda-texto" style="margin:4px 0 0;color:var(--aviso-text,#a66a00);">
+        ⚠ Já existe cadastro parecido: ${parecidos.map(p => `<b>${esc(p.nome)}</b>`).join(', ')}
+        — confira se não é a mesma pessoa antes de continuar.
+      </p>` : '';
+  }, 400);
+}
+
 async function enviarParaAgendar(linha) {
   const linhaEl = document.getElementById(`peca-${linha}`);
   const cliente = document.getElementById(`peca-cliente-${linha}`)?.value.trim();
+  const telefone = document.getElementById(`peca-cliente-tel-${linha}`)?.value.trim() || '';
   const peca = document.getElementById(`peca-desc-${linha}`)?.value.trim() || '';
   if (!cliente) {
     toast('Preencha o cliente antes de mandar pra Agendar Clientes.', 'error');
@@ -4465,7 +4506,7 @@ async function enviarParaAgendar(linha) {
   try {
     const r = await api(`/pedidos/${linha}/agendar-cliente`, {
       method: 'POST',
-      body: JSON.stringify({ chave: linhaEl?.dataset.chave, cliente, peca }),
+      body: JSON.stringify({ chave: linhaEl?.dataset.chave, cliente, telefone, peca }),
     });
     toast(r.mensagem, 'success');
     // Uma vez enviada, a compra sai da lista padrão (ver listar_pedidos em
@@ -4694,6 +4735,19 @@ async function carregarFotosDoRoteiro(servicoIds) {
 // jeito de dar zoom pra ler etiqueta/número de série de foto tirada longe
 // ou torta. Fechar é só clicando no FUNDO ou no X/Esc — clicar na imagem é
 // pro arrastar, não pode fechar por engano no meio do zoom.
+// Abre a lupa já com a miniatura (sensação instantânea) e troca pela foto
+// em resolução cheia assim que ela chegar -- pedido de 2026-09-28 (site
+// pesado no celular): a lista agora só carrega miniatura, a foto grande de
+// verdade só é buscada quando alguém de fato clica pra ampliar.
+async function ampliarFotoCompleta(urlEndpoint, srcMiniatura) {
+  ampliarFoto(srcMiniatura);
+  try {
+    const r = await api(urlEndpoint);
+    const img = document.querySelector('.lupa-fundo .lupa-img');
+    if (img && r.foto) img.src = r.foto;
+  } catch { /* fica na miniatura mesmo -- melhor que travar a lupa */ }
+}
+
 function ampliarFoto(src) {
   const lupa = document.createElement('div');
   lupa.className = 'lupa-fundo';
@@ -8513,7 +8567,7 @@ async function carregarClientesTodos() {
     <div class="cliente-linha" onclick="abrirClienteDetalhe(${c.id})">
       <div class="cliente-linha-avatar">${esc(iniciais)}</div>
       <div class="cliente-linha-principal">
-        <div class="cliente-linha-nome">${destacar(c.nome, _osBuscaTexto)}</div>
+        <div class="cliente-linha-nome">${destacar(c.nome, _osBuscaTexto)}${_pendenciaClienteHtml(c)}</div>
         <div class="cliente-linha-doc">${destacar(c.cpf_cnpj, _osBuscaTexto) || 'sem CPF/CNPJ cadastrado'}</div>
       </div>
       <div class="cliente-linha-lado">
@@ -8526,6 +8580,22 @@ async function carregarClientesTodos() {
   mount.innerHTML = `
     <p class="ajuda-texto" style="margin:0 0 10px;">${r.total} cliente${r.total !== 1 ? 's' : ''} cadastrado${r.total !== 1 ? 's' : ''}, em ordem alfabética. Clique num cliente pra ver o cadastro completo.</p>
     <div class="cliente-lista">${linhas}</div>`;
+}
+
+// Selo "algo parado esperando ação" (pedido de 2026-09-28, item #23) --
+// backend já manda pendencia_status/pendencia_dias calculado (ver
+// routes/clientes.py::_marcar_pendencias); aqui só traduz pra rótulo.
+const _PENDENCIA_ROTULO = {
+  aguardando_peca: 'aguardando peça',
+  aguardando_agendamento: 'aguardando agendamento',
+  aguardando_aprovacao: 'orçamento parado',
+};
+function _pendenciaClienteHtml(c) {
+  if (!c.pendencia_status) return '';
+  const rotulo = _PENDENCIA_ROTULO[c.pendencia_status] || c.pendencia_status;
+  const dias = typeof c.pendencia_dias === 'number'
+    ? ` há ${c.pendencia_dias}d` : '';
+  return ` <span class="conc-tag aviso" style="font-weight:600;">${esc(rotulo)}${dias}</span>`;
 }
 
 
@@ -11227,7 +11297,7 @@ function renderCotacoes(mount, itens, todas) {
     // de peças) já usa ampliarFoto() em vez de <a target="_blank">.
     const foto = item.foto
       ? `<img class="cotacao-foto-mini" src="${item.foto}" alt="Foto da etiqueta enviada pelo técnico"
-             title="Ver foto da etiqueta" onclick="ampliarFoto(this.src)">`
+             title="Ver foto da etiqueta" onclick="ampliarFotoCompleta('/cotacoes/${item.id}/foto', this.src)">`
       : '';
 
     return `
@@ -11645,7 +11715,7 @@ function _cardEstoque(i) {
   const venda = Number(i.preco_venda) > 0 ? ` · venda ${brl(i.preco_venda)}` : '';
   return `
     <div class="estoque-item ${alerta ? 'estoque-item--alerta' : ''}">
-      ${i.foto ? `<img class="estoque-item-foto" src="${i.foto}" alt="Foto do produto" onclick="ampliarFoto(this.src)">` : ''}
+      ${i.foto ? `<img class="estoque-item-foto" src="${i.foto}" alt="Foto do produto" onclick="ampliarFotoCompleta('/estoque/${i.id}/foto', this.src)">` : ''}
       <div class="estoque-item-info">
         <div class="estoque-item-cod">${esc(i.descricao || 'Sem descrição')}${ident ? `<span class="estoque-item-ident">${esc(ident)}</span>` : ''}${alerta ? '<span class="estoque-tag-alerta">abaixo do mínimo</span>' : ''}</div>
         <div class="estoque-item-desc">${esc(i.codigo)}</div>

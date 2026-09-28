@@ -735,6 +735,12 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_fotos_extra_dono    ON fotos_extra(dono_tipo, dono_id)",
     "CREATE INDEX IF NOT EXISTS idx_reservas_item        ON estoque_reservas(item_id, liberado_em)",
     "CREATE INDEX IF NOT EXISTS idx_reservas_os          ON estoque_reservas(ordem_servico_id)",
+    # #5 -- faltavam pra JOIN usado na correção de telefone/CEP (2026-09-28)
+    # e no detector de cliente parecido (#11) e comparação de fornecedor (#9).
+    "CREATE INDEX IF NOT EXISTS idx_clientes_telefone      ON clientes(telefone)",
+    "CREATE INDEX IF NOT EXISTS idx_pedido_peca_os_os      ON pedido_peca_os(ordem_servico_id)",
+    "CREATE INDEX IF NOT EXISTS idx_pedido_peca_os_cliente ON pedido_peca_os(cliente_id)",
+    "CREATE INDEX IF NOT EXISTS idx_cotacoes_codigo        ON cotacoes(codigo)",
 ]
 
 _MIGRACOES_PG = [
@@ -1264,6 +1270,74 @@ _MIGRACOES_PG = [
     # caía sempre em "Nossas OS" — ver _PANASONIC_POR_NUMERO_PROPRIO em
     # routes/ordens_servico.py.
     "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS numero_os TEXT",
+
+    # Lote de melhorias pedido em 2026-09-28 (lista de 30 ideias, itens
+    # escolhidos pelo Kalebe). Cada bloco comentado abaixo é um item.
+
+    # #9 (comparador de preço entre fornecedores) NÃO entrou aqui -- já
+    # existe e funciona (GET /cotacoes/comparar, routes/cotacoes.py), feito
+    # em 2026-09-02/03 por cima do texto livre `cotacoes.fornecedor`. Ver
+    # auditoria antes de reconstruir: um cadastro de fornecedor à parte
+    # duplicaria uma pergunta que o texto livre já responde direito.
+
+    # #16 Log de auditoria -- só o admin-mestre (login só-senha, session['admin'])
+    # enxerga, de propósito: não é permissão que dá pra conceder a mais
+    # ninguém pelo editor de Acessos (ver permissoes.py), é visibilidade de
+    # dono do sistema, travada direto no código da rota.
+    """CREATE TABLE IF NOT EXISTS auditoria (
+        id           SERIAL PRIMARY KEY,
+        quem         TEXT,
+        acao         TEXT NOT NULL,
+        entidade     TEXT,
+        entidade_id  TEXT,
+        detalhe      TEXT,
+        criado_em    TEXT
+    )""",
+
+    # #2 Heartbeat dos robôs locais (preço Panasonic, sync financeiro...):
+    # rodam no PC do Kalebe via Task Scheduler -- se o PC desligar ou o
+    # robô travar, a fila para sem ninguém perceber até alguém reclamar
+    # "não retorna preço". Cada ciclo grava "ainda vivo" aqui; Diagnóstico
+    # mostra há quanto tempo cada um não aparece.
+    """CREATE TABLE IF NOT EXISTS robos_heartbeat (
+        robo      TEXT PRIMARY KEY,
+        visto_em  TEXT,
+        detalhe   TEXT
+    )""",
+
+    # #4 Backup automático diário: antes só existia GET /api/backup sob
+    # demanda -- sem agendamento, não existe rede de segurança se ninguém
+    # lembrar de clicar. Guardado no próprio Postgres (mesmo padrão de foto
+    # em base64 já usado no projeto inteiro), não em storage externo, que
+    # não está configurado. Retenção aplicada na leitura/limpeza, não aqui.
+    """CREATE TABLE IF NOT EXISTS backups_automaticos (
+        id         SERIAL PRIMARY KEY,
+        conteudo   TEXT NOT NULL,
+        tamanho    INTEGER,
+        criado_em  TEXT
+    )""",
+
+    # #17 2FA opcional: por padrão NINGUÉM tem -- precisa ativar de
+    # propósito em Acessos. totp_ativo=false não muda o login de ninguém.
+    # Cobre login por usuário (usuarios.papel='admin'); o admin-mestre
+    # (login só-senha, sem linha em usuarios) tem a MESMA ideia numa tabela
+    # à parte logo abaixo, porque não existe usuário pra pendurar a coluna.
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS totp_secret TEXT",
+    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS totp_ativo BOOLEAN DEFAULT FALSE",
+    """CREATE TABLE IF NOT EXISTS admin_mestre_2fa (
+        id           INTEGER PRIMARY KEY DEFAULT 1,
+        totp_secret  TEXT,
+        totp_ativo   BOOLEAN DEFAULT FALSE,
+        CONSTRAINT unica_linha CHECK (id = 1)
+    )""",
+
+    # Site "pesado e travando no celular" (2026-09-28): GET /estoque e
+    # GET /cotacoes mandavam a foto GRANDE de cada item só pra desenhar uma
+    # miniatura de lista -- ver services/imagem.py pro raciocínio completo.
+    # foto_thumb é preenchida sob demanda (calculada uma vez, na primeira
+    # leitura depois deste deploy), não precisa de backfill em massa aqui.
+    "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS foto_thumb TEXT",
+    "ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS foto_thumb TEXT",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1550,6 +1624,38 @@ _MIGRACOES_SQLITE = [
     "ALTER TABLE ordens_servico ADD COLUMN preferencia_periodo TEXT",
     "ALTER TABLE servicos ADD COLUMN ordem_travada INTEGER DEFAULT 0",
     "ALTER TABLE ordens_servico ADD COLUMN numero_os TEXT",
+
+    # Espelho SQLite do lote de 2026-09-28 (ver comentários na lista PG acima).
+    """CREATE TABLE IF NOT EXISTS auditoria (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        quem         TEXT,
+        acao         TEXT NOT NULL,
+        entidade     TEXT,
+        entidade_id  TEXT,
+        detalhe      TEXT,
+        criado_em    TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS robos_heartbeat (
+        robo      TEXT PRIMARY KEY,
+        visto_em  TEXT,
+        detalhe   TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS backups_automaticos (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        conteudo   TEXT NOT NULL,
+        tamanho    INTEGER,
+        criado_em  TEXT
+    )""",
+    "ALTER TABLE usuarios ADD COLUMN totp_secret TEXT",
+    "ALTER TABLE usuarios ADD COLUMN totp_ativo INTEGER DEFAULT 0",
+    """CREATE TABLE IF NOT EXISTS admin_mestre_2fa (
+        id           INTEGER PRIMARY KEY DEFAULT 1,
+        totp_secret  TEXT,
+        totp_ativo   INTEGER DEFAULT 0,
+        CHECK (id = 1)
+    )""",
+    "ALTER TABLE estoque_itens ADD COLUMN foto_thumb TEXT",
+    "ALTER TABLE cotacoes ADD COLUMN foto_thumb TEXT",
 ]
 
 

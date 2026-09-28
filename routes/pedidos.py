@@ -236,6 +236,7 @@ def agendar_cliente_email():
     data = request.get_json(silent=True) or {}
     chave = (data.get("chave") or "").strip()
     cliente_nome = (data.get("cliente") or "").strip()
+    telefone = (data.get("telefone") or "").strip()
     peca = (data.get("peca") or "").strip()
     if not chave or not cliente_nome:
         return jsonify({"erro": "Falta a chave do pedido ou o nome do cliente"}), 400
@@ -254,8 +255,12 @@ def agendar_cliente_email():
         if existente:
             cliente_id = existente["id"]
         else:
+            # Telefone opcional (2026-09-28): sem isso o cliente nascia só
+            # com nome e a visita, quando finalmente agendada, não tinha
+            # nada pra puxar (mesmo bug corrigido em
+            # _criar_os_para_peca_chegada, ver comentário lá).
             try:
-                cliente_id = criar_cliente(conn, {"nome": cliente_nome})
+                cliente_id = criar_cliente(conn, {"nome": cliente_nome, "telefone": telefone})
             except ValueError as exc:
                 return jsonify({"erro": str(exc)}), 400
 
@@ -973,6 +978,7 @@ def agendar_cliente(linha):
     data = request.get_json(silent=True) or {}
     chave = (data.get("chave") or "").strip()
     cliente_nome = (data.get("cliente") or "").strip()
+    telefone = (data.get("telefone") or "").strip()
     peca = (data.get("peca") or "").strip()
     if not chave or not cliente_nome:
         return jsonify({"erro": "Falta a chave da compra ou o nome do cliente"}), 400
@@ -993,7 +999,7 @@ def agendar_cliente(linha):
             cliente_id = existente["id"]
         else:
             try:
-                cliente_id = criar_cliente(conn, {"nome": cliente_nome})
+                cliente_id = criar_cliente(conn, {"nome": cliente_nome, "telefone": telefone})
             except ValueError as exc:
                 return jsonify({"erro": str(exc)}), 400
 

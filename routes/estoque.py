@@ -28,6 +28,7 @@ from flask import Blueprint, jsonify, request, session
 from database import IS_PG, db_conn, execute, fetch_all, fetch_one, insert_returning_id
 from services.fotos_extra import (adicionar_foto_extra, listar_fotos_extra,
                                   remover_foto_extra)
+from services.imagem import gerar_thumb
 
 log = logging.getLogger("portotec.estoque")
 
@@ -222,6 +223,39 @@ def dar_saida(conn, codigo, quantidade, origem="manual", referencia=None,
 
 
 # ─── API ────────────────────────────────────────────────────────────────
+def _completar_thumbs_faltantes(conn, itens, limite_por_chamada=15):
+    """Gera foto_thumb pros itens que TÊM foto grande mas ainda não têm
+    miniatura calculada (item cadastrado antes deste deploy, ou fotografado
+    de novo). Limitado por chamada -- gerar miniatura é CPU (decodificar +
+    redimensionar + recodificar JPEG), então uma tela com 50 itens sem thumb
+    NUNCA calcula os 50 de uma vez só; o resto pega na próxima abertura da
+    aba. Depois do primeiro dia de uso normal, quase tudo já tem thumb
+    salva e este laço não faz nada na prática.
+    """
+    faltando = [i for i in itens if i.get("tem_foto") and not i.get("foto_thumb")][:limite_por_chamada]
+    if not faltando:
+        return
+    for i in faltando:
+        foto = fetch_one(conn, "SELECT foto FROM estoque_itens WHERE id = ?", (i["id"],))
+        thumb = gerar_thumb((foto or {}).get("foto")) if foto else None
+        if thumb:
+            execute(conn, "UPDATE estoque_itens SET foto_thumb = ? WHERE id = ?", (thumb, i["id"]))
+            i["foto_thumb"] = thumb
+
+
+@estoque_bp.route("/estoque/<int:item_id>/foto", methods=["GET"])
+def obter_foto(item_id):
+    """Foto em resolução cheia, sob demanda -- só quando alguém clica pra
+    ampliar (ver ampliarFotoEstoque em app.js). A lista usa foto_thumb."""
+    if not session.get("admin"):
+        return jsonify({"erro": "Não autenticado"}), 401
+    with db_conn() as conn:
+        item = fetch_one(conn, "SELECT foto FROM estoque_itens WHERE id = ?", (item_id,))
+    if not item or not item.get("foto"):
+        return jsonify({"erro": "Sem foto"}), 404
+    return jsonify({"foto": item["foto"]})
+
+
 @estoque_bp.route("/estoque", methods=["GET"])
 def listar():
     """Todos os itens, com o alerta de mínimo já resolvido. `busca` filtra por
@@ -238,14 +272,30 @@ def listar():
     f_grupo = (request.args.get("grupo_id") or "").strip()
 
     with db_conn() as conn:
+        # SEM e.foto de propósito (achado de 2026-09-28, "site pesado no
+        # celular"): a foto grande vinha em TODO item, todo load da aba,
+        # só pra desenhar uma miniatura de lista. e.foto_thumb (pequena,
+        # gerada uma vez -- ver _completar_thumbs_faltantes abaixo) faz o
+        # mesmo papel visual a uma fração do tamanho; a foto grande de
+        # verdade só é buscada sob demanda em GET /estoque/<id>/foto.
         itens = fetch_all(conn, """
-            SELECT e.*, s.nome AS setor_nome, s.cor AS setor_cor,
+            SELECT e.id, e.codigo, e.descricao, e.saldo, e.custo_medio, e.minimo,
+                   e.setor_id, e.criado_em, e.atualizado_em, e.marca, e.aparelho,
+                   e.modelo, e.preco_venda, e.grupo_id, e.foto_thumb,
+                   (e.foto IS NOT NULL) AS tem_foto,
+                   s.nome AS setor_nome, s.cor AS setor_cor,
                    g.nome AS grupo_nome, g.cor AS grupo_cor
               FROM estoque_itens e
               LEFT JOIN setores s ON s.id = e.setor_id
               LEFT JOIN estoque_grupos g ON g.id = e.grupo_id
              ORDER BY e.aparelho, e.marca, e.descricao, e.codigo
         """)
+        _completar_thumbs_faltantes(conn, itens)
+        # `i.foto` é o nome que o front já lê pra desenhar a miniatura da
+        # lista (estoque-item-foto/venda-produto-foto) -- manter o mesmo
+        # nome de campo evita mexer em toda tela só por causa desta troca.
+        for i in itens:
+            i["foto"] = i.pop("foto_thumb", None)
 
     # Catálogos de categoria vêm do universo COMPLETO (antes de filtrar), senão
     # escolher "Geladeira" faria as outras opções sumirem do próprio filtro.

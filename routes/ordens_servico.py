@@ -1310,6 +1310,19 @@ def listar():
              ORDER BY os.id DESC
         """, tuple(params))
 
+        # Achado real em 2026-09-28 ("site pesado e travando no celular"):
+        # esta lista mandava `foto` e `assinatura_cliente` de TODA OS
+        # inteiros em base64 -- 31 OS com foto somavam ~5MB sozinhas, numa
+        # tela que nem desenha essas duas colunas (o card da lista não usa
+        # nenhuma das duas; só o detalhe de UMA OS aberta usa, e esse vem de
+        # GET /ordens-servico/<id>, uma chamada à parte). Tirado aqui em vez
+        # de reescrever o SELECT (que já tem `os.*` + 2 subqueries e cresce
+        # coluna nova a cada migração) -- jeito mais seguro de não esquecer
+        # nenhuma coluna que a lista realmente precisa.
+        for o in ordens:
+            o.pop("foto", None)
+            o.pop("assinatura_cliente", None)
+
         # Contagem por status respeita a origem escolhida (senão os números
         # dos cartões não bateriam com a lista de baixo), mas não os outros
         # filtros (status/dias/busca) — mesmo comportamento de sempre.
