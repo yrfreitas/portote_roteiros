@@ -316,7 +316,9 @@
 //        de catalogo de pecas direto do painel, forcar releitura de
 //        manual, e "modo sombra" (painel de foco da Torre de Controle
 //        virou ao vivo). #14/#24/#26/#9 ja existiam de sessoes anteriores.
-const CACHE_VERSAO = 'portotec-roteiros-v320';
+// v321 = busca por codigo ou nome em "Pedidos com comprovante" (aba Pecas)
+//        -- pedido de 2026-09-29, "nao ter que ficar olhando um por um".
+const CACHE_VERSAO = 'portotec-roteiros-v321';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v320';
+const VERSAO_PAINEL = 'v321';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -4002,6 +4002,9 @@ function _botaoAgendarPedidoComprovante(p) {
     </button>`;
 }
 
+let _ppPedidosAtuais = [];
+let _ppBuscaTexto = '';
+
 async function carregarPedidosComComprovante() {
   const alvo = document.getElementById('pecas-pedidos-lista');
   if (!alvo) return;
@@ -4016,15 +4019,60 @@ async function carregarPedidosComComprovante() {
     return;
   }
 
-  const pedidos = r.pedidos || [];
-  document.getElementById('ptab-pedidos-cont').textContent = pedidos.length || '';
+  _ppPedidosAtuais = r.pedidos || [];
+  document.getElementById('ptab-pedidos-cont').textContent = _ppPedidosAtuais.length || '';
+  _ppRenderLista();
+}
+
+// Busca por código ou nome da peça (pedido de 2026-09-29: "não ter que
+// ficar olhando um por um") -- filtra em cima do que já foi carregado, sem
+// bater na API de novo a cada tecla. Enquanto tem termo digitado, ignora o
+// agrupamento "chegados recolhidos" (ver blocoChegados abaixo) e mostra
+// tudo que bate, chegado ou não -- esconder um resultado da busca dentro
+// de uma seta fechada seria pior que juntar os dois grupos por um instante.
+function pesquisarPedidosComComprovante(valor) {
+  _ppBuscaTexto = (valor || '').trim().toLowerCase();
+  _ppRenderLista();
+}
+
+function _ppChaveBusca(p) {
+  // Não existe coluna "código" separada aqui -- `peca` é texto livre que
+  // normalmente JÁ contém o código (ex: "NR-BB64PV1BA") ou o nome, então
+  // buscar nele cobre os dois casos do pedido ("por código ou nome").
+  return [p.peca, p.cliente, p.tipo_aparelho, p.modelo, p.observacao]
+    .filter(Boolean).join(' ').toLowerCase();
+}
+
+function _ppRenderLista() {
+  const alvo = document.getElementById('pecas-pedidos-lista');
+  if (!alvo) return;
+  const pedidos = _ppPedidosAtuais;
 
   const botaoNovo = `<button type="button" class="btn btn-primary btn-sm" style="margin-bottom:10px;"
       onclick="abrirNovoPedidoManual()">+ Novo pedido</button>`;
+  const barraBusca = `
+    <input class="form-input" id="pecas-pedidos-busca" autocomplete="off"
+           placeholder="Buscar por código ou nome da peça..." value="${esc(_ppBuscaTexto)}"
+           style="margin-bottom:10px;" oninput="pesquisarPedidosComComprovante(this.value)">`;
 
   if (!pedidos.length) {
     alvo.innerHTML = botaoNovo + `<div class="historico-vazio">${icone('check', 'icone-24')}
       <p>Nenhuma peça pedida com comprovante ainda.</p></div>`;
+    return;
+  }
+
+  if (_ppBuscaTexto) {
+    const achados = pedidos.filter(p => _ppChaveBusca(p).includes(_ppBuscaTexto));
+    alvo.innerHTML = barraBusca + (achados.length
+      ? achados.map(_ppCartaoHtml).join('')
+      : `<p class="ajuda-texto">Nenhuma peça bate com "${esc(_ppBuscaTexto)}".</p>`);
+    // Foco e cursor no fim -- sem isso, todo innerHTML novo tira o foco do
+    // campo e a próxima tecla digitada perde a letra (input perde o cursor).
+    const campo = document.getElementById('pecas-pedidos-busca');
+    if (campo && document.activeElement !== campo) {
+      campo.focus();
+      campo.setSelectionRange(campo.value.length, campo.value.length);
+    }
     return;
   }
 
@@ -4042,7 +4090,7 @@ async function carregarPedidosComComprovante() {
     </div>
     ${_ppOcultarChegados ? '' : chegados.map(_ppCartaoHtml).join('')}` : '';
 
-  alvo.innerHTML = botaoNovo + naoChegados.map(_ppCartaoHtml).join('') + blocoChegados;
+  alvo.innerHTML = botaoNovo + barraBusca + naoChegados.map(_ppCartaoHtml).join('') + blocoChegados;
 }
 
 function _ppCartaoHtml(p) {
@@ -4089,7 +4137,7 @@ function _ppCartaoHtml(p) {
 let _ppOcultarChegados = true;
 function ppToggleOcultarChegados() {
   _ppOcultarChegados = !_ppOcultarChegados;
-  carregarPedidosComComprovante();
+  _ppRenderLista();   // só reorganiza o que já foi carregado, sem bater na API de novo
 }
 
 // "Chegou?" pra Pedidos com comprovante (pedido de 2026-09-03) — mesma
