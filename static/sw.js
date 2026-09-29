@@ -325,7 +325,10 @@
 //        device"). Removido por completo (codigo, tabela, rota, UI) --
 //        autorizado pelo Kalebe. So sobra o backup manual sob demanda
 //        (botao em Diagnostico), que nunca ficou guardado no banco.
-const CACHE_VERSAO = 'portotec-roteiros-v322';
+// v323 = detalhe de OS em "Produtos da loja" nao mostra mais o status
+//        geral de OS (aguardando agendamento etc.) junto com o "Status na
+//        loja" -- so o da loja aparece, como pedido em 2026-09-29.
+const CACHE_VERSAO = 'portotec-roteiros-v323';
 
 const ARQUIVOS_CASCA = [
   '/',

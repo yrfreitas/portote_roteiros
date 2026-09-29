@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v322';
+const VERSAO_PAINEL = 'v323';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -10423,6 +10423,13 @@ async function abrirOSDetalhe(id) {
                 onclick="osTrocarModelo(${o.id}, 'orcamento')">Orçamento</button>
       </div>
     </div>
+    ${!o.balcao_em ? `
+    <!-- Escondido pra quem já está em "Produtos da loja" (pedido de
+         2026-09-29: "está com status antigo, deixe só os da aba de
+         produtos da loja") -- o status de OS normal (aguardando
+         agendamento, visita, etc.) não faz sentido nenhum pra um item do
+         balcão, que tem ciclo de vida próprio (ver "Status na loja" logo
+         abaixo). Mostrar os dois juntos é que confundia. -->
     <div class="os-detalhe-secao">
       <label class="form-label">Status</label>
       <select class="form-input" onchange="osAtualizarStatus(${o.id}, this.value)">${opcoesStatus}</select>
@@ -10432,7 +10439,7 @@ async function abrirOSDetalhe(id) {
           <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px;"
                   onclick="osReexibirFila(${o.id})">Devolver pra fila</button>
         </p>` : ''}
-    </div>
+    </div>` : ''}
     <div class="os-detalhe-secao">
       <label class="form-label" for="os-detalhe-numero-chamado">Número do chamado Panasonic (opcional)</label>
       <input class="form-input" id="os-detalhe-numero-chamado" autocomplete="off"
