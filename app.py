@@ -98,9 +98,6 @@ init_db()
 from services.nfe import iniciar_sincronizacao_em_segundo_plano
 iniciar_sincronizacao_em_segundo_plano()
 
-from services.backup_automatico import iniciar_backup_automatico_em_segundo_plano
-iniciar_backup_automatico_em_segundo_plano()
-
 app.register_blueprint(auth_bp)
 app.register_blueprint(fichas_bp, url_prefix="/api")
 app.register_blueprint(servicos_bp, url_prefix="/api")
@@ -329,11 +326,6 @@ def diagnostico_geral():
             resultado.append({"robo": l["robo"], "minutos_atras": minutos, "detalhe": l.get("detalhe")})
         return resultado
 
-    def _backups():
-        with db_conn() as conn:
-            linhas = fetch_all(conn, "SELECT criado_em FROM backups_automaticos ORDER BY id DESC LIMIT 1")
-        return {"ultimo_em": (linhas[0]["criado_em"] if linhas else None)}
-
     def _operacional():
         # Pedido de 2026-08-29: "coisas reais" no Diagnóstico — números do
         # dia a dia, não só saúde de integração. LIKE em vez de função de
@@ -373,7 +365,6 @@ def diagnostico_geral():
     bloco("erros", _erros)
     bloco("operacional", _operacional)
     bloco("robos", _robos)
-    bloco("backups", _backups)
 
     return jsonify(saida)
 

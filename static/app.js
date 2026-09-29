@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v321';
+const VERSAO_PAINEL = 'v322';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2089,36 +2089,6 @@ function _linhaDiag(titulo, estado, texto, detalhe = '') {
     </div>`;
 }
 
-// Lista de backups automáticos (item #4) -- overlay simples criado na hora,
-// mesmo molde de ampliarFoto() (sem modal fixo no HTML só pra isso).
-async function abrirListaBackups() {
-  const fundo = document.createElement('div');
-  fundo.className = 'lupa-fundo';
-  fundo.innerHTML = `
-    <div class="cliente-detalhe-modal" style="max-width:480px;width:90%;background:var(--bg-card,#fff);border-radius:10px;padding:18px;max-height:70vh;overflow:auto;" onclick="event.stopPropagation()">
-      <h3 style="margin:0 0 10px;">Backups automáticos</h3>
-      <div id="lista-backups-corpo"><div class="ajuda-texto">Carregando...</div></div>
-    </div>`;
-  fundo.onclick = () => fundo.remove();
-  document.body.appendChild(fundo);
-
-  let r;
-  try { r = await api('/backups'); }
-  catch (e) {
-    fundo.querySelector('#lista-backups-corpo').innerHTML = `<p class="vcep-erro">${esc(e.message)}</p>`;
-    return;
-  }
-  const linhas = r.backups || [];
-  fundo.querySelector('#lista-backups-corpo').innerHTML = linhas.length ? linhas.map(b => `
-    <div class="os-visita-linha">
-      <span>${esc(dataHoraCompleta(b.criado_em))}</span>
-      <span style="display:flex;align-items:center;gap:10px;">
-        <span class="ajuda-texto" style="margin:0;">${((b.tamanho || 0) / 1024 / 1024).toFixed(1)} MB</span>
-        <a class="btn btn-ghost btn-sm" href="/api/backups/${b.id}" download>Baixar</a>
-      </span>
-    </div>`).join('') : `<p class="ajuda-texto">Nenhum backup automático gravado ainda — o primeiro sai na próxima subida do servidor.</p>`;
-}
-
 async function carregarDiagnostico() {
   const alvo = document.getElementById('diagnostico-corpo');
   if (!alvo) return;
@@ -2212,16 +2182,6 @@ async function carregarDiagnostico() {
       partes.push(_linhaDiag(r.robo, status, texto, esc(r.detalhe || '')));
     });
   }
-
-  // ── Backup automático diário (item #4, 2026-09-28).
-  const bk = d.backups || {};
-  const bkMin = bk.ultimo_em
-    ? Math.round((Date.now() - new Date(bk.ultimo_em.replace(' ', 'T') + 'Z')) / 60000) : null;
-  partes.push(`<div class="diag-secao">Backup automático</div>`);
-  partes.push(_linhaDiag('Último backup diário',
-    bk.ultimo_em ? (bkMin > 60 * 30 ? 'aviso' : 'ok') : 'aviso',
-    bk.ultimo_em ? `gravado ${dataHoraCompleta(bk.ultimo_em)}` : 'ainda nenhum gravado',
-    `<a href="#" onclick="event.preventDefault(); abrirListaBackups()">Ver todos os backups →</a>`));
 
   // ── Higiene dos dados
   partes.push(`<div class="diag-secao">Dados</div>`);

@@ -1305,17 +1305,14 @@ _MIGRACOES_PG = [
         detalhe   TEXT
     )""",
 
-    # #4 Backup automático diário: antes só existia GET /api/backup sob
-    # demanda -- sem agendamento, não existe rede de segurança se ninguém
-    # lembrar de clicar. Guardado no próprio Postgres (mesmo padrão de foto
-    # em base64 já usado no projeto inteiro), não em storage externo, que
-    # não está configurado. Retenção aplicada na leitura/limpeza, não aqui.
-    """CREATE TABLE IF NOT EXISTS backups_automaticos (
-        id         SERIAL PRIMARY KEY,
-        conteudo   TEXT NOT NULL,
-        tamanho    INTEGER,
-        criado_em  TEXT
-    )""",
+    # #4 Backup automático diário -- IMPLEMENTADO E REMOVIDO no mesmo dia
+    # (2026-09-29): guardar um retrato completo do banco (foto em base64
+    # incluída) DENTRO do próprio Postgres, a cada subida do app, encheu o
+    # volume de 500MB e derrubou a produção ("No space left on device").
+    # A tabela em si foi apagada manualmente depois do incidente -- não
+    # recriar sem antes resolver onde esse backup vai morar (storage
+    # externo ao banco que ele protege, do contrário é o mesmo problema de
+    # novo). Ver gerar_dump_banco() em routes/relatorios.py.
 
     # #17 2FA opcional: por padrão NINGUÉM tem -- precisa ativar de
     # propósito em Acessos. totp_ativo=false não muda o login de ninguém.
@@ -1639,12 +1636,6 @@ _MIGRACOES_SQLITE = [
         robo      TEXT PRIMARY KEY,
         visto_em  TEXT,
         detalhe   TEXT
-    )""",
-    """CREATE TABLE IF NOT EXISTS backups_automaticos (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        conteudo   TEXT NOT NULL,
-        tamanho    INTEGER,
-        criado_em  TEXT
     )""",
     "ALTER TABLE usuarios ADD COLUMN totp_secret TEXT",
     "ALTER TABLE usuarios ADD COLUMN totp_ativo INTEGER DEFAULT 0",

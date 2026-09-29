@@ -318,7 +318,14 @@
 //        virou ao vivo). #14/#24/#26/#9 ja existiam de sessoes anteriores.
 // v321 = busca por codigo ou nome em "Pedidos com comprovante" (aba Pecas)
 //        -- pedido de 2026-09-29, "nao ter que ficar olhando um por um".
-const CACHE_VERSAO = 'portotec-roteiros-v321';
+// v322 = INCIDENTE (2026-09-29): backup automatico diario (v320, item #4)
+//        gravava retrato completo do banco -- foto em base64 incluida --
+//        DENTRO do proprio Postgres a cada subida do app. Isso encheu o
+//        volume de 500MB e derrubou a producao ("No space left on
+//        device"). Removido por completo (codigo, tabela, rota, UI) --
+//        autorizado pelo Kalebe. So sobra o backup manual sob demanda
+//        (botao em Diagnostico), que nunca ficou guardado no banco.
+const CACHE_VERSAO = 'portotec-roteiros-v322';
 
 const ARQUIVOS_CASCA = [
   '/',

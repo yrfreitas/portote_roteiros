@@ -747,11 +747,19 @@ def baixar_backup():
 
 
 def gerar_dump_banco() -> str:
-    """Retrato completo do banco em JSON — extraído de baixar_backup() em
-    2026-09-28 (item #4 da lista de melhorias) pra ser reaproveitado pelo
-    backup AUTOMÁTICO diário (ver services/backup_automatico.py), não só
-    pelo botão sob demanda. Tabelas descobertas pelo catálogo do próprio
-    banco, não uma lista fixa — tabela nova de amanhã já entra sozinha."""
+    """Retrato completo do banco em JSON, pro botão "Baixar backup" sob
+    demanda (GET /api/backup). Tabelas descobertas pelo catálogo do próprio
+    banco, não uma lista fixa — tabela nova de amanhã já entra sozinha.
+
+    NÃO existe mais backup automático diário guardado DENTRO do próprio
+    banco -- essa ideia (item #4 da lista de 2026-09-28) foi implementada e
+    removida no mesmo dia: ela derrubou a produção. Guardar um retrato
+    completo (foto em base64 incluída) toda vez que o app sobe, no mesmo
+    volume de 500MB que já guarda os dados de verdade, encheu o disco e
+    travou o Postgres ("No space left on device") -- incidente real de
+    2026-09-29. Backup de verdade precisa morar em storage EXTERNO ao banco
+    que ele protege; enquanto isso não existe, fica só o download manual.
+    """
     import json
 
     from database import IS_PG
@@ -767,8 +775,8 @@ def gerar_dump_banco() -> str:
         dump = {}
         for t in tabelas:
             nome = t["nome"]
-            if nome.startswith("sqlite_") or nome == "backups_automaticos":
-                continue  # backup de si mesmo é redundante e só cresce a cada rodada
+            if nome.startswith("sqlite_"):
+                continue
             try:
                 dump[nome] = fetch_all(conn, f"SELECT * FROM {nome}")
             except Exception as exc:
@@ -776,34 +784,6 @@ def gerar_dump_banco() -> str:
                 dump[nome] = {"erro_ao_ler": str(exc)}
 
     return json.dumps(dump, default=str, ensure_ascii=False, indent=2)
-
-
-@relatorios_bp.route("/backups", methods=["GET"])
-def listar_backups_automaticos():
-    """Backups diários automáticos (item #4) -- só metadado (id/data/tamanho),
-    nunca o conteúdo inteiro aqui (isso é MB de JSON, ver GET /backups/<id>)."""
-    from permissoes import pode
-    if not pode("gerenciar_usuarios"):
-        return jsonify({"erro": "Sem permissão"}), 403
-    with db_conn() as conn:
-        linhas = fetch_all(conn, sql(
-            "SELECT id, tamanho, criado_em FROM backups_automaticos ORDER BY id DESC"))
-    return jsonify({"backups": linhas})
-
-
-@relatorios_bp.route("/backups/<int:backup_id>", methods=["GET"])
-def baixar_backup_automatico(backup_id):
-    from permissoes import pode
-    if not pode("gerenciar_usuarios"):
-        return jsonify({"erro": "Sem permissão"}), 403
-    with db_conn() as conn:
-        linha = fetch_one(conn, sql(
-            "SELECT conteudo, criado_em FROM backups_automaticos WHERE id = ?"), (backup_id,))
-    if not linha:
-        return jsonify({"erro": "Backup não encontrado"}), 404
-    nome_arquivo = f"backup_automatico_{(linha['criado_em'] or '')[:10]}.json"
-    return send_file(io.BytesIO(linha["conteudo"].encode("utf-8")), mimetype="application/json",
-                     as_attachment=True, download_name=nome_arquivo)
 
 
 @relatorios_bp.route("/relatorios/resumo-dia", methods=["GET"])
