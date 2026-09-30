@@ -1,7 +1,10 @@
 """Auto-cadastro de cliente NOVO por /novo-atendimento — pedido do Kalebe em
-2026-09-16: a "Central do Cliente" (routes/central_cliente.py) só serve quem
-JÁ tem uma OS aberta pela equipe; isto aqui é a entrada de quem NUNCA foi
-atendido, abrindo o próprio caso pelo site, sem ligar.
+2026-09-16: isto aqui é a entrada de quem NUNCA foi atendido, abrindo o
+próprio caso pelo site, sem ligar (diferente de quem já tem OS aberta pela
+equipe). Depois do envio, a pessoa vai pra /os/cliente/<token> (ver
+app.py) -- a "Central do Cliente" que existia como página de
+acompanhamento foi removida em 2026-09-29 (pedido do Kalebe, "não é mais
+útil"), então esse token hoje só serve pra ver a OS impressa.
 
 Cria cliente + Ordem de Serviço (modelo 'chamado_tecnico') exatamente como o
 formulário "Nova OS" do painel cria, mas com duas diferenças de propósito:

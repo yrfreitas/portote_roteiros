@@ -25,7 +25,6 @@ from routes.ordens_servico import (MODELOS_OS_ROTULO, TERMOS_PADRAO,
                                    ordens_servico_bp)
 from routes.fichas import fichas_bp
 from routes.manuais_pecas import manuais_pecas_bp
-from routes.central_cliente import central_cliente_bp
 from routes.novo_atendimento import novo_atendimento_bp
 from routes.auditoria import auditoria_bp
 from routes.pedidos import pedidos_bp
@@ -36,7 +35,6 @@ from routes.setores import setores_bp
 from routes.tecnico_api import tecnico_api_bp
 from routes.tecnico_view import tecnico_view_bp
 from services.garantia import calcular_garantia
-from services.push import VAPID_PUBLIC_KEY
 from routes.substituicoes import substituicoes_bp
 from routes.tecnicos import tecnicos_bp
 from routes.vendas import vendas_bp
@@ -116,7 +114,6 @@ app.register_blueprint(ordens_servico_bp, url_prefix="/api")
 app.register_blueprint(vendas_bp, url_prefix="/api")
 app.register_blueprint(substituicoes_bp, url_prefix="/api")
 app.register_blueprint(manuais_pecas_bp, url_prefix="/api")
-app.register_blueprint(central_cliente_bp, url_prefix="/api/central")
 app.register_blueprint(novo_atendimento_bp, url_prefix="/api/novo-atendimento")
 app.register_blueprint(auditoria_bp, url_prefix="/api")
 
@@ -135,7 +132,6 @@ _CAMINHOS_PUBLICOS = {"/login", "/login/2fa", "/api/health", "/api/erro-cliente"
 # link do técnico. Só expõem posição e destino daquele atendimento.
 _PREFIXOS_PUBLICOS = ("/static/", "/tecnico/", "/api/t/",
                       "/acompanhar/", "/api/rastreio/", "/api/chat/", "/os/cliente/",
-                      "/central/", "/api/central/",
                       "/novo-atendimento", "/api/novo-atendimento",
                       # Só a CONSULTA de CEP (leitura, sem custo de negócio) —
                       # /novo-atendimento usa pra autopreencher endereço, mesmo
@@ -600,26 +596,16 @@ def acompanhar(token):
     return render_template("acompanhar.html", token=token)
 
 
-@app.route("/central/<token>")
-def central_cliente_pagina(token):
-    """Central do Cliente — página pública onde o cliente acompanha a própria
-    OS (status, técnico a caminho, orçamento, garantia).
-
-    Sem login de propósito, mesmo modelo do link do técnico e do
-    /acompanhar/<token>: o token de 24 bytes (ordens_servico.token_cliente) é
-    a credencial. HTML fica aqui, /api/* fica no blueprint (routes/central_cliente.py).
-    """
-    return render_template("central_cliente.html", token=token, vapid_public_key=VAPID_PUBLIC_KEY)
-
-
 @app.route("/novo-atendimento")
 def novo_atendimento_pagina():
     """Página pública onde um cliente NOVO (nunca atendido) pede visita
     técnica sozinho — pedido do Kalebe em 2026-09-16: "não é cliente
     existente e sim novos que estão entrando". Sem login, mesmo modelo das
     outras páginas públicas: aqui não existe token ainda porque é ANTES de
-    existir OS — o token só nasce na resposta do POST, que redireciona pra
-    /central/<token> (a mesma tela de acompanhamento de quem já tem OS)."""
+    existir OS — o token só nasce na resposta do POST, que leva pra
+    /os/cliente/<token> (a mesma OS impressa que o técnico manda por
+    WhatsApp -- a "Central do Cliente" que existia antes foi removida em
+    2026-09-29, pedido do Kalebe: "não é mais útil")."""
     return render_template("novo_atendimento.html")
 
 

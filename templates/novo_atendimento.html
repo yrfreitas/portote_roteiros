@@ -154,7 +154,7 @@
     <div class="check">✓</div>
     <h2>Pré-agendamento realizado</h2>
     <p>Seu atendimento será confirmado após análise das informações enviadas.</p>
-    <a class="link-central" id="link-central" href="#">Acompanhar minha solicitação →</a>
+    <a class="link-central" id="link-central" href="#">Ver minha solicitação →</a>
   </main>
 
   <script>
@@ -274,7 +274,7 @@
             return;
           }
           document.getElementById('tela-form').style.display = 'none';
-          document.getElementById('link-central').href = `/central/${d.token}`;
+          document.getElementById('link-central').href = `/os/cliente/${d.token}`;
           document.getElementById('tela-ok').style.display = 'block';
         } catch (e) {
           mostrarErros(['Sem conexão agora. Tente de novo em instantes.']);

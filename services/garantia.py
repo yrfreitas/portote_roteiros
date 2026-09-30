@@ -1,9 +1,11 @@
 """Cálculo de prazo de garantia de uma Ordem de Serviço.
 
-Extraído de app.py (_montar_documento_os) em 2026-09-16 pra ser reaproveitado
-também pela Central do Cliente — o prazo mostrado pro cliente tem que ser
-exatamente o mesmo que já sai no documento impresso, não uma segunda conta
-que pode divergir.
+Extraído de app.py (_montar_documento_os) em 2026-09-16 pra também ser
+reaproveitado pela Central do Cliente enquanto ela existiu (removida em
+2026-09-29) — o prazo mostrado pro cliente tinha que ser exatamente o
+mesmo que já sai no documento impresso, não uma segunda conta que pode
+divergir. Continua aqui, separado, porque é a mesma razão de sempre: uma
+função só, um lugar só de calcular isso.
 """
 from datetime import datetime
 import calendar

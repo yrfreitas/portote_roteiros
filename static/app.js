@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v324';
+const VERSAO_PAINEL = 'v325';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -1122,8 +1122,8 @@ function _renderCentralCliente() {
         ${!o.setor_id ? '<span class="conc-tag aviso" style="margin-left:6px;">Setor pendente</span>' : ''}
       </div>` : ''}
       <button type="button" class="btn btn-primary btn-sm agendar-btn"
-              onclick="event.stopPropagation(); copiarLinkCentral(${o.id}, '${o.token_cliente || ''}')">
-        ${icone('externo', 'icone-12')} Copiar link do cliente
+              onclick="event.stopPropagation(); copiarLinkOSCliente(${o.id}, '${o.token_cliente || ''}')">
+        ${icone('externo', 'icone-12')} Copiar link da OS
       </button>
     </div>`;
   }).join('');
@@ -1131,7 +1131,12 @@ function _renderCentralCliente() {
   mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${linhas}`;
 }
 
-async function copiarLinkCentral(osId, tokenAtual) {
+// Link da OS impressa (/os/cliente/<token>) -- a "Central do Cliente"
+// (página de acompanhamento com status/orçamento/garantia) foi removida em
+// 2026-09-29 (pedido do Kalebe: "não é mais útil"). Sobrou este link, mais
+// simples: mostra a OS formatada pro cliente ver/imprimir, sem status ao
+// vivo nem aprovação de orçamento -- mesmo token de sempre (token_cliente).
+async function copiarLinkOSCliente(osId, tokenAtual) {
   let token = tokenAtual;
   if (!token) {
     try {
@@ -1142,9 +1147,9 @@ async function copiarLinkCentral(osId, tokenAtual) {
       return;
     }
   }
-  const link = `${window.location.origin}/central/${token}`;
+  const link = `${window.location.origin}/os/cliente/${token}`;
   navigator.clipboard.writeText(link)
-    .then(() => toast('Link da Central do Cliente copiado — mande por WhatsApp', 'success'))
+    .then(() => toast('Link da OS copiado — mande por WhatsApp', 'success'))
     .catch(() => toast(link, 'info'));
 }
 
@@ -10354,12 +10359,12 @@ async function abrirOSDetalhe(id) {
   document.getElementById('os-detalhe-titulo').textContent =
     `OS #${String(o.id).padStart(6, '0')} · ${o.cliente_nome}`;
 
-  // "Copiar link do cliente" fixo no rodapé do modal (pedido de 2026-09-22:
-  // "gostaria de enviar para o cliente" e só dava pra fazer isso pela aba
-  // Central do Cliente, sem jeito de mandar direto de dentro do detalhe da
-  // OS) — mesma função/mesmo link (/central/<token>) que já existe lá.
+  // "Copiar link da OS" fixo no rodapé do modal (pedido de 2026-09-22:
+  // "gostaria de enviar para o cliente" direto do detalhe da OS) -- ver
+  // copiarLinkOSCliente pro porquê de não ser mais link da Central do
+  // Cliente (removida em 2026-09-29).
   const btnLinkCliente = document.getElementById('os-detalhe-btn-link');
-  if (btnLinkCliente) btnLinkCliente.onclick = () => copiarLinkCentral(o.id, o.token_cliente);
+  if (btnLinkCliente) btnLinkCliente.onclick = () => copiarLinkOSCliente(o.id, o.token_cliente);
 
   // Quantas vezes já atendemos esse cliente — pedido de 2026-08-31, mesma
   // ideia do histórico que já existia na Nova OS (ver osHistoricoCliente),

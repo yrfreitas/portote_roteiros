@@ -331,7 +331,13 @@
 // v324 = tira os cartoes "Resolvido da Panasonic" e "Aprovado - Executado"
 //        de Nossas OS (pedido de 2026-09-29) -- eram desfecho de garantia
 //        Panasonic, confundiam aparecendo como cartao de "nossa" OS.
-const CACHE_VERSAO = 'portotec-roteiros-v324';
+// v325 = remove a Central do Cliente (pagina publica de acompanhamento --
+//        status/orcamento/garantia/push) -- pedido de 2026-09-29, "nao e
+//        mais util". Botao "Copiar link do cliente" virou "Copiar link da
+//        OS", apontando pra OS impressa (/os/cliente/<token>, que ja
+//        existia). Aba "Central do Cliente" do painel (lista de quem se
+//        auto-cadastrou por /novo-atendimento) continua -- e outra coisa.
+const CACHE_VERSAO = 'portotec-roteiros-v325';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -157,8 +157,6 @@ def _tecnico_por_token(conn, token):
 @rastreio_bp.route("/t/<token>/servicos/<int:servico_id>/rastreio", methods=["POST"])
 def iniciar(token, servico_id):
     """Abre (ou reaproveita) o rastreio deste atendimento."""
-    os_id = None
-    novo = False
     with db_conn(commit=True) as conn:
         tecnico = _tecnico_por_token(conn, token)
         if not tecnico:
@@ -167,13 +165,12 @@ def iniciar(token, servico_id):
         # O ponto tem que ser de uma ficha do próprio técnico. Sem isso, quem
         # tivesse um link de técnico poderia abrir rastreio de qualquer ponto.
         servico = fetch_one(conn, """
-            SELECT sv.id, sv.ordem_servico_id FROM servicos sv
+            SELECT sv.id FROM servicos sv
               JOIN fichas f ON f.id = sv.ficha_id
              WHERE sv.id = ? AND f.tecnico_id = ?
         """, (servico_id, tecnico["id"]))
         if not servico:
             return jsonify({"erro": "Ponto não encontrado nas suas rotas"}), 404
-        os_id = servico.get("ordem_servico_id")
 
         existente = fetch_one(conn, f"""
             SELECT * FROM rastreios WHERE servico_id = ? AND {_ATIVO}
@@ -204,23 +201,10 @@ def iniciar(token, servico_id):
                  "Acompanhe pelo mapa acima — se precisar, é só escrever aqui.",
                  autor_tipo="sistema", autor_nome="Porto Tec")
 
-        token_cliente_os = None
-        if os_id:
-            from routes.ordens_servico import garantir_token_cliente
-            token_cliente_os = garantir_token_cliente(conn, os_id)
-        novo = True
-
-    # Push pro cliente só depois do commit — I/O de rede não entra na
-    # transação (mesma convenção de routes/fichas.py ao chamar
-    # notificar_tecnico). Complementar ao aviso no chat acima: aquele o
-    # cliente só vê quando ABRE o link; este avisa antes disso.
-    if novo and os_id and token_cliente_os:
-        from services.push import notificar_cliente
-        notificar_cliente(
-            os_id, "Técnico a caminho",
-            f"{tecnico['nome'].split(' ')[0]} saiu e está a caminho do seu endereço.",
-            url=f"/central/{token_cliente_os}",
-        )
+    # Push pro cliente por push notification (Central do Cliente) foi
+    # removido em 2026-09-29 junto com a página -- o aviso no chat acima
+    # (publicar(), logo antes) continua sendo o jeito real de o cliente
+    # saber que o técnico saiu.
 
     return jsonify({"token": novo_token, "reaproveitado": False}), 201
 
@@ -638,10 +622,10 @@ def montar_payload_rastreio(r: dict) -> dict:
     """Monta o payload público de um rastreio a partir da linha já buscada
     (ra.* + sv.cliente/endereco/lat/lng/status + t.nome/foto/cor).
 
-    Extraído de consultar() em 2026-09-16 pra ser reaproveitado também pela
-    Central do Cliente (routes/central_cliente.py) — o card de "técnico a
-    caminho" usa exatamente a mesma conta de ETA/idade/"ao vivo" que
-    /acompanhar/<token> já usa, em vez de uma segunda que pode divergir.
+    Extraído de consultar() em 2026-09-16 pra ser reaproveitado por
+    /acompanhar/<token> sem duplicar a conta de ETA/idade/"ao vivo". Também
+    serviu a Central do Cliente enquanto ela existiu (removida em
+    2026-09-29).
 
     Devolve o mínimo: primeiro nome do técnico, posição atual e o destino.
     Nada de telefone, nome completo, outros pontos da rota ou dados da ficha.
@@ -713,24 +697,6 @@ def montar_payload_rastreio(r: dict) -> dict:
     }
 
 
-_CAMPOS_RASTREIO = """ra.*, sv.cliente, sv.endereco_completo,
-                   sv.lat AS destino_lat, sv.lng AS destino_lng, sv.status AS servico_status,
-                   t.nome AS tecnico_nome, t.foto AS tecnico_foto, t.cor AS tecnico_cor"""
-
-
-def rastreio_ativo_para_os(conn, os_id):
-    """Último rastreio ativo (não encerrado, não expirado) pra esta OS, via
-    servicos.ordem_servico_id — None quando não há nenhum em andamento.
-    Usada pela Central do Cliente pra mostrar (ou não) o card de "técnico a
-    caminho" sem duplicar a query de consultar()."""
-    return fetch_one(conn, f"""
-        SELECT {_CAMPOS_RASTREIO}
-          FROM rastreios ra
-          JOIN servicos sv ON sv.id = ra.servico_id
-          JOIN tecnicos t  ON t.id = ra.tecnico_id
-         WHERE sv.ordem_servico_id = ? AND {_ATIVO_RA}
-         ORDER BY ra.id DESC LIMIT 1
-    """, (os_id,))
 
 
 @rastreio_bp.route("/rastreio/<rastreio_token>", methods=["GET"])

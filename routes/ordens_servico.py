@@ -2164,10 +2164,9 @@ def pedir_peca(os_id):
 def garantir_token_cliente(conn, os_id):
     """Devolve o token_cliente desta OS, gerando um na hora se ela for de
     antes desse recurso existir (2026-08-28) e ainda não tiver. None se a OS
-    não existe. Extraído de link_cliente() em 2026-09-16 pra ser reaproveitado
-    por quem precisa do token sem ser uma rota HTTP (ver
-    routes/rastreio.py::iniciar, que usa isto pra montar o link do push da
-    Central do Cliente)."""
+    não existe. Usado por GET /ordens-servico/<id>/link-cliente (o botão
+    "Copiar link da OS", ver copiarLinkOSCliente em static/app.js) -- token
+    que hoje só serve pra abrir /os/cliente/<token> (a OS impressa)."""
     os_row = fetch_one(conn, "SELECT id, token_cliente FROM ordens_servico WHERE id = ?", (os_id,))
     if not os_row:
         return None
