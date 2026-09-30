@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v325';
+const VERSAO_PAINEL = 'v326';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -678,7 +678,6 @@ function switchMainTab(tab) {
   const isAtend     = tab === 'atendimentos';
   const isEstoque   = tab === 'estoque';
   const isOS        = tab === 'os';
-  const isCentralCliente = tab === 'central-cliente';
   const isAgendar   = tab === 'agendar';
   const isVendas    = tab === 'vendas';
   const isFaturamento = tab === 'faturamento';
@@ -693,7 +692,6 @@ function switchMainTab(tab) {
   _mostrarPainelPrincipal('panel-atendimentos', isAtend);
   _mostrarPainelPrincipal('panel-estoque', isEstoque);
   _mostrarPainelPrincipal('panel-os', isOS);
-  _mostrarPainelPrincipal('panel-central-cliente', isCentralCliente);
   _mostrarPainelPrincipal('panel-agendar', isAgendar);
   _mostrarPainelPrincipal('panel-vendas', isVendas);
   if (isVendas) carregarVendas();
@@ -706,7 +704,6 @@ function switchMainTab(tab) {
   document.getElementById('mtab-atendimentos').classList.toggle('active', isAtend);
   document.getElementById('mtab-estoque').classList.toggle('active', isEstoque);
   document.getElementById('mtab-os').classList.toggle('active', isOS);
-  document.getElementById('mtab-central-cliente').classList.toggle('active', isCentralCliente);
   document.getElementById('mtab-agendar').classList.toggle('active', isAgendar);
   document.getElementById('mtab-vendas').classList.toggle('active', isVendas);
   document.getElementById('mtab-faturamento').classList.toggle('active', isFaturamento);
@@ -738,9 +735,6 @@ function switchMainTab(tab) {
   }
   if (isOS) {
     carregarOS();
-  }
-  if (isCentralCliente) {
-    carregarCentralCliente();
   }
   if (isAgendar) {
     carregarAgendarClientes();
@@ -1003,132 +997,6 @@ function copiarLinkTecnico(token) {
   navigator.clipboard.writeText(link)
     .then(() => toast('Link do técnico copiado — mande por WhatsApp', 'success'))
     .catch(() => toast(link, 'info'));
-}
-
-// ─── Central do Cliente (só quem chegou por /novo-atendimento) ──────────
-// Pedido de 2026-09-16: "organizada tipo clientes aguardando tal coisa,
-// igual a OS" — mesmo padrão de cartões por status da aba OS (osFiltrar/
-// carregarOS), mas escopado SÓ a fonte=publico (contagem() no backend já
-// respeita esse escopo, ver routes/ordens_servico.py:listar). Ao contrário
-// da aba OS, este cartão de "Aguardando agendamento" fica visível de
-// propósito: aqui não é fila geral misturando 3 origens, é o canal do link
-// do WhatsApp — é exatamente onde "os que chegaram agora" precisam aparecer.
-let _centralClienteDados = { ordens: [], contagem: {} };
-let _centralClienteFiltroStatus = 'aguardando_agendamento';
-let _centralClienteBuscaTexto = '';
-let _centralClienteBuscaTimer = null;
-let _centralClienteCarregado = false;
-
-function centralClienteBuscar(valor) {
-  clearTimeout(_centralClienteBuscaTimer);
-  _centralClienteBuscaTimer = setTimeout(() => {
-    _centralClienteBuscaTexto = valor.trim().toLowerCase();
-    _renderCentralCliente();
-  }, 300);
-}
-
-function centralClienteFiltrar(status) {
-  _centralClienteFiltroStatus = _centralClienteFiltroStatus === status ? '' : status;
-  _renderCentralCliente();
-}
-
-async function carregarCentralCliente() {
-  const mount = document.getElementById('central-cliente-conteudo');
-  if (!mount) return;
-  mount.innerHTML = _skeletonOS();
-
-  let r;
-  try {
-    r = await api('/ordens-servico?fonte=publico');
-  } catch (e) {
-    mount.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
-    return;
-  }
-
-  _centralClienteDados = r;
-  _centralClienteCarregado = true;
-  _renderCentralCliente();
-}
-
-// "chegou há 20 min" com destaque pra quem é bem recente — pedido explícito
-// de deixar visível "os que chegaram agora" sem precisar calcular na mão.
-function _centralClienteRecente(criadoEmTxt) {
-  const d = parseDataBanco(criadoEmTxt);
-  if (!d) return { texto: '', novo: false };
-  const min = Math.round((new Date() - d) / 60000);
-  const novo = min <= 120;
-  if (min < 60) return { texto: 'chegou há pouco', novo };
-  const horas = Math.round(min / 60);
-  if (horas < 24) return { texto: `chegou há ${horas}h`, novo };
-  const dias = Math.round(horas / 24);
-  return { texto: dias === 1 ? 'chegou há 1 dia' : `chegou há ${dias} dias`, novo };
-}
-
-function _renderCentralCliente() {
-  const mount = document.getElementById('central-cliente-conteudo');
-  if (!mount || !_centralClienteCarregado) return;
-
-  const cartoes = Object.entries(OS_STATUS_ROTULO).map(([chave, rotulo]) => `
-    <button class="os-cartao${_centralClienteFiltroStatus === chave ? ' ativo' : ''}" onclick="centralClienteFiltrar('${chave}')">
-      <div class="n">${_centralClienteDados.contagem[chave] ?? 0}</div>
-      <div class="rot">${rotulo}</div>
-    </button>`).join('');
-
-  let ordens = _centralClienteDados.ordens || [];
-  if (_centralClienteFiltroStatus) ordens = ordens.filter(o => o.status === _centralClienteFiltroStatus);
-  if (_centralClienteBuscaTexto) {
-    ordens = ordens.filter(o =>
-      (o.cliente_nome || '').toLowerCase().includes(_centralClienteBuscaTexto)
-      || String(o.id) === _centralClienteBuscaTexto.replace(/^#|^0+/g, ''));
-  }
-
-  if (ordens.length === 0) {
-    mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>
-      <div class="historico-vazio">${icone('check', 'icone-24')}
-        <p>${_centralClienteBuscaTexto ? 'Nenhum cliente encontrado pra essa busca.'
-          : _centralClienteFiltroStatus ? 'Ninguém nesse status no momento.'
-          : 'Nenhum cliente chegou pelo link ainda.'}</p></div>`;
-    return;
-  }
-
-  const linhas = ordens.map(o => {
-    const statusClasse = _osStatusClasse(o.status);
-    const recente = _centralClienteRecente(o.criado_em);
-    return `
-    <div class="agendar-card" onclick="abrirOSDetalhe(${o.id})">
-      <div class="agendar-card-topo">
-        <div class="agendar-cliente">${destacar(o.cliente_nome, _centralClienteBuscaTexto)}</div>
-        <span class="agendar-espera">${recente.novo ? '🆕 ' : ''}${recente.texto}</span>
-      </div>
-      <div class="agendar-linha-info">
-        ${icone('telefone', 'icone-13')}
-        ${o.cliente_telefone
-          ? `<a href="tel:${esc(o.cliente_telefone.replace(/\D/g, ''))}" onclick="event.stopPropagation()">${esc(o.cliente_telefone)}</a>`
-          : `<span class="agendar-sem-info">sem telefone cadastrado</span>`}
-        <span class="agendar-sep">·</span>
-        <span>OS #${String(o.id).padStart(6, '0')}</span>
-        <span class="agendar-sep">·</span>
-        <span class="conc-tag ${statusClasse}">${esc(OS_STATUS_ROTULO[o.status] || 'Sem status')}</span>
-      </div>
-      <div class="agendar-linha-info">
-        <span class="agendar-aparelho">${esc([o.tipo_aparelho, o.marca, o.modelo].filter(Boolean).join(' · ')) || 'aparelho não informado'}</span>
-      </div>
-      ${o.defeito_declarado ? `<div class="agendar-defeito">${esc(o.defeito_declarado)}</div>` : ''}
-      ${o.preferencia_data ? `
-      <div class="agendar-linha-info">
-        ${icone('calendario', 'icone-13')}
-        <span>Preferência: ${esc(o.preferencia_data.split('-').reverse().join('/'))}
-          ${o.preferencia_periodo ? '· ' + (o.preferencia_periodo === 'manha' ? 'manhã' : 'tarde') : ''}</span>
-        ${!o.setor_id ? '<span class="conc-tag aviso" style="margin-left:6px;">Setor pendente</span>' : ''}
-      </div>` : ''}
-      <button type="button" class="btn btn-primary btn-sm agendar-btn"
-              onclick="event.stopPropagation(); copiarLinkOSCliente(${o.id}, '${o.token_cliente || ''}')">
-        ${icone('externo', 'icone-12')} Copiar link da OS
-      </button>
-    </div>`;
-  }).join('');
-
-  mount.innerHTML = `<div class="os-cartoes">${cartoes}</div>${linhas}`;
 }
 
 // Link da OS impressa (/os/cliente/<token>) -- a "Central do Cliente"
@@ -1752,7 +1620,6 @@ async function carregarUsuarioLogado() {
   mostra('mtab-estoque', podeUsuario('estoque_ver'));
   mostra('mtab-pecas', podeUsuario('pecas'));
   mostra('mtab-os', podeUsuario('ordens_servico'));
-  mostra('mtab-central-cliente', podeUsuario('ordens_servico'));
   mostra('mtab-agendar', podeUsuario('ordens_servico'));
   mostra('mtab-vendas', podeUsuario('vendas'));
   mostra('ptab-cotacao', podeUsuario('cotacao'));
