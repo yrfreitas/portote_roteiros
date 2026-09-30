@@ -328,7 +328,10 @@
 // v323 = detalhe de OS em "Produtos da loja" nao mostra mais o status
 //        geral de OS (aguardando agendamento etc.) junto com o "Status na
 //        loja" -- so o da loja aparece, como pedido em 2026-09-29.
-const CACHE_VERSAO = 'portotec-roteiros-v323';
+// v324 = tira os cartoes "Resolvido da Panasonic" e "Aprovado - Executado"
+//        de Nossas OS (pedido de 2026-09-29) -- eram desfecho de garantia
+//        Panasonic, confundiam aparecendo como cartao de "nossa" OS.
+const CACHE_VERSAO = 'portotec-roteiros-v324';
 
 const ARQUIVOS_CASCA = [
   '/',

@@ -82,12 +82,17 @@ STATUS_OS = [
 # (garantia Panasonic usa o mesmo, sem botão próprio) — por isso
 # aguardando_peca é comum às duas abas, não exclusivo de Nossas OS.
 STATUS_OS_COMUNS = ["finalizada", "reprovada", "cancelada", "aguardando_peca"]
+#   6) Pedido de 2026-09-29: "resolvido_panasonic" e "aprovado_executado"
+#      saíram do cartão de Nossas OS -- eram desfecho de garantia PANASONIC
+#      (o nome já diz) e confundiam aparecendo como cartão de "nossa" OS. O
+#      status continua válido (STATUS_OS acima, quem já tem OS assim
+#      mantém), só não sobra cartão de filtro em nenhuma das duas abas de
+#      origem. "aprovado_retirado" não foi pedido, continua igual.
 STATUS_OS_NOSSA = [
     "aguardando_agendamento", "agendada", "agendar_cliente",
     "aguardando_agendamento_garantia",
     "aguardando_orcamento", "aguardando_aprovacao", "aprovada",
-    "resolvido", "resolvido_panasonic", "aprovado_executado",
-    "aprovado_retirado",
+    "resolvido", "aprovado_retirado",
     "finalizada_garantia", "enviar_ordem_pdf",
 ] + STATUS_OS_COMUNS
 # Deixado exatamente como estava antes deste pedido — "OS Panasonic você

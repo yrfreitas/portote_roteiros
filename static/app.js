@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v323';
+const VERSAO_PAINEL = 'v324';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -8505,9 +8505,10 @@ async function salvarEdicaoServico() {
 // [na aba Atendimentos] tem que estar em Nossas OS, mesma escrita" (control
 // C / control V do rótulo de AT_TIPOS, mais abaixo neste arquivo). "OS
 // Panasonic" foi pra ficar "do jeito que está" -- STATUS_OS_PANASONIC não
-// mudou. Por isso resolvido_panasonic/aprovado_executado/aprovado_retirado
-// têm rótulo aqui mas só aparecem como cartão em Nossas OS (ver
-// STATUS_OS_NOSSA), não em OS Panasonic.
+// mudou. resolvido_panasonic/aprovado_executado/aprovado_retirado têm
+// rótulo aqui (usado no detalhe/busca/diagnóstico) mesmo não tendo mais
+// cartão em nenhuma das duas abas de origem -- ver nota em STATUS_OS_NOSSA
+// abaixo (2026-09-29: os dois primeiros saíram do cartão de Nossas OS).
 const OS_STATUS_ROTULO = {
   aguardando_agendamento:          'Aguardando agendamento',
   agendar_cliente:                 'Agendar cliente',
@@ -8566,11 +8567,17 @@ const OS_STATUS_ROTULO_CARTOES = Object.fromEntries(
 // "Fazer Pedido de Peça" é o único botão comum às duas categorias do guia
 // do técnico, por isso aguardando_peca é comum às duas abas.
 const STATUS_OS_COMUNS = ['finalizada', 'reprovada', 'cancelada', 'aguardando_peca'];
+// "resolvido_panasonic" e "aprovado_executado" saíram do cartão de Nossas
+// OS em 2026-09-29 (pedido direto do Kalebe) -- eram desfecho de garantia
+// PANASONIC (o próprio nome já diz) e confundiam aparecendo como cartão de
+// "nossa" OS. O status continua existindo (STATUS_OS, backend) pra quem já
+// tem OS marcada assim, só não sobra cartão de filtro em lugar nenhum --
+// "aprovado_retirado" não foi pedido, continua igual.
 const STATUS_OS_NOSSA = [
   'aguardando_agendamento', 'agendar_cliente', 'aguardando_agendamento_garantia',
   'agendada',
   'aguardando_orcamento', 'aguardando_aprovacao', 'aprovada',
-  'resolvido', 'resolvido_panasonic', 'aprovado_executado', 'aprovado_retirado',
+  'resolvido', 'aprovado_retirado',
   'finalizada_garantia', 'enviar_ordem_pdf',
   ...STATUS_OS_COMUNS,
 ];
