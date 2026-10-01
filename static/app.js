@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v326';
+const VERSAO_PAINEL = 'v327';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -2093,6 +2093,12 @@ async function carregarDiagnostico() {
     partes.push(`
       <div class="diag-secao">Log de auditoria <span class="ajuda-texto" style="font-weight:400;">— só você vê isso</span></div>
       <div id="auditoria-corpo"><div class="ajuda-texto">Carregando...</div></div>`);
+    // Tentativas de senha errada (login, senha-mestre, código 2FA) -- pedido
+    // de 2026-10-01 ("deixa o site super seguro"). Mesma régua de
+    // visibilidade do log de auditoria logo acima.
+    partes.push(`
+      <div class="diag-secao">Tentativas de login <span class="ajuda-texto" style="font-weight:400;">— só você vê isso</span></div>
+      <div id="login-falhas-corpo"><div class="ajuda-texto">Carregando...</div></div>`);
   }
 
   // ── O que já mudou (changelog) — pedido de 2026-08-29.
@@ -2114,7 +2120,7 @@ async function carregarDiagnostico() {
   if (podeUsuario('gerenciar_usuarios')) carregarAcessos();
   carregarChangelog();
   carregarLogExportacoes();
-  if (usuarioLogado.admin_mestre) carregarAuditoria();
+  if (usuarioLogado.admin_mestre) { carregarAuditoria(); carregarLoginFalhas(); }
   carregarStatus2FA();
 }
 
@@ -2170,8 +2176,10 @@ async function confirmar2FA(botao) {
 
 async function desativar2FA() {
   if (!confirm('Desativar a verificação em duas etapas desta conta?')) return;
+  const senha = prompt('Confirme sua senha atual pra desativar:');
+  if (!senha) return;
   try {
-    const r = await api('/2fa/desativar', { method: 'POST' });
+    const r = await api('/2fa/desativar', { method: 'POST', body: JSON.stringify({ senha }) });
     toast(r.mensagem, 'success');
     carregarStatus2FA();
   } catch (e) { toast(e.message, 'error'); }
@@ -2191,6 +2199,26 @@ async function carregarAuditoria() {
           <span class="changelog-resumo">${esc(l.acao)}${l.entidade ? ` · ${esc(l.entidade)}${l.entidade_id ? ' #' + esc(l.entidade_id) : ''}` : ''}${l.detalhe ? ' — ' + esc(l.detalhe) : ''}</span>
           <span class="changelog-data">${esc(dataHoraCompleta(l.criado_em))}</span>
         </div>`).join('');
+  } catch (e) {
+    alvo.innerHTML = `<div class="ajuda-texto">${esc(e.message)}</div>`;
+  }
+}
+
+async function carregarLoginFalhas() {
+  const alvo = document.getElementById('login-falhas-corpo');
+  if (!alvo) return;
+  try {
+    const r = await api('/auditoria/login-falhas');
+    const linhas = r.recentes || [];
+    const resumo = `<div class="ajuda-texto" style="margin-bottom:8px;">${r.total_24h} tentativa${r.total_24h === 1 ? '' : 's'} de senha errada nas últimas 24h.</div>`;
+    alvo.innerHTML = resumo + (!linhas.length
+      ? '<div class="ajuda-texto">Nada registrado ainda.</div>'
+      : linhas.map(l => `
+        <div class="changelog-linha">
+          <span class="changelog-versao">${esc(l.login_tentado || '—')}</span>
+          <span class="changelog-resumo">IP ${esc(l.ip || 'desconhecido')}</span>
+          <span class="changelog-data">${esc(dataHoraCompleta(l.criado_em))}</span>
+        </div>`).join(''));
   } catch (e) {
     alvo.innerHTML = `<div class="ajuda-texto">${esc(e.message)}</div>`;
   }

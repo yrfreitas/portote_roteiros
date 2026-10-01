@@ -69,6 +69,12 @@ if not _secret:
     )
 app.config["SECRET_KEY"] = _secret
 app.config["JSON_SORT_KEYS"] = False
+# Sem isso, um POST com corpo gigante (de propósito ou não) é lido inteiro
+# pra memória antes de qualquer validação de aplicação rodar -- a maior foto
+# legítima que o site aceita é ~900KB crus (~1,2MB em base64); 8MB sobra
+# folga generosa pro JSON ao redor e ainda barra um payload de centenas de MB
+# usado pra esgotar memória do processo (DoS barato, sem precisar de botnet).
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"

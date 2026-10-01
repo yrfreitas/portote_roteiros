@@ -12,11 +12,11 @@ distingue de verdade é `session.get("usuario_id")`: só existe pra quem
 logou com usuário/senha (tem linha em `usuarios`); o admin-mestre nunca
 tem.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request, session
 
-from database import db_conn, execute, fetch_all, sql
+from database import db_conn, execute, fetch_all, fetch_one, sql
 
 auditoria_bp = Blueprint("auditoria", __name__)
 
@@ -48,3 +48,21 @@ def listar():
         linhas = fetch_all(conn, sql(
             "SELECT * FROM auditoria ORDER BY id DESC LIMIT ?"), (limite,))
     return jsonify({"linhas": linhas})
+
+
+@auditoria_bp.route("/auditoria/login-falhas", methods=["GET"])
+def login_falhas():
+    """Tentativas de senha errada (login nomeado, senha-mestre ou código 2FA)
+    -- pedido do Kalebe de 2026-10-01 ("deixa o site super seguro"). Antes
+    disso um ataque de força bruta não deixava rastro nenhum até dar certo.
+    Mesma visibilidade travada do log de auditoria: só quem logou só com
+    senha (o dono do sistema), nunca um usuário nomeado."""
+    if not eh_admin_mestre():
+        return jsonify({"erro": "Sem permissão"}), 403
+    corte_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    with db_conn() as conn:
+        total_24h = fetch_one(conn, sql(
+            "SELECT COUNT(*) AS n FROM login_falhas WHERE criado_em >= ?"), (corte_24h,))
+        recentes = fetch_all(conn, sql(
+            "SELECT * FROM login_falhas ORDER BY id DESC LIMIT ?"), (50,))
+    return jsonify({"total_24h": (total_24h or {}).get("n", 0), "recentes": recentes})

@@ -1327,6 +1327,19 @@ _MIGRACOES_PG = [
     # leitura depois deste deploy), não precisa de backfill em massa aqui.
     "ALTER TABLE estoque_itens ADD COLUMN IF NOT EXISTS foto_thumb TEXT",
     "ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS foto_thumb TEXT",
+
+    # Endurecimento de login (pedido do Kalebe, 2026-10-01: "deixa o site
+    # super seguro"). Senha errada no login (nomeado OU a senha-mestre) não
+    # deixava rastro nenhum -- um ataque de força bruta era invisível até
+    # alguém desconfiar. Visibilidade só pro admin-mestre, mesmo padrão de
+    # `auditoria` (ver routes/auditoria.py) -- é informação de dono do
+    # sistema, não permissão que passa pelo editor de Acessos.
+    """CREATE TABLE IF NOT EXISTS login_falhas (
+        id            SERIAL PRIMARY KEY,
+        ip            TEXT,
+        login_tentado TEXT,
+        criado_em     TEXT
+    )""",
 ]
 
 _MIGRACOES_SQLITE = [
@@ -1629,6 +1642,14 @@ _MIGRACOES_SQLITE = [
     )""",
     "ALTER TABLE estoque_itens ADD COLUMN foto_thumb TEXT",
     "ALTER TABLE cotacoes ADD COLUMN foto_thumb TEXT",
+
+    # Espelho SQLite do endurecimento de login (ver comentário na lista PG acima).
+    """CREATE TABLE IF NOT EXISTS login_falhas (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip            TEXT,
+        login_tentado TEXT,
+        criado_em     TEXT
+    )""",
 ]
 
 

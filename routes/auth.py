@@ -37,6 +37,22 @@ def _agora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _registrar_falha(login_tentado: str) -> None:
+    """Senha errada vira linha em login_falhas -- antes disso um ataque de
+    força bruta era invisível (nada registrava tentativa, só sucesso). Visto
+    só pelo admin-mestre em Diagnóstico (ver app.py), mesma régua de
+    visibilidade do log de auditoria."""
+    try:
+        with db_conn(commit=True) as conn:
+            execute(conn, """
+                INSERT INTO login_falhas (ip, login_tentado, criado_em)
+                VALUES (?, ?, ?)
+            """, (request.remote_addr, (login_tentado or "")[:120], _agora()))
+    except Exception:
+        # Nunca deixa o registro da falha derrubar a resposta de "senha errada".
+        pass
+
+
 def usuario_atual() -> dict:
     """Quem está logado, do jeito que o resto do sistema pergunta."""
     return {
@@ -81,6 +97,7 @@ def login():
             return render_template("login.html",
                                    erro="Este acesso está desativado."), 401
         if not check_password_hash(usuario["senha_hash"], senha):
+            _registrar_falha(login_digitado)
             return render_template("login.html", erro="Usuário ou senha incorretos."), 401
 
         # 2FA (item #17, opt-in -- totp_ativo nasce falso pra todo mundo,
@@ -113,6 +130,7 @@ def login():
                 "login.html",
                 erro="ADMIN_PASSWORD_HASH não está configurada no servidor."), 500
         if not check_password_hash(hash_configurado, senha):
+            _registrar_falha("(senha-mestre)")
             return render_template("login.html", erro="Usuário ou senha incorretos."), 401
 
         with db_conn() as conn:
@@ -151,6 +169,7 @@ def login_2fa():
             usuario = fetch_one(conn, "SELECT * FROM usuarios WHERE id = ?", (usuario_id,))
         if not usuario or not usuario.get("totp_ativo") \
                 or not verificar_codigo(usuario.get("totp_secret"), codigo):
+            _registrar_falha(f"(2fa:{usuario.get('login') if usuario else usuario_id})")
             return render_template("login.html", pedir_2fa=True, erro="Código inválido."), 401
 
         session.clear()
@@ -169,6 +188,7 @@ def login_2fa():
         with db_conn() as conn:
             cfg = fetch_one(conn, "SELECT totp_secret, totp_ativo FROM admin_mestre_2fa WHERE id = 1")
         if not cfg or not cfg.get("totp_ativo") or not verificar_codigo(cfg.get("totp_secret"), codigo):
+            _registrar_falha("(2fa:senha-mestre)")
             return render_template("login.html", pedir_2fa=True, erro="Código inválido."), 401
 
         session.clear()
@@ -235,6 +255,7 @@ def status_2fa():
 
 
 @auth_bp.route("/api/2fa/ativar", methods=["POST"])
+@limiter.limit("10 per minute")
 def ativar_2fa():
     """Gera um segredo NOVO (ainda não ativa -- só ativa depois de
     /api/2fa/confirmar provar que a pessoa escaneou certo). Gerar de novo
@@ -264,6 +285,7 @@ def ativar_2fa():
 
 
 @auth_bp.route("/api/2fa/confirmar", methods=["POST"])
+@limiter.limit("10 per minute")
 def confirmar_2fa():
     from services.totp import verificar_codigo
 
@@ -272,6 +294,7 @@ def confirmar_2fa():
     with db_conn() as conn:
         linha = fetch_one(conn, f"SELECT totp_secret FROM {tabela} WHERE id = ?", (filtro,))
     if not linha or not verificar_codigo(linha.get("totp_secret"), codigo):
+        _registrar_falha("(2fa-confirmar)")
         return jsonify({"erro": "Código inválido. Confira o horário do celular e tente de novo."}), 400
 
     with db_conn(commit=True) as conn:
@@ -280,8 +303,25 @@ def confirmar_2fa():
 
 
 @auth_bp.route("/api/2fa/desativar", methods=["POST"])
+@limiter.limit("10 per minute")
 def desativar_2fa():
+    """Exige a senha atual antes de desligar -- sem isso, uma sessão
+    sequestrada (aba esquecida aberta, cookie roubado) conseguia desligar o
+    segundo fator sozinha, sem provar que ainda é o dono da conta."""
+    senha = (request.get_json(silent=True) or {}).get("senha", "")
     tabela, filtro = _alvo_2fa()
+
+    if tabela == "admin_mestre_2fa":
+        hash_atual = _hash_admin()
+    else:
+        with db_conn() as conn:
+            usuario = fetch_one(conn, "SELECT senha_hash FROM usuarios WHERE id = ?", (filtro,))
+        hash_atual = usuario.get("senha_hash") if usuario else None
+
+    if not hash_atual or not check_password_hash(hash_atual, senha):
+        _registrar_falha("(2fa-desativar)")
+        return jsonify({"erro": "Senha atual incorreta."}), 401
+
     with db_conn(commit=True) as conn:
         execute(conn, f"UPDATE {tabela} SET totp_ativo = ?, totp_secret = NULL WHERE id = ?",
                (False, filtro))
