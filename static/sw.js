@@ -337,7 +337,7 @@
 //        OS", apontando pra OS impressa (/os/cliente/<token>, que ja
 //        existia). Aba "Central do Cliente" do painel (lista de quem se
 //        auto-cadastrou por /novo-atendimento) continua -- e outra coisa.
-const CACHE_VERSAO = 'portotec-roteiros-v328';
+const CACHE_VERSAO = 'portotec-roteiros-v329';
 
 const ARQUIVOS_CASCA = [
   '/',

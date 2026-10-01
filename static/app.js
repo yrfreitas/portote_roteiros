@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v328';
+const VERSAO_PAINEL = 'v329';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -729,6 +729,9 @@ function switchMainTab(tab) {
   }
   if (isAtend) {
     carregarDesfechos();
+    _atIniciarAutoAtualizar();
+  } else {
+    _atPararAutoAtualizar();
   }
   if (isEstoque) {
     abrirEstoqueRaiz();
@@ -12876,6 +12879,34 @@ let _atSelecionados = new Set();   // chaves marcadas pro "Remover selecionados"
 // pra não acumular junto do que ainda precisa de ação. Reseta a cada
 // carregamento de página (não é preferência salva, só estado da sessão).
 let _atOcultarPedidas = true;
+
+// Auto-atualizar (pedido de 2026-10-01: "preciso que ele puxe como está as
+// OS lá e se atualize sozinho"). O card de Orçamento/OS em campo já some
+// sozinho quando a OS ligada termina (ver STATUS_OS_TERMINAL no backend,
+// routes/relatorios.py) -- mas só na PRÓXIMA ida ao servidor. Sem isso, quem
+// deixa a aba aberta só via o número cair ao trocar de aba e voltar. Pausa
+// se tiver formulário de "Anexar comprovante" aberto ou seleção em lote
+// ativa -- mesmo cuidado do painel de foco da Torre de Controle (pausa
+// durante replay): reconstruir o HTML no meio de uma edição apagaria o que
+// a pessoa estava fazendo.
+const AT_AUTO_ATUALIZAR_MS = 20000;
+let _atAutoAtualizarId = null;
+
+function _atIniciarAutoAtualizar() {
+  _atPararAutoAtualizar();
+  _atAutoAtualizarId = setInterval(() => {
+    const buscaFocada = document.activeElement && document.activeElement.id === 'at-busca';
+    if (buscaFocada || _pedidoServicoAtual || _atSelecionados.size > 0) return;
+    carregarDesfechos();
+  }, AT_AUTO_ATUALIZAR_MS);
+}
+
+function _atPararAutoAtualizar() {
+  if (_atAutoAtualizarId) {
+    clearInterval(_atAutoAtualizarId);
+    _atAutoAtualizarId = null;
+  }
+}
 
 // Filtro por nome digitado, aplicado sem nova ida ao servidor — a lista do
 // período já está na memória, então cada tecla só refaz o render local.

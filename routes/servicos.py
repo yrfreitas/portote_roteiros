@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from flask import Blueprint, jsonify, request, session
 
 from database import (IS_PG, db_conn, execute, fetch_all, fetch_one,
@@ -194,6 +196,24 @@ def adicionar_servico(ficha_id):
               (data.get("modelo") or "").strip(),
               (data.get("numero_os") or "").strip(),
               setor_id, telefone, ordem_servico_id or None))
+
+        # A OS ligada aqui sai da fila de "Agendar Clientes" (pedido de
+        # 2026-10-01: "os cliente que já foram agendados, lá tem um monte" --
+        # cliente aparecia pra sempre como aguardando agendamento mesmo já
+        # tendo visita marcada e CONCLUÍDA, porque só o endpoint dedicado
+        # /ordens-servico/<id>/agendar atualizava o status; este aqui, usado
+        # no dia a dia em Roteiros pra vincular um ponto a uma OS existente,
+        # nunca avisava a OS que ela tinha sido agendada). Só mexe quando a OS
+        # ainda está numa variante de "esperando agendar" -- uma OS já em
+        # outro estado (aguardando_peca, aprovada...) ligada aqui por outro
+        # motivo não deve ser pisada.
+        if ordem_servico_id:
+            execute(conn, """
+                UPDATE ordens_servico SET status = ?, atualizado_em = ?
+                 WHERE id = ? AND status IN ('aguardando_agendamento', 'agendar_cliente',
+                                             'aguardando_agendamento_garantia')
+            """, ("agendada", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                  ordem_servico_id))
 
         ficha = fetch_one(conn, "SELECT * FROM fichas WHERE id = ?", (ficha_id,))
         resultado = recalcular_rota(conn, ficha_id, ficha)
