@@ -310,6 +310,22 @@ DESFECHOS_ORDEM = ["precisa_peca", "cotacao_peca", "fazer_os", "resolvido",
                    "aprovado_executado", "aprovado_retirado",
                    "garantia_resolvido", "garantia_voltar_depois"]
 
+# Pedido do Kalebe (2026-10-01): "tem muitas coisas lá que já fizemos mas
+# fica lá fazendo tempo". Conferido com dado real -- de 25 linhas em
+# "orcamento" (Aguardando Aprovação de Orçamento), 15 (60%) já tinham a OS
+# finalizada, cancelada ou reprovada há semanas, só continuavam contando
+# porque nada em `servico_desfecho` sabia que a OS tinha terminado. Mesmo
+# princípio do filtro que "cotacao_peca" já tinha (cot.id IS NOT NULL, ver
+# comentário na query abaixo) -- aqui o "já resolvido" é OLHAR O STATUS DA
+# OS DE VERDADE, não um campo próprio que alguém teria que lembrar de
+# marcar. "orcamento" e "fazer_os" são os dois tipos cujo card some assim
+# que a aprovação/execução vira conversa encerrada (aprovada ou aguardando
+# ainda contam -- só o que já fechou some).
+_STATUS_OS_TERMINAL = (
+    "finalizada", "cancelada", "reprovada", "finalizada_garantia",
+    "resolvido", "resolvido_panasonic", "aprovado_executado", "aprovado_retirado",
+)
+
 
 def _grupo_efetivo(l):
     """"Não atendido" e "Reagendar Cliente" nunca tiveram card/aba própria em
@@ -348,7 +364,12 @@ def listar_desfechos():
         # saía daqui e ficava preso na aba mesmo depois de virar orçamento
         # (pedido de 2026-09-05: "quando eu mandar uma cotação, ela suma
         # daqui").
-        linhas = fetch_all(conn, sql("""
+        #
+        # Mesma ideia pra "orcamento"/"fazer_os": se a OS ligada a esse
+        # atendimento já terminou (ver _STATUS_OS_TERMINAL acima), o card já
+        # não representa mais nada pendente -- fica de fora.
+        marcador_terminal = ",".join("?" * len(_STATUS_OS_TERMINAL))
+        linhas = fetch_all(conn, sql(f"""
             SELECT d.servico_id, d.desfecho, d.motivo, d.peca, d.observacao,
                    d.pedido_em, d.pedido_por,
                    COALESCE(d.forma_pagamento, os2.forma_pagamento) AS forma_pagamento,
@@ -367,8 +388,10 @@ def listar_desfechos():
               LEFT JOIN ordens_servico os2 ON os2.id = s.ordem_servico_id
              WHERE d.registrado_em >= ?
                AND (d.desfecho <> 'cotacao_peca' OR cot.id IS NOT NULL)
+               AND (d.desfecho NOT IN ('orcamento', 'fazer_os')
+                    OR os2.status IS NULL OR os2.status NOT IN ({marcador_terminal}))
              ORDER BY d.registrado_em DESC
-        """), (limite,))
+        """), (limite, *_STATUS_OS_TERMINAL))
         for l in linhas:
             l["origem"] = "tecnico"
             l["pedido_os_id"] = None
