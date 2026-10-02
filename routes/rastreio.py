@@ -699,6 +699,17 @@ def montar_payload_rastreio(r: dict) -> dict:
 
 
 
+# Removida junto com rastreio_ativo_para_os no v325 (limpeza da Central do
+# Cliente) por engano -- essa função era mesmo só da Central, mas esta
+# constante também é usada por consultar() logo abaixo, a página PÚBLICA de
+# acompanhamento (/acompanhar/<token>), que devia ter ficado intocada. Sem
+# ela, todo link de rastreio ativo quebrava com 500 ("sem conexão" na tela do
+# cliente) -- achado em 2026-10-02 a partir de uma reclamação real.
+_CAMPOS_RASTREIO = """ra.*, sv.cliente, sv.endereco_completo,
+                   sv.lat AS destino_lat, sv.lng AS destino_lng, sv.status AS servico_status,
+                   t.nome AS tecnico_nome, t.foto AS tecnico_foto, t.cor AS tecnico_cor"""
+
+
 @rastreio_bp.route("/rastreio/<rastreio_token>", methods=["GET"])
 def consultar(rastreio_token):
     """Leitura PÚBLICA — é o que a página do cliente consome."""
