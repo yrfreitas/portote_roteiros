@@ -657,6 +657,18 @@ def _montar_documento_os(os_id):
                                     (ordem["tecnico_atendeu_id"],))
             tecnico_atendeu_nome = tecnico_row["nome"] if tecnico_row else None
 
+    # "A descrição do serviço não aparece, só o valor total" (Kalebe,
+    # 2026-10-03) -- não era bug, eram dois campos diferentes: a lista de
+    # itens (nome+valor, alimenta o total) e "Solução/diagnóstico" (texto
+    # livre, seção 4 do impresso), que fica em branco sempre que alguém monta
+    # o orçamento só pela lista de itens sem digitar o texto também -- achado
+    # em 6 das últimas 14 OS de orçamento com itens. Sem solução escrita à
+    # mão, usa os próprios nomes dos itens como descrição -- nunca deixa a
+    # seção 4 em branco quando já existe informação estruturada pra mostrar.
+    if not ordem.get("solucao") and itens:
+        ordem = dict(ordem)
+        ordem["solucao"] = "; ".join(i["nome"] for i in itens)
+
     # Formatação BR feita aqui, não no template: "%.2f" de Python usa ponto
     # decimal, e um documento pra cliente assinar com "R$ 90.00" e data em
     # ISO (2026-08-22) parece rascunho de sistema, não papel de assistência
