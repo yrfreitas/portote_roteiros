@@ -721,12 +721,10 @@ def _montar_documento_os(os_id):
     itens_com_valor_fmt = [{"nome": i["nome"], "valor_fmt": _moeda_fmt(i["valor"])} for i in itens]
     soma_itens = sum(float(i["valor"] or 0) for i in itens)
     total_orcamento_fmt = _moeda_fmt(soma_itens)
-    # Orçamento ganhou campo de taxa própria (pedido de 2026-09-16, além dos
-    # Itens/Valores que já existiam) — quando as duas coisas convivem na
-    # mesma OS, mostra também a soma das duas pra não deixar o cliente
-    # somando na mão o que vai pagar de verdade.
-    taxa_num = float(ordem.get("taxa_avaliacao") or 0)
-    total_com_taxa_fmt = _moeda_fmt(soma_itens + taxa_num) if taxa_num else None
+    # "Total com taxa" (soma itens + taxa de avaliação) existiu de 2026-09-16
+    # até 2026-10-03 -- removido a pedido do Kalebe: "ele faz a soma da taxa
+    # tmb, não quero que some". A taxa continua aparecendo no documento (campo
+    # próprio, logo acima), só não soma mais em cima do valor do orçamento.
 
     try:
         ocultar_impressao = set(json.loads(ordem.get("imprimir_ocultar") or "[]"))
@@ -737,7 +735,6 @@ def _montar_documento_os(os_id):
         ordem=ordem, visita=visita, termos=termos,
         tipo_os_rotulo=tipo_os_rotulo, modelo_os_rotulo=modelo_os_rotulo,
         itens=itens_com_valor_fmt, total_orcamento_fmt=total_orcamento_fmt,
-        total_com_taxa_fmt=total_com_taxa_fmt,
         tecnico_atendeu_nome=tecnico_atendeu_nome,
         data_abertura_br=_data_br(ordem.get("criado_em")),
         taxa_fmt=_moeda_fmt(ordem.get("taxa_avaliacao")),
