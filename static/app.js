@@ -279,7 +279,7 @@ let _recarregandoAuto = false;
 
 // Versão do código que ESTA página carregou. Subir junto com o CACHE_VERSAO
 // do sw.js e o VERSAO_APP do extensions.py — os três contam a mesma história.
-const VERSAO_PAINEL = 'v332';
+const VERSAO_PAINEL = 'v333';
 
 // ─── Erros do navegador chegam ao servidor ──────────────────────────
 // "O site fica dando erro" e impossivel de investigar do servidor: as rotas
@@ -12897,7 +12897,7 @@ function _atIniciarAutoAtualizar() {
   _atAutoAtualizarId = setInterval(() => {
     const buscaFocada = document.activeElement && document.activeElement.id === 'at-busca';
     if (buscaFocada || _pedidoServicoAtual || _atSelecionados.size > 0) return;
-    carregarDesfechos();
+    carregarDesfechos(true);
   }, AT_AUTO_ATUALIZAR_MS);
 }
 
@@ -12940,23 +12940,43 @@ function filtrarDesfecho(tipo) {
   carregarDesfechos();
 }
 
-async function carregarDesfechos() {
+async function carregarDesfechos(silencioso = false) {
   const alvo = document.getElementById('at-conteudo');
   if (!alvo) return;
-  alvo.innerHTML = `<div class="loading-row" style="justify-content:center;padding:30px;">
+  if (!silencioso) {
+    alvo.innerHTML = `<div class="loading-row" style="justify-content:center;padding:30px;">
       <div class="spinner"></div> Carregando atendimentos...</div>`;
+  }
 
   let r;
   try {
     r = await api(`/desfechos?dias=${_atDias}${_atTipo ? '&tipo=' + _atTipo : ''}`);
   } catch (e) {
-    alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
+    // Falha no auto-atualizar silencioso não deve apagar o que já está na
+    // tela -- só um carregamento manual (não-silencioso) mostra o erro.
+    if (!silencioso) alvo.innerHTML = `<div class="vcep-erro" style="margin:0;">${esc(e.message)}</div>`;
     return;
   }
 
   r.atendimentos = r.atendimentos.filter(a => !AT_TIPOS_OCULTOS.includes(a.desfecho));
+
+  // Pedido de 2026-10-05: o auto-atualizar (a cada 20s) estava apagando a
+  // lista inteira pro spinner e reconstruindo do zero mesmo quando nada
+  // tinha mudado -- sentido como "fica atualizando toda hora, bugado".
+  // Em modo silencioso, só redesenha se o resultado realmente mudou, e
+  // preserva a posição de rolagem quando redesenha.
+  if (silencioso && _atUltimoResultado && JSON.stringify(r) === JSON.stringify(_atUltimoResultado)) {
+    return;
+  }
+
   _atUltimoResultado = r;
-  _atRenderizarDesfechos(r);
+  if (silencioso) {
+    const scrollY = window.scrollY;
+    _atRenderizarDesfechos(r);
+    window.scrollTo(0, scrollY);
+  } else {
+    _atRenderizarDesfechos(r);
+  }
 }
 
 // Separado de carregarDesfechos pra poder refazer só o HTML (filtro de nome,
